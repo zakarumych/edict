@@ -29,25 +29,21 @@ fn get_type_name(item: TokenStream) -> Result<Ident, TokenStream> {
                 skip_group = true;
             }
             TokenTree::Punct(p) => {
-                return Err(
-                    format!("::core::compile_error!(\"Unexpected token {}\")", p)
-                        .parse()
-                        .unwrap(),
-                )
+                return Err(format!("::std::compile_error!(\"Unexpected token {}\")", p)
+                    .parse()
+                    .unwrap())
             }
             TokenTree::Group(_) if skip_group => {
                 skip_group = false;
             }
             TokenTree::Group(g) => {
-                return Err(
-                    format!("::core::compile_error!(\"Unexpected group {}\")", g)
-                        .parse()
-                        .unwrap(),
-                )
+                return Err(format!("::std::compile_error!(\"Unexpected group {}\")", g)
+                    .parse()
+                    .unwrap())
             }
             TokenTree::Literal(l) => {
                 return Err(
-                    format!("::core::compile_error!(\"Unexpected literal {}\")", l)
+                    format!("::std::compile_error!(\"Unexpected literal {}\")", l)
                         .parse()
                         .unwrap(),
                 )
@@ -58,18 +54,16 @@ fn get_type_name(item: TokenStream) -> Result<Ident, TokenStream> {
                     expect_name = true;
                 }
                 _ => {
-                    return Err(
-                        format!("::core::compile_error!(\"Unexpected ident {}\")", i)
-                            .parse()
-                            .unwrap(),
-                    )
+                    return Err(format!("::std::compile_error!(\"Unexpected ident {}\")", i)
+                        .parse()
+                        .unwrap())
                 }
             },
         }
     }
 
     Err(
-        format!("::core::compile_error!(\"Unexpected end of input\")")
+        format!("::std::compile_error!(\"Unexpected end of input\")")
             .parse()
             .unwrap(),
     )

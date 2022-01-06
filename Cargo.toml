@@ -12,3 +12,4 @@ description = "placeholder"
 
 [dependencies]
 edict-proc = { version = "0.0.0", path = "proc" }
+hashbrown = { version = "0.11" }

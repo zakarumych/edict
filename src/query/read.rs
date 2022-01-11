@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::{split_idx, Archetype, Chunk},
-    Component,
+    component::Component,
 };
 
 use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};

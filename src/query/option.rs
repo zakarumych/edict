@@ -2,7 +2,7 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::{split_idx, Archetype},
-    Component,
+    component::Component,
 };
 
 use super::{
@@ -51,20 +51,10 @@ where
     #[inline]
     unsafe fn fetch(
         archetype: &Archetype,
-        _tracks: u64,
-        _epoch: u64,
+        tracks: u64,
+        epoch: u64,
     ) -> Option<Option<FetchRead<T>>> {
-        match archetype.id_index(TypeId::of::<T>()) {
-            None => Some(None),
-            Some(idx) => {
-                let chunks = archetype.get_chunks(idx);
-
-                Some(Some(FetchRead {
-                    chunks: NonNull::from(&chunks[..]).cast(),
-                    marker: PhantomData,
-                }))
-            }
-        }
+        Some(<&T as Query>::fetch(archetype, tracks, epoch))
     }
 }
 
@@ -90,12 +80,7 @@ where
 
     #[inline]
     unsafe fn get_one_item(&mut self, idx: u32) -> Option<&'a mut T> {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let fetch = self.as_mut()?;
-        let chunk = &mut *fetch.chunks.as_ptr().add(chunk_idx);
-        chunk.version = fetch.epoch;
-        chunk.versions[entity_idx] = fetch.epoch;
-        Some(&mut *chunk.ptr.cast::<T>().as_ptr().add(entity_idx))
+        Some(FetchWrite::get_one_item(self.as_mut()?, idx))
     }
 }
 

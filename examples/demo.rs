@@ -13,50 +13,13 @@ struct Baz;
 fn main() {
     let mut world = World::new();
 
-    let e1 = world.spawn((Foo, Bar, Baz, "qwerty".to_owned()));
+    let e = world.spawn((Foo,));
 
-    let e1 = world.pin::<(Foo, Bar)>(e1);
+    world.insert(&e, Bar).unwrap();
+    world.insert(&e, Bar).unwrap();
+    world.insert(&e, (Baz,)).unwrap();
 
-    let (foo, bar, int) = world.get_mut::<(&mut Foo, &Bar, Option<&u32>), _>(&e1);
-
-    for (e, Foo) in world.query_mut::<&Foo>() {
-        println!("{}", e);
-    }
-
-    let mut tracks = world.tracks();
-
-    for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
-        panic!("Must not be called");
-    }
-
-    let e2 = world.spawn((Foo, Bar, Baz));
-
-    for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
-        println!("New component is considered mofied {}", e);
-    }
-
-    for (e, mut r) in world.query_mut::<Alt<Foo>>() {
-        let foo = &mut *r; // Marks as modified
-    }
-
-    for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
-        println!("{}", e);
-    }
-
-    for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
-        panic!("Must not be called");
-    }
-
-    world.get_mut::<(&mut Foo, Skip), _>(&e1);
-
-    for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
-        assert_eq!(e, e1, "Only e1 was modified");
-    }
-
-    drop(e1);
-    drop(e2);
-
-    world.maintain();
+    world.remove::<Foo>(&e).unwrap();
 }
 
 fn alt_speed(world: &mut World) {

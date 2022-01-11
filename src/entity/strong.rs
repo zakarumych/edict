@@ -69,8 +69,13 @@ impl StrongEntity {
             inner: NonNull::new(ptr).unwrap(),
         }
     }
+
+    pub fn queue(&self) -> &DropQueue {
+        unsafe { &(*self.inner.as_ptr()).queue }
+    }
 }
 
+#[derive(PartialEq, Eq)]
 pub(crate) struct DropQueue {
     inner: NonNull<QueueInner<[UnsafeCell<u32>]>>,
 }

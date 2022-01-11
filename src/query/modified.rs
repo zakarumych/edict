@@ -2,7 +2,7 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::{split_idx, Archetype, Chunk, CHUNK_LEN_USIZE},
-    Component,
+    component::Component,
 };
 
 use super::{
@@ -183,10 +183,10 @@ where
         _epoch: u64,
     ) -> Option<ModifiedFetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks(idx);
+        let chunks = archetype.get_chunks_mut(idx);
 
         Some(ModifiedFetchRead {
-            chunks: NonNull::from(&chunks[..]).cast(),
+            chunks: NonNull::from(&mut chunks[..]).cast(),
             tracks,
             marker: PhantomData,
         })
@@ -290,10 +290,10 @@ where
         _epoch: u64,
     ) -> Option<ModifiedFetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks(idx);
+        let chunks = archetype.get_chunks_mut(idx);
 
         Some(ModifiedFetchRead {
-            chunks: NonNull::from(&chunks[..]).cast(),
+            chunks: NonNull::from(&mut chunks[..]).cast(),
             tracks,
             marker: PhantomData,
         })

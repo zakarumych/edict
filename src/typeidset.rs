@@ -12,10 +12,10 @@ pub struct TypeIdSet {
 
 impl TypeIdSet {
     /// Returns TypeIdSet with given type ids.
-    pub fn new(ids: impl ExactSizeIterator<Item = TypeId> + Clone + Debug) -> Self {
+    pub fn new(ids: impl Iterator<Item = TypeId> + Clone) -> Self {
         let no_type_id = no_type_id();
 
-        let mut entries = vec![no_type_id; ids.len()];
+        let mut entries = vec![no_type_id; ids.clone().count()];
 
         'outer: loop {
             for id in ids.clone() {
@@ -42,7 +42,7 @@ impl TypeIdSet {
             }
 
             return TypeIdSet {
-                count: ids.len(),
+                count: ids.count(),
                 modulo,
                 entries: entries.into_boxed_slice(),
             };

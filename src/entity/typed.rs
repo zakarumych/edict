@@ -43,6 +43,12 @@ impl Entity {
     }
 }
 
+impl<T> Entity<T> {
+    pub(crate) fn is_from_queue(&self, queue: &DropQueue) -> bool {
+        self.strong.queue() == queue
+    }
+}
+
 impl<T> fmt::Debug for Entity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entity")

@@ -1,7 +1,7 @@
 use core::{
     alloc::Layout,
     any::{type_name, TypeId},
-    ptr::{copy_nonoverlapping, drop_in_place, slice_from_raw_parts_mut},
+    ptr::{self, copy_nonoverlapping, drop_in_place, slice_from_raw_parts_mut},
 };
 
 /// Re-export derive proc macros.
@@ -21,6 +21,7 @@ pub struct ComponentInfo {
     pub drop_one: unsafe fn(*mut u8),
     pub copy: unsafe fn(*const u8, *mut u8, usize),
     pub copy_one: unsafe fn(*const u8, *mut u8),
+    pub set_one: unsafe fn(*mut u8, *mut u8),
 }
 
 impl ComponentInfo {
@@ -40,6 +41,7 @@ impl ComponentInfo {
             },
             drop_one: |ptr| unsafe { drop_in_place::<T>(ptr.cast()) },
             copy_one: |src, dst| unsafe { copy_nonoverlapping(src as *const T, dst as *mut T, 1) },
+            set_one: |src, dst| unsafe { *(dst as *mut T) = ptr::read(src as *mut T) },
         }
     }
 }

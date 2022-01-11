@@ -8,7 +8,7 @@ use core::{
 
 use crate::{
     archetype::{split_idx, Archetype, Chunk, CHUNK_LEN_USIZE},
-    Component,
+    component::Component,
 };
 
 use super::{Fetch, NonTrackingQuery, Query};
@@ -114,11 +114,11 @@ where
     #[inline]
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks(idx);
+        let chunks = archetype.get_chunks_mut(idx);
 
         Some(FetchAlt {
             epoch,
-            chunks: NonNull::from(&chunks[..]).cast(),
+            chunks: NonNull::from(&mut chunks[..]).cast(),
             marker: PhantomData,
         })
     }

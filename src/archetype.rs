@@ -30,7 +30,6 @@ pub(crate) struct ComponentData {
     copy: unsafe fn(*const u8, *mut u8, usize),
     copy_one: unsafe fn(*const u8, *mut u8),
     chunks: Vec<Chunk>,
-    versions: Vec<Box<[u64; CHUNK_LEN_USIZE]>>,
 }
 
 impl ComponentData {
@@ -44,7 +43,6 @@ impl ComponentData {
             copy: info.copy,
             copy_one: info.copy_one,
             chunks: Vec::new(),
-            versions: Vec::new(),
         }
     }
 
@@ -163,13 +161,13 @@ impl Archetype {
     }
 
     /// Add component to an entity
-    pub fn add_component<T>(
+    pub unsafe fn add_component<T>(
         &mut self,
         dst: &mut Archetype,
         src_idx: u32,
         component: T,
         epoch: u64,
-    ) -> u32
+    ) -> (u32, Option<u32>)
     where
         T: Component,
     {
@@ -189,23 +187,23 @@ impl Archetype {
             for &idx in &*dst.indices {
                 let component = &mut self.components[idx];
                 debug_assert_eq!(dst_chunk_idx, component.chunks.len());
-                component.chunks.push(unsafe { component.alloc_chunk() })
+                component.chunks.push(component.alloc_chunk())
             }
         }
 
-        unsafe {
-            let chunk = &mut dst.components[type_idx].chunks[dst_chunk_idx];
-            chunk.version = epoch;
-            chunk.versions[dst_entity_idx] = epoch;
-            let ptr = chunk.ptr.as_ptr().cast::<T>().add(dst_entity_idx);
-            write(ptr, component);
-        }
+        let chunk = &mut dst.components[type_idx].chunks[dst_chunk_idx];
+        chunk.version = epoch;
+        chunk.versions[dst_entity_idx] = epoch;
+        let ptr = chunk.ptr.as_ptr().cast::<T>().add(dst_entity_idx);
+        write(ptr, component);
 
         let (src_chunk_idx, src_entity_idx) = split_idx(src_idx);
         let last_idx = self.entities.len() as u32 - 1;
+        let (last_chunk_idx, last_entity_idx) = split_idx(last_idx);
 
         for &src_type_idx in self.indices.iter() {
             let src_component = &self.components[src_type_idx];
+            let size = src_component.layout.size();
             let type_id = src_component.id;
             let src_chunk = &src_component.chunks[src_chunk_idx];
 
@@ -215,32 +213,60 @@ impl Archetype {
             dst_chunk.version = epoch;
             dst_chunk.versions[dst_entity_idx] = epoch;
 
-            unsafe {
-                let src_ptr = src_chunk
-                    .ptr
-                    .as_ptr()
-                    .add(src_entity_idx * src_component.layout.size());
+            let src_ptr = src_chunk.ptr.as_ptr().add(src_entity_idx * size);
+            let dst_ptr = dst_chunk.ptr.as_ptr().add(dst_entity_idx * size);
 
-                let dst_ptr = dst_chunk
-                    .ptr
-                    .as_ptr()
-                    .add(dst_entity_idx * src_component.layout.size());
+            (src_component.copy_one)(src_ptr, dst_ptr);
 
-                (src_component.copy_one)(src_ptr, dst_ptr);
+            if src_idx != last_idx {
+                let last_chunk = &src_component.chunks[last_chunk_idx];
+                let last_ptr = last_chunk.ptr.as_ptr().add(last_entity_idx * size);
 
-                if src_idx != last_idx {
-                    let last_chunk = src_component.chunks.last().unwrap();
-                    let last_ptr = last_chunk.ptr.as_ptr().add(last_idx as u8 as usize);
-
-                    (src_component.copy_one)(last_ptr, src_ptr);
-                }
+                (src_component.copy_one)(last_ptr, src_ptr);
             }
         }
 
         let entity = self.entities.swap_remove(src_idx as usize);
         dst.entities.push(entity);
 
-        dst_idx
+        if src_idx != last_idx {
+            (dst_idx, Some(self.entities[src_idx as usize].id))
+        } else {
+            (dst_idx, None)
+        }
+    }
+
+    pub(crate) unsafe fn remove(&mut self, idx: u32) -> Option<u32> {
+        debug_assert!(idx < self.entities.len() as u32);
+
+        let last_idx = self.entities.len() as u32 - 1;
+        let (last_chunk_idx, last_entity_idx) = split_idx(last_idx);
+
+        let (chunk_idx, entity_idx) = split_idx(idx);
+
+        for &type_idx in self.indices.iter() {
+            let component = &self.components[type_idx];
+            let size = component.layout.size();
+            let chunk = &component.chunks[chunk_idx];
+
+            let ptr = chunk.ptr.as_ptr().add(entity_idx * size);
+
+            (component.drop_one)(ptr);
+
+            if idx != last_idx {
+                let last_chunk = &component.chunks[last_chunk_idx];
+                let last_ptr = last_chunk.ptr.as_ptr().add(last_entity_idx * size);
+
+                (component.copy_one)(last_ptr, ptr);
+            }
+        }
+
+        self.entities.swap_remove(idx as usize);
+        if idx != last_idx {
+            Some(self.entities[idx as usize].id)
+        } else {
+            None
+        }
     }
 
     pub(crate) unsafe fn get_chunks(&self, idx: usize) -> &[Chunk] {
@@ -256,7 +282,6 @@ impl Archetype {
     }
 }
 
-pub(crate) const CHUNK_LEN: u32 = 0x100;
 pub(crate) const CHUNK_LEN_USIZE: usize = 0x100;
 pub(crate) const CHUNK_ALIGN: usize = 0x100;
 

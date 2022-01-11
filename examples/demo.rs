@@ -3,7 +3,6 @@ use std::time::Instant;
 use edict::{
     proof::Skip,
     query::{Alt, Modifed},
-    tracks::Tracks,
     world::World,
 };
 
@@ -14,7 +13,7 @@ struct Baz;
 fn main() {
     let mut world = World::new();
 
-    let e1 = world.spawn((Foo, Bar, Baz));
+    let e1 = world.spawn((Foo, Bar, Baz, "qwerty".to_owned()));
 
     let e1 = world.pin::<(Foo, Bar)>(e1);
 
@@ -53,6 +52,11 @@ fn main() {
     for (e, Foo) in world.query_tracked_mut::<Modifed<&Foo>>(&mut tracks) {
         assert_eq!(e, e1, "Only e1 was modified");
     }
+
+    drop(e1);
+    drop(e2);
+
+    world.maintain();
 }
 
 fn alt_speed(world: &mut World) {

@@ -1,8 +1,7 @@
 //!
 //! Edict ECS
 //!
-#![no_std]
-#![forbid(unconditional_recursion)]
+// #![no_std]
 
 extern crate alloc;
 extern crate self as edict;

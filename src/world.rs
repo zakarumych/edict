@@ -11,10 +11,10 @@ use hashbrown::{
 };
 
 use crate::{
-    archetype::{split_idx, Archetype, CHUNK_LEN},
+    archetype::{self, split_idx, Archetype},
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
-    entity::{Entity, WeakEntity},
+    entity::{DropQueue, Entity, WeakEntity},
     idx::MAX_IDX_USIZE,
     proof::Proof,
     query::{Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryMut, QueryTrackedMut},
@@ -39,13 +39,8 @@ fn first_gen() -> NonZeroU32 {
 /// Stores entity information in the World
 #[derive(Debug)]
 struct EntityData {
-    /// Refs count for sharing and destruction.
-    /// `!0` - "owned".
-    /// `0` - "expired"
-    refs: Arc<()>,
-
     /// Entity generation.
-    gen: NonZeroU32,
+    gen: u32,
 
     /// Archetype index.
     archetype: u32,
@@ -85,6 +80,9 @@ pub struct World {
 
     /// Maps archetype index + additional statuc bundle key to the archetype index.
     add_key: HashMap<(u32, TypeId), u32>,
+
+    /// Queue of dropped entities.
+    drop_queue: DropQueue,
 }
 
 impl World {
@@ -99,6 +97,8 @@ impl World {
             add: HashMap::new(),
             sub: HashMap::new(),
             add_key: HashMap::new(),
+
+            drop_queue: DropQueue::new(0),
         }
     }
 
@@ -129,24 +129,18 @@ impl World {
         let idx = self.archetypes[archetype_idx as usize].insert(id, bundle, self.epoch);
 
         let entity = if id == self.entities.len() as u32 {
-            let refs = Arc::new(());
             self.entities.push(EntityData {
-                refs: refs.clone(),
-                gen: first_gen(),
+                gen: 2,
                 idx,
                 archetype: archetype_idx,
             });
 
-            Entity::new(id, first_gen(), refs)
+            Entity::new(id, first_gen(), &self.drop_queue)
         } else {
             let data = &mut self.entities[id as usize];
-            debug_assert_eq!(Arc::strong_count(&data.refs), 1);
-            let last_gen = data.gen.get();
-            debug_assert_ne!(last_gen, u32::MAX, "Exhausted entity id must not be reused");
-            let new_gen = NonZeroU32::new(last_gen + 1).unwrap();
-            data.gen = new_gen;
+            let gen = NonZeroU32::new(data.gen).unwrap();
 
-            Entity::new(id, new_gen, data.refs.clone())
+            Entity::new(id, gen, &self.drop_queue)
         };
 
         entity
@@ -157,7 +151,7 @@ impl World {
         B: Bundle,
     {
         let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen);
+        assert_eq!(data.gen, entity.gen.get());
 
         let archetype = &self.archetypes[data.archetype as usize];
 
@@ -195,7 +189,7 @@ impl World {
         );
 
         let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen);
+        assert_eq!(data.gen, entity.gen.get());
         let archetype = &self.archetypes[data.archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
 
@@ -231,7 +225,7 @@ impl World {
         }
 
         let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen);
+        assert_eq!(data.gen, entity.gen.get());
         let archetype = &self.archetypes[data.archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
 
@@ -265,7 +259,7 @@ impl World {
         );
 
         let data = &self.entities[entity.id as usize];
-        if data.gen != entity.gen {
+        if data.gen != entity.gen.get() {
             return Err(WeakError::NoSuchEntity);
         }
         let archetype = &self.archetypes[data.archetype as usize];
@@ -298,7 +292,7 @@ impl World {
         );
 
         let data = &self.entities[entity.id as usize];
-        if data.gen != entity.gen {
+        if data.gen != entity.gen.get() {
             return Err(WeakError::NoSuchEntity);
         }
         let archetype = &self.archetypes[data.archetype as usize];
@@ -348,7 +342,7 @@ impl World {
         }
     }
 
-    pub fn remove<T>(&mut self, e: WeakEntity)
+    pub fn remove<T>(&mut self, e: WeakEntity) -> Result<T, WeakError>
     where
         T: Component,
     {
@@ -357,6 +351,29 @@ impl World {
 
     pub fn tracks(&self) -> Tracks {
         Tracks { epoch: self.epoch }
+    }
+
+    pub fn maintain(&mut self) {
+        for id in self.drop_queue.drain() {
+            let data = &self.entities[id as usize];
+            let idx = data.idx;
+            let gen = data.gen;
+
+            let archetype = &mut self.archetypes[data.archetype as usize];
+            let opt_id = unsafe { archetype.remove(idx) };
+
+            if let Some(id) = opt_id {
+                self.entities[id as usize].idx = idx;
+            }
+
+            if gen == u32::MAX {
+                // Exhausted.
+                self.entities[id as usize].gen = 0;
+            } else {
+                self.entities[id as usize].gen += 1;
+                self.free_entity_ids.push(id);
+            }
+        }
     }
 }
 

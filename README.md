@@ -6,7 +6,14 @@
 [![MIT/Apache](https://img.shields.io/badge/license-MIT%2FApache-blue.svg?style=for-the-badge)](COPYING)
 ![loc](https://img.shields.io/tokei/lines/github/zakarumych/edict?style=for-the-badge)
 
-placeholder
+
+Experimental ECS.
+
+| Feature                        | Status             |
+|--------------------------------|--------------------|
+| Reference counted entities     | :white_check_mark: |
+| Components pinning             | :construction:     |
+| Entity fetch with guarantees   | :construction:     |
 
 ## License
 

@@ -268,10 +268,8 @@ impl Archetype {
         debug_assert!(chunk.versions[entity_idx] < epoch);
         chunk.versions[entity_idx] = epoch;
 
-        unsafe {
-            let dst = chunk.ptr.as_ptr().cast::<T>().add(entity_idx);
-            *dst = value;
-        }
+        let dst = chunk.ptr.as_ptr().cast::<T>().add(entity_idx);
+        *dst = value;
     }
 
     /// Add components from bundle to the entity, moving entity to new archetype.
@@ -658,10 +656,6 @@ impl Archetype {
 
     pub(crate) fn get_entities(&self) -> &[EntityData] {
         &self.entities
-    }
-
-    pub(crate) fn get_entities_mut(&mut self) -> &mut [EntityData] {
-        &mut self.entities
     }
 }
 

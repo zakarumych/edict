@@ -1,7 +1,9 @@
-pub(crate) use self::strong::DropQueue;
+pub(crate) use self::entities::Entities;
 pub use self::{id::EntityId, typed::Entity, weak::WeakEntity};
 
+mod entities;
 mod id;
+mod queue;
 mod strong;
 mod typed;
 mod weak;

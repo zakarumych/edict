@@ -95,6 +95,8 @@ macro_rules! for_tuple {
 
             #[inline]
             fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
+                #![allow(non_snake_case)]
+
                 let ($($a,)+) = self;
                 let ($($a,)+) = ($(ManuallyDrop::new($a),)+);
                 $(

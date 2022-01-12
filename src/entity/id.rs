@@ -1,5 +1,8 @@
 use core::fmt;
 
+/// Entity ID.
+/// Does not contain generation.
+/// IDs may change what entity they refer to between `World::maintenance` calls.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct EntityId {

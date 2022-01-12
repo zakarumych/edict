@@ -1,11 +1,8 @@
-use core::{fmt, marker::PhantomData, num::NonZeroU32, ops::Deref};
+use core::{fmt, marker::PhantomData, ops::Deref};
 
-use crate::bundle::Bundle;
+use crate::{bundle::Bundle, world::World};
 
-use super::{
-    strong::{DropQueue, StrongEntity},
-    weak::WeakEntity,
-};
+use super::{strong::StrongEntity, weak::WeakEntity};
 
 /// Strong reference to an entity.
 /// This value can be used to access an entity and keeps the entity alive.
@@ -16,22 +13,11 @@ use super::{
 /// Pinned components cannot be removed and thus they can be accessed with guarantee.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Entity<T = ()> {
-    strong: StrongEntity,
-    marker: PhantomData<fn() -> T>,
+    pub(super) strong: StrongEntity,
+    pub(super) marker: PhantomData<fn() -> T>,
 }
 
 impl Entity {
-    pub(crate) fn new(id: u32, gen: NonZeroU32, queue: &DropQueue) -> Self {
-        Entity::from_weak(WeakEntity::new(id, gen), queue)
-    }
-
-    pub(crate) fn from_weak(weak: WeakEntity, queue: &DropQueue) -> Self {
-        Entity {
-            strong: StrongEntity::new(weak, queue),
-            marker: PhantomData,
-        }
-    }
-
     pub(crate) fn with_bundle<B>(self) -> Entity<B>
     where
         B: Bundle,
@@ -40,12 +26,6 @@ impl Entity {
             strong: self.strong,
             marker: PhantomData,
         }
-    }
-}
-
-impl<T> Entity<T> {
-    pub(crate) fn is_from_queue(&self, queue: &DropQueue) -> bool {
-        self.strong.queue() == queue
     }
 }
 
@@ -71,3 +51,44 @@ impl<T> Deref for Entity<T> {
         &self.strong.weak
     }
 }
+
+macro_rules! for_tuple {
+    () => {
+        for_tuple!(for A B C D E F G);
+    };
+
+    (for) => {
+        for_tuple!(impl);
+    };
+
+    (for $head:ident $($tail:ident)*) => {
+        for_tuple!(for $($tail)*);
+        for_tuple!(impl $head $($tail)*);
+    };
+
+    (impl) => {
+        impl Entity<()> {
+            pub fn pin<T>(self, world: &mut World) -> Entity<(T,)> {
+                drop(world);
+                Entity {
+                    strong: self.strong,
+                    marker: PhantomData,
+                }
+            }
+        }
+    };
+
+    (impl $($a:ident)+) => {
+        impl<$($a),+> Entity<($($a,)+)> {
+            pub fn pin<T>(self, world: &mut World) -> Entity<($($a,)+ T,)> {
+                drop(world);
+                Entity {
+                    strong: self.strong,
+                    marker: PhantomData,
+                }
+            }
+        }
+    };
+}
+
+for_tuple!();

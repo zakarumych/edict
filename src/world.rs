@@ -2,53 +2,24 @@ use core::{
     any::{type_name, TypeId},
     hash::{BuildHasher, Hash, Hasher},
     marker::PhantomData,
-    num::NonZeroU32,
 };
 
-use alloc::{sync::Arc, vec::Vec};
+use alloc::vec::Vec;
 use hashbrown::{
     hash_map::{Entry, RawEntryMut},
     HashMap,
 };
 
 use crate::{
-    archetype::{self, split_idx, Archetype},
+    archetype::{split_idx, Archetype},
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
-    entity::{DropQueue, Entity, WeakEntity},
+    entity::{Entities, Entity, WeakEntity},
     idx::MAX_IDX_USIZE,
     proof::Proof,
     query::{Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryMut, QueryTrackedMut},
     tracks::Tracks,
 };
-
-fn invalid_gen() -> NonZeroU32 {
-    NonZeroU32::new(1).unwrap()
-}
-
-impl WeakEntity {
-    /// Returns weak entity instance that is already expired.
-    pub fn dangling() -> Self {
-        WeakEntity::new(0, invalid_gen())
-    }
-}
-
-fn first_gen() -> NonZeroU32 {
-    NonZeroU32::new(2).unwrap()
-}
-
-/// Stores entity information in the World
-#[derive(Debug)]
-struct EntityData {
-    /// Entity generation.
-    gen: u32,
-
-    /// Archetype index.
-    archetype: u32,
-
-    /// Index within archetype.
-    idx: u32,
-}
 
 /// Entities container.
 #[derive(Debug)]
@@ -57,12 +28,8 @@ pub struct World {
     /// Incremented on each mutable query.
     epoch: u64,
 
-    /// Array of all entities in the world.
-    entities: Vec<EntityData>,
-
-    /// Array of indices of free entity data slots.
-    /// Does not include ids with exhausted generation index.
-    free_entity_ids: Vec<u32>,
+    /// Collection of entities with their locations.
+    entities: Entities,
 
     /// Archetypes of entities in the world.
     archetypes: Vec<Archetype>,
@@ -84,17 +51,13 @@ pub struct World {
 
     /// Maps archetype index - additional component id to the archetype index.
     sub_ids: HashMap<(u32, Vec<TypeId>), u32>,
-
-    /// Queue of dropped entities.
-    drop_queue: DropQueue,
 }
 
 impl World {
     pub fn new() -> Self {
         World {
             epoch: 0,
-            entities: Vec::new(),
-            free_entity_ids: Vec::new(),
+            entities: Entities::new(1024),
             archetypes: Vec::new(),
             keys: HashMap::new(),
             ids: HashMap::new(),
@@ -102,8 +65,6 @@ impl World {
             add_ids: HashMap::new(),
             sub_key: HashMap::new(),
             sub_ids: HashMap::new(),
-
-            drop_queue: DropQueue::new(0),
         }
     }
 
@@ -111,17 +72,7 @@ impl World {
     where
         B: DynamicBundle,
     {
-        let id = match self.free_entity_ids.pop() {
-            None => {
-                let id = self.entities.len();
-                if id == MAX_IDX_USIZE {
-                    panic!("Too many entities");
-                }
-
-                id as u32
-            }
-            Some(id) => id,
-        };
+        let entity = self.entities.spawn();
 
         let archetype_idx = get_archetype_idx_with_maps(
             &mut self.keys,
@@ -131,36 +82,224 @@ impl World {
         );
 
         self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(id, bundle, self.epoch);
-
-        let entity = if id == self.entities.len() as u32 {
-            self.entities.push(EntityData {
-                gen: 2,
-                idx,
-                archetype: archetype_idx,
-            });
-
-            Entity::new(id, first_gen(), &self.drop_queue)
-        } else {
-            let data = &mut self.entities[id as usize];
-            let gen = NonZeroU32::new(data.gen).unwrap();
-
-            Entity::new(id, gen, &self.drop_queue)
-        };
-
+        let idx = self.archetypes[archetype_idx as usize].spawn(entity.id, bundle, self.epoch);
+        self.entities.set_location(entity.id, archetype_idx, idx);
         entity
     }
 
-    pub fn pin<B>(&mut self, entity: Entity) -> Entity<B>
+    pub fn insert<T, P>(&mut self, entity: &Entity<P>, component: T)
+    where
+        T: Component,
+    {
+        assert!(self.entities.is_owner_of(entity));
+
+        self.try_insert(entity, component).expect("Entity exists");
+    }
+
+    pub fn try_insert<T>(&mut self, entity: &WeakEntity, component: T) -> Result<(), NoSuchEntity>
+    where
+        T: Component,
+    {
+        let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+
+        self.epoch += 1;
+
+        if self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()) {
+            unsafe {
+                self.archetypes[archetype as usize].set(idx, component, self.epoch);
+            }
+
+            return Ok(());
+        }
+
+        let dst_archetype = get_add_archetype_idx_with_maps(
+            &mut self.add_key,
+            &mut self.add_ids,
+            &mut self.archetypes,
+            archetype,
+            &PhantomData::<(T,)>,
+        );
+
+        debug_assert_ne!(archetype, dst_archetype);
+
+        let (before, after) = self
+            .archetypes
+            .split_at_mut(archetype.max(dst_archetype) as usize);
+
+        let (src, dst) = match archetype < dst_archetype {
+            true => (&mut before[archetype as usize], &mut after[0]),
+            false => (&mut after[0], &mut before[dst_archetype as usize]),
+        };
+
+        let (dst_idx, opt_src_id) = unsafe { src.insert(dst, idx, component, self.epoch) };
+
+        self.entities
+            .set_location(entity.id, dst_archetype, dst_idx);
+
+        if let Some(src_id) = opt_src_id {
+            self.entities.set_location(src_id, archetype, idx);
+        }
+
+        Ok(())
+    }
+
+    pub fn remove<T>(&mut self, entity: &WeakEntity) -> Result<T, EntityError>
+    where
+        T: Component,
+    {
+        let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
+
+        self.epoch += 1;
+
+        if !self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()) {
+            return Err(EntityError::MissingComponents);
+        }
+
+        let dst_archetype = get_sub_archetype_idx_with_maps(
+            &mut self.sub_key,
+            &mut self.sub_ids,
+            &mut self.archetypes,
+            archetype,
+            &PhantomData::<(T,)>,
+        );
+
+        debug_assert_ne!(archetype, dst_archetype);
+
+        let (before, after) = self
+            .archetypes
+            .split_at_mut(archetype.max(dst_archetype) as usize);
+
+        let (src, dst) = match archetype < dst_archetype {
+            true => (&mut before[archetype as usize], &mut after[0]),
+            false => (&mut after[0], &mut before[dst_archetype as usize]),
+        };
+
+        let (dst_idx, opt_src_id, component) = unsafe { src.remove(dst, idx) };
+
+        self.entities
+            .set_location(entity.id, dst_archetype, dst_idx);
+
+        if let Some(src_id) = opt_src_id {
+            self.entities.set_location(src_id, archetype, idx);
+        }
+
+        Ok(component)
+    }
+
+    pub fn insert_bundle<B, T>(&mut self, entity: &Entity<T>, bundle: B)
+    where
+        B: DynamicBundle,
+    {
+        assert!(self.entities.is_owner_of(entity));
+        self.try_insert_bundle(entity, bundle).unwrap();
+    }
+
+    pub fn try_insert_bundle<B>(
+        &mut self,
+        entity: &WeakEntity,
+        bundle: B,
+    ) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicBundle,
+    {
+        let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+
+        if bundle.with_ids(|ids| ids.is_empty()) {
+            return Ok(());
+        }
+
+        self.epoch += 1;
+
+        let dst_archetype = get_add_archetype_idx_with_maps(
+            &mut self.add_key,
+            &mut self.add_ids,
+            &mut self.archetypes,
+            archetype,
+            &bundle,
+        );
+
+        if dst_archetype == archetype {
+            unsafe { self.archetypes[archetype as usize].set_bundle(idx, bundle, self.epoch) };
+            return Ok(());
+        }
+
+        let (before, after) = self
+            .archetypes
+            .split_at_mut(archetype.max(dst_archetype) as usize);
+
+        let (src, dst) = match archetype < dst_archetype {
+            true => (&mut before[archetype as usize], &mut after[0]),
+            false => (&mut after[0], &mut before[archetype as usize]),
+        };
+
+        let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, idx, bundle, self.epoch) };
+
+        self.entities
+            .set_location(entity.id, dst_archetype, dst_idx);
+
+        if let Some(src_id) = opt_src_id {
+            self.entities.set_location(src_id, archetype, idx);
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_bundle<B>(&mut self, entity: &WeakEntity) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
     {
-        debug_assert!(entity.is_from_queue(&self.drop_queue));
+        let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
-        let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen.get());
+        if B::static_with_ids(|ids| {
+            ids.iter()
+                .all(|&id| !self.archetypes[archetype as usize].contains_id(id))
+        }) {
+            // No components to remove.
+            return Ok(());
+        }
 
-        let archetype = &self.archetypes[data.archetype as usize];
+        self.epoch += 1;
+
+        let dst_archetype = get_sub_archetype_idx_with_maps(
+            &mut self.sub_key,
+            &mut self.sub_ids,
+            &mut self.archetypes,
+            archetype,
+            &PhantomData::<B>,
+        );
+
+        debug_assert_ne!(archetype, dst_archetype);
+
+        let (before, after) = self
+            .archetypes
+            .split_at_mut(archetype.max(dst_archetype) as usize);
+
+        let (src, dst) = match archetype < dst_archetype {
+            true => (&mut before[archetype as usize], &mut after[0]),
+            false => (&mut after[0], &mut before[archetype as usize]),
+        };
+
+        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(dst, idx) };
+
+        self.entities
+            .set_location(entity.id, dst_archetype, dst_idx);
+
+        if let Some(src_id) = opt_src_id {
+            self.entities.set_location(src_id, archetype, idx);
+        }
+
+        Ok(())
+    }
+
+    pub fn pin_bundle<B>(&mut self, entity: Entity) -> Entity<B>
+    where
+        B: Bundle,
+    {
+        assert!(self.entities.is_owner_of(&entity));
+
+        let (archetype, _idx) = self.entities.get(&entity).unwrap();
+
+        let archetype = &self.archetypes[archetype as usize];
 
         if B::static_with_ids(|ids| ids.iter().any(|&id| !archetype.contains_id(id))) {
             panic!("Attampt to pin missing components");
@@ -183,7 +322,7 @@ impl World {
         &'a A: Proof<Q>,
         Q: Query + ImmutableQuery + NonTrackingQuery,
     {
-        debug_assert!(entity.is_from_queue(&self.drop_queue));
+        assert!(self.entities.is_owner_of(entity));
 
         assert!(
             !Q::mutates(),
@@ -197,12 +336,11 @@ impl World {
             type_name::<Q>()
         );
 
-        let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen.get());
-        let archetype = &self.archetypes[data.archetype as usize];
+        let (archetype, idx) = self.entities.get(entity).unwrap();
+        let archetype = &self.archetypes[archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
 
-        let (chunk_idx, entity_idx) = split_idx(data.idx);
+        let (chunk_idx, entity_idx) = split_idx(idx);
 
         let mut chunk = unsafe { fetch.get_chunk(chunk_idx) };
         let item = unsafe { Q::Fetch::get_item(&mut chunk, entity_idx) };
@@ -223,7 +361,7 @@ impl World {
         &'a mut A: Proof<Q>,
         Q: Query + NonTrackingQuery,
     {
-        debug_assert!(entity.is_from_queue(&self.drop_queue));
+        assert!(self.entities.is_owner_of(entity));
 
         assert!(
             !Q::tracks(),
@@ -235,12 +373,11 @@ impl World {
             self.epoch += 1;
         }
 
-        let data = &self.entities[entity.id as usize];
-        assert_eq!(data.gen, entity.gen.get());
-        let archetype = &self.archetypes[data.archetype as usize];
+        let (archetype, idx) = self.entities.get(entity).unwrap();
+        let archetype = &self.archetypes[archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
 
-        let (chunk_idx, entity_idx) = split_idx(data.idx);
+        let (chunk_idx, entity_idx) = split_idx(idx);
 
         let mut chunk = unsafe { fetch.get_chunk(chunk_idx) };
         let item = unsafe { Q::Fetch::get_item(&mut chunk, entity_idx) };
@@ -269,19 +406,12 @@ impl World {
             type_name::<Q>()
         );
 
-        if self.entities.len() as u32 <= entity.id {
-            return Err(EntityError::NoSuchEntity);
-        }
-
-        let data = &self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(EntityError::NoSuchEntity);
-        }
-        let archetype = &self.archetypes[data.archetype as usize];
+        let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
+        let archetype = &self.archetypes[archetype as usize];
         match unsafe { Q::fetch(archetype, 0, self.epoch) } {
             None => Err(EntityError::MissingComponents),
             Some(mut fetch) => {
-                let (chunk_idx, entity_idx) = split_idx(data.idx);
+                let (chunk_idx, entity_idx) = split_idx(idx);
 
                 let mut chunk = unsafe { fetch.get_chunk(chunk_idx) };
                 let item = unsafe { Q::Fetch::get_item(&mut chunk, entity_idx) };
@@ -306,19 +436,12 @@ impl World {
             type_name::<Q>()
         );
 
-        if self.entities.len() as u32 <= entity.id {
-            return Err(EntityError::NoSuchEntity);
-        }
-
-        let data = &self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(EntityError::NoSuchEntity);
-        }
-        let archetype = &self.archetypes[data.archetype as usize];
+        let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
+        let archetype = &self.archetypes[archetype as usize];
         match unsafe { Q::fetch(archetype, 0, self.epoch) } {
             None => Err(EntityError::MissingComponents),
             Some(mut fetch) => {
-                let (chunk_idx, entity_idx) = split_idx(data.idx);
+                let (chunk_idx, entity_idx) = split_idx(idx);
 
                 let mut chunk = unsafe { fetch.get_chunk(chunk_idx) };
                 let item = unsafe { Q::Fetch::get_item(&mut chunk, entity_idx) };
@@ -366,243 +489,15 @@ impl World {
     }
 
     pub fn maintain(&mut self) {
-        for id in self.drop_queue.drain() {
-            let data = &self.entities[id as usize];
-            let idx = data.idx;
-            let gen = data.gen;
+        let queue = self.entities.drop_queue();
 
-            let archetype = &mut self.archetypes[data.archetype as usize];
-            let opt_id = unsafe { archetype.despawn(idx) };
-
+        for id in queue.drain() {
+            let (archetype, idx) = self.entities.dropped(id);
+            let opt_id = unsafe { self.archetypes[archetype as usize].despawn(idx) };
             if let Some(id) = opt_id {
-                self.entities[id as usize].idx = idx;
-            }
-
-            if gen == u32::MAX {
-                // Exhausted.
-                self.entities[id as usize].gen = 0;
-            } else {
-                self.entities[id as usize].gen += 1;
-                self.free_entity_ids.push(id);
+                self.entities.set_location(id, archetype, idx)
             }
         }
-    }
-
-    pub fn insert<T>(&mut self, entity: &WeakEntity, component: T) -> Result<(), NoSuchEntity>
-    where
-        T: Component,
-    {
-        if self.entities.len() as u32 <= entity.id {
-            return Err(NoSuchEntity);
-        }
-
-        let data = &mut self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(NoSuchEntity);
-        }
-
-        self.epoch += 1;
-
-        if self.archetypes[data.archetype as usize].contains_id(TypeId::of::<T>()) {
-            unsafe {
-                self.archetypes[data.archetype as usize].set(data.idx, component, self.epoch);
-            }
-
-            return Ok(());
-        }
-
-        let archetype_idx = get_add_archetype_idx_with_maps(
-            &mut self.add_key,
-            &mut self.add_ids,
-            &mut self.archetypes,
-            data.archetype,
-            &PhantomData::<(T,)>,
-        );
-
-        debug_assert_ne!(data.archetype, archetype_idx);
-
-        let (before, after) = self
-            .archetypes
-            .split_at_mut(data.archetype.max(archetype_idx) as usize);
-
-        let (src, dst) = match data.archetype < archetype_idx {
-            true => (&mut before[data.archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[archetype_idx as usize]),
-        };
-
-        let (dst_idx, opt_src_id) = unsafe { src.insert(dst, data.idx, component, self.epoch) };
-
-        let old_idx = data.idx;
-
-        data.idx = dst_idx;
-        data.archetype = archetype_idx;
-
-        if let Some(src_id) = opt_src_id {
-            self.entities[src_id as usize].idx = old_idx;
-        }
-
-        Ok(())
-    }
-
-    pub fn remove<T>(&mut self, entity: &WeakEntity) -> Result<T, EntityError>
-    where
-        T: Component,
-    {
-        if self.entities.len() as u32 <= entity.id {
-            return Err(EntityError::NoSuchEntity);
-        }
-
-        let data = &mut self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(EntityError::NoSuchEntity);
-        }
-
-        self.epoch += 1;
-
-        if !self.archetypes[data.archetype as usize].contains_id(TypeId::of::<T>()) {
-            return Err(EntityError::MissingComponents);
-        }
-
-        let archetype_idx = get_sub_archetype_idx_with_maps(
-            &mut self.sub_key,
-            &mut self.sub_ids,
-            &mut self.archetypes,
-            data.archetype,
-            &PhantomData::<(T,)>,
-        );
-
-        debug_assert_ne!(data.archetype, archetype_idx);
-
-        let (before, after) = self
-            .archetypes
-            .split_at_mut(data.archetype.max(archetype_idx) as usize);
-
-        let (src, dst) = match data.archetype < archetype_idx {
-            true => (&mut before[data.archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[archetype_idx as usize]),
-        };
-
-        let (dst_idx, opt_src_id, component) = unsafe { src.remove(dst, data.idx) };
-
-        let old_idx = data.idx;
-
-        data.idx = dst_idx;
-        data.archetype = archetype_idx;
-
-        if let Some(src_id) = opt_src_id {
-            self.entities[src_id as usize].idx = old_idx;
-        }
-
-        Ok(component)
-    }
-
-    pub fn insert_bundle<B>(&mut self, entity: &WeakEntity, bundle: B) -> Result<(), NoSuchEntity>
-    where
-        B: DynamicBundle,
-    {
-        if self.entities.len() as u32 <= entity.id {
-            return Err(NoSuchEntity);
-        }
-
-        let data = &mut self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(NoSuchEntity);
-        }
-
-        if bundle.with_ids(|ids| ids.is_empty()) {
-            return Ok(());
-        }
-
-        self.epoch += 1;
-
-        let archetype_idx = get_add_archetype_idx_with_maps(
-            &mut self.add_key,
-            &mut self.add_ids,
-            &mut self.archetypes,
-            data.archetype,
-            &bundle,
-        );
-
-        if archetype_idx == data.archetype {
-            unsafe {
-                self.archetypes[data.archetype as usize].set_bundle(data.idx, bundle, self.epoch)
-            };
-            return Ok(());
-        }
-
-        let (before, after) = self
-            .archetypes
-            .split_at_mut(data.archetype.max(archetype_idx) as usize);
-
-        let (src, dst) = match data.archetype < archetype_idx {
-            true => (&mut before[data.archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[data.archetype as usize]),
-        };
-
-        let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, data.idx, bundle, self.epoch) };
-
-        let old_idx = data.idx;
-
-        data.idx = dst_idx;
-        data.archetype = archetype_idx;
-
-        if let Some(src_id) = opt_src_id {
-            self.entities[src_id as usize].idx = old_idx;
-        }
-
-        Ok(())
-    }
-
-    pub fn remove_bundle<B>(&mut self, entity: &WeakEntity) -> Result<(), NoSuchEntity>
-    where
-        B: Bundle,
-    {
-        if self.entities.len() as u32 <= entity.id {
-            return Err(NoSuchEntity);
-        }
-
-        let data = &mut self.entities[entity.id as usize];
-        if data.gen != entity.gen.get() {
-            return Err(NoSuchEntity);
-        }
-
-        if B::static_with_ids(|ids| ids.is_empty()) {
-            return Ok(());
-        }
-
-        self.epoch += 1;
-
-        let archetype_idx = get_sub_archetype_idx_with_maps(
-            &mut self.sub_key,
-            &mut self.sub_ids,
-            &mut self.archetypes,
-            data.archetype,
-            &PhantomData::<B>,
-        );
-
-        debug_assert_ne!(data.archetype, archetype_idx);
-
-        let (before, after) = self
-            .archetypes
-            .split_at_mut(data.archetype.max(archetype_idx) as usize);
-
-        let (src, dst) = match data.archetype < archetype_idx {
-            true => (&mut before[data.archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[data.archetype as usize]),
-        };
-
-        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(dst, data.idx) };
-
-        let old_idx = data.idx;
-
-        data.idx = dst_idx;
-        data.archetype = archetype_idx;
-
-        if let Some(src_id) = opt_src_id {
-            self.entities[src_id as usize].idx = old_idx;
-        }
-
-        Ok(())
     }
 }
 

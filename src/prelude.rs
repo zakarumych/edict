@@ -3,7 +3,7 @@ pub use crate::{
     component::{Component, PinComponent, UnpinComponent},
     entity::{Entity, EntityId, WeakEntity},
     query::{
-        ImmutableQuery, NonTrackingQuery, Query, QueryItem, QueryMut, QueryMutIter,
+        Alt, ImmutableQuery, Modifed, NonTrackingQuery, Query, QueryItem, QueryMut, QueryMutIter,
         QueryTrackedMut, QueryTrackedMutIter,
     },
     world::{EntityError, World},

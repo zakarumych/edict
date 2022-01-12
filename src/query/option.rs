@@ -1,4 +1,4 @@
-use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
+use core::{cell::Cell, ptr::NonNull};
 
 use crate::{
     archetype::{split_idx, Archetype},

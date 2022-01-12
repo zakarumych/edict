@@ -1,5 +1,7 @@
 use core::{fmt, num::NonZeroU32};
 
+use super::entities::invalid_gen;
+
 /// Weak reference to an entity.
 /// This value can be used to access an entity, but it does not keep the entity alive.
 /// On access to a component, if entity is expired (no strong refs left) or doesn't have accessed component,
@@ -13,6 +15,11 @@ pub struct WeakEntity {
 impl WeakEntity {
     pub(crate) fn new(id: u32, gen: NonZeroU32) -> Self {
         WeakEntity { gen, id }
+    }
+
+    /// Returns weak entity instance that is already expired.
+    pub fn dangling() -> Self {
+        WeakEntity::new(0, invalid_gen())
     }
 }
 

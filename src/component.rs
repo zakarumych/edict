@@ -4,9 +4,6 @@ use core::{
     ptr::{self, copy_nonoverlapping, drop_in_place, slice_from_raw_parts_mut},
 };
 
-/// Re-export derive proc macros.
-pub use ::edict_proc::{PinComponent, UnpinComponent};
-
 /// Trait that is implemented for all types that can act as a component.
 pub trait Component: 'static {}
 

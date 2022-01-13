@@ -1,6 +1,6 @@
 [package]
 name = "edict"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -13,5 +13,4 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [dependencies]
-edict-proc = { version = "0.0.0", path = "proc" }
 hashbrown = { version = "0.11" }

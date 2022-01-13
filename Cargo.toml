@@ -8,7 +8,9 @@ documentation = "https://docs.rs/edict"
 homepage = "https://github.com/zakarumych/edict"
 repository = "https://github.com/zakarumych/edict"
 readme = "README.md"
-description = "placeholder"
+description = "Experimental entity-component-system library"
+keywords = ["ecs", "entity"]
+categories = ["no-std", "game-development", "data-structures"]
 
 [dependencies]
 edict-proc = { version = "0.0.0", path = "proc" }

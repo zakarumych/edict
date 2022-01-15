@@ -1,8 +1,18 @@
+pub use self::{
+    alt::{Alt, ChunkAlt, FetchAlt},
+    modified::{
+        Modifed, ModifiedChunk, ModifiedChunkAlt, ModifiedFetchAlt, ModifiedFetchRead,
+        ModifiedFetchWrite,
+    },
+    read::FetchRead,
+    write::{ChunkWrite, FetchWrite},
+};
+
 use core::{any::TypeId, iter::Enumerate, marker::PhantomData, slice};
 
 use crate::{
-    archetype::{split_idx, Archetype, EntityData, CHUNK_LEN_USIZE},
-    entity::EntityId,
+    archetype::{split_idx, Archetype, CHUNK_LEN_USIZE},
+    entity::{EntityId, WeakEntity},
 };
 
 mod alt;
@@ -224,7 +234,7 @@ pub struct QueryMutIter<'a, Q: Query> {
 
     fetch: Option<<Q as Query>::Fetch>,
     chunk: Option<<<Q as Query>::Fetch as Fetch<'a>>::Chunk>,
-    entities: Enumerate<slice::Iter<'a, EntityData>>,
+    entities: Enumerate<slice::Iter<'a, WeakEntity>>,
 }
 
 impl<'a, Q> Iterator for QueryMutIter<'a, Q>
@@ -316,7 +326,7 @@ pub struct QueryTrackedMutIter<'a, Q: Query> {
 
     fetch: Option<<Q as Query>::Fetch>,
     chunk: Option<<<Q as Query>::Fetch as Fetch<'a>>::Chunk>,
-    entities: Enumerate<slice::Iter<'a, EntityData>>,
+    entities: Enumerate<slice::Iter<'a, WeakEntity>>,
 }
 
 impl<'a, Q> Iterator for QueryTrackedMutIter<'a, Q>

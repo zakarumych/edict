@@ -82,7 +82,7 @@ impl World {
         );
 
         self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(entity.id, bundle, self.epoch);
+        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch);
         self.entities.set_location(entity.id, archetype_idx, idx);
         entity
     }

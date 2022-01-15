@@ -11,6 +11,7 @@ use alloc::{alloc::alloc, boxed::Box, vec::Vec};
 use crate::{
     bundle::DynamicBundle,
     component::{Component, ComponentInfo},
+    entity::WeakEntity,
     idx::MAX_IDX_USIZE,
     typeidset::TypeIdSet,
 };
@@ -20,7 +21,7 @@ use crate::{
 pub struct Archetype {
     set: TypeIdSet,
     indices: Box<[usize]>,
-    entities: Vec<EntityData>,
+    entities: Vec<WeakEntity>,
     components: Box<[UnsafeCell<ComponentData>]>,
 }
 
@@ -143,7 +144,7 @@ impl Archetype {
             .map(move |&idx| unsafe { &(*self.components[idx].get()).info })
     }
 
-    pub fn spawn(&mut self, id: u32, bundle: impl DynamicBundle, epoch: u64) -> u32 {
+    pub fn spawn(&mut self, entity: WeakEntity, bundle: impl DynamicBundle, epoch: u64) -> u32 {
         debug_assert!(bundle.with_ids(|ids| self.matches(ids.iter().copied())));
         debug_assert!(self.entities.len() < MAX_IDX_USIZE);
 
@@ -176,7 +177,7 @@ impl Archetype {
             }
         });
 
-        self.entities.push(EntityData { id });
+        self.entities.push(entity);
         self.entities.len() as u32 - 1
     }
 
@@ -654,7 +655,7 @@ impl Archetype {
         &mut (*self.components[idx].get()).chunks
     }
 
-    pub(crate) fn get_entities(&self) -> &[EntityData] {
+    pub(crate) fn get_entities(&self) -> &[WeakEntity] {
         &self.entities
     }
 }
@@ -670,9 +671,4 @@ pub const fn split_idx(idx: u32) -> (usize, usize) {
 
 pub const fn make_idx(chunk_idx: u32, entity_idx: u32) -> u32 {
     (chunk_idx << 8) | entity_idx
-}
-
-#[derive(Debug)]
-pub(crate) struct EntityData {
-    pub id: u32,
 }

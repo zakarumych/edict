@@ -12,22 +12,29 @@ pub struct FetchRead<T> {
     pub(super) marker: PhantomData<fn() -> T>,
 }
 
+#[derive(Clone, Copy)]
+pub struct ChunkRead<T> {
+    ptr: NonNull<T>,
+}
+
 impl<'a, T> Fetch<'a> for FetchRead<T>
 where
     T: Component,
 {
     type Item = &'a T;
-    type Chunk = NonNull<T>;
+    type Chunk = ChunkRead<T>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> NonNull<T> {
+    unsafe fn get_chunk(&mut self, idx: usize) -> ChunkRead<T> {
         let chunk = &*self.chunks.as_ptr().add(idx);
-        chunk.ptr.cast()
+        ChunkRead {
+            ptr: chunk.ptr.cast(),
+        }
     }
 
     #[inline]
-    unsafe fn get_item(ptr: &NonNull<T>, idx: usize) -> &'a T {
-        &*ptr.as_ptr().add(idx)
+    unsafe fn get_item(chunk: &ChunkRead<T>, idx: usize) -> &'a T {
+        &*chunk.ptr.as_ptr().add(idx)
     }
 
     #[inline]

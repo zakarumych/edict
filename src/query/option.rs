@@ -1,4 +1,4 @@
-use core::{cell::Cell, ptr::NonNull};
+use core::cell::Cell;
 
 use crate::{
     archetype::{split_idx, Archetype},
@@ -9,7 +9,7 @@ use super::{
     alt::{Alt, ChunkAlt, FetchAlt, RefMut},
     read::FetchRead,
     write::FetchWrite,
-    ChunkWrite, Fetch, ImmutableQuery, NonTrackingQuery, Query,
+    ChunkRead, ChunkWrite, Fetch, ImmutableQuery, NonTrackingQuery, Query,
 };
 
 impl<'a, T> Fetch<'a> for Option<FetchRead<T>>
@@ -17,15 +17,15 @@ where
     T: Component,
 {
     type Item = Option<&'a T>;
-    type Chunk = Option<NonNull<T>>;
+    type Chunk = Option<ChunkRead<T>>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> Option<NonNull<T>> {
+    unsafe fn get_chunk(&mut self, idx: usize) -> Option<ChunkRead<T>> {
         Some(self.as_mut()?.get_chunk(idx))
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &Option<NonNull<T>>, idx: usize) -> Option<&'a T> {
+    unsafe fn get_item(chunk: &Option<ChunkRead<T>>, idx: usize) -> Option<&'a T> {
         Some(FetchRead::get_item(chunk.as_ref()?, idx))
     }
 

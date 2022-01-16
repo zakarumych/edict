@@ -17,7 +17,18 @@ impl WeakEntity {
         WeakEntity { gen, id }
     }
 
-    /// Returns weak entity instance that is already expired.
+    /// Returns expired weak entity.
+    ///
+    /// This function exists primarily to make dummy WeakEntity values.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::prelude::{World, WeakEntity};
+    /// # let mut world = World::new();
+    /// let weak = WeakEntity::dangling();
+    /// assert_eq!(world.is_alive(&weak), false);
+    /// ```
     pub fn dangling() -> Self {
         WeakEntity::new(0, invalid_gen())
     }

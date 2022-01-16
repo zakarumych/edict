@@ -17,7 +17,7 @@ use crate::{
     entity::{Entities, Entity, WeakEntity},
     idx::MAX_IDX_USIZE,
     proof::Proof,
-    query::{Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryMut, QueryTrackedMut},
+    query::{Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryIter, QueryTrackedIter},
     tracks::Tracks,
 };
 
@@ -450,7 +450,23 @@ impl World {
         }
     }
 
-    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, Q>
+    pub fn query<'a, Q>(&'a self) -> QueryIter<'a, Q>
+    where
+        Q: Query + NonTrackingQuery + ImmutableQuery,
+    {
+        QueryIter::new(self.epoch, &self.archetypes)
+    }
+
+    pub fn query_tracked<'a, Q>(&'a self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
+    where
+        Q: Query + ImmutableQuery,
+    {
+        let iter = QueryTrackedIter::new(tracks.epoch, self.epoch, &self.archetypes);
+        tracks.epoch = self.epoch;
+        iter
+    }
+
+    pub fn query_mut<'a, Q>(&'a mut self) -> QueryIter<'a, Q>
     where
         Q: Query + NonTrackingQuery,
     {
@@ -458,14 +474,10 @@ impl World {
             self.epoch += 1
         };
 
-        QueryMut {
-            epoch: self.epoch,
-            archetypes: &self.archetypes,
-            query: PhantomData,
-        }
+        QueryIter::new(self.epoch, &self.archetypes)
     }
 
-    pub fn query_tracked_mut<'a, Q>(&'a mut self, tracks: &mut Tracks) -> QueryTrackedMut<'a, Q>
+    pub fn query_tracked_mut<'a, Q>(&'a mut self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
     where
         Q: Query,
     {
@@ -473,15 +485,28 @@ impl World {
             self.epoch += 1
         };
 
-        QueryTrackedMut {
-            tracks: tracks.epoch,
-            epoch: {
-                tracks.epoch = self.epoch;
-                self.epoch
-            },
-            archetypes: &self.archetypes,
-            query: PhantomData,
-        }
+        let iter = QueryTrackedIter::new(tracks.epoch, self.epoch, &self.archetypes);
+        tracks.epoch = self.epoch;
+        iter
+    }
+
+    pub fn has_component<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
+        assert!(self.entities.is_owner_of(entity));
+
+        let (archetype, _idx) = self.entities.get(entity).unwrap();
+        self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
+    }
+
+    pub fn has_component_weak<T: 'static>(
+        &self,
+        entity: &WeakEntity,
+    ) -> Result<bool, NoSuchEntity> {
+        let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
+    }
+
+    pub fn is_alive(&self, entity: &WeakEntity) -> bool {
+        self.entities.get(entity).is_some()
     }
 
     pub fn tracks(&self) -> Tracks {
@@ -493,7 +518,7 @@ impl World {
 
         for id in queue.drain() {
             let (archetype, idx) = self.entities.dropped(id);
-            let opt_id = unsafe { self.archetypes[archetype as usize].despawn(idx) };
+            let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
             if let Some(id) = opt_id {
                 self.entities.set_location(id, archetype, idx)
             }

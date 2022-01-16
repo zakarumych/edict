@@ -6,6 +6,7 @@ use core::{
 
 use crate::component::{Component, ComponentInfo};
 
+/// Possible dynamic collection of components that may be inserted into the `World`.
 pub unsafe trait DynamicBundle {
     /// Returns static key if the bundle type have one.
     fn key() -> Option<TypeId> {
@@ -16,6 +17,7 @@ pub unsafe trait DynamicBundle {
     fn put(self, f: impl FnMut(NonNull<u8>, TypeId, usize));
 }
 
+/// Static collection of components that may be inserted into the `World`.
 pub trait Bundle: DynamicBundle {
     fn static_key() -> TypeId;
     fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R;

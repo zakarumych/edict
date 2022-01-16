@@ -5,10 +5,12 @@ use core::{
 };
 
 /// Trait that is implemented for all types that can act as a component.
+/// Currently is implemented for all `'static` types.
 pub trait Component: 'static {}
 
 impl<T> Component for T where T: 'static {}
 
+/// Type information required for components.
 #[derive(Clone, Copy, Debug)]
 pub struct ComponentInfo {
     pub id: TypeId,
@@ -22,6 +24,7 @@ pub struct ComponentInfo {
 }
 
 impl ComponentInfo {
+    /// Returns component information for specified component type.
     pub fn of<T>() -> Self
     where
         T: Component,

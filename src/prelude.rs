@@ -3,8 +3,8 @@ pub use crate::{
     component::Component,
     entity::{Entity, EntityId, WeakEntity},
     query::{
-        Alt, ImmutableQuery, Modifed, NonTrackingQuery, Query, QueryItem, QueryMut, QueryMutIter,
-        QueryTrackedMut, QueryTrackedMutIter,
+        Alt, ImmutableQuery, Modifed, NonTrackingQuery, Query, QueryItem, QueryIter,
+        QueryTrackedIter,
     },
     world::{EntityError, World},
 };

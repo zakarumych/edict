@@ -7,11 +7,13 @@ use crate::{
 
 use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
+/// `Fetch` type for the `&T` query.
 pub struct FetchRead<T> {
     pub(super) chunks: NonNull<Chunk>,
     pub(super) marker: PhantomData<fn() -> T>,
 }
 
+/// `Chunk` type for the `&T` query.
 #[derive(Clone, Copy)]
 pub struct ChunkRead<T> {
     ptr: NonNull<T>,

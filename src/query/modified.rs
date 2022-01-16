@@ -10,16 +10,26 @@ use super::{
     Fetch, ImmutableQuery, Query,
 };
 
+/// Query over modified component.
+///
+/// Should be used as either `Modified<&T>`, `Modified<&mut T>`
+/// or `Modified<Alt<T>>`.
+///
+/// This is tracking query that requires providing subscriber's
+/// `Tracks` to skip components that are not modified since the last time
+/// that `Tracks` instance was used.
 pub struct Modifed<T> {
     marker: PhantomData<fn() -> T>,
 }
 
+/// `Fetch` type for the `Modified<&T>` query.
 pub struct ModifiedFetchRead<T> {
     tracks: u64,
     chunks: NonNull<Chunk>,
     marker: PhantomData<fn() -> T>,
 }
 
+/// `Chunk` type for the `Modified` query.
 pub struct ModifiedChunk<T> {
     tracks: u64,
     ptr: NonNull<T>,
@@ -105,6 +115,7 @@ where
 
 unsafe impl<T> ImmutableQuery for Modifed<&T> where T: Component {}
 
+/// `Fetch` type for the `Modified<&mut T>` query.
 pub struct ModifiedFetchWrite<T> {
     tracks: u64,
     epoch: u64,
@@ -201,6 +212,7 @@ pub struct ModifiedChunkAlt<'a, T> {
     version: &'a Cell<u64>,
 }
 
+/// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<T> {
     tracks: u64,
     epoch: u64,

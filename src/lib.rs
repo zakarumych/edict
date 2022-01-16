@@ -14,8 +14,8 @@ pub mod prelude;
 pub mod proof;
 pub mod query;
 pub mod tracks;
-pub mod typeidset;
 pub mod world;
 
 mod hash;
 mod idx;
+mod typeidset;

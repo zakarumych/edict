@@ -13,8 +13,18 @@ use crate::{
 
 use super::{Fetch, NonTrackingQuery, Query};
 
+/// Query type that is an alternative to `&mut T`.
+/// Yields mutable reference wrapper that bumps component version on dereference.
+/// In contrast with `&mut T` that bumps component version on yield, but works faster.
+/// Use this query if redundant version bumps would cause heavy calculations.
+///
+/// `Alt` is `NonTrackingQuery` as it does not depend on current versions
+/// of the components.
 pub struct Alt<T>(PhantomData<T>);
 
+/// Item type that `Alt` yields.
+/// Wraps `&mut T` and implements `DerefMut` to `T`.
+/// Bumps component version on dereference.
 pub struct RefMut<'a, T: ?Sized> {
     pub(super) component: &'a mut T,
     pub(super) entity_version: &'a mut u64,
@@ -40,12 +50,14 @@ impl<T> DerefMut for RefMut<'_, T> {
     }
 }
 
+/// `Fetch` type for the `Alt` query.
 pub struct FetchAlt<T> {
     pub(super) epoch: u64,
     pub(super) chunks: NonNull<Chunk>,
     pub(super) marker: PhantomData<fn() -> T>,
 }
 
+/// `Chunk` type for the `Alt` query.
 #[derive(Clone, Copy)]
 pub struct ChunkAlt<'a, T> {
     epoch: u64,

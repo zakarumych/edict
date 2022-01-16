@@ -8,7 +8,7 @@ pub use self::{
     write::{ChunkWrite, FetchWrite},
 };
 
-use core::{any::TypeId, iter::Enumerate, marker::PhantomData, slice};
+use core::{iter::Enumerate, slice};
 
 use crate::{
     archetype::{split_idx, Archetype, CHUNK_LEN_USIZE},
@@ -24,11 +24,7 @@ mod write;
 
 pub use self::{alt::*, modified::*, option::*, read::*, skip::*, write::*};
 
-pub enum Access {
-    Shared(TypeId),
-    Exclusive(TypeId),
-}
-
+/// Trait implemented for `Query::Fetch` associated types.
 pub trait Fetch<'a> {
     type Chunk;
     type Item;
@@ -50,6 +46,9 @@ pub trait Fetch<'a> {
     unsafe fn get_one_item(&mut self, idx: u32) -> Self::Item;
 }
 
+/// Trait for types that can query sets of components from entities in the world.
+/// Queries implement efficient iteration over entities while yielding
+/// sets of references to the components and optionally `WeakEntity` to address same components later.
 pub trait Query {
     type Fetch: for<'a> Fetch<'a>;
 
@@ -63,7 +62,7 @@ pub trait Query {
     unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Self::Fetch>;
 }
 
-/// Query that is not mutates components.
+/// Query that does not mutate any components.
 ///
 /// # Safety
 ///
@@ -72,7 +71,7 @@ pub trait Query {
 /// `Query` must not change entities versions.
 pub unsafe trait ImmutableQuery {}
 
-/// Query that is does not track component changes.
+/// Query that does not track component changes.
 ///
 /// # Safety
 ///
@@ -80,6 +79,7 @@ pub unsafe trait ImmutableQuery {}
 /// `Query` must not skip entities based on their versions.
 pub unsafe trait NonTrackingQuery {}
 
+/// Type alias for items returned by query type.
 pub type QueryItem<'a, Q> = <<Q as Query>::Fetch as Fetch<'a>>::Item;
 
 macro_rules! for_tuple {
@@ -189,46 +189,11 @@ macro_rules! for_tuple {
 
 for_tuple!();
 
-pub struct QueryMut<'a, Q> {
-    pub(crate) epoch: u64,
-    pub(crate) archetypes: &'a [Archetype],
-    pub(crate) query: PhantomData<Q>,
-}
-
-impl<'a, Q> QueryMut<'a, Q>
-where
-    Q: Query,
-{
-    pub fn iter(&mut self) -> QueryMutIter<'_, Q> {
-        QueryMutIter {
-            epoch: self.epoch,
-            archetypes: self.archetypes.iter(),
-            fetch: None,
-            chunk: None,
-            entities: [].iter().enumerate(),
-        }
-    }
-}
-
-impl<'a, Q> IntoIterator for QueryMut<'a, Q>
-where
-    Q: Query,
-{
-    type IntoIter = QueryMutIter<'a, Q>;
-    type Item = (EntityId, QueryItem<'a, Q>);
-
-    fn into_iter(self) -> QueryMutIter<'a, Q> {
-        QueryMutIter {
-            epoch: self.epoch,
-            archetypes: self.archetypes.iter(),
-            fetch: None,
-            chunk: None,
-            entities: [].iter().enumerate(),
-        }
-    }
-}
-
-pub struct QueryMutIter<'a, Q: Query> {
+/// Iterator over entities with a query `Q`.
+/// Yields `WeakEntity` and query items for every matching entity.
+///
+/// Supports only `NonTrackingQuery`.
+pub struct QueryIter<'a, Q: Query> {
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
 
@@ -237,7 +202,22 @@ pub struct QueryMutIter<'a, Q: Query> {
     entities: Enumerate<slice::Iter<'a, WeakEntity>>,
 }
 
-impl<'a, Q> Iterator for QueryMutIter<'a, Q>
+impl<'a, Q> QueryIter<'a, Q>
+where
+    Q: Query,
+{
+    pub(crate) fn new(epoch: u64, archetypes: &'a [Archetype]) -> Self {
+        QueryIter {
+            epoch,
+            archetypes: archetypes.iter(),
+            fetch: None,
+            chunk: None,
+            entities: [].iter().enumerate(),
+        }
+    }
+}
+
+impl<'a, Q> Iterator for QueryIter<'a, Q>
 where
     Q: Query,
 {
@@ -293,33 +273,11 @@ where
     }
 }
 
-pub struct QueryTrackedMut<'a, Q> {
-    pub(crate) tracks: u64,
-    pub(crate) epoch: u64,
-    pub(crate) archetypes: &'a [Archetype],
-    pub(crate) query: PhantomData<Q>,
-}
-
-impl<'a, Q> IntoIterator for QueryTrackedMut<'a, Q>
-where
-    Q: Query,
-{
-    type IntoIter = QueryTrackedMutIter<'a, Q>;
-    type Item = (EntityId, QueryItem<'a, Q>);
-
-    fn into_iter(self) -> QueryTrackedMutIter<'a, Q> {
-        QueryTrackedMutIter {
-            tracks: self.tracks,
-            epoch: self.epoch,
-            archetypes: self.archetypes.iter(),
-            fetch: None,
-            chunk: None,
-            entities: [].iter().enumerate(),
-        }
-    }
-}
-
-pub struct QueryTrackedMutIter<'a, Q: Query> {
+/// Iterator over entities with a query `Q`.
+/// Yields `WeakEntity` and query items for every matching entity.
+///
+/// Does not require `Q` to implement `NonTrackingQuery`.
+pub struct QueryTrackedIter<'a, Q: Query> {
     tracks: u64,
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
@@ -329,7 +287,23 @@ pub struct QueryTrackedMutIter<'a, Q: Query> {
     entities: Enumerate<slice::Iter<'a, WeakEntity>>,
 }
 
-impl<'a, Q> Iterator for QueryTrackedMutIter<'a, Q>
+impl<'a, Q> QueryTrackedIter<'a, Q>
+where
+    Q: Query,
+{
+    pub(crate) fn new(tracks: u64, epoch: u64, archetypes: &'a [Archetype]) -> Self {
+        QueryTrackedIter {
+            tracks,
+            epoch,
+            archetypes: archetypes.iter(),
+            fetch: None,
+            chunk: None,
+            entities: [].iter().enumerate(),
+        }
+    }
+}
+
+impl<'a, Q> Iterator for QueryTrackedIter<'a, Q>
 where
     Q: Query,
 {

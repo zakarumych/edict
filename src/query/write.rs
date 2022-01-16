@@ -7,12 +7,14 @@ use crate::{
 
 use super::{Fetch, NonTrackingQuery, Query};
 
+/// `Fetch` type for the `&mut T` query.
 pub struct FetchWrite<T> {
     pub(super) epoch: u64,
     pub(super) chunks: NonNull<Chunk>,
     pub(super) marker: PhantomData<fn() -> T>,
 }
 
+/// `Chunk` type for the `&mut T` query.
 #[derive(Clone, Copy)]
 pub struct ChunkWrite<T> {
     epoch: u64,

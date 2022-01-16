@@ -17,6 +17,9 @@ use crate::{
 };
 
 /// Collection of all entities with same set of components.
+/// Archetypes are typically managed by the `World` instance.
+///
+/// This type is exposed for `Query` implementations.
 #[derive(Debug)]
 pub struct Archetype {
     set: TypeIdSet,
@@ -91,6 +94,7 @@ impl ComponentData {
 }
 
 impl Archetype {
+    /// Creates new archetype with the given set of components.
     pub fn new<'a>(components: impl Iterator<Item = &'a ComponentInfo> + Clone) -> Self {
         let set = TypeIdSet::new(components.clone().map(|c| c.id));
 
@@ -115,14 +119,18 @@ impl Archetype {
         }
     }
 
+    /// Returns `true` if archetype contains compoment with specified id.
     pub fn contains_id(&self, type_id: TypeId) -> bool {
         self.set.contains_id(type_id)
     }
 
-    pub fn id_index(&self, type_id: TypeId) -> Option<usize> {
+    /// Returns index of the component type with specified id.
+    /// This index may be used then to index into lists of ids and infos.
+    pub(crate) fn id_index(&self, type_id: TypeId) -> Option<usize> {
         self.set.get(type_id)
     }
 
+    /// Returns `true` if archetype matches compoments set specified.
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
         match type_ids.size_hint() {
             (l, Some(u)) if l == u && l == self.set.len() => {
@@ -132,18 +140,23 @@ impl Archetype {
         }
     }
 
+    /// Returns iterator over component type ids.
     pub fn ids(&self) -> impl ExactSizeIterator<Item = TypeId> + Clone + '_ {
         self.indices
             .iter()
             .map(move |&idx| unsafe { (*self.components[idx].get()).id })
     }
 
+    /// Returns iterator over component type infos.
     pub fn infos(&self) -> impl ExactSizeIterator<Item = &'_ ComponentInfo> + Clone + '_ {
         self.indices
             .iter()
             .map(move |&idx| unsafe { &(*self.components[idx].get()).info })
     }
 
+    /// Spawns new entity in the archetype.
+    ///
+    /// Returns index of the newly created entity in the archetype.
     pub fn spawn(&mut self, entity: WeakEntity, bundle: impl DynamicBundle, epoch: u64) -> u32 {
         debug_assert!(bundle.with_ids(|ids| self.matches(ids.iter().copied())));
         debug_assert!(self.entities.len() < MAX_IDX_USIZE);
@@ -181,7 +194,23 @@ impl Archetype {
         self.entities.len() as u32 - 1
     }
 
-    pub(crate) unsafe fn despawn(&mut self, idx: u32) -> Option<u32> {
+    /// Despawns specified entity in the archetype.
+    ///
+    /// Returns id of the entity that took the place of despawned.
+    pub fn despawn(&mut self, idx: u32) -> Option<u32> {
+        assert!(idx < self.entities.len() as u32);
+
+        unsafe { self.despawn_unchecked(idx) }
+    }
+
+    /// Despawns specified entity in the archetype.
+    ///
+    /// Returns id of the entity that took the place of despawned.
+    ///
+    /// # Safety
+    ///
+    /// idx must be in bounds of the archetype entities array.
+    pub unsafe fn despawn_unchecked(&mut self, idx: u32) -> Option<u32> {
         debug_assert!(idx < self.entities.len() as u32);
 
         let last_idx = self.entities.len() as u32 - 1;
@@ -214,7 +243,11 @@ impl Archetype {
         }
     }
 
-    /// Set components from bundle to the entity
+    /// Set components from bundle to the entity.
+    ///
+    /// # Safety
+    ///
+    /// Bundle must not contain components that are absent in this archetype.
     pub unsafe fn set_bundle<B>(&mut self, idx: u32, bundle: B, epoch: u64)
     where
         B: DynamicBundle,
@@ -244,7 +277,11 @@ impl Archetype {
         });
     }
 
-    /// Set components from bundle to the entity
+    /// Set component to the entity
+    ///
+    /// # Safety
+    ///
+    /// Archetype must contain that component type.
     pub unsafe fn set<T>(&mut self, idx: u32, value: T, epoch: u64)
     where
         T: Component,
@@ -274,6 +311,12 @@ impl Archetype {
     }
 
     /// Add components from bundle to the entity, moving entity to new archetype.
+    ///
+    /// # Safety
+    ///
+    /// `src_idx` must be in bounds of this archetype.
+    /// This archetype must not contain at least one component type from the bundle.
+    /// `dst` archetype must contain all component types from this archetype and the bundle.
     pub unsafe fn insert_bundle<B>(
         &mut self,
         dst: &mut Archetype,
@@ -382,6 +425,12 @@ impl Archetype {
     }
 
     /// Add one component to the entity moving it to new archetype.
+    ///
+    /// # Safety
+    ///
+    /// `src_idx` must be in bounds of this archetype.
+    /// This archetype must not contain specified type.
+    /// `dst` archetype must contain all component types from this archetype and specified type.
     pub unsafe fn insert<T>(
         &mut self,
         dst: &mut Archetype,
@@ -479,6 +528,12 @@ impl Archetype {
     }
 
     /// Removes one component from the entity moving it to new archetype.
+    ///
+    /// # Safety
+    ///
+    /// `src_idx` must be in bounds of this archetype.
+    /// This archetype must contain specified type.
+    /// `dst` archetype must contain all component types from this archetype except specified type.
     pub unsafe fn remove<T>(&mut self, dst: &mut Archetype, src_idx: u32) -> (u32, Option<u32>, T)
     where
         T: Component,
@@ -573,6 +628,11 @@ impl Archetype {
     /// Moves entity from one archetype to another.
     /// Dropping components types that are not present in dst archetype.
     /// All components present in dst archetype must be present in src archetype.
+    ///
+    /// # Safety
+    ///
+    /// `src_idx` must be in bounds of this archetype.
+    /// `dst` archetype must contain all component types from this archetype except types from bundle.
     pub unsafe fn drop_bundle(&mut self, dst: &mut Archetype, src_idx: u32) -> (u32, Option<u32>) {
         debug_assert!(dst.ids().all(|id| self.set.get(id).is_some()));
 
@@ -663,12 +723,8 @@ impl Archetype {
 pub(crate) const CHUNK_LEN_USIZE: usize = 0x100;
 pub(crate) const CHUNK_ALIGN: usize = 0x100;
 
-pub const fn split_idx(idx: u32) -> (usize, usize) {
+pub(crate) const fn split_idx(idx: u32) -> (usize, usize) {
     let chunk_idx = idx >> 8;
     let entity_idx = idx as u8;
     (chunk_idx as usize, entity_idx as usize)
-}
-
-pub const fn make_idx(chunk_idx: u32, entity_idx: u32) -> u32 {
-    (chunk_idx << 8) | entity_idx
 }

@@ -1,6 +1,12 @@
+/// Special kind of query to skip components in `World::get/get_mut`.
+///
+/// Does nothing for all other methods.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Skip;
 
+/// Trait implemented for proofs of pinned components on `Entity`.
+///
+/// See `World::get/get_mut` for usage.
 pub trait Proof<Q> {}
 
 macro_rules! impl_proof {

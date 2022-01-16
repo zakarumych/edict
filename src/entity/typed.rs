@@ -54,7 +54,7 @@ impl<T> Deref for Entity<T> {
 
 macro_rules! for_tuple {
     () => {
-        for_tuple!(for A B C D E F G);
+        for_tuple!(for A B C D E F);
     };
 
     (for) => {
@@ -68,26 +68,58 @@ macro_rules! for_tuple {
 
     (impl) => {
         impl Entity<()> {
-            pub fn pin<T>(self, world: &mut World) -> Entity<(T,)> {
-                drop(world);
-                Entity {
-                    strong: self.strong,
-                    marker: PhantomData,
-                }
-            }
+            for_tuple!(fn );
         }
     };
 
     (impl $($a:ident)+) => {
         impl<$($a),+> Entity<($($a,)+)> {
-            pub fn pin<T>(self, world: &mut World) -> Entity<($($a,)+ T,)> {
+            for_tuple!(fn $($a)+);
+        }
+    };
+
+    (fn $($a:ident)*) => {
+            /// Pins another component to the Entity.
+            /// Pinned components of the entity can be fetched from `World` without failure cases.
+            /// `World::get` and `World::get_mut` functions return references to pinned components as-is,
+            /// while other must be wrapped in `Option`.
+            ///
+            /// This function recreates `Entity` object with different type pameter.
+            ///
+            /// At the time of writing, this function does not actually make it impossible to remove pinned component.
+            /// If pinned components are removed, `World::get` and `World::get_mut` would panic
+            /// unless removed components are skipped.
+            ///
+            /// # Panics
+            ///
+            /// This function panics if entity does not have pinned component.
+            ///
+            /// # Example
+            ///
+            /// ```
+            /// # use edict::prelude::World;
+            /// # let mut world = World::new();
+            /// let entity = world.spawn((0u32,));
+            /// let entity = entity.pin::<u32>(&mut world);
+            /// ```
+            ///
+            /// # Example
+            ///
+            /// ```should_panic
+            /// # use edict::prelude::World;
+            /// # let mut world = World::new();
+            /// let entity = world.spawn((0u32,));
+            /// let entity = entity.pin::<u8>(&mut world);
+            /// ```
+            pub fn pin<T: 'static>(self, world: &mut World) -> Entity<($($a,)* T,)> {
+                assert!(world.has_component::<T, _>(&self));
+
                 drop(world);
                 Entity {
                     strong: self.strong,
                     marker: PhantomData,
                 }
             }
-        }
     };
 }
 

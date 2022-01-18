@@ -54,7 +54,7 @@
 //! [`Tracks`]: `edict::tracks::Tracks`
 //! [`World::tracks()`]: `edict::world::World::tracks`
 //! [`World::tracks_now()`]: `edict::world::World::tracks_now`
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 extern crate self as edict;

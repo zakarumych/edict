@@ -1,5 +1,6 @@
 use core::{
     any::{type_name, TypeId},
+    fmt,
     hash::{BuildHasher, Hash, Hasher},
     iter::FusedIterator,
     marker::PhantomData,
@@ -852,13 +853,50 @@ where
 #[derive(Debug)]
 pub struct NoSuchEntity;
 
+impl fmt::Display for NoSuchEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Speicified entity is not found")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for NoSuchEntity {}
+
 #[derive(Debug)]
 pub struct MissingComponents;
+
+impl fmt::Display for MissingComponents {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Speicified component is not found in entity")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for MissingComponents {}
 
 #[derive(Debug)]
 pub enum EntityError {
     NoSuchEntity,
     MissingComponents,
+}
+
+impl fmt::Display for EntityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
+            Self::MissingComponents => fmt::Display::fmt(&MissingComponents, f),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for EntityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NoSuchEntity => Some(&NoSuchEntity),
+            Self::MissingComponents => Some(&MissingComponents),
+        }
+    }
 }
 
 impl From<NoSuchEntity> for EntityError {

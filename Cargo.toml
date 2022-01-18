@@ -13,4 +13,4 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [dependencies]
-hashbrown = { version = "0.11" }
+hashbrown = { version = "0.12" }

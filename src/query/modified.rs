@@ -1,7 +1,7 @@
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::{split_idx, Archetype, Chunk, CHUNK_LEN_USIZE},
+    archetype::{chunk_idx, Archetype},
     component::Component,
 };
 
@@ -25,15 +25,9 @@ pub struct Modifed<T> {
 /// `Fetch` type for the `Modified<&T>` query.
 pub struct ModifiedFetchRead<T> {
     tracks: u64,
-    chunks: NonNull<Chunk>,
-    marker: PhantomData<fn() -> T>,
-}
-
-/// `Chunk` type for the `Modified` query.
-pub struct ModifiedChunk<T> {
-    tracks: u64,
     ptr: NonNull<T>,
-    versions: NonNull<[u64; CHUNK_LEN_USIZE]>,
+    entity_versions: NonNull<u64>,
+    chunk_versions: NonNull<u64>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchRead<T>
@@ -41,42 +35,32 @@ where
     T: 'a,
 {
     type Item = &'a T;
-    type Chunk = ModifiedChunk<T>;
 
     #[inline]
-    unsafe fn skip_chunk(&self, idx: usize) -> bool {
-        let chunk = &*self.chunks.as_ptr().add(idx);
-        chunk.unmodified(self.tracks)
-    }
-
-    #[inline]
-    unsafe fn skip_item(chunk: &ModifiedChunk<T>, idx: usize) -> bool {
-        (*chunk.versions.as_ptr())[idx] <= chunk.tracks
-    }
-
-    #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> ModifiedChunk<T> {
-        let chunk = &mut *self.chunks.as_ptr().add(idx);
-        let ptr = chunk.ptr.cast();
-        let versions = NonNull::from(&mut chunk.versions);
-
-        ModifiedChunk {
-            tracks: self.tracks,
-            ptr,
-            versions,
+    fn dangling() -> Self {
+        ModifiedFetchRead {
+            tracks: 0,
+            ptr: NonNull::dangling(),
+            entity_versions: NonNull::dangling(),
+            chunk_versions: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &ModifiedChunk<T>, idx: usize) -> &'a T {
-        &*chunk.ptr.as_ptr().add(idx)
+    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
+        let version = *self.chunk_versions.as_ptr().add(chunk_idx);
+        version <= self.tracks
     }
 
     #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> &'a T {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.chunks.as_ptr().add(chunk_idx);
-        &*chunk.ptr.cast::<T>().as_ptr().add(entity_idx)
+    unsafe fn skip_item(&self, idx: usize) -> bool {
+        let version = *self.entity_versions.as_ptr().add(idx);
+        version <= self.tracks
+    }
+
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
+        &*self.ptr.as_ptr().add(idx)
     }
 }
 
@@ -103,12 +87,13 @@ where
         _epoch: u64,
     ) -> Option<ModifiedFetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks(idx);
+        let data = archetype.data(idx);
 
         Some(ModifiedFetchRead {
-            chunks: NonNull::from(&chunks[..]).cast(),
             tracks,
-            marker: PhantomData,
+            ptr: data.ptr.cast(),
+            entity_versions: data.entity_versions,
+            chunk_versions: data.chunk_versions,
         })
     }
 }
@@ -119,8 +104,9 @@ unsafe impl<T> ImmutableQuery for Modifed<&T> where T: Component {}
 pub struct ModifiedFetchWrite<T> {
     tracks: u64,
     epoch: u64,
-    chunks: NonNull<Chunk>,
-    marker: PhantomData<fn() -> T>,
+    ptr: NonNull<T>,
+    entity_versions: NonNull<u64>,
+    chunk_versions: NonNull<u64>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchWrite<T>
@@ -128,46 +114,46 @@ where
     T: 'a,
 {
     type Item = &'a mut T;
-    type Chunk = ModifiedChunk<T>;
 
     #[inline]
-    unsafe fn skip_chunk(&self, idx: usize) -> bool {
-        let chunk = &*self.chunks.as_ptr().add(idx);
-        chunk.unmodified(self.tracks)
-    }
-
-    #[inline]
-    unsafe fn skip_item(chunk: &ModifiedChunk<T>, idx: usize) -> bool {
-        (*chunk.versions.as_ptr())[idx] <= chunk.tracks
-    }
-
-    #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> ModifiedChunk<T> {
-        let chunk = &mut *self.chunks.as_ptr().add(idx);
-        chunk.version = self.epoch;
-
-        let ptr = chunk.ptr.cast();
-        let versions = NonNull::from(&mut chunk.versions);
-
-        ModifiedChunk {
-            tracks: self.tracks,
-            ptr,
-            versions,
+    fn dangling() -> Self {
+        ModifiedFetchWrite {
+            tracks: 0,
+            epoch: 0,
+            ptr: NonNull::dangling(),
+            entity_versions: NonNull::dangling(),
+            chunk_versions: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &ModifiedChunk<T>, idx: usize) -> &'a mut T {
-        &mut *chunk.ptr.as_ptr().add(idx)
+    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
+        let version = *self.chunk_versions.as_ptr().add(chunk_idx);
+        version <= self.tracks
     }
 
     #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> &'a mut T {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.chunks.as_ptr().add(chunk_idx);
-        chunk.version = self.epoch;
-        chunk.versions[entity_idx] = self.epoch;
-        &mut *chunk.ptr.cast::<T>().as_ptr().add(entity_idx)
+    unsafe fn skip_item(&self, idx: usize) -> bool {
+        let version = *self.entity_versions.as_ptr().add(idx);
+        version <= self.tracks
+    }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
+
+        debug_assert!(*chunk_version < self.epoch);
+        *chunk_version = self.epoch;
+    }
+
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
+        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
+
+        debug_assert!(*entity_version < self.epoch);
+        *entity_version = self.epoch;
+
+        &mut *self.ptr.as_ptr().add(idx)
     }
 }
 
@@ -175,7 +161,7 @@ impl<T> Query for Modifed<&mut T>
 where
     T: Component,
 {
-    type Fetch = ModifiedFetchRead<T>;
+    type Fetch = ModifiedFetchWrite<T>;
 
     #[inline]
     fn mutates() -> bool {
@@ -191,33 +177,27 @@ where
     unsafe fn fetch(
         archetype: &Archetype,
         tracks: u64,
-        _epoch: u64,
-    ) -> Option<ModifiedFetchRead<T>> {
+        epoch: u64,
+    ) -> Option<ModifiedFetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks_mut(idx);
+        let data = archetype.data_mut(idx);
 
-        Some(ModifiedFetchRead {
-            chunks: NonNull::from(&mut chunks[..]).cast(),
+        Some(ModifiedFetchWrite {
             tracks,
-            marker: PhantomData,
+            epoch,
+            ptr: data.ptr.cast(),
+            entity_versions: data.entity_versions,
+            chunk_versions: data.chunk_versions,
         })
     }
 }
 
-pub struct ModifiedChunkAlt<'a, T> {
-    tracks: u64,
-    epoch: u64,
-    ptr: NonNull<T>,
-    versions: NonNull<[u64; CHUNK_LEN_USIZE]>,
-    version: &'a Cell<u64>,
-}
-
-/// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<T> {
     tracks: u64,
     epoch: u64,
-    chunks: NonNull<Chunk>,
-    marker: PhantomData<fn() -> T>,
+    ptr: NonNull<T>,
+    entity_versions: NonNull<u64>,
+    chunk_versions: NonNull<Cell<u64>>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchAlt<T>
@@ -225,55 +205,36 @@ where
     T: 'a,
 {
     type Item = RefMut<'a, T>;
-    type Chunk = ModifiedChunkAlt<'a, T>;
 
     #[inline]
-    unsafe fn skip_chunk(&self, idx: usize) -> bool {
-        let chunk = &*self.chunks.as_ptr().add(idx);
-        chunk.unmodified(self.tracks)
-    }
-
-    #[inline]
-    unsafe fn skip_item(chunk: &ModifiedChunkAlt<'a, T>, idx: usize) -> bool {
-        (*chunk.versions.as_ptr())[idx] <= chunk.tracks
-    }
-
-    #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> ModifiedChunkAlt<'a, T> {
-        let chunk = &mut *self.chunks.as_ptr().add(idx);
-
-        let ptr = chunk.ptr.cast();
-        let versions = NonNull::from(&mut chunk.versions);
-        let version = Cell::from_mut(&mut chunk.version);
-
-        ModifiedChunkAlt {
-            epoch: self.epoch,
-            tracks: self.tracks,
-            ptr,
-            versions,
-            version,
+    fn dangling() -> Self {
+        ModifiedFetchAlt {
+            tracks: 0,
+            epoch: 0,
+            ptr: NonNull::dangling(),
+            entity_versions: NonNull::dangling(),
+            chunk_versions: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &ModifiedChunkAlt<'a, T>, idx: usize) -> RefMut<'a, T> {
-        RefMut {
-            component: &mut *chunk.ptr.as_ptr().add(idx),
-            entity_version: &mut (*chunk.versions.as_ptr())[idx],
-            chunk_version: chunk.version,
-            epoch: chunk.epoch,
-        }
+    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
+        let version = &*self.chunk_versions.as_ptr().add(chunk_idx);
+        version.get() <= self.tracks
     }
 
     #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> RefMut<'a, T> {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.chunks.as_ptr().add(chunk_idx);
+    unsafe fn skip_item(&self, idx: usize) -> bool {
+        let version = *self.entity_versions.as_ptr().add(idx);
+        version <= self.tracks
+    }
 
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
         RefMut {
-            component: &mut *chunk.ptr.cast::<T>().as_ptr().add(entity_idx),
-            entity_version: &mut chunk.versions[entity_idx],
-            chunk_version: Cell::from_mut(&mut chunk.version),
+            component: &mut *self.ptr.as_ptr().add(idx),
+            entity_version: &mut *self.entity_versions.as_ptr().add(idx),
+            chunk_version: &*self.chunk_versions.as_ptr().add(chunk_idx(idx)),
             epoch: self.epoch,
         }
     }
@@ -283,7 +244,7 @@ impl<T> Query for Modifed<Alt<T>>
 where
     T: Component,
 {
-    type Fetch = ModifiedFetchRead<T>;
+    type Fetch = ModifiedFetchAlt<T>;
 
     #[inline]
     fn mutates() -> bool {
@@ -296,18 +257,20 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(
-        archetype: &Archetype,
-        tracks: u64,
-        _epoch: u64,
-    ) -> Option<ModifiedFetchRead<T>> {
+    unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<ModifiedFetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks_mut(idx);
+        let data = archetype.data_mut(idx);
+        debug_assert_eq!(data.id, TypeId::of::<T>());
 
-        Some(ModifiedFetchRead {
-            chunks: NonNull::from(&mut chunks[..]).cast(),
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
+
+        Some(ModifiedFetchAlt {
             tracks,
-            marker: PhantomData,
+            epoch,
+            ptr: data.ptr.cast(),
+            entity_versions: data.entity_versions,
+            chunk_versions: data.chunk_versions.cast(),
         })
     }
 }

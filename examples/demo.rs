@@ -1,4 +1,4 @@
-use edict::world::World;
+use edict::prelude::*;
 
 struct Foo;
 
@@ -31,7 +31,7 @@ fn main() {
 
     world.insert(&e, Bar);
     world.insert(&e, Bar);
-    world.insert(&e, (Baz,));
+    world.insert_bundle(&e, (Baz,));
 
     println!("Maintain");
     world.maintain();

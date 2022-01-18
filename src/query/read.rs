@@ -1,22 +1,12 @@
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
+use core::{any::TypeId, ptr::NonNull};
 
-use crate::{
-    archetype::{split_idx, Archetype, Chunk},
-    component::Component,
-};
+use crate::{archetype::Archetype, component::Component};
 
 use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 /// `Fetch` type for the `&T` query.
 pub struct FetchRead<T> {
-    pub(super) chunks: NonNull<Chunk>,
-    pub(super) marker: PhantomData<fn() -> T>,
-}
-
-/// `Chunk` type for the `&T` query.
-#[derive(Clone, Copy)]
-pub struct ChunkRead<T> {
-    ptr: NonNull<T>,
+    pub(super) ptr: NonNull<T>,
 }
 
 impl<'a, T> Fetch<'a> for FetchRead<T>
@@ -24,26 +14,17 @@ where
     T: Component,
 {
     type Item = &'a T;
-    type Chunk = ChunkRead<T>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> ChunkRead<T> {
-        let chunk = &*self.chunks.as_ptr().add(idx);
-        ChunkRead {
-            ptr: chunk.ptr.cast(),
+    fn dangling() -> Self {
+        FetchRead {
+            ptr: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &ChunkRead<T>, idx: usize) -> &'a T {
-        &*chunk.ptr.as_ptr().add(idx)
-    }
-
-    #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> &'a T {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.chunks.as_ptr().add(chunk_idx);
-        &*chunk.ptr.cast::<T>().as_ptr().add(entity_idx)
+    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
+        &*self.ptr.as_ptr().add(idx)
     }
 }
 
@@ -61,11 +42,11 @@ where
     #[inline]
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, _epoch: u64) -> Option<FetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks(idx);
+        let data = archetype.data(idx);
+        debug_assert_eq!(data.id, TypeId::of::<T>());
 
         Some(FetchRead {
-            chunks: NonNull::from(&chunks[..]).cast(),
-            marker: PhantomData,
+            ptr: data.ptr.cast(),
         })
     }
 }

@@ -7,7 +7,7 @@ use core::{
 };
 
 use crate::{
-    archetype::{split_idx, Archetype, Chunk, CHUNK_LEN_USIZE},
+    archetype::{chunk_idx, Archetype},
     component::Component,
 };
 
@@ -52,18 +52,10 @@ impl<T> DerefMut for RefMut<'_, T> {
 
 /// `Fetch` type for the `Alt` query.
 pub struct FetchAlt<T> {
-    pub(super) epoch: u64,
-    pub(super) chunks: NonNull<Chunk>,
-    pub(super) marker: PhantomData<fn() -> T>,
-}
-
-/// `Chunk` type for the `Alt` query.
-#[derive(Clone, Copy)]
-pub struct ChunkAlt<'a, T> {
     epoch: u64,
     ptr: NonNull<T>,
-    versions: NonNull<[u64; CHUNK_LEN_USIZE]>,
-    version: &'a Cell<u64>,
+    entity_versions: NonNull<u64>,
+    chunk_versions: NonNull<Cell<u64>>,
 }
 
 impl<'a, T> Fetch<'a> for FetchAlt<T>
@@ -71,42 +63,23 @@ where
     T: Component,
 {
     type Item = RefMut<'a, T>;
-    type Chunk = ChunkAlt<'a, T>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> ChunkAlt<'a, T> {
-        let chunk = &mut *self.chunks.as_ptr().add(idx);
-        let ptr = chunk.ptr.cast();
-        let versions = NonNull::from(&mut chunk.versions);
-        let version = Cell::from_mut(&mut chunk.version);
-
-        ChunkAlt {
-            epoch: self.epoch,
-            ptr,
-            versions,
-            version,
+    fn dangling() -> Self {
+        FetchAlt {
+            epoch: 0,
+            ptr: NonNull::dangling(),
+            entity_versions: NonNull::dangling(),
+            chunk_versions: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &ChunkAlt<'a, T>, idx: usize) -> RefMut<'a, T> {
+    unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
         RefMut {
-            component: &mut *chunk.ptr.as_ptr().add(idx),
-            entity_version: &mut (*chunk.versions.as_ptr())[idx],
-            chunk_version: chunk.version,
-            epoch: chunk.epoch,
-        }
-    }
-
-    #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> RefMut<'a, T> {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.chunks.as_ptr().add(chunk_idx);
-
-        RefMut {
-            component: &mut *chunk.ptr.cast::<T>().as_ptr().add(entity_idx),
-            entity_version: &mut chunk.versions[entity_idx],
-            chunk_version: Cell::from_mut(&mut chunk.version),
+            component: &mut *self.ptr.as_ptr().add(idx),
+            entity_version: &mut *self.entity_versions.as_ptr().add(idx),
+            chunk_version: &*self.chunk_versions.as_ptr().add(chunk_idx(idx)),
             epoch: self.epoch,
         }
     }
@@ -126,12 +99,17 @@ where
     #[inline]
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let chunks = archetype.get_chunks_mut(idx);
+        let data = archetype.data_mut(idx);
+        debug_assert_eq!(data.id, TypeId::of::<T>());
+
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
 
         Some(FetchAlt {
             epoch,
-            chunks: NonNull::from(&mut chunks[..]).cast(),
-            marker: PhantomData,
+            ptr: data.ptr.cast(),
+            entity_versions: data.entity_versions,
+            chunk_versions: data.chunk_versions.cast(),
         })
     }
 }

@@ -4,19 +4,14 @@ use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 impl Fetch<'_> for Skip {
     type Item = Skip;
-    type Chunk = Skip;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, _: usize) -> Skip {
+    fn dangling() -> Self {
         Skip
     }
 
     #[inline]
-    unsafe fn get_item(_: &Skip, _: usize) -> Skip {
-        Skip
-    }
-
-    unsafe fn get_one_item(&mut self, _: u32) -> Skip {
+    unsafe fn get_item(&mut self, _: usize) -> Skip {
         Skip
     }
 }

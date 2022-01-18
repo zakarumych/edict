@@ -1,15 +1,10 @@
-use core::cell::Cell;
-
-use crate::{
-    archetype::{split_idx, Archetype},
-    component::Component,
-};
+use crate::{archetype::Archetype, component::Component};
 
 use super::{
-    alt::{Alt, ChunkAlt, FetchAlt, RefMut},
+    alt::{Alt, FetchAlt, RefMut},
     read::FetchRead,
     write::FetchWrite,
-    ChunkRead, ChunkWrite, Fetch, ImmutableQuery, NonTrackingQuery, Query,
+    Fetch, ImmutableQuery, NonTrackingQuery, Query,
 };
 
 impl<'a, T> Fetch<'a> for Option<FetchRead<T>>
@@ -17,23 +12,15 @@ where
     T: Component,
 {
     type Item = Option<&'a T>;
-    type Chunk = Option<ChunkRead<T>>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> Option<ChunkRead<T>> {
-        Some(self.as_mut()?.get_chunk(idx))
+    fn dangling() -> Self {
+        None
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &Option<ChunkRead<T>>, idx: usize) -> Option<&'a T> {
-        Some(FetchRead::get_item(chunk.as_ref()?, idx))
-    }
-
-    #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> Option<&'a T> {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let chunk = &mut *self.as_mut()?.chunks.as_ptr().add(chunk_idx);
-        Some(&*chunk.ptr.cast::<T>().as_ptr().add(entity_idx))
+    unsafe fn get_item(&mut self, idx: usize) -> Option<&'a T> {
+        Some(self.as_mut()?.get_item(idx))
     }
 }
 
@@ -66,21 +53,22 @@ where
     T: Component,
 {
     type Item = Option<&'a mut T>;
-    type Chunk = Option<ChunkWrite<T>>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> Option<ChunkWrite<T>> {
-        Some(self.as_mut()?.get_chunk(idx))
+    fn dangling() -> Self {
+        None
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &Option<ChunkWrite<T>>, idx: usize) -> Option<&'a mut T> {
-        Some(FetchWrite::get_item(chunk.as_ref()?, idx))
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        if let Some(fetch) = self.as_mut() {
+            fetch.visit_chunk(chunk_idx)
+        }
     }
 
     #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> Option<&'a mut T> {
-        Some(FetchWrite::get_one_item(self.as_mut()?, idx))
+    unsafe fn get_item(&mut self, idx: usize) -> Option<&'a mut T> {
+        Some(self.as_mut()?.get_item(idx))
     }
 }
 
@@ -112,30 +100,15 @@ where
     T: Component,
 {
     type Item = Option<RefMut<'a, T>>;
-    type Chunk = Option<ChunkAlt<'a, T>>;
 
     #[inline]
-    unsafe fn get_chunk(&mut self, idx: usize) -> Option<ChunkAlt<'a, T>> {
-        Some(self.as_mut()?.get_chunk(idx))
+    fn dangling() -> Self {
+        None
     }
 
     #[inline]
-    unsafe fn get_item(chunk: &Option<ChunkAlt<'a, T>>, idx: usize) -> Option<RefMut<'a, T>> {
-        Some(FetchAlt::get_item(chunk.as_ref()?, idx))
-    }
-
-    #[inline]
-    unsafe fn get_one_item(&mut self, idx: u32) -> Option<RefMut<'a, T>> {
-        let (chunk_idx, entity_idx) = split_idx(idx);
-        let fetch = self.as_mut()?;
-        let chunk = &mut *fetch.chunks.as_ptr().add(chunk_idx);
-
-        Some(RefMut {
-            component: &mut *chunk.ptr.cast::<T>().as_ptr().add(entity_idx),
-            entity_version: &mut chunk.versions[entity_idx],
-            chunk_version: Cell::from_mut(&mut chunk.version),
-            epoch: fetch.epoch,
-        })
+    unsafe fn get_item(&mut self, idx: usize) -> Option<RefMut<'a, T>> {
+        Some(self.as_mut()?.get_item(idx))
     }
 }
 

@@ -1,18 +1,19 @@
 pub use self::{
-    alt::{Alt, ChunkAlt, FetchAlt},
-    modified::{
-        Modifed, ModifiedChunk, ModifiedChunkAlt, ModifiedFetchAlt, ModifiedFetchRead,
-        ModifiedFetchWrite,
-    },
+    alt::{Alt, FetchAlt},
+    modified::{Modifed, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
     read::FetchRead,
-    write::{ChunkWrite, FetchWrite},
+    write::FetchWrite,
 };
 
-use core::{iter::Enumerate, slice};
+use core::{
+    ops::Range,
+    ptr::{self},
+    slice,
+};
 
 use crate::{
-    archetype::{split_idx, Archetype, CHUNK_LEN_USIZE},
-    entity::{EntityId, WeakEntity},
+    archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
+    entity::WeakEntity,
 };
 
 mod alt;
@@ -26,24 +27,29 @@ pub use self::{alt::*, modified::*, option::*, read::*, skip::*, write::*};
 
 /// Trait implemented for `Query::Fetch` associated types.
 pub trait Fetch<'a> {
-    type Chunk;
     type Item;
 
+    /// Returns `Fetch` value that must not be used.
+    fn dangling() -> Self;
+
     #[inline]
-    unsafe fn skip_chunk(&self, _idx: usize) -> bool {
+    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
+        drop(chunk_idx);
         false
     }
 
-    unsafe fn get_chunk(&mut self, idx: usize) -> Self::Chunk;
-
     #[inline]
-    unsafe fn skip_item(_chunk: &Self::Chunk, _idx: usize) -> bool {
+    unsafe fn skip_item(&self, idx: usize) -> bool {
+        drop(idx);
         false
     }
 
-    unsafe fn get_item(chunk: &Self::Chunk, idx: usize) -> Self::Item;
+    #[inline]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        drop(chunk_idx);
+    }
 
-    unsafe fn get_one_item(&mut self, idx: u32) -> Self::Item;
+    unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
 }
 
 /// Trait for types that can query sets of components from entities in the world.
@@ -52,7 +58,10 @@ pub trait Fetch<'a> {
 pub trait Query {
     type Fetch: for<'a> Fetch<'a>;
 
-    fn mutates() -> bool;
+    #[inline]
+    fn mutates() -> bool {
+        false
+    }
 
     #[inline]
     fn tracks() -> bool {
@@ -99,16 +108,12 @@ macro_rules! for_tuple {
     (impl) => {
         impl Fetch<'_> for () {
             type Item = ();
-            type Chunk = ();
 
             #[inline]
-            unsafe fn get_chunk(&mut self, _: usize) {}
+            fn dangling() {}
 
             #[inline]
-            unsafe fn get_item(_: &Self::Chunk, _: usize) {}
-
-            #[inline]
-            unsafe fn get_one_item(&mut self, _: u32) {}
+            unsafe fn get_item(&mut self, _idx: usize) {}
         }
 
         impl Query for () {
@@ -138,28 +143,18 @@ macro_rules! for_tuple {
         impl<'a $(, $a)+> Fetch<'a> for ($($a,)+)
         where $($a: Fetch<'a>,)+
         {
-            type Chunk = ($($a::Chunk,)+);
             type Item = ($($a::Item,)+);
 
             #[inline]
-            unsafe fn get_chunk(&mut self, idx: usize) -> ($($a::Chunk,)+) {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                ($( $a::get_chunk($a, idx), )+)
+            fn dangling() -> Self {
+                ($($a::dangling(),)+)
             }
 
             #[inline]
-            unsafe fn get_item(chunk: &($($a::Chunk,)+), idx: usize) -> ($($a::Item,)+) {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = chunk;
-                ($( $a::get_item($a, idx), )+)
-            }
-
-            #[inline]
-            unsafe fn get_one_item(&mut self, idx: u32) -> ($($a::Item,)+) {
+            unsafe fn get_item(&mut self, idx: usize) -> ($($a::Item,)+) {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
-                ($( $a::get_one_item($a, idx), )+)
+                ($( $a.get_item(idx), )+)
             }
         }
 
@@ -197,9 +192,9 @@ pub struct QueryIter<'a, Q: Query> {
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
 
-    fetch: Option<<Q as Query>::Fetch>,
-    chunk: Option<<<Q as Query>::Fetch as Fetch<'a>>::Chunk>,
-    entities: Enumerate<slice::Iter<'a, WeakEntity>>,
+    fetch: <Q as Query>::Fetch,
+    entities: *const WeakEntity,
+    indices: Range<usize>,
 }
 
 impl<'a, Q> QueryIter<'a, Q>
@@ -210,9 +205,9 @@ where
         QueryIter {
             epoch,
             archetypes: archetypes.iter(),
-            fetch: None,
-            chunk: None,
-            entities: [].iter().enumerate(),
+            fetch: Q::Fetch::dangling(),
+            entities: ptr::null(),
+            indices: 0..0,
         }
     }
 }
@@ -221,55 +216,81 @@ impl<'a, Q> Iterator for QueryIter<'a, Q>
 where
     Q: Query,
 {
-    type Item = (EntityId, QueryItem<'a, Q>);
+    type Item = (WeakEntity, QueryItem<'a, Q>);
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.entities.len()))
+        (self.indices.len() as usize, None)
     }
 
-    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
+    #[inline]
+    fn next(&mut self) -> Option<(WeakEntity, QueryItem<'a, Q>)> {
         loop {
-            match self.entities.next() {
+            match self.indices.next() {
                 None => {
                     // move to the next archetype.
                     loop {
                         let archetype = self.archetypes.next()?;
-                        self.fetch = unsafe { Q::fetch(archetype, 0, self.epoch) };
-
-                        if self.fetch.is_some() {
-                            self.entities = archetype.get_entities().iter().enumerate();
+                        if let Some(fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+                            self.fetch = fetch;
+                            self.entities = archetype.entities().as_ptr();
+                            self.indices = 0..archetype.len();
                             break;
                         }
                     }
                 }
-                Some((idx, entity)) if idx <= u32::MAX as usize => {
-                    let (chunk_idx, entity_idx) = split_idx(idx as u32);
-
-                    if entity_idx == 0 {
-                        let fetch = self.fetch.as_mut().unwrap();
-
-                        if unsafe { fetch.skip_chunk(chunk_idx) } {
-                            continue;
-                        }
-
-                        self.chunk = Some(unsafe { fetch.get_chunk(chunk_idx) });
+                Some(idx) => {
+                    if let Some(chunk_idx) = first_of_chunk(idx) {
+                        unsafe { self.fetch.visit_chunk(chunk_idx) }
                     }
 
-                    let chunk = self.chunk.as_mut().unwrap();
+                    debug_assert!(!unsafe { self.fetch.skip_item(idx) });
 
-                    if unsafe { Q::Fetch::skip_item(chunk, entity_idx) } {
-                        continue;
-                    }
+                    let item = unsafe { self.fetch.get_item(idx) };
+                    let entity = unsafe { *self.entities.add(idx) };
 
-                    let item = unsafe { Q::Fetch::get_item(chunk, entity_idx) };
-
-                    return Some((EntityId { id: entity.id }, item));
-                }
-                Some((_, _)) => {
-                    panic!("Entity index is too large");
+                    return Some((entity, item));
                 }
             }
         }
+    }
+
+    fn fold<B, F>(mut self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, (WeakEntity, QueryItem<'a, Q>)) -> B,
+    {
+        let mut acc = init;
+        for idx in self.indices {
+            if let Some(chunk_idx) = first_of_chunk(idx) {
+                unsafe { self.fetch.visit_chunk(chunk_idx) }
+            }
+            debug_assert!(!unsafe { self.fetch.skip_item(idx) });
+
+            let item = unsafe { self.fetch.get_item(idx) };
+            let entity = unsafe { *self.entities.add(idx as usize) };
+
+            acc = f(acc, (entity, item));
+        }
+
+        for archetype in self.archetypes {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+                let entities = archetype.entities().as_ptr();
+
+                for idx in 0..archetype.len() {
+                    if let Some(chunk_idx) = first_of_chunk(idx) {
+                        unsafe { self.fetch.visit_chunk(chunk_idx) }
+                    }
+                    debug_assert!(!unsafe { fetch.skip_item(idx) });
+
+                    let item = unsafe { fetch.get_item(idx) };
+                    let entity = unsafe { *entities.add(idx) };
+
+                    acc = f(acc, (entity, item));
+                }
+            }
+        }
+        acc
     }
 }
 
@@ -282,9 +303,10 @@ pub struct QueryTrackedIter<'a, Q: Query> {
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
 
-    fetch: Option<<Q as Query>::Fetch>,
-    chunk: Option<<<Q as Query>::Fetch as Fetch<'a>>::Chunk>,
-    entities: Enumerate<slice::Iter<'a, WeakEntity>>,
+    fetch: <Q as Query>::Fetch,
+    entities: *const WeakEntity,
+    indices: Range<usize>,
+    visit_chunk: bool,
 }
 
 impl<'a, Q> QueryTrackedIter<'a, Q>
@@ -296,9 +318,10 @@ where
             tracks,
             epoch,
             archetypes: archetypes.iter(),
-            fetch: None,
-            chunk: None,
-            entities: [].iter().enumerate(),
+            fetch: Q::Fetch::dangling(),
+            entities: ptr::null(),
+            indices: 0..0,
+            visit_chunk: false,
         }
     }
 }
@@ -307,54 +330,109 @@ impl<'a, Q> Iterator for QueryTrackedIter<'a, Q>
 where
     Q: Query,
 {
-    type Item = (EntityId, QueryItem<'a, Q>);
+    type Item = (WeakEntity, QueryItem<'a, Q>);
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.entities.len()))
+        (0, None)
     }
 
-    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
+    #[inline]
+    fn next(&mut self) -> Option<(WeakEntity, QueryItem<'a, Q>)> {
         loop {
-            match self.entities.next() {
+            match self.indices.next() {
                 None => {
                     // move to the next archetype.
                     loop {
                         let archetype = self.archetypes.next()?;
-                        self.fetch = unsafe { Q::fetch(archetype, self.tracks, self.epoch) };
-
-                        if self.fetch.is_some() {
-                            self.entities = archetype.get_entities().iter().enumerate();
+                        if let Some(fetch) = unsafe { Q::fetch(archetype, self.tracks, self.epoch) }
+                        {
+                            self.fetch = fetch;
+                            self.entities = archetype.entities().as_ptr();
+                            self.indices = 0..archetype.len();
                             break;
                         }
                     }
                 }
-                Some((idx, entity)) if idx <= u32::MAX as usize => {
-                    let (chunk_idx, entity_idx) = split_idx(idx as u32);
-                    if entity_idx == 0 {
-                        let fetch = self.fetch.as_mut().unwrap();
-
-                        if unsafe { fetch.skip_chunk(chunk_idx) } {
-                            self.entities.nth(CHUNK_LEN_USIZE - 1);
+                Some(idx) => {
+                    if let Some(chunk_idx) = first_of_chunk(idx) {
+                        if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                            self.indices.nth(CHUNK_LEN_USIZE - 1);
                             continue;
                         }
-
-                        self.chunk = Some(unsafe { fetch.get_chunk(chunk_idx) });
+                        self.visit_chunk = true;
                     }
 
-                    let chunk = self.chunk.as_mut().unwrap();
+                    if !unsafe { self.fetch.skip_item(idx) } {
+                        if self.visit_chunk {
+                            unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                            self.visit_chunk = false;
+                        }
 
-                    if unsafe { Q::Fetch::skip_item(chunk, entity_idx) } {
-                        continue;
+                        let item = unsafe { self.fetch.get_item(idx) };
+                        let entity = unsafe { *self.entities.add(idx) };
+
+                        return Some((entity, item));
                     }
-
-                    let item = unsafe { Q::Fetch::get_item(chunk, entity_idx) };
-
-                    return Some((EntityId { id: entity.id }, item));
-                }
-                Some((_, _)) => {
-                    panic!("Entity index is too large");
                 }
             }
         }
+    }
+
+    fn fold<B, F>(mut self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, (WeakEntity, QueryItem<'a, Q>)) -> B,
+    {
+        let mut acc = init;
+        while let Some(idx) = self.indices.next() {
+            if let Some(chunk_idx) = first_of_chunk(idx) {
+                if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                    self.indices.nth(CHUNK_LEN_USIZE - 1);
+                    continue;
+                }
+                self.visit_chunk = true;
+            }
+
+            if !unsafe { self.fetch.skip_item(idx) } {
+                if self.visit_chunk {
+                    unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                    self.visit_chunk = false;
+                }
+                let item = unsafe { self.fetch.get_item(idx) };
+                let entity = unsafe { *self.entities.add(idx as usize) };
+
+                acc = f(acc, (entity, item));
+            }
+        }
+
+        for archetype in self.archetypes {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+                let entities = archetype.entities().as_ptr();
+                let mut indices = 0..archetype.len();
+
+                while let Some(idx) = indices.next() {
+                    if let Some(chunk_idx) = first_of_chunk(idx) {
+                        if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                            self.indices.nth(CHUNK_LEN_USIZE - 1);
+                            continue;
+                        }
+                        self.visit_chunk = true;
+                    }
+
+                    if !unsafe { fetch.skip_item(idx) } {
+                        if self.visit_chunk {
+                            unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                            self.visit_chunk = false;
+                        }
+                        let item = unsafe { fetch.get_item(idx) };
+                        let entity = unsafe { *entities.add(idx) };
+
+                        acc = f(acc, (entity, item));
+                    }
+                }
+            }
+        }
+        acc
     }
 }

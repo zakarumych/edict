@@ -21,7 +21,7 @@ impl TypeIdSet {
             for id in ids.clone() {
                 assert_ne!(id, no_type_id);
 
-                let idx = no_op_hash(&id) as usize % entries.len();
+                let idx = type_index(&id, entries.len());
 
                 if entries[idx] == no_type_id {
                     entries[idx] = id;
@@ -49,19 +49,22 @@ impl TypeIdSet {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.count
     }
 
+    #[inline]
     pub fn upper_bound(&self) -> usize {
         self.entries.len()
     }
 
     /// Returns `Some(idx)` where `idx` is index of the type id in the set.
     /// Returns `None` if id is not in the set.
+    #[inline]
     pub fn get(&self, id: TypeId) -> Option<usize> {
-        let idx = no_op_hash(&id) as usize % self.modulo;
-        if self.entries[idx] == id {
+        let idx = type_index(&id, self.modulo);
+        if self.entries.get(idx) == Some(&id) {
             Some(idx)
         } else {
             None
@@ -70,22 +73,24 @@ impl TypeIdSet {
 
     /// Returns `true` if id is in the set.
     /// Returns `false` if id is not in the set.
+    #[inline]
     pub fn contains_id(&self, id: TypeId) -> bool {
-        let idx = no_op_hash(&id) as usize % self.modulo;
-        if self.entries[idx] == id {
+        let idx = type_index(&id, self.modulo);
+        if self.entries.get(idx) == Some(&id) {
             true
         } else {
             false
         }
     }
 
-    pub fn ids(&self) -> TypeIdSetIter<'_> {
-        TypeIdSetIter {
-            count: self.count,
-            inner: self.entries.iter(),
-        }
-    }
+    // pub fn ids(&self) -> TypeIdSetIter<'_> {
+    //     TypeIdSetIter {
+    //         count: self.count,
+    //         inner: self.entries.iter(),
+    //     }
+    // }
 
+    #[inline]
     pub fn indexed(&self) -> TypeIdSetIndexedIter<'_> {
         TypeIdSetIndexedIter {
             count: self.count,
@@ -120,6 +125,37 @@ impl Iterator for TypeIdSetIter<'_> {
     fn count(self) -> usize {
         self.count
     }
+
+    fn fold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, TypeId) -> B,
+    {
+        let no_type_id = no_type_id();
+        self.inner.fold(
+            init,
+            |init, &id| {
+                if id != no_type_id {
+                    f(init, id)
+                } else {
+                    init
+                }
+            },
+        )
+    }
+
+    fn for_each<F>(self, mut f: F)
+    where
+        Self: Sized,
+        F: FnMut(TypeId),
+    {
+        let no_type_id = no_type_id();
+        self.inner.for_each(|&id| {
+            if id != no_type_id {
+                f(id);
+            }
+        })
+    }
 }
 
 impl ExactSizeIterator for TypeIdSetIter<'_> {
@@ -142,6 +178,24 @@ impl DoubleEndedIterator for TypeIdSetIter<'_> {
                 }
             }
         }
+    }
+
+    fn rfold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, TypeId) -> B,
+    {
+        let no_type_id = no_type_id();
+        self.inner.rfold(
+            init,
+            |init, &id| {
+                if id != no_type_id {
+                    f(init, id)
+                } else {
+                    init
+                }
+            },
+        )
     }
 }
 
@@ -171,6 +225,34 @@ impl Iterator for TypeIdSetIndexedIter<'_> {
     fn count(self) -> usize {
         self.count
     }
+
+    fn fold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, (usize, TypeId)) -> B,
+    {
+        let no_type_id = no_type_id();
+        self.inner.fold(init, |init, (idx, &id)| {
+            if id != no_type_id {
+                f(init, (idx, id))
+            } else {
+                init
+            }
+        })
+    }
+
+    fn for_each<F>(self, mut f: F)
+    where
+        Self: Sized,
+        F: FnMut((usize, TypeId)),
+    {
+        let no_type_id = no_type_id();
+        self.inner.for_each(|(idx, &id)| {
+            if id != no_type_id {
+                f((idx, id));
+            }
+        })
+    }
 }
 
 impl ExactSizeIterator for TypeIdSetIndexedIter<'_> {
@@ -194,6 +276,21 @@ impl DoubleEndedIterator for TypeIdSetIndexedIter<'_> {
             }
         }
     }
+
+    fn rfold<B, F>(self, init: B, mut f: F) -> B
+    where
+        Self: Sized,
+        F: FnMut(B, (usize, TypeId)) -> B,
+    {
+        let no_type_id = no_type_id();
+        self.inner.rfold(init, |init, (idx, &id)| {
+            if id != no_type_id {
+                f(init, (idx, id))
+            } else {
+                init
+            }
+        })
+    }
 }
 
 /// This function returns opaque TypeId which is treated as none
@@ -201,4 +298,8 @@ impl DoubleEndedIterator for TypeIdSetIndexedIter<'_> {
 fn no_type_id() -> TypeId {
     pub struct NoThisIsPatrik;
     TypeId::of::<NoThisIsPatrik>()
+}
+
+fn type_index(id: &TypeId, len: usize) -> usize {
+    no_op_hash(id).swap_bytes() as usize % len
 }

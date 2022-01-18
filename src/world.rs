@@ -582,6 +582,11 @@ impl World {
 
     #[inline]
     pub fn tracks(&self) -> Tracks {
+        Tracks { epoch: 0 }
+    }
+
+    #[inline]
+    pub fn tracks_now(&self) -> Tracks {
         Tracks { epoch: self.epoch }
     }
 

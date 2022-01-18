@@ -55,12 +55,12 @@ apart from that only few internal pieces depend on `"std"` feature.
 Dependent crates that also support `no_std` should use `default-features = false` for `edict` dependency,
 and optionally enable `"std"` if needed.
 
-[`World`]: https://docs.rs/edict/0.0.1/edict/world/struct.World.html
-[`Entity`]: https://docs.rs/edict/0.0.1/edict/entity/struct.Entity.html
-[`WeakEntity`]: https://docs.rs/edict/0.0.1/edict/entity/struct.WeakEntity.html
-[`Tracks`]: https://docs.rs/edict/0.0.1/edict/tracks/struct.Tracks.html
-[`World::tracks()`]: https://docs.rs/edict/0.0.1/edict/world/struct.World.html#method.tracks
-[`World::tracks_now()`]: https://docs.rs/edict/0.0.1/edict/world/struct.World.html#method.tracks_now
+[`World`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html
+[`Entity`]: https://docs.rs/edict/0.0.2/edict/entity/struct.Entity.html
+[`WeakEntity`]: https://docs.rs/edict/0.0.2/edict/entity/struct.WeakEntity.html
+[`Tracks`]: https://docs.rs/edict/0.0.2/edict/tracks/struct.Tracks.html
+[`World::tracks()`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html#method.tracks
+[`World::tracks_now()`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html#method.tracks_now
 
 
 ## License

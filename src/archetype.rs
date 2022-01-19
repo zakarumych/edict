@@ -56,21 +56,28 @@ impl ComponentData {
         Self::new(&ComponentInfo::of::<Dummy>())
     }
 
-    pub unsafe fn grow(&mut self, old: usize, new: usize) {
+    pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
         let old_layout = Layout::from_size_align_unchecked(
-            self.info.layout.size() * old,
+            self.info.layout.size() * old_cap,
             self.info.layout.align(),
         );
 
         let new_layout = Layout::from_size_align_unchecked(
-            self.info.layout.size() * new,
+            self.info.layout.size() * new_cap,
             self.info.layout.align(),
         );
 
         if self.info.layout.size() != 0 {
             let mut ptr = NonNull::new_unchecked(alloc(new_layout));
-            if old != 0 {
-                copy_nonoverlapping(self.ptr.as_ptr(), ptr.as_ptr(), old_layout.size());
+            if len != 0 {
+                copy_nonoverlapping(
+                    self.ptr.as_ptr(),
+                    ptr.as_ptr(),
+                    len * self.info.layout.size(),
+                );
+            }
+
+            if old_cap != 0 {
                 mem::swap(&mut self.ptr, &mut ptr);
                 dealloc(ptr.as_ptr(), old_layout);
             } else {
@@ -79,26 +86,30 @@ impl ComponentData {
         }
 
         let mut ptr =
-            NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new).unwrap())).cast();
-        if old != 0 {
-            copy_nonoverlapping(self.entity_versions.as_ptr(), ptr.as_ptr(), old);
+            NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new_cap).unwrap())).cast();
+        if len != 0 {
+            copy_nonoverlapping(self.entity_versions.as_ptr(), ptr.as_ptr(), len);
+        }
+
+        if old_cap != 0 {
             mem::swap(&mut self.entity_versions, &mut ptr);
-            dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old).unwrap());
+            dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old_cap).unwrap());
         } else {
             self.entity_versions = ptr;
         }
 
-        if chunks_count(new) > chunks_count(old) {
-            let old = chunks_count(old);
-            let new = chunks_count(new);
+        if chunks_count(new_cap) > chunks_count(old_cap) {
+            let old_cap = chunks_count(old_cap);
+            let new_cap = chunks_count(new_cap);
 
             let mut ptr =
-                NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new).unwrap())).cast();
+                NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new_cap).unwrap())).cast();
 
-            if old != 0 {
-                copy_nonoverlapping(self.chunk_versions.as_ptr(), ptr.as_ptr(), old);
+            copy_nonoverlapping(self.chunk_versions.as_ptr(), ptr.as_ptr(), len);
+
+            if old_cap != 0 {
                 mem::swap(&mut self.chunk_versions, &mut ptr);
-                dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old).unwrap());
+                dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old_cap).unwrap());
             } else {
                 self.chunk_versions = ptr;
             }
@@ -502,12 +513,12 @@ impl Archetype {
         let cap = self.entities.capacity();
         self.entities.reserve(additional);
 
-        if cap == self.entities.capacity() {
+        if cap != self.entities.capacity() {
             // Capacity changed
             for &idx in &*self.indices {
                 let component = self.components[idx].get_mut();
                 unsafe {
-                    component.grow(self.entities.len(), self.entities.capacity());
+                    component.grow(self.entities.len(), cap, self.entities.capacity());
                 }
             }
         }

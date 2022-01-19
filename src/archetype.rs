@@ -394,6 +394,9 @@ impl Archetype {
 
         dst.write_one::<T>(dst_entity_idx, value, epoch, false);
 
+        let entity = self.entities.swap_remove(src_entity_idx);
+        dst.entities.push(entity);
+
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,

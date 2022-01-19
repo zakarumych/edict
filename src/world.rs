@@ -102,6 +102,9 @@ pub struct World {
 
     /// Maps archetype index - additional component id to the archetype index.
     sub_ids: HashMap<(u32, Vec<TypeId>), u32, MulHasherBuilder>,
+
+    /// Array of indices to drop.
+    drop_queue: Vec<u32>,
 }
 
 impl Default for World {
@@ -130,6 +133,7 @@ impl World {
             add_ids: HashMap::with_hasher(MulHasherBuilder),
             sub_key: HashMap::with_hasher(MulHasherBuilder),
             sub_ids: HashMap::with_hasher(MulHasherBuilder),
+            drop_queue: Vec::new(),
         }
     }
 
@@ -753,26 +757,17 @@ impl World {
         let queue = self.entities.drop_queue();
 
         loop {
-            let mut drain = queue.drain();
-            match drain.next() {
-                None => break,
-                Some(id) => {
-                    let (archetype, idx) = self.entities.dropped(id);
+            queue.drain(&mut self.drop_queue);
 
-                    let opt_id =
-                        unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
-                    if let Some(id) = opt_id {
-                        self.entities.set_location(id, archetype, idx)
-                    }
+            if self.drop_queue.is_empty() {
+                break;
+            }
 
-                    for id in drain {
-                        let (archetype, idx) = self.entities.dropped(id);
-                        let opt_id =
-                            unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
-                        if let Some(id) = opt_id {
-                            self.entities.set_location(id, archetype, idx)
-                        }
-                    }
+            for id in self.drop_queue.drain(..) {
+                let (archetype, idx) = self.entities.dropped(id);
+                let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+                if let Some(id) = opt_id {
+                    self.entities.set_location(id, archetype, idx)
                 }
             }
         }

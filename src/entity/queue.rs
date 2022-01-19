@@ -2,11 +2,10 @@ use core::{
     alloc::Layout,
     cell::UnsafeCell,
     ptr::{self, NonNull},
-    slice,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use alloc::vec::{self, Vec};
+use alloc::vec::Vec;
 
 #[derive(PartialEq, Eq)]
 pub(crate) struct DropQueue {
@@ -115,8 +114,8 @@ impl DropQueue {
         unsafe { &*self.inner.as_ptr() }.drop_entity(id);
     }
 
-    pub fn drain<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
-        unsafe { &*self.inner.as_ptr() }.drain()
+    pub fn drain<'a>(&'a self, extend: &mut Vec<u32>) {
+        unsafe { &*self.inner.as_ptr() }.drain(extend)
     }
 }
 
@@ -195,7 +194,7 @@ impl DropQueueInner<[UnsafeCell<u32>]> {
         }
     }
 
-    fn drain<'a>(&'a self) -> impl Iterator<Item = u32> + 'a {
+    fn drain<'a>(&'a self, extend: &mut Vec<u32>) {
         loop {
             let res = self.lock.compare_exchange_weak(
                 0,
@@ -206,45 +205,17 @@ impl DropQueueInner<[UnsafeCell<u32>]> {
 
             match res {
                 Ok(_) => {
-                    let len = self.cursor.load(Ordering::Relaxed);
-                    let ids = self.buffer[..len].iter();
-                    let tail = unsafe { &mut *self.tail.get() }.drain(..);
+                    let len = self.cursor.swap(0, Ordering::Relaxed);
 
-                    return Drain {
-                        ids,
-                        tail,
-                        unlock: &self.lock,
-                    };
+                    extend.extend(self.buffer[..len].iter().map(|id| unsafe { *id.get() }));
+                    extend.append(unsafe { &mut *self.tail.get() });
+
+                    self.lock.fetch_sub(isize::MAX as usize, Ordering::Release);
+                    break;
                 }
                 Err(_) => yield_now(),
             }
         }
-    }
-}
-
-struct Drain<'a> {
-    ids: slice::Iter<'a, UnsafeCell<u32>>,
-    tail: vec::Drain<'a, u32>,
-    unlock: &'a AtomicUsize,
-}
-
-impl Drop for Drain<'_> {
-    fn drop(&mut self) {
-        debug_assert_eq!(self.ids.len(), 0);
-
-        self.unlock
-            .fetch_sub(isize::MAX as usize, Ordering::Release);
-    }
-}
-
-impl Iterator for Drain<'_> {
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.ids
-            .next()
-            .map(|id| unsafe { *id.get() })
-            .or_else(|| self.tail.next())
     }
 }
 

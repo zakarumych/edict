@@ -2,6 +2,7 @@ use core::{
     any::{type_name, TypeId},
     fmt,
     hash::{BuildHasher, Hash, Hasher},
+    iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
 };
@@ -25,6 +26,22 @@ use crate::{
     },
     tracks::Tracks,
 };
+
+/// Limits on reserving of space for entities and components
+/// in archetypes when `spawn_batch` is used.
+const MAX_SPAWN_RESERVE: usize = 1024;
+
+fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
+    let (lower, upper) = iter.size_hint();
+    let additional = match (lower, upper) {
+        (lower, None) => lower,
+        (lower, Some(upper)) => {
+            // Iterator is consumed in full, so reserve at least `lower`.
+            lower.max(upper.min(MAX_SPAWN_RESERVE))
+        }
+    };
+    archetype.reserve(additional);
+}
 
 /// Container for entities with any sets of components.
 ///
@@ -112,6 +129,13 @@ impl World {
     where
         B: DynamicBundle,
     {
+        if !bundle.valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
         let entity = self.entities.spawn();
 
         let archetype_idx = get_archetype_idx_with_maps(
@@ -122,17 +146,24 @@ impl World {
         );
 
         self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch, 0);
+        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch);
         self.entities.set_location(entity.id, archetype_idx, idx);
         entity
     }
 
     #[inline]
-    pub fn spawn_batch<I>(&mut self, bundles: I) -> SpawnBundle<'_, I::Item, I::IntoIter>
+    pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBundle<'_, I::IntoIter>
     where
-        I: IntoIterator,
-        I::Item: Bundle,
+        I: IntoIterator<Item = B>,
+        B: Bundle,
     {
+        if !B::static_valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
         let archetype_idx = get_archetype_idx_with_maps(
             &mut self.keys,
             &mut self.ids,
@@ -275,6 +306,13 @@ impl World {
     where
         B: DynamicBundle,
     {
+        if !bundle.valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
         let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
         if bundle.with_ids(|ids| ids.is_empty()) {
@@ -322,6 +360,13 @@ impl World {
     where
         B: Bundle,
     {
+        if !B::static_valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
         let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
         if B::static_with_ids(|ids| {
@@ -370,6 +415,13 @@ impl World {
     where
         B: Bundle,
     {
+        if !B::static_valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
         assert!(self.entities.is_owner_of(&entity));
 
         let (archetype, _idx) = self.entities.get(&entity).unwrap();
@@ -595,11 +647,28 @@ impl World {
     pub fn maintain(&mut self) {
         let queue = self.entities.drop_queue();
 
-        for id in queue.drain() {
-            let (archetype, idx) = self.entities.dropped(id);
-            let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
-            if let Some(id) = opt_id {
-                self.entities.set_location(id, archetype, idx)
+        loop {
+            let mut drain = queue.drain();
+            match drain.next() {
+                None => break,
+                Some(id) => {
+                    let (archetype, idx) = self.entities.dropped(id);
+
+                    let opt_id =
+                        unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+                    if let Some(id) = opt_id {
+                        self.entities.set_location(id, archetype, idx)
+                    }
+
+                    for id in drain {
+                        let (archetype, idx) = self.entities.dropped(id);
+                        let opt_id =
+                            unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+                        if let Some(id) = opt_id {
+                            self.entities.set_location(id, archetype, idx)
+                        }
+                    }
+                }
             }
         }
     }
@@ -769,7 +838,7 @@ impl World {
     }
 }
 
-pub struct SpawnBundle<'a, B: Bundle, I: Iterator<Item = B>> {
+pub struct SpawnBundle<'a, I> {
     bundles: I,
     epoch: u64,
     archetype_idx: u32,
@@ -777,7 +846,7 @@ pub struct SpawnBundle<'a, B: Bundle, I: Iterator<Item = B>> {
     entities: &'a mut Entities,
 }
 
-impl<B, I> Iterator for SpawnBundle<'_, B, I>
+impl<B, I> Iterator for SpawnBundle<'_, I>
 where
     I: Iterator<Item = B>,
     B: Bundle,
@@ -787,15 +856,22 @@ where
     fn next(&mut self) -> Option<Entity> {
         let bundle = self.bundles.next()?;
 
-        let (lower, upper) = self.bundles.size_hint();
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
-        let reserve = match upper {
-            None => lower,
-            Some(upper) => upper.min(lower * 2),
-        };
+        self.entities
+            .set_location(entity.id, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Entity> {
+        // No reason to create entities
+        // for which the only reference is immediatelly dropped
+        let bundle = self.bundles.nth(n)?;
 
         let entity = self.entities.spawn();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch, reserve);
+        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
             .set_location(entity.id, self.archetype_idx, idx);
@@ -806,9 +882,41 @@ where
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.bundles.size_hint()
     }
+
+    fn fold<T, F>(mut self, init: T, mut f: F) -> T
+    where
+        F: FnMut(T, Entity) -> T,
+    {
+        spawn_reserve(&self.bundles, self.archetype);
+
+        let entities = &mut self.entities;
+        let archetype = &mut self.archetype;
+        let archetype_idx = self.archetype_idx;
+        let epoch = self.epoch;
+
+        self.bundles.fold(init, |acc, bundle| {
+            let entity = entities.spawn();
+            let idx = archetype.spawn(*entity, bundle, epoch);
+            entities.set_location(entity.id, archetype_idx, idx);
+            f(acc, entity)
+        })
+    }
+
+    fn collect<T>(self) -> T
+    where
+        T: FromIterator<Entity>,
+    {
+        // `FromIterator::from_iter` would probably just call `fn next()`
+        // until the end of the iterator.
+        //
+        // Hence we should reserve space in archetype here.
+        spawn_reserve(&self.bundles, self.archetype);
+
+        FromIterator::from_iter(self)
+    }
 }
 
-impl<B, I> ExactSizeIterator for SpawnBundle<'_, B, I>
+impl<B, I> ExactSizeIterator for SpawnBundle<'_, I>
 where
     I: ExactSizeIterator<Item = B>,
     B: Bundle,
@@ -818,7 +926,7 @@ where
     }
 }
 
-impl<B, I> DoubleEndedIterator for SpawnBundle<'_, B, I>
+impl<B, I> DoubleEndedIterator for SpawnBundle<'_, I>
 where
     I: DoubleEndedIterator<Item = B>,
     B: Bundle,
@@ -826,24 +934,51 @@ where
     fn next_back(&mut self) -> Option<Entity> {
         let bundle = self.bundles.next_back()?;
 
-        let (lower, upper) = self.bundles.size_hint();
-
-        let reserve = match upper {
-            None => lower,
-            Some(upper) => upper.min(lower * 2),
-        };
-
         let entity = self.entities.spawn();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch, reserve);
+        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
             .set_location(entity.id, self.archetype_idx, idx);
 
         Some(entity)
     }
+
+    fn nth_back(&mut self, n: usize) -> Option<Entity> {
+        // No reason to create entities
+        // for which the only reference is immediatelly dropped
+        let bundle = self.bundles.nth_back(n)?;
+
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
+
+        self.entities
+            .set_location(entity.id, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn rfold<T, F>(mut self, init: T, mut f: F) -> T
+    where
+        Self: Sized,
+        F: FnMut(T, Entity) -> T,
+    {
+        spawn_reserve(&self.bundles, self.archetype);
+
+        let entities = &mut self.entities;
+        let archetype = &mut self.archetype;
+        let archetype_idx = self.archetype_idx;
+        let epoch = self.epoch;
+
+        self.bundles.rfold(init, |acc, bundle| {
+            let entity = entities.spawn();
+            let idx = archetype.spawn(*entity, bundle, epoch);
+            entities.set_location(entity.id, archetype_idx, idx);
+            f(acc, entity)
+        })
+    }
 }
 
-impl<B, I> FusedIterator for SpawnBundle<'_, B, I>
+impl<B, I> FusedIterator for SpawnBundle<'_, I>
 where
     I: FusedIterator<Item = B>,
     B: Bundle,

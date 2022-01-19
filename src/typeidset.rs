@@ -25,6 +25,8 @@ impl TypeIdSet {
 
                 if entries[idx] == no_type_id {
                     entries[idx] = id;
+                } else if entries[idx] == id {
+                    panic!("Duplicate type id");
                 } else {
                     let len = entries.len() + 1;
                     let add = len - entries.len();

@@ -23,18 +23,6 @@ use crate::{
     typeidset::TypeIdSet,
 };
 
-/// Collection of all entities with same set of components.
-/// Archetypes are typically managed by the `World` instance.
-///
-/// This type is exposed for `Query` implementations.
-#[derive(Debug)]
-pub struct Archetype {
-    set: TypeIdSet,
-    indices: Box<[usize]>,
-    entities: Vec<WeakEntity>,
-    components: Box<[UnsafeCell<ComponentData>]>,
-}
-
 #[derive(Debug)]
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
@@ -118,6 +106,27 @@ impl ComponentData {
     }
 }
 
+/// Collection of all entities with same set of components.
+/// Archetypes are typically managed by the `World` instance.
+///
+/// This type is exposed for `Query` implementations.
+#[derive(Debug)]
+pub struct Archetype {
+    set: TypeIdSet,
+    indices: Box<[usize]>,
+    entities: Vec<WeakEntity>,
+    components: Box<[UnsafeCell<ComponentData>]>,
+}
+
+impl Drop for Archetype {
+    fn drop(&mut self) {
+        for &idx in &*self.indices {
+            let component = self.components[idx].get_mut();
+            unsafe { (component.drop)(component.ptr.as_ptr(), self.entities.len()) }
+        }
+    }
+}
+
 impl Archetype {
     /// Creates new archetype with the given set of components.
     pub fn new<'a>(components: impl Iterator<Item = &'a ComponentInfo> + Clone) -> Self {
@@ -187,7 +196,7 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
-    pub fn spawn<B>(&mut self, entity: WeakEntity, bundle: B, epoch: u64, reserve: usize) -> u32
+    pub fn spawn<B>(&mut self, entity: WeakEntity, bundle: B, epoch: u64) -> u32
     where
         B: DynamicBundle,
     {
@@ -197,7 +206,7 @@ impl Archetype {
         let entity_idx = self.entities.len();
 
         unsafe {
-            self.reserve(reserve + 1);
+            self.reserve(1);
             self.write_bundle(entity_idx, bundle, epoch, |_| false);
         }
 
@@ -489,13 +498,17 @@ impl Archetype {
     }
 
     #[inline]
-    unsafe fn reserve(&mut self, additional: usize) {
-        if self.entities.len() == self.entities.capacity() {
-            self.entities.reserve(additional);
+    pub(crate) fn reserve(&mut self, additional: usize) {
+        let cap = self.entities.capacity();
+        self.entities.reserve(additional);
 
+        if cap == self.entities.capacity() {
+            // Capacity changed
             for &idx in &*self.indices {
                 let component = self.components[idx].get_mut();
-                component.grow(self.entities.len(), self.entities.capacity());
+                unsafe {
+                    component.grow(self.entities.len(), self.entities.capacity());
+                }
             }
         }
     }

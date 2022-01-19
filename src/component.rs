@@ -34,7 +34,7 @@ impl ComponentInfo {
             layout: Layout::new::<T>(),
             debug_name: type_name::<T>(),
             drop: |ptr, count| unsafe {
-                drop_in_place::<[T]>(slice_from_raw_parts_mut(ptr.cast(), count))
+                drop_in_place::<[T]>(slice_from_raw_parts_mut(ptr.cast::<T>(), count))
             },
             // copy: |src, dst, count| unsafe {
             //     copy_nonoverlapping(src as *const T, dst as *mut T, count)

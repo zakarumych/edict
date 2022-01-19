@@ -29,6 +29,12 @@ impl Entity {
     }
 }
 
+impl<T> Entity<T> {
+    pub fn downgrade(&self) -> WeakEntity {
+        **self
+    }
+}
+
 impl<T> fmt::Debug for Entity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entity")

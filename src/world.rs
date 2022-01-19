@@ -1,3 +1,5 @@
+//! Self-contained ECS [`World`].
+
 use core::{
     any::{type_name, TypeId},
     fmt,
@@ -24,8 +26,15 @@ use crate::{
     query::{
         Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryItem, QueryIter, QueryTrackedIter,
     },
-    tracks::Tracks,
 };
+
+/// Value to remember which modifications was already iterated over,
+/// and see what modifications are new.
+#[derive(Clone, Debug)]
+#[allow(missing_copy_implementations)]
+pub struct Tracks {
+    pub(crate) epoch: u64,
+}
 
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
@@ -124,6 +133,8 @@ impl World {
         }
     }
 
+    /// Spawns new entity in this world with provided bundle of components.
+    /// Returns strong reference to newly created entity.
     #[inline]
     pub fn spawn<B>(&mut self, bundle: B) -> Entity
     where
@@ -151,6 +162,23 @@ impl World {
         entity
     }
 
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles returnd from provided iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will not cause them to be spawned
+    /// and same number of items will be skipped on bundles iterator.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
     #[inline]
     pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBundle<'_, I::IntoIter>
     where
@@ -186,6 +214,11 @@ impl World {
         }
     }
 
+    /// Inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
     #[inline]
     pub fn insert<T, P>(&mut self, entity: &Entity<P>, component: T)
     where
@@ -196,6 +229,13 @@ impl World {
         self.try_insert(entity, component).expect("Entity exists");
     }
 
+    /// Attemots to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn try_insert<T>(&mut self, entity: &WeakEntity, component: T) -> Result<(), NoSuchEntity>
     where
@@ -244,6 +284,10 @@ impl World {
         Ok(())
     }
 
+    /// Removes component from the specified entity and returns its value.
+    ///
+    /// If entity does not have component of this type, fails with `Err(EntityError::MissingComponent)`.
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn remove<T>(&mut self, entity: &WeakEntity) -> Result<T, EntityError>
     where
@@ -288,6 +332,14 @@ impl World {
         Ok(component)
     }
 
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
     #[inline]
     pub fn insert_bundle<B, T>(&mut self, entity: &Entity<T>, bundle: B)
     where
@@ -297,6 +349,16 @@ impl World {
         self.try_insert_bundle(entity, bundle).unwrap();
     }
 
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn try_insert_bundle<B>(
         &mut self,
@@ -355,6 +417,10 @@ impl World {
         Ok(())
     }
 
+    /// Drops components of the specified entity with type from the bundle.
+    /// Skips any component type entity doesn't have.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn remove_bundle<B>(&mut self, entity: &WeakEntity) -> Result<(), NoSuchEntity>
     where
@@ -410,6 +476,14 @@ impl World {
         Ok(())
     }
 
+    /// Checks that entity has components of all types from the bundle.
+    /// Pins those types to the entity.
+    ///
+    /// Pinning serves as API level contract.
+    ///
+    /// Pinned components are not enforced to stay at entity
+    /// and can be removed using `World::remove` or `World::remove_bundle`
+    /// with a clone of the `Entity` without component types pinned.
     #[inline]
     pub fn pin_bundle<B>(&mut self, entity: Entity) -> Entity<B>
     where
@@ -567,6 +641,9 @@ impl World {
         }
     }
 
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method only works with immutable queries that does not track for component changes.
     #[inline]
     pub fn query<'a, Q>(&'a self) -> QueryIter<'a, Q>
     where
@@ -575,6 +652,10 @@ impl World {
         QueryIter::new(self.epoch, &self.archetypes)
     }
 
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that track for component changes.
+    /// This method only works with immutable queries.
     #[inline]
     pub fn query_tracked<'a, Q>(&'a self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
     where
@@ -585,6 +666,10 @@ impl World {
         iter
     }
 
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that mutate components.
+    /// This method only works queries that does not track for component changes.
     #[inline]
     pub fn query_mut<'a, Q>(&'a mut self) -> QueryIter<'a, Q>
     where
@@ -597,6 +682,9 @@ impl World {
         QueryIter::new(self.epoch, &self.archetypes)
     }
 
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that mutates components and track for component changes.
     #[inline]
     pub fn query_tracked_mut<'a, Q>(&'a mut self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
     where
@@ -611,6 +699,7 @@ impl World {
         iter
     }
 
+    /// Checks if specified entity has componet of specified type.
     #[inline]
     pub fn has_component<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
         assert!(self.entities.is_owner_of(entity));
@@ -619,6 +708,9 @@ impl World {
         self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
     }
 
+    /// Attemtps to check if specified entity has componet of specified type.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn has_component_weak<T: 'static>(
         &self,
@@ -628,21 +720,34 @@ impl World {
         Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
     }
 
+    /// Checks if specified entity is still alive.
     #[inline]
     pub fn is_alive(&self, entity: &WeakEntity) -> bool {
         self.entities.get(entity).is_some()
     }
 
+    /// Returns new [`Tracks`] instance to use with tracking queries.
+    ///
+    /// Returnd [`Tracks`] instance considers all modifications
+    /// since creation of the world as "new" for the first tracking query.
     #[inline]
     pub fn tracks(&self) -> Tracks {
         Tracks { epoch: 0 }
     }
 
+    /// Returns new [`Tracks`] instance to use with tracking queries.
+    ///
+    /// Returnd [`Tracks`] instance considers only modifications
+    /// that happen after this function call as "new" for the first tracking query.
     #[inline]
     pub fn tracks_now(&self) -> Tracks {
         Tracks { epoch: self.epoch }
     }
 
+    /// Run world maintenance, completing all deferred operations on it.
+    ///
+    /// Currently deferred operations are:
+    /// * Despawn of entities with no strong references left
     #[inline]
     pub fn maintain(&mut self) {
         let queue = self.entities.drop_queue();
@@ -673,6 +778,79 @@ impl World {
         }
     }
 
+    /// Iterates through world using specified query.
+    ///
+    /// This method only works with immutable queries that does not track for component changes.
+    #[inline]
+    pub fn for_each<Q, F>(&self, mut f: F)
+    where
+        Q: Query + NonTrackingQuery + ImmutableQuery,
+        F: FnMut(QueryItem<'_, Q>),
+    {
+        debug_assert!(!Q::mutates());
+
+        for archetype in &self.archetypes {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+                for idx in 0..archetype.len() {
+                    f(unsafe { fetch.get_item(idx) });
+                }
+            }
+        }
+    }
+
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that track for component changes.
+    /// This method only works with immutable queries.
+    #[inline]
+    pub fn for_each_tracked<Q, F>(&self, tracks: &mut Tracks, mut f: F)
+    where
+        Q: Query + ImmutableQuery,
+        F: FnMut(QueryItem<'_, Q>),
+    {
+        debug_assert!(!Q::mutates());
+
+        let tracks_epoch = tracks.epoch;
+        tracks.epoch = self.epoch;
+
+        for archetype in &self.archetypes {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, self.epoch) } {
+                for chunk_idx in 0..archetype.len() / CHUNK_LEN_USIZE {
+                    if unsafe { fetch.skip_chunk(chunk_idx) } {
+                        continue;
+                    }
+
+                    for idx in
+                        chunk_idx * CHUNK_LEN_USIZE..chunk_idx * CHUNK_LEN_USIZE + CHUNK_LEN_USIZE
+                    {
+                        if !unsafe { fetch.skip_item(idx) } {
+                            f(unsafe { fetch.get_item(idx) });
+                        }
+                    }
+                }
+
+                let tail = archetype.len() % CHUNK_LEN_USIZE;
+
+                if tail > 0 {
+                    let chunk_idx = archetype.len() / CHUNK_LEN_USIZE;
+                    if unsafe { fetch.skip_chunk(chunk_idx) } {
+                        continue;
+                    }
+
+                    for idx in chunk_idx * CHUNK_LEN_USIZE..chunk_idx * CHUNK_LEN_USIZE + tail {
+                        if !unsafe { fetch.skip_item(idx) } {
+                            f(unsafe { fetch.get_item(idx) });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that mutate components.
+    /// This method only works queries that does not track for component changes.
     #[inline]
     pub fn for_each_mut<Q, F>(&mut self, mut f: F)
     where
@@ -720,6 +898,9 @@ impl World {
         }
     }
 
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that mutates components and track for component changes.
     #[inline]
     pub fn for_each_tracked_mut<Q, F>(&mut self, tracks: &mut Tracks, mut f: F)
     where
@@ -774,70 +955,10 @@ impl World {
             }
         }
     }
-
-    #[inline]
-    pub fn for_each<Q, F>(&self, mut f: F)
-    where
-        Q: Query + NonTrackingQuery + ImmutableQuery,
-        F: FnMut(QueryItem<'_, Q>),
-    {
-        debug_assert!(!Q::mutates());
-
-        for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
-                for idx in 0..archetype.len() {
-                    f(unsafe { fetch.get_item(idx) });
-                }
-            }
-        }
-    }
-
-    #[inline]
-    pub fn for_each_tracked<Q, F>(&self, tracks: &mut Tracks, mut f: F)
-    where
-        Q: Query + ImmutableQuery,
-        F: FnMut(QueryItem<'_, Q>),
-    {
-        debug_assert!(!Q::mutates());
-
-        let tracks_epoch = tracks.epoch;
-        tracks.epoch = self.epoch;
-
-        for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, self.epoch) } {
-                for chunk_idx in 0..archetype.len() / CHUNK_LEN_USIZE {
-                    if unsafe { fetch.skip_chunk(chunk_idx) } {
-                        continue;
-                    }
-
-                    for idx in
-                        chunk_idx * CHUNK_LEN_USIZE..chunk_idx * CHUNK_LEN_USIZE + CHUNK_LEN_USIZE
-                    {
-                        if !unsafe { fetch.skip_item(idx) } {
-                            f(unsafe { fetch.get_item(idx) });
-                        }
-                    }
-                }
-
-                let tail = archetype.len() % CHUNK_LEN_USIZE;
-
-                if tail > 0 {
-                    let chunk_idx = archetype.len() / CHUNK_LEN_USIZE;
-                    if unsafe { fetch.skip_chunk(chunk_idx) } {
-                        continue;
-                    }
-
-                    for idx in chunk_idx * CHUNK_LEN_USIZE..chunk_idx * CHUNK_LEN_USIZE + tail {
-                        if !unsafe { fetch.skip_item(idx) } {
-                            f(unsafe { fetch.get_item(idx) });
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
+/// Spawning iterator. Produced by [`World::spawn_batch`].
+#[derive(Debug)]
 pub struct SpawnBundle<'a, I> {
     bundles: I,
     epoch: u64,
@@ -985,7 +1106,9 @@ where
 {
 }
 
-#[derive(Debug)]
+/// Error returned in case specified [`WeakEntity`]
+/// does not reference any live entity in the [`World`].
+#[derive(Clone, Copy, Debug)]
 pub struct NoSuchEntity;
 
 impl fmt::Display for NoSuchEntity {
@@ -997,7 +1120,9 @@ impl fmt::Display for NoSuchEntity {
 #[cfg(feature = "std")]
 impl std::error::Error for NoSuchEntity {}
 
-#[derive(Debug)]
+/// Error returned in case specified entity does not contain
+/// component of required type.
+#[derive(Clone, Copy, Debug)]
 pub struct MissingComponents;
 
 impl fmt::Display for MissingComponents {
@@ -1009,9 +1134,16 @@ impl fmt::Display for MissingComponents {
 #[cfg(feature = "std")]
 impl std::error::Error for MissingComponents {}
 
-#[derive(Debug)]
+/// Error returned if either entity reference is invalid
+/// or component of required type is not found for an entity.
+#[derive(Clone, Copy, Debug)]
 pub enum EntityError {
+    /// Error returned in case specified [`WeakEntity`]
+    /// does not reference any live entity in the [`World`].
     NoSuchEntity,
+
+    /// Error returned in case specified entity does not contain
+    /// component of required type.
     MissingComponents,
 }
 
@@ -1046,9 +1178,15 @@ impl From<MissingComponents> for EntityError {
     }
 }
 
-pub trait AsBundle {
+/// Umbrella trait for [`DynamicBundle`] and [`Bundle`].
+trait AsBundle {
+    /// Returns static key if the bundle type have one.
     fn key() -> Option<TypeId>;
+
+    /// Calls provided closure with slice of ids of types that this bundle contains.
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
+
+    /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }
 

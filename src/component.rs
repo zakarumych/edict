@@ -1,3 +1,5 @@
+//! This module implements [`Component`] trait for all suitable types.
+
 use core::{
     alloc::Layout,
     any::{type_name, TypeId},
@@ -6,20 +8,39 @@ use core::{
 
 /// Trait that is implemented for all types that can act as a component.
 /// Currently is implemented for all `'static` types.
-pub trait Component: 'static {}
+pub trait Component: 'static {
+    /// Returns [`ComponentInfo`] for this component type.
+    fn info() -> ComponentInfo;
+}
 
-impl<T> Component for T where T: 'static {}
+impl<T> Component for T
+where
+    T: 'static,
+{
+    fn info() -> ComponentInfo {
+        ComponentInfo::of::<T>()
+    }
+}
 
 /// Type information required for components.
 #[derive(Clone, Copy, Debug)]
 pub struct ComponentInfo {
+    /// [`TypeId`] of the component.
     pub id: TypeId,
+
+    /// [`Layout`] of the component.
     pub layout: Layout,
+
+    /// [`type_name`] of the component.
     pub debug_name: &'static str,
+
+    /// Function that calls drop glue for an array components.
     pub drop: unsafe fn(*mut u8, usize),
+
+    /// Function that calls drop glue for a component.
     pub drop_one: unsafe fn(*mut u8),
-    // pub copy: unsafe fn(*const u8, *mut u8, usize),
-    // pub copy_one: unsafe fn(*const u8, *mut u8),
+
+    /// Function that replaces component at target location.
     pub set_one: unsafe fn(*mut u8, *mut u8),
 }
 
@@ -36,11 +57,7 @@ impl ComponentInfo {
             drop: |ptr, count| unsafe {
                 drop_in_place::<[T]>(slice_from_raw_parts_mut(ptr.cast::<T>(), count))
             },
-            // copy: |src, dst, count| unsafe {
-            //     copy_nonoverlapping(src as *const T, dst as *mut T, count)
-            // },
             drop_one: |ptr| unsafe { drop_in_place::<T>(ptr.cast()) },
-            // copy_one: |src, dst| unsafe { copy_nonoverlapping(src as *const T, dst as *mut T, 1) },
             set_one: |src, dst| unsafe { *(dst as *mut T) = ptr::read(src as *mut T) },
         }
     }

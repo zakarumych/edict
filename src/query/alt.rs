@@ -20,11 +20,13 @@ use super::{Fetch, NonTrackingQuery, Query};
 ///
 /// `Alt` is `NonTrackingQuery` as it does not depend on current versions
 /// of the components.
+#[derive(Clone, Copy, Debug)]
 pub struct Alt<T>(PhantomData<T>);
 
 /// Item type that `Alt` yields.
 /// Wraps `&mut T` and implements `DerefMut` to `T`.
 /// Bumps component version on dereference.
+#[derive(Debug)]
 pub struct RefMut<'a, T: ?Sized> {
     pub(super) component: &'a mut T,
     pub(super) entity_version: &'a mut u64,
@@ -51,6 +53,7 @@ impl<T> DerefMut for RefMut<'_, T> {
 }
 
 /// `Fetch` type for the `Alt` query.
+#[allow(missing_debug_implementations)]
 pub struct FetchAlt<T> {
     epoch: u64,
     ptr: NonNull<T>,

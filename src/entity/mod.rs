@@ -1,3 +1,7 @@
+//! Entity references.
+//!
+//! Strong, weak and raw ids.
+
 pub(crate) use self::entities::Entities;
 pub use self::{id::EntityId, typed::Entity, weak::WeakEntity};
 

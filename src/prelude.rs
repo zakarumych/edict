@@ -1,3 +1,5 @@
+//! A prelude module. Reexports types and traits, enough to start using [`edict`]
+
 pub use crate::{
     bundle::{Bundle, DynamicBundle},
     component::Component,
@@ -6,5 +8,5 @@ pub use crate::{
         Alt, ImmutableQuery, Modifed, NonTrackingQuery, Query, QueryItem, QueryIter,
         QueryTrackedIter,
     },
-    world::{EntityError, World},
+    world::{EntityError, Tracks, World},
 };

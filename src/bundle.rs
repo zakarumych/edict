@@ -1,3 +1,6 @@
+//! This module implements the [`Bundle`] and [`DynanicBundle`] traits,
+//! which enables to build entities efficiently.
+
 use core::{
     any::TypeId,
     mem::{size_of, ManuallyDrop},
@@ -8,23 +11,37 @@ use crate::component::{Component, ComponentInfo};
 
 /// Possible dynamic collection of components that may be inserted into the `World`.
 pub unsafe trait DynamicBundle {
+    /// Returns `true` if given bundle is valid.
     fn valid(&self) -> bool;
 
     /// Returns static key if the bundle type have one.
     fn key() -> Option<TypeId> {
         None
     }
+
+    /// Calls provided closure with slice of ids of types that this bundle contains.
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
+
+    /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
+
+    /// Calls provided closure with pointer to a component, its type and size.
+    /// Closure is expected to read components from the pointer and take ownership.
     fn put(self, f: impl FnMut(NonNull<u8>, TypeId, usize));
 }
 
 /// Static collection of components that may be inserted into the `World`.
 pub trait Bundle: DynamicBundle {
+    /// Returns `true` if given bundle is valid.
     fn static_valid() -> bool;
 
+    /// Returns static key for the bundle type.
     fn static_key() -> TypeId;
+
+    /// Calls provided closure with slice of ids of types that this bundle contains.    
     fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R;
+
+    /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }
 

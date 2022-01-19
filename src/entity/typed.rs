@@ -30,6 +30,7 @@ impl Entity {
 }
 
 impl<T> Entity<T> {
+    /// Returns [`WeakEntity`] value that references same entity.
     pub fn downgrade(&self) -> WeakEntity {
         **self
     }

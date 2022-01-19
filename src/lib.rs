@@ -55,20 +55,22 @@
 //! [`World::tracks()`]: `edict::world::World::tracks`
 //! [`World::tracks_now()`]: `edict::world::World::tracks_now`
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_copy_implementations)]
+#![deny(missing_debug_implementations)]
+#![deny(missing_docs)]
 
 extern crate alloc;
 extern crate self as edict;
 
-pub mod archetype;
 pub mod bundle;
 pub mod component;
 pub mod entity;
 pub mod prelude;
 pub mod proof;
 pub mod query;
-pub mod tracks;
 pub mod world;
 
+mod archetype;
 mod hash;
 mod idx;
 mod typeidset;

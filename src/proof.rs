@@ -1,3 +1,6 @@
+//! This module implements [`Proof`] trait,
+//! which enables fetching specific entity components with guarantees.
+
 /// Special kind of query to skip components in `World::get/get_mut`.
 ///
 /// Does nothing for all other methods.

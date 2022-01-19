@@ -6,6 +6,7 @@ use core::fmt;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct EntityId {
+    /// ID value.
     pub id: u32,
 }
 

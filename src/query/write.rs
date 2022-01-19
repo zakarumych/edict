@@ -5,6 +5,7 @@ use crate::{archetype::Archetype, component::Component};
 use super::{Fetch, NonTrackingQuery, Query};
 
 /// `Fetch` type for the `&mut T` query.
+#[allow(missing_debug_implementations)]
 pub struct FetchWrite<T> {
     epoch: u64,
     ptr: NonNull<T>,

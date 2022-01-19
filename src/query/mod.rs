@@ -1,3 +1,11 @@
+//! Queries and iterators.
+//!
+//! To efficiently iterate over entities with specific set of components,
+//! or only over thoses where specific component is modified, or missing,
+//! [`Query`] is the solution.
+//!
+//! [`Query`] trait has a lot of implementations and is composable using tuples.
+
 pub use self::{
     alt::{Alt, FetchAlt},
     modified::{Modifed, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
@@ -27,28 +35,33 @@ pub use self::{alt::*, modified::*, option::*, read::*, skip::*, write::*};
 
 /// Trait implemented for `Query::Fetch` associated types.
 pub trait Fetch<'a> {
+    /// Item type this fetch type yields.
     type Item;
 
     /// Returns `Fetch` value that must not be used.
     fn dangling() -> Self;
 
+    /// Checks if chunk with specified index must be skipped.
     #[inline]
     unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
         drop(chunk_idx);
         false
     }
 
+    /// Checks if item with specified index must be skipped.
     #[inline]
     unsafe fn skip_item(&self, idx: usize) -> bool {
         drop(idx);
         false
     }
 
+    /// Notifies this fetch that it visits a chunk.
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
         drop(chunk_idx);
     }
 
+    /// Returns fetched item at specifeid index.
     unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
 }
 
@@ -56,18 +69,27 @@ pub trait Fetch<'a> {
 /// Queries implement efficient iteration over entities while yielding
 /// sets of references to the components and optionally `WeakEntity` to address same components later.
 pub trait Query {
+    /// Fetch value type for this query type.
+    /// Contains data from one archetype.
     type Fetch: for<'a> Fetch<'a>;
 
+    /// Checks if this query type mutates any of the components.
+    /// Queries that returns [`false`] must never attempt to modify a component.
+    /// [`ImmutableQuery`] must statically return [`false`]
+    /// and never attempt to modify a component.
     #[inline]
     fn mutates() -> bool {
         false
     }
 
+    /// Checks if this query tracks changes of any of the components.
     #[inline]
     fn tracks() -> bool {
         false
     }
 
+    /// Fetches data from one archetype.
+    /// Returns [`None`] is archetype does not match query requirements.
     unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Self::Fetch>;
 }
 
@@ -188,6 +210,7 @@ for_tuple!();
 /// Yields `WeakEntity` and query items for every matching entity.
 ///
 /// Supports only `NonTrackingQuery`.
+#[allow(missing_debug_implementations)]
 pub struct QueryIter<'a, Q: Query> {
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
@@ -298,6 +321,7 @@ where
 /// Yields `WeakEntity` and query items for every matching entity.
 ///
 /// Does not require `Q` to implement `NonTrackingQuery`.
+#[allow(missing_debug_implementations)]
 pub struct QueryTrackedIter<'a, Q: Query> {
     tracks: u64,
     epoch: u64,

@@ -5,6 +5,8 @@ use crate::{archetype::Archetype, component::Component};
 use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 /// `Fetch` type for the `&T` query.
+#[allow(missing_debug_implementations)]
+
 pub struct FetchRead<T> {
     pub(super) ptr: NonNull<T>,
 }

@@ -18,11 +18,13 @@ use super::{
 /// This is tracking query that requires providing subscriber's
 /// `Tracks` to skip components that are not modified since the last time
 /// that `Tracks` instance was used.
+#[derive(Debug)]
 pub struct Modifed<T> {
     marker: PhantomData<fn() -> T>,
 }
 
 /// `Fetch` type for the `Modified<&T>` query.
+#[allow(missing_debug_implementations)]
 pub struct ModifiedFetchRead<T> {
     tracks: u64,
     ptr: NonNull<T>,
@@ -101,6 +103,7 @@ where
 unsafe impl<T> ImmutableQuery for Modifed<&T> where T: Component {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
+#[allow(missing_debug_implementations)]
 pub struct ModifiedFetchWrite<T> {
     tracks: u64,
     epoch: u64,
@@ -192,6 +195,8 @@ where
     }
 }
 
+#[allow(missing_debug_implementations)]
+/// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<T> {
     tracks: u64,
     epoch: u64,

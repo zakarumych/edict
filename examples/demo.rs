@@ -18,7 +18,7 @@ struct Parent {
 
 /// Child component type.
 struct Child {
-    parent: WeakEntity,
+    parent: EntityId,
 }
 
 fn main() {
@@ -35,7 +35,7 @@ fn main() {
     //
     // Take care to now try to add duplicate components in one bundle
     // as method will surely panic.
-    let e = world.spawn((Foo, Bar, Baz));
+    let e = world.spawn_owned((Foo, Bar, Baz));
 
     // Entity can be used to access components in the `World`.
     // Note that we query entity for `Option<&Foo>`,
@@ -55,20 +55,20 @@ fn main() {
     // This is much more efficient than adding components once by one.
     world.insert_bundle(&e, (1u8, 2u16));
 
-    // `Entity` can be downgraded to `WeakEnitity`.
+    // `Entity` can asked for its `EntityId`.
     // While `Entity` acts like strong reference to the entity in the world,
     // keeping enitity and its components alive,
-    // `WeakEntity` acts like weak reference and may become obsolete
+    // `EntityId` acts like weak reference and may become obsolete
     // if referenced entity is dropped.
-    let e_weak = e.downgrade();
+    let e_weak = e.id();
 
     // To check if entity is alive, user may call `World::is_alive`.
-    assert!(world.is_alive(&e_weak), "We still hold `e: Entity`");
+    assert!(world.is_alive(e_weak), "We still hold `e: Entity`");
 
-    // User may query components using `WeakEntity`.
+    // User may query components using `EntityId`.
     // Doing so requires using fallible counterparts of `get` and `get_mut`,
     // namely `query_one` and `query_mut`.
-    match world.query_one::<&Foo>(&e_weak) {
+    match world.query_one::<&Foo>(e_weak) {
         Err(EntityError::NoSuchEntity) => {
             // If entity was despawned already this error variant is returned.
             unreachable!("We still hold `e: Entity`");
@@ -83,9 +83,9 @@ fn main() {
         }
     }
 
-    // `Entity` dereferences to `WeakEntity`
-    // allowing using `Entity` whenever `WeakEntity` is expected.
-    let _res = world.query_one::<&Foo>(&e);
+    // `Entity` dereferences to `EntityId`
+    // allowing using `Entity` whenever `EntityId` is expected.
+    let _res = world.query_one::<&Foo>(*e);
 
     // Entities can be cloned.
     // This costs one atomic operation, same as for `Arc` clone.
@@ -100,11 +100,11 @@ fn main() {
 
     // Although last strong reference to an entity was dropped,
     // the entity is still alive. When would it be despawned?
-    assert!(world.is_alive(&e_weak), "Still alive. But not for long");
+    assert!(world.is_alive(e_weak), "Still alive. But not for long");
 
     // Queries still work as before.
     assert!(
-        matches!(world.query_one::<&Foo>(&e_weak), Ok(Foo)),
+        matches!(world.query_one::<&Foo>(e_weak), Ok(Foo)),
         "Components are still there too"
     );
 
@@ -117,12 +117,12 @@ fn main() {
     world.maintain();
 
     // The entity is gone.
-    assert!(!world.is_alive(&e_weak), "Finally despawned");
+    assert!(!world.is_alive(e_weak), "Finally despawned");
 
     // Query reports the same.
     assert!(
         matches!(
-            world.query_one::<&Foo>(&e_weak),
+            world.query_one::<&Foo>(e_weak),
             Err(EntityError::NoSuchEntity)
         ),
         "No such entity"
@@ -137,14 +137,17 @@ fn main() {
     // and not `(0, None)`
     //
     // `World::spawn_batch` returns an iterator with `Entity` for each entity created.
-    let _entities: Vec<_> = world.spawn_batch((0..10u32).map(|i| (i,))).collect();
+    let _entities: Vec<_> = world.spawn_batch_owned((0..10u32).map(|i| (i,))).collect();
 
     // User may choose to not consume returned iterator, or consume it partially.
     // This would cause original iterator to not be consumed as well and entities will not be spawned.
     //
     // This allows using unbound iterators to produce entities and stop at any moment.
     // Note that above version is better as it offers chance to reserve space for entities.
-    let _entities: Vec<_> = world.spawn_batch((0u32..).map(|i| (i,))).take(10).collect();
+    let _entities: Vec<_> = world
+        .spawn_batch_owned((0u32..).map(|i| (i,)))
+        .take(10)
+        .collect();
 
     // Refcounting allows defining entity ownership relations
     let parent = world.spawn((Parent {
@@ -152,23 +155,20 @@ fn main() {
     },));
 
     let children = world
-        .spawn_batch((0..10).map(|_| (Child { parent: *parent },)))
+        .spawn_batch_owned((0..10).map(|_| (Child { parent },)))
         .collect::<Vec<_>>();
 
     let weak_children = children.iter().map(|e| **e).collect::<Vec<_>>();
 
-    world
-        .get_mut::<Option<&mut Parent>, _>(&parent)
-        .unwrap()
-        .children = children;
+    world.query_one_mut::<&mut Parent>(parent).unwrap().children = children;
 
     // Now `parent` owns the children entities.
     // When `parent` is despanwed, children loose one strong reference,
     // if it was the last one they are despawned as well.
-    drop(parent);
+    world.despawn(parent).unwrap();
     world.maintain();
 
     for child in weak_children {
-        assert!(!world.is_alive(&child));
+        assert!(!world.is_alive(child));
     }
 }

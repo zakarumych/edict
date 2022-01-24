@@ -18,7 +18,7 @@ use alloc::{
 use crate::{
     bundle::DynamicBundle,
     component::{Component, ComponentInfo},
-    entity::WeakEntity,
+    entity::EntityId,
     idx::MAX_IDX_USIZE,
     typeidset::TypeIdSet,
 };
@@ -125,7 +125,7 @@ impl ComponentData {
 pub struct Archetype {
     set: TypeIdSet,
     indices: Box<[usize]>,
-    entities: Vec<WeakEntity>,
+    entities: Vec<EntityId>,
     components: Box<[UnsafeCell<ComponentData>]>,
 }
 
@@ -207,7 +207,7 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
-    pub fn spawn<B>(&mut self, entity: WeakEntity, bundle: B, epoch: u64) -> u32
+    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: u64) -> u32
     where
         B: DynamicBundle,
     {
@@ -264,7 +264,7 @@ impl Archetype {
 
         self.entities.swap_remove(entity_idx);
         if entity_idx != last_entity_idx {
-            Some(self.entities[entity_idx].id)
+            Some(self.entities[entity_idx].idx)
         } else {
             None
         }
@@ -351,7 +351,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id),
+                Some(self.entities[src_entity_idx].idx),
             )
         } else {
             (dst_entity_idx as u32, None)
@@ -400,7 +400,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id),
+                Some(self.entities[src_entity_idx].idx),
             )
         } else {
             (dst_entity_idx as u32, None)
@@ -446,7 +446,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id),
+                Some(self.entities[src_entity_idx].idx),
                 value.assume_init(),
             )
         } else {
@@ -482,7 +482,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id),
+                Some(self.entities[src_entity_idx].idx),
             )
         } else {
             (dst_entity_idx as u32, None)
@@ -490,7 +490,7 @@ impl Archetype {
     }
 
     #[inline]
-    pub(crate) fn entities(&self) -> &[WeakEntity] {
+    pub(crate) fn entities(&self) -> &[EntityId] {
         &self.entities
     }
 

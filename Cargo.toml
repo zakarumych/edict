@@ -1,6 +1,6 @@
 [package]
 name = "edict"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -13,8 +13,10 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [features]
-default = ["std"]
 std = []
+rc = []
+
+default = ["std", "rc"]
 
 [dependencies]
 hashbrown = { version = "0.12" }

@@ -21,17 +21,19 @@ use core::{
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
-    entity::WeakEntity,
+    entity::EntityId,
 };
 
 mod alt;
 mod modified;
 mod option;
 mod read;
+
+#[cfg(feature = "rc")]
 mod skip;
 mod write;
 
-pub use self::{alt::*, modified::*, option::*, read::*, skip::*, write::*};
+pub use self::{alt::*, modified::*, option::*, read::*, write::*};
 
 /// Trait implemented for `Query::Fetch` associated types.
 pub trait Fetch<'a> {
@@ -67,7 +69,7 @@ pub trait Fetch<'a> {
 
 /// Trait for types that can query sets of components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
-/// sets of references to the components and optionally `WeakEntity` to address same components later.
+/// sets of references to the components and optionally `EntityId` to address same components later.
 pub trait Query {
     /// Fetch value type for this query type.
     /// Contains data from one archetype.
@@ -207,7 +209,7 @@ macro_rules! for_tuple {
 for_tuple!();
 
 /// Iterator over entities with a query `Q`.
-/// Yields `WeakEntity` and query items for every matching entity.
+/// Yields `EntityId` and query items for every matching entity.
 ///
 /// Supports only `NonTrackingQuery`.
 #[allow(missing_debug_implementations)]
@@ -216,7 +218,7 @@ pub struct QueryIter<'a, Q: Query> {
     archetypes: slice::Iter<'a, Archetype>,
 
     fetch: <Q as Query>::Fetch,
-    entities: *const WeakEntity,
+    entities: *const EntityId,
     indices: Range<usize>,
 }
 
@@ -239,7 +241,7 @@ impl<'a, Q> Iterator for QueryIter<'a, Q>
 where
     Q: Query,
 {
-    type Item = (WeakEntity, QueryItem<'a, Q>);
+    type Item = (EntityId, QueryItem<'a, Q>);
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -247,7 +249,7 @@ where
     }
 
     #[inline]
-    fn next(&mut self) -> Option<(WeakEntity, QueryItem<'a, Q>)> {
+    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
         loop {
             match self.indices.next() {
                 None => {
@@ -281,7 +283,7 @@ where
     fn fold<B, F>(mut self, init: B, mut f: F) -> B
     where
         Self: Sized,
-        F: FnMut(B, (WeakEntity, QueryItem<'a, Q>)) -> B,
+        F: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
     {
         let mut acc = init;
         for idx in self.indices {
@@ -318,7 +320,7 @@ where
 }
 
 /// Iterator over entities with a query `Q`.
-/// Yields `WeakEntity` and query items for every matching entity.
+/// Yields `EntityId` and query items for every matching entity.
 ///
 /// Does not require `Q` to implement `NonTrackingQuery`.
 #[allow(missing_debug_implementations)]
@@ -328,7 +330,7 @@ pub struct QueryTrackedIter<'a, Q: Query> {
     archetypes: slice::Iter<'a, Archetype>,
 
     fetch: <Q as Query>::Fetch,
-    entities: *const WeakEntity,
+    entities: *const EntityId,
     indices: Range<usize>,
     visit_chunk: bool,
 }
@@ -354,7 +356,7 @@ impl<'a, Q> Iterator for QueryTrackedIter<'a, Q>
 where
     Q: Query,
 {
-    type Item = (WeakEntity, QueryItem<'a, Q>);
+    type Item = (EntityId, QueryItem<'a, Q>);
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -362,7 +364,7 @@ where
     }
 
     #[inline]
-    fn next(&mut self) -> Option<(WeakEntity, QueryItem<'a, Q>)> {
+    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
         loop {
             match self.indices.next() {
                 None => {
@@ -406,7 +408,7 @@ where
     fn fold<B, F>(mut self, init: B, mut f: F) -> B
     where
         Self: Sized,
-        F: FnMut(B, (WeakEntity, QueryItem<'a, Q>)) -> B,
+        F: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
     {
         let mut acc = init;
         while let Some(idx) = self.indices.next() {

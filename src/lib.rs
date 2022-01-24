@@ -23,7 +23,7 @@
 //! When strong reference is dropped - possibly together with the component on despawn -
 //! the entity will be despawned if no other strong references left.
 //!
-//! Edict provides [`WeakEntity`] reference type which works as entity references in traditional ECS.
+//! Edict provides [`EntityId`] reference type which works as entity references in traditional ECS.
 //!
 //! Another feature of Edict is integrated change detection.
 //! It tracks when components are accessed mutably and may efficiently iterate through modified components.
@@ -50,7 +50,7 @@
 //!
 //! [`World`]: `edict::world::World`
 //! [`Entity`]: `edict::entity::Entity`
-//! [`WeakEntity`]: `edict::entity::WeakEntity`
+//! [`EntityId`]: `edict::entity::EntityId`
 //! [`Tracks`]: `edict::tracks::Tracks`
 //! [`World::tracks()`]: `edict::world::World::tracks`
 //! [`World::tracks_now()`]: `edict::world::World::tracks_now`
@@ -66,6 +66,7 @@ pub mod bundle;
 pub mod component;
 pub mod entity;
 pub mod prelude;
+#[cfg(feature = "rc")]
 pub mod proof;
 pub mod query;
 pub mod world;

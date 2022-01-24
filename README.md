@@ -31,7 +31,7 @@ With `edict` owner stores strong references ([`Entity`]) to owned entities.
 When strong reference is dropped - possibly together with the component on despawn -
 the entity will be despawned if no other strong references left.
 
-`edict` provides [`WeakEntity`] reference type which works as entity references in traditional ECS.
+`edict` provides [`EntityId`] reference type which works as entity references in traditional ECS.
 
 Another feature of `edict` is integrated change detection.
 It tracks when components are accessed mutably and may efficiently iterate through modified components.
@@ -58,7 +58,7 @@ and optionally enable `"std"` if needed.
 
 [`World`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html
 [`Entity`]: https://docs.rs/edict/0.0.2/edict/entity/struct.Entity.html
-[`WeakEntity`]: https://docs.rs/edict/0.0.2/edict/entity/struct.WeakEntity.html
+[`EntityId`]: https://docs.rs/edict/0.0.2/edict/entity/struct.EntityId.html
 [`Tracks`]: https://docs.rs/edict/0.0.2/edict/tracks/struct.Tracks.html
 [`World::tracks()`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html#method.tracks
 [`World::tracks_now()`]: https://docs.rs/edict/0.0.2/edict/world/struct.World.html#method.tracks_now

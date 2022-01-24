@@ -19,14 +19,15 @@ use crate::{
     archetype::{Archetype, CHUNK_LEN_USIZE},
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
-    entity::{Entities, Entity, WeakEntity},
+    entity::{Entities, EntityId},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
     idx::MAX_IDX_USIZE,
-    proof::Proof,
     query::{
         Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryItem, QueryIter, QueryTrackedIter,
     },
 };
+#[cfg(feature = "rc")]
+use crate::{entity::Entity, proof::Proof};
 
 /// Value to remember which modifications was already iterated over,
 /// and see what modifications are new.
@@ -57,13 +58,13 @@ fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
 /// Entities can be spawned in the `World` with handle `Entity` returned,
 /// that can be used later to access that entity.
 ///
-/// `Entity` handle can be downgraded to `WeakEntity`.
+/// `Entity` handle can be downgraded to `EntityId`.
 ///
 /// Entity would be despawned after last `Entity` is dropped.
 ///
 /// Entity's set of components may be modified in any way.
 ///
-/// Entities can be fetched directly, using `Entity` or `WeakEntity`
+/// Entities can be fetched directly, using `Entity` or `EntityId`
 /// with different guarantees and requirements.
 ///
 /// Entities can be efficiently queried from `World` to iterate over all entities
@@ -104,6 +105,7 @@ pub struct World {
     sub_ids: HashMap<(u32, Vec<TypeId>), u32, MulHasherBuilder>,
 
     /// Array of indices to drop.
+    #[cfg(feature = "rc")]
     drop_queue: Vec<u32>,
 }
 
@@ -125,7 +127,10 @@ impl World {
     pub fn new() -> Self {
         World {
             epoch: 0,
+            #[cfg(feature = "rc")]
             entities: Entities::new(1024),
+            #[cfg(not(feature = "rc"))]
+            entities: Entities::new(),
             archetypes: Vec::new(),
             keys: HashMap::with_hasher(NoOpHasherBuilder),
             ids: HashMap::with_hasher(MulHasherBuilder),
@@ -133,14 +138,15 @@ impl World {
             add_ids: HashMap::with_hasher(MulHasherBuilder),
             sub_key: HashMap::with_hasher(MulHasherBuilder),
             sub_ids: HashMap::with_hasher(MulHasherBuilder),
+            #[cfg(feature = "rc")]
             drop_queue: Vec::new(),
         }
     }
 
     /// Spawns new entity in this world with provided bundle of components.
-    /// Returns strong reference to newly created entity.
+    /// World keeps ownership of the spawned entity and entity id is returned.
     #[inline]
-    pub fn spawn<B>(&mut self, bundle: B) -> Entity
+    pub fn spawn<B>(&mut self, bundle: B) -> EntityId
     where
         B: DynamicBundle,
     {
@@ -161,8 +167,39 @@ impl World {
         );
 
         self.epoch += 1;
+        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, self.epoch);
+        self.entities.set_location(entity.idx, archetype_idx, idx);
+        entity
+    }
+
+    /// Spawns new entity in this world with provided bundle of components.
+    /// Returns owning reference to the entity.
+    #[cfg(feature = "rc")]
+    #[inline]
+    pub fn spawn_owned<B>(&mut self, bundle: B) -> Entity
+    where
+        B: DynamicBundle,
+    {
+        if !bundle.valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
+        let entity = self.entities.spawn_owned();
+
+        let archetype_idx = get_archetype_idx_with_maps(
+            &mut self.keys,
+            &mut self.ids,
+            &mut self.archetypes,
+            &bundle,
+        );
+
+        self.epoch += 1;
         let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch);
-        self.entities.set_location(entity.id, archetype_idx, idx);
+        self.entities.set_location(entity.idx, archetype_idx, idx);
+
         entity
     }
 
@@ -184,7 +221,7 @@ impl World {
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
     #[inline]
-    pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBundle<'_, I::IntoIter>
+    pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
         B: Bundle,
@@ -209,7 +246,7 @@ impl World {
         let entities = &mut self.entities;
         let epoch = self.epoch;
 
-        SpawnBundle {
+        SpawnBatch {
             bundles: bundles.into_iter(),
             epoch,
             archetype_idx,
@@ -218,11 +255,110 @@ impl World {
         }
     }
 
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles returnd from provided iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will not cause them to be spawned
+    /// and same number of items will be skipped on bundles iterator.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    #[cfg(feature = "rc")]
+    #[inline]
+    pub fn spawn_batch_owned<B, I>(&mut self, bundles: I) -> SpawnBatchOwned<'_, I::IntoIter>
+    where
+        I: IntoIterator<Item = B>,
+        B: Bundle,
+    {
+        if !B::static_valid() {
+            panic!(
+                "Specified bundle `{}` is not valid. Check for duplicate component types",
+                type_name::<B>()
+            );
+        }
+
+        let archetype_idx = get_archetype_idx_with_maps(
+            &mut self.keys,
+            &mut self.ids,
+            &mut self.archetypes,
+            &PhantomData::<I::Item>,
+        );
+
+        self.epoch += 1;
+
+        let archetype = &mut self.archetypes[archetype_idx as usize];
+        let entities = &mut self.entities;
+        let epoch = self.epoch;
+
+        SpawnBatchOwned {
+            bundles: bundles.into_iter(),
+            epoch,
+            archetype_idx,
+            archetype,
+            entities,
+        }
+    }
+
+    /// Despawns an entity with specified id, currently owned by the `World`.
+    #[cfg(feature = "rc")]
+    pub fn despawn(&mut self, entity: EntityId) -> Result<(), OwnershipError> {
+        let (archetype, idx) = self.entities.despawn(entity)?;
+
+        let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+        if let Some(id) = opt_id {
+            self.entities.set_location(id, archetype, idx)
+        }
+
+        Ok(())
+    }
+
+    /// Despawns an entity with specified id.
+    #[cfg(not(feature = "rc"))]
+    pub fn despawn(&mut self, entity: EntityId) -> Result<(), NoSuchEntity> {
+        let (archetype, idx) = self.entities.despawn(entity)?;
+
+        let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+        if let Some(id) = opt_id {
+            self.entities.set_location(id, archetype, idx)
+        }
+
+        Ok(())
+    }
+
+    /// Transfers ownership of the entity from the caller to the `World`.
+    /// After this call, entity won't be despawned until [`World::despawn`] is called with this entity id.
+    #[cfg(feature = "rc")]
+    pub fn keep<T>(&mut self, entity: Entity<T>) {
+        assert!(self.entities.is_owner_of(&entity));
+        self.entities.give_ownership(entity);
+    }
+
+    /// Transfers ownership of the entity from the `World` to the caller.
+    /// After this call, entity should be despawned by dropping returned entity reference,
+    /// or by returning ownership to the `World` and then called [`World::despawn`]
+    ///
+    /// Returns error if entity with specified id does not exists,
+    /// or if that entity is not owned by the `World`.
+    #[cfg(feature = "rc")]
+    pub fn take(&mut self, entity: EntityId) -> Result<Entity, OwnershipError> {
+        self.entities.take_ownership(entity)
+    }
+
     /// Inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
+    #[cfg(feature = "rc")]
     #[inline]
     pub fn insert<T, P>(&mut self, entity: &Entity<P>, component: T)
     where
@@ -230,7 +366,8 @@ impl World {
     {
         assert!(self.entities.is_owner_of(entity));
 
-        self.try_insert(entity, component).expect("Entity exists");
+        self.try_insert(entity.id(), component)
+            .expect("Entity exists");
     }
 
     /// Attemots to inserts component to the specified entity.
@@ -241,7 +378,7 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn try_insert<T>(&mut self, entity: &WeakEntity, component: T) -> Result<(), NoSuchEntity>
+    pub fn try_insert<T>(&mut self, entity: EntityId, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
     {
@@ -279,7 +416,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.insert(dst, idx, component, self.epoch) };
 
         self.entities
-            .set_location(entity.id, dst_archetype, dst_idx);
+            .set_location(entity.idx, dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, archetype, idx);
@@ -293,7 +430,7 @@ impl World {
     /// If entity does not have component of this type, fails with `Err(EntityError::MissingComponent)`.
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn remove<T>(&mut self, entity: &WeakEntity) -> Result<T, EntityError>
+    pub fn remove<T>(&mut self, entity: EntityId) -> Result<T, EntityError>
     where
         T: Component,
     {
@@ -327,7 +464,7 @@ impl World {
         let (dst_idx, opt_src_id, component) = unsafe { src.remove(dst, idx) };
 
         self.entities
-            .set_location(entity.id, dst_archetype, dst_idx);
+            .set_location(entity.idx, dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, archetype, idx);
@@ -344,13 +481,14 @@ impl World {
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
+    #[cfg(feature = "rc")]
     #[inline]
     pub fn insert_bundle<B, T>(&mut self, entity: &Entity<T>, bundle: B)
     where
         B: DynamicBundle,
     {
         assert!(self.entities.is_owner_of(entity));
-        self.try_insert_bundle(entity, bundle).unwrap();
+        self.try_insert_bundle(entity.id(), bundle).unwrap();
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -364,11 +502,7 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn try_insert_bundle<B>(
-        &mut self,
-        entity: &WeakEntity,
-        bundle: B,
-    ) -> Result<(), NoSuchEntity>
+    pub fn try_insert_bundle<B>(&mut self, entity: EntityId, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
     {
@@ -412,7 +546,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, idx, bundle, self.epoch) };
 
         self.entities
-            .set_location(entity.id, dst_archetype, dst_idx);
+            .set_location(entity.idx, dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, archetype, idx);
@@ -426,7 +560,7 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn remove_bundle<B>(&mut self, entity: &WeakEntity) -> Result<(), NoSuchEntity>
+    pub fn remove_bundle<B>(&mut self, entity: EntityId) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
     {
@@ -471,7 +605,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(dst, idx) };
 
         self.entities
-            .set_location(entity.id, dst_archetype, dst_idx);
+            .set_location(entity.idx, dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, archetype, idx);
@@ -488,6 +622,7 @@ impl World {
     /// Pinned components are not enforced to stay at entity
     /// and can be removed using `World::remove` or `World::remove_bundle`
     /// with a clone of the `Entity` without component types pinned.
+    #[cfg(feature = "rc")]
     #[inline]
     pub fn pin_bundle<B>(&mut self, entity: Entity) -> Entity<B>
     where
@@ -502,7 +637,7 @@ impl World {
 
         assert!(self.entities.is_owner_of(&entity));
 
-        let (archetype, _idx) = self.entities.get(&entity).unwrap();
+        let (archetype, _idx) = self.entities.get(*entity).unwrap();
 
         let archetype = &self.archetypes[archetype as usize];
 
@@ -522,6 +657,7 @@ impl World {
     /// # Panics
     ///
     /// If `Entity` was not created by this world, this function will panic.
+    #[cfg(feature = "rc")]
     #[inline]
     pub fn get<'a, Q, A: 'a>(&'a self, entity: &Entity<A>) -> <Q::Fetch as Fetch<'a>>::Item
     where
@@ -542,7 +678,7 @@ impl World {
             type_name::<Q>()
         );
 
-        let (archetype, idx) = self.entities.get(entity).unwrap();
+        let (archetype, idx) = self.entities.get(entity.id()).unwrap();
         let archetype = &self.archetypes[archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
         let item = unsafe { fetch.get_item(idx as usize) };
@@ -558,6 +694,7 @@ impl World {
     /// # Panics
     ///
     /// If `Entity` was not created by this world, this function will panic.
+    #[cfg(feature = "rc")]
     #[inline]
     pub fn get_mut<'a, Q, A: 'a>(&'a mut self, entity: &Entity<A>) -> <Q::Fetch as Fetch<'a>>::Item
     where
@@ -576,7 +713,7 @@ impl World {
             self.epoch += 1;
         }
 
-        let (archetype, idx) = self.entities.get(entity).unwrap();
+        let (archetype, idx) = self.entities.get(entity.id()).unwrap();
         let archetype = &self.archetypes[archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
         let item = unsafe { fetch.get_item(idx as usize) };
@@ -589,7 +726,7 @@ impl World {
     #[inline]
     pub fn query_one<'a, Q>(
         &'a self,
-        entity: &WeakEntity,
+        entity: EntityId,
     ) -> Result<<Q::Fetch as Fetch<'a>>::Item, EntityError>
     where
         Q: Query + ImmutableQuery + NonTrackingQuery,
@@ -623,7 +760,7 @@ impl World {
     #[inline]
     pub fn query_one_mut<'a, Q>(
         &'a mut self,
-        entity: &WeakEntity,
+        entity: EntityId,
     ) -> Result<<Q::Fetch as Fetch<'a>>::Item, EntityError>
     where
         Q: Query + NonTrackingQuery,
@@ -704,11 +841,12 @@ impl World {
     }
 
     /// Checks if specified entity has componet of specified type.
+    #[cfg(feature = "rc")]
     #[inline]
-    pub fn has_component<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
+    pub fn has_component_owned<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
         assert!(self.entities.is_owner_of(entity));
 
-        let (archetype, _idx) = self.entities.get(entity).unwrap();
+        let (archetype, _idx) = self.entities.get(entity.id()).unwrap();
         self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
     }
 
@@ -716,17 +854,14 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn has_component_weak<T: 'static>(
-        &self,
-        entity: &WeakEntity,
-    ) -> Result<bool, NoSuchEntity> {
+    pub fn has_component<T: 'static>(&self, entity: EntityId) -> Result<bool, NoSuchEntity> {
         let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
         Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
     }
 
     /// Checks if specified entity is still alive.
     #[inline]
-    pub fn is_alive(&self, entity: &WeakEntity) -> bool {
+    pub fn is_alive(&self, entity: EntityId) -> bool {
         self.entities.get(entity).is_some()
     }
 
@@ -754,20 +889,24 @@ impl World {
     /// * Despawn of entities with no strong references left
     #[inline]
     pub fn maintain(&mut self) {
-        let queue = self.entities.drop_queue();
+        #[cfg(feature = "rc")]
+        {
+            let queue = self.entities.drop_queue();
 
-        loop {
-            queue.drain(&mut self.drop_queue);
+            loop {
+                queue.drain(&mut self.drop_queue);
 
-            if self.drop_queue.is_empty() {
-                break;
-            }
+                if self.drop_queue.is_empty() {
+                    break;
+                }
 
-            for id in self.drop_queue.drain(..) {
-                let (archetype, idx) = self.entities.dropped(id);
-                let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
-                if let Some(id) = opt_id {
-                    self.entities.set_location(id, archetype, idx)
+                for id in self.drop_queue.drain(..) {
+                    let (archetype, idx) = self.entities.dropped(id);
+                    let opt_id =
+                        unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx) };
+                    if let Some(id) = opt_id {
+                        self.entities.set_location(id, archetype, idx)
+                    }
                 }
             }
         }
@@ -954,7 +1093,7 @@ impl World {
 
 /// Spawning iterator. Produced by [`World::spawn_batch`].
 #[derive(Debug)]
-pub struct SpawnBundle<'a, I> {
+pub struct SpawnBatch<'a, I> {
     bundles: I,
     epoch: u64,
     archetype_idx: u32,
@@ -962,7 +1101,184 @@ pub struct SpawnBundle<'a, I> {
     entities: &'a mut Entities,
 }
 
-impl<B, I> Iterator for SpawnBundle<'_, I>
+impl<B, I> SpawnBatch<'_, I>
+where
+    I: Iterator<Item = B>,
+    B: Bundle,
+{
+    /// Spawns the rest of the entities, dropping their ids.
+    ///
+    /// Note that `SpawnBatchOwned` does not have this mmethods
+    /// as dropped `Entity` references would cause spawned entities
+    /// to be despawned, and that's probably not what user wants.
+    pub fn spawn_all(mut self) {
+        spawn_reserve(&self.bundles, self.archetype);
+
+        let entities = &mut self.entities;
+        let archetype = &mut self.archetype;
+        let archetype_idx = self.archetype_idx;
+        let epoch = self.epoch;
+
+        self.bundles.for_each(|bundle| {
+            let entity = entities.spawn();
+            let idx = archetype.spawn(entity, bundle, epoch);
+            entities.set_location(entity.idx, archetype_idx, idx);
+        })
+    }
+}
+
+impl<B, I> Iterator for SpawnBatch<'_, I>
+where
+    I: Iterator<Item = B>,
+    B: Bundle,
+{
+    type Item = EntityId;
+
+    fn next(&mut self) -> Option<EntityId> {
+        let bundle = self.bundles.next()?;
+
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(entity, bundle, self.epoch);
+
+        self.entities
+            .set_location(entity.idx, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn nth(&mut self, n: usize) -> Option<EntityId> {
+        // No reason to create entities
+        // for which the only reference is immediatelly dropped
+        let bundle = self.bundles.nth(n)?;
+
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(entity, bundle, self.epoch);
+
+        self.entities
+            .set_location(entity.idx, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.bundles.size_hint()
+    }
+
+    fn fold<T, F>(mut self, init: T, mut f: F) -> T
+    where
+        F: FnMut(T, EntityId) -> T,
+    {
+        spawn_reserve(&self.bundles, self.archetype);
+
+        let entities = &mut self.entities;
+        let archetype = &mut self.archetype;
+        let archetype_idx = self.archetype_idx;
+        let epoch = self.epoch;
+
+        self.bundles.fold(init, |acc, bundle| {
+            let entity = entities.spawn();
+            let idx = archetype.spawn(entity, bundle, epoch);
+            entities.set_location(entity.idx, archetype_idx, idx);
+            f(acc, entity)
+        })
+    }
+
+    fn collect<T>(self) -> T
+    where
+        T: FromIterator<EntityId>,
+    {
+        // `FromIterator::from_iter` would probably just call `fn next()`
+        // until the end of the iterator.
+        //
+        // Hence we should reserve space in archetype here.
+        spawn_reserve(&self.bundles, self.archetype);
+
+        FromIterator::from_iter(self)
+    }
+}
+
+impl<B, I> ExactSizeIterator for SpawnBatch<'_, I>
+where
+    I: ExactSizeIterator<Item = B>,
+    B: Bundle,
+{
+    fn len(&self) -> usize {
+        self.bundles.len()
+    }
+}
+
+impl<B, I> DoubleEndedIterator for SpawnBatch<'_, I>
+where
+    I: DoubleEndedIterator<Item = B>,
+    B: Bundle,
+{
+    fn next_back(&mut self) -> Option<EntityId> {
+        let bundle = self.bundles.next_back()?;
+
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(entity, bundle, self.epoch);
+
+        self.entities
+            .set_location(entity.idx, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<EntityId> {
+        // No reason to create entities
+        // for which the only reference is immediatelly dropped
+        let bundle = self.bundles.nth_back(n)?;
+
+        let entity = self.entities.spawn();
+        let idx = self.archetype.spawn(entity, bundle, self.epoch);
+
+        self.entities
+            .set_location(entity.idx, self.archetype_idx, idx);
+
+        Some(entity)
+    }
+
+    fn rfold<T, F>(mut self, init: T, mut f: F) -> T
+    where
+        Self: Sized,
+        F: FnMut(T, EntityId) -> T,
+    {
+        spawn_reserve(&self.bundles, self.archetype);
+
+        let entities = &mut self.entities;
+        let archetype = &mut self.archetype;
+        let archetype_idx = self.archetype_idx;
+        let epoch = self.epoch;
+
+        self.bundles.rfold(init, |acc, bundle| {
+            let entity = entities.spawn();
+            let idx = archetype.spawn(entity, bundle, epoch);
+            entities.set_location(entity.idx, archetype_idx, idx);
+            f(acc, entity)
+        })
+    }
+}
+
+impl<B, I> FusedIterator for SpawnBatch<'_, I>
+where
+    I: FusedIterator<Item = B>,
+    B: Bundle,
+{
+}
+
+/// Spawning iterator. Produced by [`World::spawn_batch`].
+#[cfg(feature = "rc")]
+#[derive(Debug)]
+pub struct SpawnBatchOwned<'a, I> {
+    bundles: I,
+    epoch: u64,
+    archetype_idx: u32,
+    archetype: &'a mut Archetype,
+    entities: &'a mut Entities,
+}
+
+#[cfg(feature = "rc")]
+impl<B, I> Iterator for SpawnBatchOwned<'_, I>
 where
     I: Iterator<Item = B>,
     B: Bundle,
@@ -972,11 +1288,11 @@ where
     fn next(&mut self) -> Option<Entity> {
         let bundle = self.bundles.next()?;
 
-        let entity = self.entities.spawn();
+        let entity = self.entities.spawn_owned();
         let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.id, self.archetype_idx, idx);
+            .set_location(entity.idx, self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -986,11 +1302,11 @@ where
         // for which the only reference is immediatelly dropped
         let bundle = self.bundles.nth(n)?;
 
-        let entity = self.entities.spawn();
+        let entity = self.entities.spawn_owned();
         let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.id, self.archetype_idx, idx);
+            .set_location(entity.idx, self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1011,9 +1327,9 @@ where
         let epoch = self.epoch;
 
         self.bundles.fold(init, |acc, bundle| {
-            let entity = entities.spawn();
+            let entity = entities.spawn_owned();
             let idx = archetype.spawn(*entity, bundle, epoch);
-            entities.set_location(entity.id, archetype_idx, idx);
+            entities.set_location(entity.idx, archetype_idx, idx);
             f(acc, entity)
         })
     }
@@ -1032,7 +1348,8 @@ where
     }
 }
 
-impl<B, I> ExactSizeIterator for SpawnBundle<'_, I>
+#[cfg(feature = "rc")]
+impl<B, I> ExactSizeIterator for SpawnBatchOwned<'_, I>
 where
     I: ExactSizeIterator<Item = B>,
     B: Bundle,
@@ -1042,7 +1359,8 @@ where
     }
 }
 
-impl<B, I> DoubleEndedIterator for SpawnBundle<'_, I>
+#[cfg(feature = "rc")]
+impl<B, I> DoubleEndedIterator for SpawnBatchOwned<'_, I>
 where
     I: DoubleEndedIterator<Item = B>,
     B: Bundle,
@@ -1050,11 +1368,11 @@ where
     fn next_back(&mut self) -> Option<Entity> {
         let bundle = self.bundles.next_back()?;
 
-        let entity = self.entities.spawn();
+        let entity = self.entities.spawn_owned();
         let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.id, self.archetype_idx, idx);
+            .set_location(entity.idx, self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1064,11 +1382,11 @@ where
         // for which the only reference is immediatelly dropped
         let bundle = self.bundles.nth_back(n)?;
 
-        let entity = self.entities.spawn();
+        let entity = self.entities.spawn_owned();
         let idx = self.archetype.spawn(*entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.id, self.archetype_idx, idx);
+            .set_location(entity.idx, self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1086,22 +1404,23 @@ where
         let epoch = self.epoch;
 
         self.bundles.rfold(init, |acc, bundle| {
-            let entity = entities.spawn();
+            let entity = entities.spawn_owned();
             let idx = archetype.spawn(*entity, bundle, epoch);
-            entities.set_location(entity.id, archetype_idx, idx);
+            entities.set_location(entity.idx, archetype_idx, idx);
             f(acc, entity)
         })
     }
 }
 
-impl<B, I> FusedIterator for SpawnBundle<'_, I>
+#[cfg(feature = "rc")]
+impl<B, I> FusedIterator for SpawnBatchOwned<'_, I>
 where
     I: FusedIterator<Item = B>,
     B: Bundle,
 {
 }
 
-/// Error returned in case specified [`WeakEntity`]
+/// Error returned in case specified [`EntityId`]
 /// does not reference any live entity in the [`World`].
 #[derive(Clone, Copy, Debug)]
 pub struct NoSuchEntity;
@@ -1133,7 +1452,7 @@ impl std::error::Error for MissingComponents {}
 /// or component of required type is not found for an entity.
 #[derive(Clone, Copy, Debug)]
 pub enum EntityError {
-    /// Error returned in case specified [`WeakEntity`]
+    /// Error returned in case specified [`EntityId`]
     /// does not reference any live entity in the [`World`].
     NoSuchEntity,
 
@@ -1170,6 +1489,47 @@ impl From<NoSuchEntity> for EntityError {
 impl From<MissingComponents> for EntityError {
     fn from(_: MissingComponents) -> Self {
         EntityError::MissingComponents
+    }
+}
+
+/// Error that may occur when function expects `World` to own an entity with specific id.
+#[cfg(feature = "rc")]
+#[derive(Clone, Copy, Debug)]
+pub enum OwnershipError {
+    /// Error returned in case specified [`EntityId`]
+    /// does not reference any live entity in the [`World`].
+    NoSuchEntity,
+
+    /// Error returned in case specified [`EntityId`]
+    /// does not reference an entity currently owned by [`World`].
+    NotOwned,
+}
+
+#[cfg(feature = "rc")]
+impl From<NoSuchEntity> for OwnershipError {
+    fn from(_: NoSuchEntity) -> Self {
+        OwnershipError::NoSuchEntity
+    }
+}
+
+#[cfg(feature = "rc")]
+impl fmt::Display for OwnershipError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
+            Self::NotOwned => f.write_str("Entity is not owned by World"),
+        }
+    }
+}
+
+#[cfg(feature = "rc")]
+#[cfg(feature = "std")]
+impl std::error::Error for OwnershipError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NoSuchEntity => Some(&NoSuchEntity),
+            _ => None,
+        }
     }
 }
 

@@ -151,7 +151,7 @@ macro_rules! for_tuple {
         /// ```
         /// # use edict::prelude::World;
         /// # let mut world = World::new();
-        /// let entity = world.spawn((0u32,));
+        /// let entity = world.spawn_owning((0u32,));
         /// let entity = entity.pin::<u32>(&mut world);
         /// ```
         ///
@@ -160,7 +160,7 @@ macro_rules! for_tuple {
         /// ```should_panic
         /// # use edict::prelude::World;
         /// # let mut world = World::new();
-        /// let entity = world.spawn((0u32,));
+        /// let entity = world.spawn_owning((0u32,));
         /// let entity = entity.pin::<u8>(&mut world);
         /// ```
         pub fn pin<T: 'static>(self, world: &mut World) -> Entity<($($a,)* T,)> {

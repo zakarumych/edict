@@ -62,11 +62,11 @@ where
     #[inline]
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
-        let data = archetype.data_mut(idx);
+        let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());
 
-        debug_assert!(data.version < epoch);
-        data.version = epoch;
+        debug_assert!(*data.version.get() < epoch);
+        *data.version.get() = epoch;
 
         Some(FetchWrite {
             epoch,

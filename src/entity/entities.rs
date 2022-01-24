@@ -135,7 +135,7 @@ impl Entities {
     }
 
     #[cfg(feature = "rc")]
-    pub fn spawn_owned(&mut self) -> Entity {
+    pub fn spawn_owning(&mut self) -> Entity {
         match self.free_entity_ids.pop() {
             None => {
                 let id = self.array.len() as u32;
@@ -192,7 +192,7 @@ impl Entities {
     }
 
     #[cfg(feature = "rc")]
-    pub fn take_ownership(&mut self, id: EntityId) -> Result<Entity, OwnershipError> {
+    pub fn take_ownership(&mut self, id: &EntityId) -> Result<Entity, OwnershipError> {
         if self.array.len() as u32 <= id.idx {
             return Err(OwnershipError::NoSuchEntity);
         }
@@ -218,7 +218,10 @@ impl Entities {
         };
 
         Ok(Entity {
-            inner: StrongInner { id, shared: shared },
+            inner: StrongInner {
+                id: *id,
+                shared: shared,
+            },
             marker: PhantomData,
         })
     }
@@ -241,7 +244,7 @@ impl Entities {
         };
     }
 
-    pub fn despawn(&mut self, id: EntityId) -> Result<(u32, u32), DespawnError> {
+    pub fn despawn(&mut self, id: &EntityId) -> Result<(u32, u32), DespawnError> {
         if self.array.len() as u32 <= id.idx {
             return Err(NoSuchEntity.into());
         }
@@ -272,7 +275,7 @@ impl Entities {
         data.idx = idx;
     }
 
-    pub fn get(&self, id: EntityId) -> Option<(u32, u32)> {
+    pub fn get(&self, id: &EntityId) -> Option<(u32, u32)> {
         if self.array.len() as u32 <= id.idx {
             return None;
         }

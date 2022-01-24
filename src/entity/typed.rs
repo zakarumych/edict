@@ -164,7 +164,7 @@ macro_rules! for_tuple {
         /// let entity = entity.pin::<u8>(&mut world);
         /// ```
         pub fn pin<T: 'static>(self, world: &mut World) -> Entity<($($a,)* T,)> {
-            assert!(world.has_component_owned::<T, _>(&self));
+            assert!(world.has_component_owning::<T, _>(&self));
 
             drop(world);
             Entity {

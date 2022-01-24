@@ -23,10 +23,214 @@ use crate::{
     typeidset::TypeIdSet,
 };
 
+// #[derive(Clone, Copy, Debug)]
+// struct RetainInfo {
+//     src_idx: usize,
+//     dst_idx: usize,
+//     size: usize,
+// }
+
+// #[derive(Clone, Copy, Debug)]
+// struct InsertInfo {
+//     dst_idx: usize,
+//     size: usize,
+// }
+
+// #[derive(Clone, Copy, Debug)]
+// struct RemoveInfo {
+//     src_idx: usize,
+//     size: usize,
+// }
+
+// #[derive(Clone, Copy, Debug)]
+// struct DropInfo {
+//     src_idx: usize,
+//     size: usize,
+//     drop: unsafe fn(*mut u8),
+// }
+
+// #[derive(Clone, Debug)]
+// pub(crate) struct InsertMeta {
+//     retain: Vec<RetainInfo>,
+//     insert: InsertInfo,
+// }
+
+// impl InsertMeta {
+//     pub fn new<T>(src: &Archetype, dst: &Archetype) -> Self
+//     where
+//         T: Component,
+//     {
+//         let retain = src
+//             .indices
+//             .iter()
+//             .map(|&idx| {
+//                 let data = &src.components[idx];
+//                 RetainInfo {
+//                     src_idx: idx,
+//                     dst_idx: dst.set.get(data.id).expect("Component must be present"),
+//                     size: data.info.layout.size(),
+//                 }
+//             })
+//             .collect();
+
+//         InsertMeta {
+//             retain,
+//             insert: InsertInfo {
+//                 dst_idx: dst
+//                     .set
+//                     .get(TypeId::of::<T>())
+//                     .expect("Component must be present"),
+//                 size: size_of::<T>(),
+//             },
+//         }
+//     }
+// }
+
+// #[derive(Clone, Debug)]
+// pub(crate) struct InsertBundleMeta {
+//     retain: Vec<RetainInfo>,
+//     drop: Vec<DropInfo>,
+//     insert: Vec<InsertInfo>,
+// }
+
+// impl InsertBundleMeta {
+//     pub fn new<B>(src: &Archetype, dst: &Archetype, bundle: &B) -> Self
+//     where
+//         B: DynamicBundle,
+//     {
+//         let retain = src
+//             .indices
+//             .iter()
+//             .map(|&idx| {
+//                 let data = &src.components[idx];
+//                 RetainInfo {
+//                     src_idx: idx,
+//                     dst_idx: dst.set.get(data.id).expect("Component must be present"),
+//                     size: data.info.layout.size(),
+//                 }
+//             })
+//             .collect();
+
+//         let drop = bundle.with_components(|infos| {
+//             infos
+//                 .iter()
+//                 .filter_map(|info| {
+//                     if let Some(src_idx) = src.set.get(info.id) {
+//                         Some(DropInfo {
+//                             src_idx,
+//                             size: info.layout.size(),
+//                             drop: info.drop_one,
+//                         })
+//                     } else {
+//                         None
+//                     }
+//                 })
+//                 .collect()
+//         });
+
+//         let insert = bundle.with_components(|infos| {
+//             infos
+//                 .iter()
+//                 .map(|info| InsertInfo {
+//                     dst_idx: dst.set.get(info.id).expect("Component must be present"),
+//                     size: info.layout.size(),
+//                 })
+//                 .collect()
+//         });
+
+//         InsertBundleMeta {
+//             retain,
+//             drop,
+//             insert,
+//         }
+//     }
+// }
+
+// #[derive(Clone, Debug)]
+// pub(crate) struct RemoveMeta {
+//     retain: Vec<RetainInfo>,
+//     remove: RemoveInfo,
+// }
+
+// impl RemoveMeta {
+//     pub fn new<T>(src: &Archetype, dst: &Archetype) -> Self
+//     where
+//         T: Component,
+//     {
+//         let retain = src
+//             .indices
+//             .iter()
+//             .filter_map(|&idx| {
+//                 let data = &src.components[idx];
+
+//                 if data.id == TypeId::of::<T>() {
+//                     None
+//                 } else {
+//                     Some(RetainInfo {
+//                         src_idx: idx,
+//                         dst_idx: dst.set.get(data.id).expect("Component must be present"),
+//                         size: data.info.layout.size(),
+//                     })
+//                 }
+//             })
+//             .collect();
+
+//         RemoveMeta {
+//             retain,
+//             remove: RemoveInfo {
+//                 src_idx: src
+//                     .set
+//                     .get(TypeId::of::<T>())
+//                     .expect("Component must be present"),
+//                 size: size_of::<T>(),
+//             },
+//         }
+//     }
+// }
+
+// #[derive(Clone, Debug)]
+// pub(crate) struct RemoveBundleMeta {
+//     retain: Vec<RetainInfo>,
+//     drop: Vec<DropInfo>,
+// }
+
+// impl RemoveBundleMeta {
+//     pub fn new<B>(src: &Archetype, dst: &Archetype) -> Self
+//     where
+//         B: Bundle,
+//     {
+//         let retain = src
+//             .indices
+//             .iter()
+//             .map(|&idx| {
+//                 let data = &src.components[idx];
+//                 RetainInfo {
+//                     src_idx: idx,
+//                     dst_idx: dst.set.get(data.id).expect("Component must be present"),
+//                     size: data.info.layout.size(),
+//                 }
+//             })
+//             .collect();
+
+//         let drop = B::static_with_components(|infos| {
+//             infos
+//                 .iter()
+//                 .map(|info| DropInfo {
+//                     src_idx: src.set.get(info.id).expect("Component must be present"),
+//                     size: info.layout.size(),
+//                     drop: info.drop_one,
+//                 })
+//                 .collect()
+//         });
+
+//         RemoveBundleMeta { retain, drop }
+//     }
+// }
+
 #[derive(Debug)]
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
-    pub version: u64,
+    pub version: UnsafeCell<u64>,
     pub entity_versions: NonNull<u64>,
     pub chunk_versions: NonNull<u64>,
     pub info: ComponentInfo,
@@ -44,7 +248,7 @@ impl ComponentData {
     pub fn new(info: &ComponentInfo) -> Self {
         ComponentData {
             ptr: unsafe { NonNull::new_unchecked(info.layout.align() as _) },
-            version: 0,
+            version: UnsafeCell::new(0),
             chunk_versions: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             info: *info,
@@ -126,13 +330,13 @@ pub struct Archetype {
     set: TypeIdSet,
     indices: Box<[usize]>,
     entities: Vec<EntityId>,
-    components: Box<[UnsafeCell<ComponentData>]>,
+    components: Box<[ComponentData]>,
 }
 
 impl Drop for Archetype {
     fn drop(&mut self) {
         for &idx in &*self.indices {
-            let component = self.components[idx].get_mut();
+            let component = &self.components[idx];
             unsafe { (component.drop)(component.ptr.as_ptr(), self.entities.len()) }
         }
     }
@@ -144,7 +348,7 @@ impl Archetype {
         let set = TypeIdSet::new(components.clone().map(|c| c.id));
 
         let mut component_data: Box<[_]> = (0..set.upper_bound())
-            .map(|_| UnsafeCell::new(ComponentData::dummy()))
+            .map(|_| ComponentData::dummy())
             .collect();
 
         let indices = set.indexed().map(|(idx, _)| idx).collect();
@@ -153,7 +357,7 @@ impl Archetype {
             debug_assert_eq!(c.layout.pad_to_align(), c.layout);
 
             let idx = unsafe { set.get(c.id).unwrap_unchecked() };
-            component_data[idx] = UnsafeCell::new(ComponentData::new(c));
+            component_data[idx] = ComponentData::new(c);
         }
 
         Archetype {
@@ -181,8 +385,23 @@ impl Archetype {
     #[inline]
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
         match type_ids.size_hint() {
-            (l, Some(u)) if l == u && l == self.set.len() => {
-                type_ids.all(|type_id| self.set.contains_id(type_id))
+            (l, None) if l <= self.set.len() => {
+                type_ids.try_fold(0usize, |count, type_id| {
+                    if self.set.contains_id(type_id) {
+                        Some(count + 1)
+                    } else {
+                        None
+                    }
+                }) == Some(self.set.len())
+            }
+            (l, Some(u)) if l <= self.set.len() && u >= self.set.len() => {
+                type_ids.try_fold(0usize, |count, type_id| {
+                    if self.set.contains_id(type_id) {
+                        Some(count + 1)
+                    } else {
+                        None
+                    }
+                }) == Some(self.set.len())
             }
             _ => false,
         }
@@ -191,9 +410,7 @@ impl Archetype {
     /// Returns iterator over component type ids.
     #[inline]
     pub fn ids(&self) -> impl ExactSizeIterator<Item = TypeId> + Clone + '_ {
-        self.indices
-            .iter()
-            .map(move |&idx| unsafe { (*self.components[idx].get()).id })
+        self.indices.iter().map(move |&idx| self.components[idx].id)
     }
 
     /// Returns iterator over component type infos.
@@ -201,7 +418,7 @@ impl Archetype {
     pub fn infos(&self) -> impl ExactSizeIterator<Item = &'_ ComponentInfo> + Clone + '_ {
         self.indices
             .iter()
-            .map(move |&idx| unsafe { &(*self.components[idx].get()).info })
+            .map(move |&idx| &self.components[idx].info)
     }
 
     /// Spawns new entity in the archetype.
@@ -218,6 +435,8 @@ impl Archetype {
 
         unsafe {
             self.reserve(1);
+
+            debug_assert_ne!(self.entities.len(), self.entities.capacity());
             self.write_bundle(entity_idx, bundle, epoch, |_| false);
         }
 
@@ -249,7 +468,7 @@ impl Archetype {
         let last_entity_idx = self.entities.len() - 1;
 
         for &type_idx in self.indices.iter() {
-            let component = self.components[type_idx].get_mut();
+            let component = &self.components[type_idx];
             let size = component.layout.size();
 
             let ptr = component.ptr.as_ptr().add(entity_idx * size);
@@ -337,6 +556,8 @@ impl Archetype {
         let dst_entity_idx = dst.entities.len();
 
         dst.reserve(1);
+
+        debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
             unreachable_unchecked()
         });
@@ -365,7 +586,7 @@ impl Archetype {
     /// `src_idx` must be in bounds of this archetype.
     /// This archetype must not contain specified type.
     /// `dst` archetype must contain all component types from this archetype and specified type.
-    pub unsafe fn insert<T>(
+    pub(crate) unsafe fn insert<T>(
         &mut self,
         dst: &mut Archetype,
         src_idx: u32,
@@ -388,6 +609,7 @@ impl Archetype {
 
         dst.reserve(1);
 
+        debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
             unreachable_unchecked()
         });
@@ -429,10 +651,11 @@ impl Archetype {
         let dst_entity_idx = dst.entities.len();
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
 
-        dst.reserve(1);
-
         let mut value = MaybeUninit::uninit();
 
+        dst.reserve(1);
+
+        debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| unsafe {
             if info.id != TypeId::of::<T>() {
                 unreachable_unchecked()
@@ -472,6 +695,8 @@ impl Archetype {
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
 
         dst.reserve(1);
+        debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
+
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
             (info.drop_one)(ptr);
         });
@@ -497,13 +722,7 @@ impl Archetype {
     /// Returns iterator over component type infos.
     #[inline]
     pub(crate) unsafe fn data(&self, idx: usize) -> &ComponentData {
-        &*self.components.get_unchecked(idx).get()
-    }
-
-    /// Returns iterator over component type infos.
-    #[inline]
-    pub(crate) unsafe fn data_mut(&self, idx: usize) -> &mut ComponentData {
-        &mut *self.components.get_unchecked(idx).get()
+        &self.components.get_unchecked(idx)
     }
 
     #[inline]
@@ -519,7 +738,7 @@ impl Archetype {
         if cap != self.entities.capacity() {
             // Capacity changed
             for &idx in &*self.indices {
-                let component = self.components[idx].get_mut();
+                let component = &mut self.components[idx];
                 unsafe {
                     component.grow(self.entities.len(), cap, self.entities.capacity());
                 }
@@ -536,12 +755,14 @@ impl Archetype {
         let chunk_idx = chunk_idx(entity_idx);
 
         bundle.put(|src, id, size| {
-            let component = self.components[self.set.get(id).unwrap_unchecked()].get_mut();
+            let component = &self.components[self.set.get(id).unwrap_unchecked()];
             let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
             let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
 
-            debug_assert!(component.version <= epoch);
-            component.version = epoch;
+            unsafe {
+                debug_assert!(*component.version.get() <= epoch);
+                *component.version.get() = epoch;
+            }
 
             debug_assert!(*chunk_version <= epoch);
             *chunk_version = epoch;
@@ -568,13 +789,12 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component =
-            self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()].get_mut();
+        let component = &self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()];
         let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
         let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
 
-        debug_assert!(component.version <= epoch);
-        component.version = epoch;
+        debug_assert!(*component.version.get() <= epoch);
+        *component.version.get() = epoch;
 
         debug_assert!(*chunk_version <= epoch);
         *chunk_version = epoch;
@@ -606,12 +826,12 @@ impl Archetype {
         let last_entity_idx = self.entities.len() - 1;
 
         for &src_type_idx in self.indices.iter() {
-            let src_component = self.components[src_type_idx].get_mut();
+            let src_component = &self.components[src_type_idx];
             let size = src_component.layout.size();
             let type_id = src_component.id;
 
             if let Some(dst_type_idx) = dst.set.get(type_id) {
-                let dst_component = dst.components[dst_type_idx].get_mut();
+                let dst_component = &dst.components[dst_type_idx];
 
                 let epoch = *src_component.entity_versions.as_ptr().add(src_entity_idx);
 
@@ -620,8 +840,8 @@ impl Archetype {
                 let dst_entity_version =
                     &mut *dst_component.entity_versions.as_ptr().add(dst_entity_idx);
 
-                if dst_component.version < epoch {
-                    dst_component.version = epoch;
+                if *dst_component.version.get() < epoch {
+                    *dst_component.version.get() = epoch;
                 }
 
                 if *dst_chunk_version < epoch {

@@ -19,6 +19,9 @@ pub unsafe trait DynamicBundle {
         None
     }
 
+    /// Returns true if bundle has speicifed type id.
+    fn contains_id(&self, id: TypeId) -> bool;
+
     /// Calls provided closure with slice of ids of types that this bundle contains.
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
 
@@ -38,7 +41,10 @@ pub trait Bundle: DynamicBundle {
     /// Returns static key for the bundle type.
     fn static_key() -> TypeId;
 
-    /// Calls provided closure with slice of ids of types that this bundle contains.    
+    /// Returns true if bundle has speicifed type id.
+    fn static_contains_id(id: TypeId) -> bool;
+
+    /// Calls provided closure with slice of ids of types that this bundle contains.
     fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R;
 
     /// Calls provided closure with slice of component infos of types that this bundle contains.
@@ -70,6 +76,11 @@ macro_rules! for_tuple {
             }
 
             #[inline]
+            fn contains_id(&self, id: TypeId) -> bool {
+                Self::static_contains_id(id)
+            }
+
+            #[inline]
             fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
                 Self::static_with_ids(f)
             }
@@ -88,6 +99,11 @@ macro_rules! for_tuple {
             #[inline]
             fn static_key() -> TypeId {
                 TypeId::of::<()>()
+            }
+
+            #[inline]
+            fn static_contains_id(_id: TypeId) -> bool {
+                false
             }
 
             #[inline]
@@ -114,6 +130,11 @@ macro_rules! for_tuple {
             #[inline]
             fn key() -> Option<TypeId> {
                 Some(<Self as Bundle>::static_key())
+            }
+
+            #[inline]
+            fn contains_id(&self, id: TypeId) -> bool {
+                <Self as Bundle>::static_contains_id(id)
             }
 
             #[inline]
@@ -160,6 +181,11 @@ macro_rules! for_tuple {
             #[inline]
             fn static_key() -> TypeId {
                 TypeId::of::<Self>()
+            }
+
+            #[inline]
+            fn static_contains_id(id: TypeId) -> bool {
+                $( TypeId::of::<$a>() == id )|| *
             }
 
             #[inline]

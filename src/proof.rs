@@ -33,11 +33,15 @@ macro_rules! impl_proof {
     (@ $ah:ident $($at:ident)* , $bh:ident $($bt:ident)*) => {
         // Proove nothing and single opt by anything.
         impl<'a, $ah $(,$at)*> Proof<()> for &'a mut ($ah, $($at,)*) {}
-        impl<'a, $ah $(,$at)*> Proof<()> for &'a ($ah, $($at,)*) {}
+        impl<'a, $ah $(,$at)*> Proof<()> for &'a     ($ah, $($at,)*) {}
 
-        impl<'a, H, $ah $(,$at)*> Proof<Option<&'a H>> for &'a mut ($ah, $($at,)*) {}
+        impl<'a, H, $ah $(,$at)*> Proof<&'a mut H> for &'a mut (H, $ah, $($at,)*) {}
+        impl<'a, H, $ah $(,$at)*> Proof<&'a     H> for &'a mut (H, $ah, $($at,)*) {}
+        impl<'a, H, $ah $(,$at)*> Proof<&'a     H> for &'a     (H, $ah, $($at,)*) {}
+
         impl<'a, H, $ah $(,$at)*> Proof<Option<&'a mut H>> for &'a mut ($ah, $($at,)*) {}
-        impl<'a, H, $ah $(,$at)*> Proof<Option<&'a H>> for &'a ($ah, $($at,)*) {}
+        impl<'a, H, $ah $(,$at)*> Proof<Option<&'a     H>> for &'a mut ($ah, $($at,)*) {}
+        impl<'a, H, $ah $(,$at)*> Proof<Option<&'a     H>> for &'a     ($ah, $($at,)*) {}
 
         impl_proof!(% $ah $($at)* , $bh $($bt)*);
         impl_proof!(@ $($at)* , $($bt)*);
@@ -47,6 +51,10 @@ macro_rules! impl_proof {
         // Proove nothing and single opt by anything.
         impl<'a> Proof<()> for &'a mut () {}
         impl<'a> Proof<()> for &'a () {}
+
+        impl<'a, H> Proof<&'a mut H> for &'a mut (H,) {}
+        impl<'a, H> Proof<&'a     H> for &'a mut (H,) {}
+        impl<'a, H> Proof<&'a     H> for &'a     (H,) {}
 
         impl<'a, H> Proof<Option<&'a H>> for &'a mut () {}
         impl<'a, H> Proof<Option<&'a mut H>> for &'a mut () {}

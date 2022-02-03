@@ -19,4 +19,5 @@ rc = []
 default = ["std", "rc"]
 
 [dependencies]
-hashbrown = { version = "0.12" }
+hashbrown = { version = "0.12", default-features = false }
+smallvec = { version ="1.8", features = ["union"], default-features = false }

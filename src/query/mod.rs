@@ -8,6 +8,7 @@
 
 pub use self::{
     alt::{Alt, FetchAlt},
+    filter::{Filter, With, Without},
     modified::{Modifed, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
     read::FetchRead,
     write::FetchWrite,
@@ -25,6 +26,7 @@ use crate::{
 };
 
 mod alt;
+mod filter;
 mod modified;
 mod option;
 mod read;
@@ -161,6 +163,8 @@ macro_rules! for_tuple {
 
         unsafe impl ImmutableQuery for () {}
         unsafe impl NonTrackingQuery for () {}
+
+        impl Filter for () {}
     };
 
     (impl $($a:ident)+) => {
@@ -203,6 +207,15 @@ macro_rules! for_tuple {
 
         unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
         unsafe impl<$($a),+> NonTrackingQuery for ($($a,)+) where $($a: NonTrackingQuery,)+ {}
+
+        impl<$($a),+> Filter for ($($a,)+) where $($a: Filter,)+ {
+            #[inline]
+            fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                $( $a.skip_archetype(archetype, tracks, epoch) ) || +
+            }
+        }
     };
 }
 
@@ -213,33 +226,37 @@ for_tuple!();
 ///
 /// Supports only `NonTrackingQuery`.
 #[allow(missing_debug_implementations)]
-pub struct QueryIter<'a, Q: Query> {
+pub struct QueryIter<'a, Q: Query, F = ()> {
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
 
     fetch: <Q as Query>::Fetch,
     entities: *const EntityId,
     indices: Range<usize>,
+
+    filter: F,
 }
 
-impl<'a, Q> QueryIter<'a, Q>
+impl<'a, Q, F> QueryIter<'a, Q, F>
 where
     Q: Query,
 {
-    pub(crate) fn new(epoch: u64, archetypes: &'a [Archetype]) -> Self {
+    pub(crate) fn new(epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
         QueryIter {
             epoch,
             archetypes: archetypes.iter(),
             fetch: Q::Fetch::dangling(),
             entities: ptr::null(),
             indices: 0..0,
+            filter,
         }
     }
 }
 
-impl<'a, Q> Iterator for QueryIter<'a, Q>
+impl<'a, Q, F> Iterator for QueryIter<'a, Q, F>
 where
     Q: Query,
+    F: Filter,
 {
     type Item = (EntityId, QueryItem<'a, Q>);
 
@@ -256,6 +273,9 @@ where
                     // move to the next archetype.
                     loop {
                         let archetype = self.archetypes.next()?;
+                        if self.filter.skip_archetype(archetype, 0, self.epoch) {
+                            continue;
+                        }
                         if let Some(fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
                             self.fetch = fetch;
                             self.entities = archetype.entities().as_ptr();
@@ -280,10 +300,10 @@ where
         }
     }
 
-    fn fold<B, F>(mut self, init: B, mut f: F) -> B
+    fn fold<B, Fun>(mut self, init: B, mut f: Fun) -> B
     where
         Self: Sized,
-        F: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
+        Fun: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
     {
         let mut acc = init;
         for idx in self.indices {
@@ -299,6 +319,9 @@ where
         }
 
         for archetype in self.archetypes {
+            if self.filter.skip_archetype(archetype, 0, self.epoch) {
+                continue;
+            }
             if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
                 let entities = archetype.entities().as_ptr();
 
@@ -324,7 +347,8 @@ where
 ///
 /// Does not require `Q` to implement `NonTrackingQuery`.
 #[allow(missing_debug_implementations)]
-pub struct QueryTrackedIter<'a, Q: Query> {
+pub struct QueryTrackedIter<'a, Q: Query, F> {
+    filter: F,
     tracks: u64,
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
@@ -335,12 +359,13 @@ pub struct QueryTrackedIter<'a, Q: Query> {
     visit_chunk: bool,
 }
 
-impl<'a, Q> QueryTrackedIter<'a, Q>
+impl<'a, Q, F> QueryTrackedIter<'a, Q, F>
 where
     Q: Query,
 {
-    pub(crate) fn new(tracks: u64, epoch: u64, archetypes: &'a [Archetype]) -> Self {
+    pub(crate) fn new(tracks: u64, epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
         QueryTrackedIter {
+            filter,
             tracks,
             epoch,
             archetypes: archetypes.iter(),
@@ -352,9 +377,10 @@ where
     }
 }
 
-impl<'a, Q> Iterator for QueryTrackedIter<'a, Q>
+impl<'a, Q, F> Iterator for QueryTrackedIter<'a, Q, F>
 where
     Q: Query,
+    F: Filter,
 {
     type Item = (EntityId, QueryItem<'a, Q>);
 
@@ -371,6 +397,14 @@ where
                     // move to the next archetype.
                     loop {
                         let archetype = self.archetypes.next()?;
+
+                        if self
+                            .filter
+                            .skip_archetype(archetype, self.tracks, self.epoch)
+                        {
+                            continue;
+                        }
+
                         if let Some(fetch) = unsafe { Q::fetch(archetype, self.tracks, self.epoch) }
                         {
                             self.fetch = fetch;
@@ -405,10 +439,10 @@ where
         }
     }
 
-    fn fold<B, F>(mut self, init: B, mut f: F) -> B
+    fn fold<B, Fun>(mut self, init: B, mut f: Fun) -> B
     where
         Self: Sized,
-        F: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
+        Fun: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
     {
         let mut acc = init;
         while let Some(idx) = self.indices.next() {
@@ -433,6 +467,12 @@ where
         }
 
         for archetype in self.archetypes {
+            if self
+                .filter
+                .skip_archetype(archetype, self.tracks, self.epoch)
+            {
+                continue;
+            }
             if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
                 let entities = archetype.entities().as_ptr();
                 let mut indices = 0..archetype.len();

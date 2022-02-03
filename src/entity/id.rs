@@ -32,6 +32,20 @@ impl EntityId {
     pub fn dangling() -> Self {
         EntityId::new(0, invalid_gen())
     }
+
+    /// Gets 64-bit integer that can be converted back to equal `EntityId`.
+    pub fn bits(&self) -> u64 {
+        self.idx as u64 | ((self.gen.get() as u64) << 32)
+    }
+
+    /// Converts 64-bit integer to `EntityId`.
+    /// Returns `None` for integer less than or equal to `u32::MAX`.
+    pub fn from_bits(bits: u64) -> Option<Self> {
+        let gen = (bits >> 32) as u32;
+        let idx = bits as u32;
+        let gen = NonZeroU32::new(gen)?;
+        Some(EntityId { gen, idx })
+    }
 }
 
 impl fmt::Debug for EntityId {

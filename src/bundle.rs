@@ -2,10 +2,14 @@
 //! which enables to build entities efficiently.
 
 use core::{
+    alloc::Layout,
     any::TypeId,
-    mem::{size_of, ManuallyDrop},
-    ptr::NonNull,
+    fmt,
+    mem::{size_of, swap, ManuallyDrop},
+    ptr::{self, NonNull},
 };
+
+use smallvec::SmallVec;
 
 use crate::component::{Component, ComponentInfo};
 
@@ -202,3 +206,162 @@ macro_rules! for_tuple {
 }
 
 for_tuple!();
+
+/// Builder for an entity.
+/// Entitiy can be spawned with entity builder.
+/// See [`World::spawn`] and [`World::spawn_owning`].
+pub struct EntityBuilder {
+    ptr: NonNull<u8>,
+    layout: Layout,
+    len: usize,
+
+    ids: SmallVec<[TypeId; 8]>,
+    infos: SmallVec<[ComponentInfo; 8]>,
+    offsets: SmallVec<[usize; 8]>,
+}
+
+impl fmt::Debug for EntityBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ds = f.debug_struct("EntityBuilder");
+        for info in &self.infos {
+            ds.field("component", &info.debug_name);
+        }
+        ds.finish()
+    }
+}
+
+impl EntityBuilder {
+    /// Creates new empty entity builder.
+    pub fn new() -> Self {
+        EntityBuilder {
+            ptr: NonNull::dangling(),
+            len: 0,
+            layout: Layout::new::<[u8; 0]>(),
+            ids: SmallVec::new(),
+            infos: SmallVec::new(),
+            offsets: SmallVec::new(),
+        }
+    }
+
+    /// Adds component to the builder.
+    /// If builder already had this component, old value is replaced.
+    pub fn add<T>(&mut self, value: T)
+    where
+        T: Component,
+    {
+        if let Some(existing) = self.get_mut::<T>() {
+            // Replace existing value.
+            *existing = value;
+            return;
+        }
+
+        debug_assert!(self.len <= self.layout.size());
+        let layout = Layout::from_size_align(self.len, self.layout.align()).unwrap();
+
+        let (layout, value_offset) = layout
+            .extend(Layout::new::<T>())
+            .expect("EntityBuilder overflow");
+
+        self.ids.reserve(1);
+        self.infos.reserve(1);
+        self.offsets.reserve(1);
+
+        if self.layout.align() != layout.align() || self.layout.size() < layout.size() {
+            let mut layout = match self.layout.size().checked_mul(2) {
+                Some(cap) if cap >= layout.size() => {
+                    match Layout::from_size_align(cap, layout.align()) {
+                        Err(_) => layout,
+                        Ok(layout) => layout,
+                    }
+                }
+                _ => layout,
+            };
+
+            unsafe {
+                let ptr = alloc::alloc::alloc(layout);
+                let mut ptr = NonNull::new(ptr).unwrap();
+
+                ptr::copy_nonoverlapping(self.ptr.as_ptr(), ptr.as_ptr(), self.len);
+
+                swap(&mut self.ptr, &mut ptr);
+                swap(&mut self.layout, &mut layout);
+
+                alloc::alloc::dealloc(ptr.as_ptr(), layout);
+            }
+        }
+
+        unsafe {
+            debug_assert!(self.len <= self.layout.size());
+            debug_assert!(self.len <= value_offset);
+            debug_assert!(value_offset + size_of::<T>() <= self.layout.size());
+
+            ptr::write(self.ptr.as_ptr().add(value_offset).cast(), value);
+            self.len = value_offset + size_of::<T>();
+        }
+
+        self.ids.push(TypeId::of::<T>());
+        self.infos.push(ComponentInfo::of::<T>());
+        self.offsets.push(value_offset);
+    }
+
+    /// Returns reference to component from builder.
+    pub fn get<T>(&self) -> Option<&T>
+    where
+        T: 'static,
+    {
+        let idx = self.ids.iter().position(|id| *id == TypeId::of::<T>())?;
+        let offset = self.offsets[idx];
+        Some(unsafe { &*self.ptr.as_ptr().add(offset).cast::<T>() })
+    }
+
+    /// Returns mutable reference to component from builder.
+    pub fn get_mut<T>(&mut self) -> Option<&mut T>
+    where
+        T: 'static,
+    {
+        let idx = self.ids.iter().position(|id| *id == TypeId::of::<T>())?;
+        let offset = self.offsets[idx];
+        Some(unsafe { &mut *self.ptr.as_ptr().add(offset).cast::<T>() })
+    }
+
+    /// Returns iterator over component types in this builder.
+    pub fn component_types(&self) -> impl Iterator<Item = &ComponentInfo> {
+        self.infos.iter()
+    }
+
+    /// Returns true of the builder is empty.
+    pub fn is_empty(&self) -> bool {
+        self.ids.is_empty()
+    }
+}
+
+unsafe impl DynamicBundle for EntityBuilder {
+    #[inline]
+    fn valid(&self) -> bool {
+        // Validity is ensured by construction
+        true
+    }
+
+    #[inline]
+    fn contains_id(&self, target: TypeId) -> bool {
+        self.ids.iter().any(|id| *id == target)
+    }
+
+    #[inline]
+    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
+        f(&self.ids)
+    }
+
+    #[inline]
+    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
+        f(&self.infos)
+    }
+
+    #[inline]
+    fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
+        for (info, &offset) in self.infos.iter().zip(&self.offsets) {
+            let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
+            f(ptr, info.id, info.layout.size());
+        }
+    }
+}

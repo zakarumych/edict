@@ -23,7 +23,8 @@ use crate::{
     hash::{MulHasherBuilder, NoOpHasherBuilder},
     idx::MAX_IDX_USIZE,
     query::{
-        Fetch, ImmutableQuery, NonTrackingQuery, Query, QueryItem, QueryIter, QueryTrackedIter,
+        Fetch, Filter, ImmutableQuery, NonTrackingQuery, Query, QueryItem, QueryIter,
+        QueryTrackedIter, With, Without,
     },
 };
 #[cfg(feature = "rc")]
@@ -796,60 +797,32 @@ impl World {
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
-    /// This method only works with immutable queries that does not track for component changes.
-    #[inline]
-    pub fn query<'a, Q>(&'a self) -> QueryIter<'a, Q>
-    where
-        Q: Query + NonTrackingQuery + ImmutableQuery,
-    {
-        QueryIter::new(self.epoch, &self.archetypes)
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that track for component changes.
     /// This method only works with immutable queries.
     #[inline]
-    pub fn query_tracked<'a, Q>(&'a self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
+    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, Q, ()>
     where
         Q: Query + ImmutableQuery,
     {
-        let iter = QueryTrackedIter::new(tracks.epoch, self.epoch, &self.archetypes);
-        tracks.epoch = self.epoch;
-        iter
+        QueryRef {
+            world: self,
+            query: PhantomData,
+            filter: (),
+        }
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
     /// This method can be used for queries that mutate components.
-    /// This method only works queries that does not track for component changes.
     #[inline]
-    pub fn query_mut<'a, Q>(&'a mut self) -> QueryIter<'a, Q>
-    where
-        Q: Query + NonTrackingQuery,
-    {
-        if Q::mutates() {
-            self.epoch += 1
-        };
-
-        QueryIter::new(self.epoch, &self.archetypes)
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that mutates components and track for component changes.
-    #[inline]
-    pub fn query_tracked_mut<'a, Q>(&'a mut self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q>
+    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, Q, ()>
     where
         Q: Query,
     {
-        if Q::mutates() {
-            self.epoch += 1
-        };
-
-        let iter = QueryTrackedIter::new(tracks.epoch, self.epoch, &self.archetypes);
-        tracks.epoch = self.epoch;
-        iter
+        QueryMut {
+            world: self,
+            query: PhantomData,
+            filter: (),
+        }
     }
 
     /// Checks if specified entity has componet of specified type.
@@ -1358,6 +1331,12 @@ where
 
         FromIterator::from_iter(self)
     }
+
+    fn count(self) -> usize {
+        // Entities are conceptually despawned immediately.
+        // Just report the count in this case.
+        self.bundles.count()
+    }
 }
 
 #[cfg(feature = "rc")]
@@ -1430,6 +1409,227 @@ where
     I: FusedIterator<Item = B>,
     B: Bundle,
 {
+}
+
+/// Mutable query builder.
+#[derive(Debug)]
+pub struct QueryMut<'a, Q, F> {
+    world: &'a mut World,
+    query: PhantomData<Q>,
+    filter: F,
+}
+
+impl<'a, Q, F> IntoIterator for QueryMut<'a, Q, F>
+where
+    Q: Query + NonTrackingQuery,
+    F: Filter,
+{
+    type Item = (EntityId, QueryItem<'a, Q>);
+    type IntoIter = QueryIter<'a, Q, F>;
+
+    fn into_iter(self) -> QueryIter<'a, Q, F> {
+        self.into_iter()
+    }
+}
+
+impl<'a, Q, F> QueryMut<'a, Q, F>
+where
+    Q: Query,
+    F: Filter,
+{
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter<'b>(&'b self) -> QueryIter<'b, Q, F>
+    where
+        Q: NonTrackingQuery + ImmutableQuery,
+        F: Clone,
+    {
+        debug_assert!(!Q::mutates());
+
+        QueryIter::new(
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        )
+    }
+
+    /// Returns iterator over query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter_mut<'b>(&'b mut self) -> QueryIter<'b, Q, F>
+    where
+        Q: NonTrackingQuery,
+        F: Clone,
+    {
+        if Q::mutates() {
+            self.world.epoch += 1
+        };
+
+        QueryIter::new(
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        )
+    }
+
+    /// Returns iterator over query results.
+    /// This method is only available with non-tracking queries.
+    pub fn into_iter(mut self) -> QueryIter<'a, Q, F>
+    where
+        Q: NonTrackingQuery,
+    {
+        if Q::mutates() {
+            self.world.epoch += 1
+        };
+
+        QueryIter::new(self.world.epoch, &self.world.archetypes, self.filter)
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is available with tracking queries.
+    pub fn tracked_iter<'b>(&'b self, tracks: &mut Tracks) -> QueryTrackedIter<'b, Q, F>
+    where
+        Q: ImmutableQuery,
+        F: Clone,
+    {
+        debug_assert!(!Q::mutates());
+
+        let iter = QueryTrackedIter::new(
+            tracks.epoch,
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        );
+        tracks.epoch = self.world.epoch;
+        iter
+    }
+
+    /// Returns iterator over query results.
+    /// This method is available with tracking queries.
+    pub fn tracked_iter_mut<'b>(&'b mut self, tracks: &mut Tracks) -> QueryTrackedIter<'b, Q, F>
+    where
+        F: Clone,
+    {
+        if Q::mutates() {
+            self.world.epoch += 1
+        };
+
+        let iter = QueryTrackedIter::new(
+            tracks.epoch,
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        );
+        tracks.epoch = self.world.epoch;
+        iter
+    }
+
+    /// Returns iterator over query results.
+    /// This method is available with tracking queries.
+    pub fn tracked_into_iter(mut self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q, F> {
+        if Q::mutates() {
+            self.world.epoch += 1
+        };
+
+        let iter = QueryTrackedIter::new(
+            tracks.epoch,
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter,
+        );
+        tracks.epoch = self.world.epoch;
+        iter
+    }
+}
+
+/// Immutable query builder.
+#[derive(Clone, Copy, Debug)]
+pub struct QueryRef<'a, Q, F> {
+    world: &'a World,
+    query: PhantomData<Q>,
+    filter: F,
+}
+
+impl<'a, Q, F> IntoIterator for QueryRef<'a, Q, F>
+where
+    Q: Query + NonTrackingQuery + ImmutableQuery,
+    F: Filter,
+{
+    type Item = (EntityId, QueryItem<'a, Q>);
+    type IntoIter = QueryIter<'a, Q, F>;
+
+    fn into_iter(self) -> QueryIter<'a, Q, F> {
+        self.into_iter()
+    }
+}
+
+impl<'a, Q, F> QueryRef<'a, Q, F>
+where
+    Q: Query,
+    F: Filter,
+{
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter<'b>(&'b self) -> QueryIter<'b, Q, F>
+    where
+        Q: NonTrackingQuery + ImmutableQuery,
+        F: Clone,
+    {
+        debug_assert!(!Q::mutates());
+
+        QueryIter::new(
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        )
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn into_iter(self) -> QueryIter<'a, Q, F>
+    where
+        Q: NonTrackingQuery + ImmutableQuery,
+    {
+        debug_assert!(!Q::mutates());
+
+        QueryIter::new(self.world.epoch, &self.world.archetypes, self.filter)
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is available with tracking queries.
+    pub fn tracked_iter<'b>(&'b self, tracks: &mut Tracks) -> QueryTrackedIter<'b, Q, F>
+    where
+        Q: ImmutableQuery,
+        F: Clone,
+    {
+        debug_assert!(!Q::mutates());
+
+        let iter = QueryTrackedIter::new(
+            tracks.epoch,
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter.clone(),
+        );
+        tracks.epoch = self.world.epoch;
+        iter
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is available with tracking queries.
+    pub fn tracked_into_iter(self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q, F>
+    where
+        Q: ImmutableQuery,
+    {
+        debug_assert!(!Q::mutates());
+
+        let iter = QueryTrackedIter::new(
+            tracks.epoch,
+            self.world.epoch,
+            &self.world.archetypes,
+            self.filter,
+        );
+        tracks.epoch = self.world.epoch;
+        iter
+    }
 }
 
 /// Error returned in case specified [`EntityId`]
@@ -1947,3 +2147,82 @@ where
         },
     }
 }
+
+macro_rules! for_tuple {
+    () => {
+        for_tuple!(for A B C D E F G H);
+    };
+
+    (for) => {
+        for_tuple!(impl);
+    };
+
+    (for $head:ident $($tail:ident)*) => {
+        for_tuple!(for $($tail)*);
+        for_tuple!(impl $head $($tail)*);
+    };
+
+    (impl $($a:ident)*) => {
+        impl<'a, Q $(,$a)*> QueryMut<'a, Q, ($($a,)*)> {
+            /// Adds `With` filter to the query.
+            pub fn with<T>(self) -> QueryMut<'a, Q, ( $($a,)* With<T>, )>
+            where
+                T: Component,
+            {
+                #[allow(non_snake_case)]
+                let ($($a,)*) = self.filter;
+                QueryMut {
+                    world: self.world,
+                    query: self.query,
+                    filter: ( $($a,)* With::new(), )
+                }
+            }
+
+            /// Adds `Without` filter to the query.
+            pub fn without<T>(self) -> QueryMut<'a, Q, ( $($a,)* Without<T>, )>
+            where
+                T: Component,
+            {
+                #[allow(non_snake_case)]
+                let ($($a,)*) = self.filter;
+                QueryMut {
+                    world: self.world,
+                    query: self.query,
+                    filter: ( $($a,)* Without::new(), )
+                }
+            }
+        }
+
+        impl<'a, Q $(,$a)*> QueryRef<'a, Q, ($($a,)*)> {
+            /// Adds `With` filter to the query.
+            pub fn with<T>(self) -> QueryRef<'a, Q, ( $($a,)* With<T>, )>
+            where
+                T: Component,
+            {
+                #[allow(non_snake_case)]
+                let ($($a,)*) = self.filter;
+                QueryRef {
+                    world: self.world,
+                    query: self.query,
+                    filter: ( $($a,)* With::new(), )
+                }
+            }
+
+            /// Adds `Without` filter to the query.
+            pub fn without<T>(self) -> QueryRef<'a, Q, ( $($a,)* Without<T>, )>
+            where
+                T: Component,
+            {
+                #[allow(non_snake_case)]
+                let ($($a,)*) = self.filter;
+                QueryRef {
+                    world: self.world,
+                    query: self.query,
+                    filter: ( $($a,)* Without::new(), )
+                }
+            }
+        }
+    };
+}
+
+for_tuple!();

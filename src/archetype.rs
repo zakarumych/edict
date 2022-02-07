@@ -722,6 +722,7 @@ impl Archetype {
     /// Returns iterator over component type infos.
     #[inline]
     pub(crate) unsafe fn data(&self, idx: usize) -> &ComponentData {
+        debug_assert!(idx < self.components.len());
         &self.components.get_unchecked(idx)
     }
 

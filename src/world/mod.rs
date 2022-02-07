@@ -30,13 +30,11 @@ use crate::{
 #[cfg(feature = "rc")]
 use crate::{entity::Entity, proof::Proof};
 
-/// Value to remember which modifications was already iterated over,
-/// and see what modifications are new.
-#[derive(Clone, Debug)]
-#[allow(missing_copy_implementations)]
-pub struct Tracks {
-    pub(crate) epoch: u64,
-}
+pub use self::{meta::EntityMeta, tracks::Tracks};
+
+// mod archetypes;
+mod meta;
+mod tracks;
 
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
@@ -357,25 +355,6 @@ impl World {
         }
 
         Ok(())
-    }
-
-    /// Transfers ownership of the entity from the caller to the `World`.
-    /// After this call, entity won't be despawned until [`World::despawn`] is called with this entity id.
-    #[cfg(feature = "rc")]
-    pub fn keep<T>(&mut self, entity: Entity<T>) {
-        assert!(self.entities.is_owner_of(&entity));
-        self.entities.give_ownership(entity);
-    }
-
-    /// Transfers ownership of the entity from the `World` to the caller.
-    /// After this call, entity should be despawned by dropping returned entity reference,
-    /// or by returning ownership to the `World` and then called [`World::despawn`]
-    ///
-    /// Returns error if entity with specified id does not exists,
-    /// or if that entity is not owned by the `World`.
-    #[cfg(feature = "rc")]
-    pub fn take(&mut self, entity: &EntityId) -> Result<Entity, OwnershipError> {
-        self.entities.take_ownership(entity)
     }
 
     /// Inserts component to the specified entity.
@@ -784,6 +763,10 @@ impl World {
             type_name::<Q>()
         );
 
+        if Q::mutates() {
+            self.epoch += 1;
+        }
+
         let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
         let archetype = &self.archetypes[archetype as usize];
         match unsafe { Q::fetch(archetype, 0, self.epoch) } {
@@ -793,61 +776,6 @@ impl World {
                 Ok(item)
             }
         }
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
-    #[inline]
-    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, Q, ()>
-    where
-        Q: Query + ImmutableQuery,
-    {
-        QueryRef {
-            world: self,
-            query: PhantomData,
-            filter: (),
-        }
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that mutate components.
-    #[inline]
-    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, Q, ()>
-    where
-        Q: Query,
-    {
-        QueryMut {
-            world: self,
-            query: PhantomData,
-            filter: (),
-        }
-    }
-
-    /// Checks if specified entity has componet of specified type.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn has_component_owning<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
-        assert!(self.entities.is_owner_of(entity));
-
-        let (archetype, _idx) = self.entities.get(entity).unwrap();
-        self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
-    }
-
-    /// Attemtps to check if specified entity has componet of specified type.
-    ///
-    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline]
-    pub fn has_component<T: 'static>(&self, entity: &EntityId) -> Result<bool, NoSuchEntity> {
-        let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
-        Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
-    }
-
-    /// Checks if specified entity is still alive.
-    #[inline]
-    pub fn is_alive(&self, entity: &EntityId) -> bool {
-        self.entities.get(entity).is_some()
     }
 
     /// Returns new [`Tracks`] instance to use with tracking queries.
@@ -895,6 +823,106 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Transfers ownership of the entity from the caller to the `World`.
+    /// After this call, entity won't be despawned until [`World::despawn`] is called with this entity id.
+    #[cfg(feature = "rc")]
+    pub fn keep<T>(&mut self, entity: Entity<T>) {
+        assert!(self.entities.is_owner_of(&entity));
+        self.entities.give_ownership(entity);
+    }
+
+    /// Transfers ownership of the entity from the `World` to the caller.
+    /// After this call, entity should be despawned by dropping returned entity reference,
+    /// or by returning ownership to the `World` and then called [`World::despawn`]
+    ///
+    /// Returns error if entity with specified id does not exists,
+    /// or if that entity is not owned by the `World`.
+    #[cfg(feature = "rc")]
+    pub fn take(&mut self, entity: &EntityId) -> Result<Entity, OwnershipError> {
+        self.entities.take_ownership(entity)
+    }
+
+    /// Checks if specified entity has componet of specified type.
+    #[cfg(feature = "rc")]
+    #[inline]
+    pub fn has_component_owning<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
+        assert!(self.entities.is_owner_of(entity));
+
+        let (archetype, _idx) = self.entities.get(entity).unwrap();
+        self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
+    }
+
+    /// Attemtps to check if specified entity has componet of specified type.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    #[inline]
+    pub fn has_component<T: 'static>(&self, entity: &EntityId) -> Result<bool, NoSuchEntity> {
+        let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
+    }
+
+    /// Checks if specified entity is still alive.
+    #[inline]
+    pub fn is_alive(&self, entity: &EntityId) -> bool {
+        self.entities.get(entity).is_some()
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method only works with immutable queries.
+    #[inline]
+    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, Q, ()>
+    where
+        Q: Query + ImmutableQuery,
+    {
+        QueryRef {
+            epoch: self.epoch,
+            archetypes: &self.archetypes,
+            query: PhantomData,
+            filter: (),
+        }
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that mutate components.
+    #[inline]
+    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, Q, ()>
+    where
+        Q: Query,
+    {
+        QueryMut {
+            epoch: &mut self.epoch,
+            archetypes: &self.archetypes,
+            query: PhantomData,
+            filter: (),
+        }
+    }
+
+    /// Splits the world into entity-meta and mutable query.
+    /// Queries the world to iterate over entities and components specified by the query type.
+    /// `EntityMeta` can be used to fetch and control some meta-information about entities query is alive,
+    /// including checking if entity is alive, checking components attached to entity and taking, giving entity ownership.
+    ///
+    /// This method can be used for queries that mutate components.
+    #[inline]
+    pub fn meta_query_mut<'a, Q>(&'a mut self) -> (EntityMeta<'a>, QueryMut<'a, Q, ()>)
+    where
+        Q: Query,
+    {
+        let meta = EntityMeta {
+            entities: &mut self.entities,
+            archetypes: &self.archetypes,
+        };
+        let query = QueryMut {
+            epoch: &mut self.epoch,
+            archetypes: &self.archetypes,
+            query: PhantomData,
+            filter: (),
+        };
+        (meta, query)
     }
 
     /// Iterates through world using specified query.
@@ -1414,7 +1442,8 @@ where
 /// Mutable query builder.
 #[derive(Debug)]
 pub struct QueryMut<'a, Q, F> {
-    world: &'a mut World,
+    epoch: &'a mut u64,
+    archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,
 }
@@ -1446,11 +1475,7 @@ where
     {
         debug_assert!(!Q::mutates());
 
-        QueryIter::new(
-            self.world.epoch,
-            &self.world.archetypes,
-            self.filter.clone(),
-        )
+        QueryIter::new(*self.epoch, self.archetypes, self.filter.clone())
     }
 
     /// Returns iterator over query results.
@@ -1461,27 +1486,23 @@ where
         F: Clone,
     {
         if Q::mutates() {
-            self.world.epoch += 1
+            *self.epoch += 1
         };
 
-        QueryIter::new(
-            self.world.epoch,
-            &self.world.archetypes,
-            self.filter.clone(),
-        )
+        QueryIter::new(*self.epoch, self.archetypes, self.filter.clone())
     }
 
     /// Returns iterator over query results.
     /// This method is only available with non-tracking queries.
-    pub fn into_iter(mut self) -> QueryIter<'a, Q, F>
+    pub fn into_iter(self) -> QueryIter<'a, Q, F>
     where
         Q: NonTrackingQuery,
     {
         if Q::mutates() {
-            self.world.epoch += 1
+            *self.epoch += 1
         };
 
-        QueryIter::new(self.world.epoch, &self.world.archetypes, self.filter)
+        QueryIter::new(*self.epoch, self.archetypes, self.filter)
     }
 
     /// Returns iterator over immutable query results.
@@ -1495,11 +1516,11 @@ where
 
         let iter = QueryTrackedIter::new(
             tracks.epoch,
-            self.world.epoch,
-            &self.world.archetypes,
+            *self.epoch,
+            self.archetypes,
             self.filter.clone(),
         );
-        tracks.epoch = self.world.epoch;
+        tracks.epoch = *self.epoch;
         iter
     }
 
@@ -1510,33 +1531,28 @@ where
         F: Clone,
     {
         if Q::mutates() {
-            self.world.epoch += 1
+            *self.epoch += 1
         };
 
         let iter = QueryTrackedIter::new(
             tracks.epoch,
-            self.world.epoch,
-            &self.world.archetypes,
+            *self.epoch,
+            self.archetypes,
             self.filter.clone(),
         );
-        tracks.epoch = self.world.epoch;
+        tracks.epoch = *self.epoch;
         iter
     }
 
     /// Returns iterator over query results.
     /// This method is available with tracking queries.
-    pub fn tracked_into_iter(mut self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q, F> {
+    pub fn tracked_into_iter(self, tracks: &mut Tracks) -> QueryTrackedIter<'a, Q, F> {
         if Q::mutates() {
-            self.world.epoch += 1
+            *self.epoch += 1
         };
 
-        let iter = QueryTrackedIter::new(
-            tracks.epoch,
-            self.world.epoch,
-            &self.world.archetypes,
-            self.filter,
-        );
-        tracks.epoch = self.world.epoch;
+        let iter = QueryTrackedIter::new(tracks.epoch, *self.epoch, self.archetypes, self.filter);
+        tracks.epoch = *self.epoch;
         iter
     }
 }
@@ -1544,7 +1560,8 @@ where
 /// Immutable query builder.
 #[derive(Clone, Copy, Debug)]
 pub struct QueryRef<'a, Q, F> {
-    world: &'a World,
+    epoch: u64,
+    archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,
 }
@@ -1576,11 +1593,7 @@ where
     {
         debug_assert!(!Q::mutates());
 
-        QueryIter::new(
-            self.world.epoch,
-            &self.world.archetypes,
-            self.filter.clone(),
-        )
+        QueryIter::new(self.epoch, self.archetypes, self.filter.clone())
     }
 
     /// Returns iterator over immutable query results.
@@ -1591,7 +1604,7 @@ where
     {
         debug_assert!(!Q::mutates());
 
-        QueryIter::new(self.world.epoch, &self.world.archetypes, self.filter)
+        QueryIter::new(self.epoch, self.archetypes, self.filter)
     }
 
     /// Returns iterator over immutable query results.
@@ -1605,11 +1618,11 @@ where
 
         let iter = QueryTrackedIter::new(
             tracks.epoch,
-            self.world.epoch,
-            &self.world.archetypes,
+            self.epoch,
+            self.archetypes,
             self.filter.clone(),
         );
-        tracks.epoch = self.world.epoch;
+        tracks.epoch = self.epoch;
         iter
     }
 
@@ -1621,13 +1634,8 @@ where
     {
         debug_assert!(!Q::mutates());
 
-        let iter = QueryTrackedIter::new(
-            tracks.epoch,
-            self.world.epoch,
-            &self.world.archetypes,
-            self.filter,
-        );
-        tracks.epoch = self.world.epoch;
+        let iter = QueryTrackedIter::new(tracks.epoch, self.epoch, self.archetypes, self.filter);
+        tracks.epoch = self.epoch;
         iter
     }
 }
@@ -2150,7 +2158,7 @@ where
 
 macro_rules! for_tuple {
     () => {
-        for_tuple!(for A B C D E F G H);
+        for_tuple!(for A B C D E F G H I J K L M N O P);
     };
 
     (for) => {
@@ -2172,7 +2180,8 @@ macro_rules! for_tuple {
                 #[allow(non_snake_case)]
                 let ($($a,)*) = self.filter;
                 QueryMut {
-                    world: self.world,
+                    epoch: self.epoch,
+                    archetypes: self.archetypes,
                     query: self.query,
                     filter: ( $($a,)* With::new(), )
                 }
@@ -2186,7 +2195,8 @@ macro_rules! for_tuple {
                 #[allow(non_snake_case)]
                 let ($($a,)*) = self.filter;
                 QueryMut {
-                    world: self.world,
+                    epoch: self.epoch,
+                    archetypes: self.archetypes,
                     query: self.query,
                     filter: ( $($a,)* Without::new(), )
                 }
@@ -2202,7 +2212,8 @@ macro_rules! for_tuple {
                 #[allow(non_snake_case)]
                 let ($($a,)*) = self.filter;
                 QueryRef {
-                    world: self.world,
+                    epoch: self.epoch,
+                    archetypes: self.archetypes,
                     query: self.query,
                     filter: ( $($a,)* With::new(), )
                 }
@@ -2216,7 +2227,8 @@ macro_rules! for_tuple {
                 #[allow(non_snake_case)]
                 let ($($a,)*) = self.filter;
                 QueryRef {
-                    world: self.world,
+                    epoch: self.epoch,
+                    archetypes: self.archetypes,
                     query: self.query,
                     filter: ( $($a,)* Without::new(), )
                 }

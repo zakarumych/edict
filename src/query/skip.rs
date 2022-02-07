@@ -25,6 +25,11 @@ impl Query for Skip {
     }
 
     #[inline]
+    fn skip_archetype(_: &Archetype, _: u64) -> bool {
+        false
+    }
+
+    #[inline]
     unsafe fn fetch(_: &Archetype, _: u64, _epoch: u64) -> Option<Skip> {
         Some(Skip)
     }

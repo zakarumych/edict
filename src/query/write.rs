@@ -60,6 +60,11 @@ where
     }
 
     #[inline]
+    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+        !archetype.contains_id(TypeId::of::<T>())
+    }
+
+    #[inline]
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);

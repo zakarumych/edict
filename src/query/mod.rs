@@ -92,6 +92,9 @@ pub trait Query {
         false
     }
 
+    /// Checks if archetype must be skipped.
+    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool;
+
     /// Fetches data from one archetype.
     /// Returns [`None`] is archetype does not match query requirements.
     unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Self::Fetch>;
@@ -119,7 +122,7 @@ pub type QueryItem<'a, Q> = <<Q as Query>::Fetch as Fetch<'a>>::Item;
 
 macro_rules! for_tuple {
     () => {
-        for_tuple!(for A B C D E F G H);
+        for_tuple!(for A B C D E F G H I J K L M N O P);
     };
 
     (for) => {
@@ -152,6 +155,11 @@ macro_rules! for_tuple {
 
             #[inline]
             fn tracks() -> bool {
+                false
+            }
+
+            #[inline]
+            fn skip_archetype(_: &Archetype, _: u64) -> bool {
                 false
             }
 
@@ -200,6 +208,11 @@ macro_rules! for_tuple {
             }
 
             #[inline]
+            fn skip_archetype(archetype: & Archetype, track: u64) -> bool {
+                $( $a::skip_archetype(archetype, track) )||+
+            }
+
+            #[inline]
             unsafe fn fetch(archetype: & Archetype, track: u64, epoch: u64) -> Option<($($a::Fetch,)+)> {
                 Some(($( $a::fetch(archetype, track, epoch)?, )+))
             }
@@ -213,7 +226,7 @@ macro_rules! for_tuple {
             fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
-                $( $a.skip_archetype(archetype, tracks, epoch) ) || +
+                $( $a.skip_archetype(archetype, tracks, epoch) )||+
             }
         }
     };
@@ -262,7 +275,8 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.indices.len() as usize, None)
+        let len = self.len();
+        (len, Some(len))
     }
 
     #[inline]
@@ -327,7 +341,7 @@ where
 
                 for idx in 0..archetype.len() {
                     if let Some(chunk_idx) = first_of_chunk(idx) {
-                        unsafe { self.fetch.visit_chunk(chunk_idx) }
+                        unsafe { fetch.visit_chunk(chunk_idx) }
                     }
                     debug_assert!(!unsafe { fetch.skip_item(idx) });
 
@@ -339,6 +353,28 @@ where
             }
         }
         acc
+    }
+}
+
+impl<Q, F> ExactSizeIterator for QueryIter<'_, Q, F>
+where
+    Q: Query,
+    F: Filter,
+{
+    fn len(&self) -> usize {
+        self.archetypes
+            .clone()
+            .fold(self.indices.len(), |acc, archetype| {
+                if self.filter.skip_archetype(archetype, 0, self.epoch) {
+                    return acc;
+                }
+
+                if Q::skip_archetype(archetype, 0) {
+                    return acc;
+                }
+
+                acc + archetype.len()
+            })
     }
 }
 
@@ -386,7 +422,22 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+        let upper = self
+            .archetypes
+            .clone()
+            .fold(self.indices.len(), |acc, archetype| {
+                if self.filter.skip_archetype(archetype, 0, self.epoch) {
+                    return acc;
+                }
+
+                if Q::skip_archetype(archetype, 0) {
+                    return acc;
+                }
+
+                acc + archetype.len()
+            });
+
+        (0, Some(upper))
     }
 
     #[inline]
@@ -479,7 +530,7 @@ where
 
                 while let Some(idx) = indices.next() {
                     if let Some(chunk_idx) = first_of_chunk(idx) {
-                        if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                        if unsafe { fetch.skip_chunk(chunk_idx) } {
                             self.indices.nth(CHUNK_LEN_USIZE - 1);
                             continue;
                         }
@@ -488,7 +539,7 @@ where
 
                     if !unsafe { fetch.skip_item(idx) } {
                         if self.visit_chunk {
-                            unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                            unsafe { fetch.visit_chunk(chunk_idx(idx)) }
                             self.visit_chunk = false;
                         }
                         let item = unsafe { fetch.get_item(idx) };

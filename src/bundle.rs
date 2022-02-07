@@ -57,7 +57,7 @@ pub trait Bundle: DynamicBundle {
 
 macro_rules! for_tuple {
     () => {
-        for_tuple!(for A B C D E F G);
+        for_tuple!(for A B C D E F G H I J K L M N O P);
     };
 
     (for) => {

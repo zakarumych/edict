@@ -83,6 +83,18 @@ where
     }
 
     #[inline]
+    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+        match archetype.id_index(TypeId::of::<T>()) {
+            None => true,
+            Some(idx) => unsafe {
+                let data = archetype.data(idx);
+                debug_assert_eq!(data.id, TypeId::of::<T>());
+                *data.version.get() < tracks
+            },
+        }
+    }
+
+    #[inline]
     unsafe fn fetch(
         archetype: &Archetype,
         tracks: u64,
@@ -177,6 +189,18 @@ where
     }
 
     #[inline]
+    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+        match archetype.id_index(TypeId::of::<T>()) {
+            None => true,
+            Some(idx) => unsafe {
+                let data = archetype.data(idx);
+                debug_assert_eq!(data.id, TypeId::of::<T>());
+                *data.version.get() < tracks
+            },
+        }
+    }
+
+    #[inline]
     unsafe fn fetch(
         archetype: &Archetype,
         tracks: u64,
@@ -265,10 +289,26 @@ where
     }
 
     #[inline]
+    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+        match archetype.id_index(TypeId::of::<T>()) {
+            None => true,
+            Some(idx) => unsafe {
+                let data = archetype.data(idx);
+                debug_assert_eq!(data.id, TypeId::of::<T>());
+                *data.version.get() < tracks
+            },
+        }
+    }
+
+    #[inline]
     unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<ModifiedFetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());
+
+        if *data.version.get() < tracks {
+            return None;
+        }
 
         debug_assert!(*data.version.get() < epoch);
         *data.version.get() = epoch;

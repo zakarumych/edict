@@ -19,6 +19,7 @@ use core::{
     ptr::{self},
     slice,
 };
+use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
@@ -69,10 +70,49 @@ pub trait Fetch<'a> {
     unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
 }
 
+/// Specifies kind of access query performs for particular component.
+#[derive(Clone, Copy, Debug)]
+pub enum Access {
+    /// No access to component.
+    /// Can be aliased with anything.
+    None,
+
+    /// Shared access to component. Can be aliased with other shared accesses.
+    Shared,
+
+    /// Cannot be aliased with other mutable and shared accesses.
+    Mutable,
+}
+
+const fn merge_access(lhs: Access, rhs: Access) -> Access {
+    match (lhs, rhs) {
+        (Access::None, rhs) => rhs,
+        (lhs, Access::None) => lhs,
+        (Access::Shared, Access::Shared) => Access::Shared,
+        _ => Access::Mutable,
+    }
+}
+
+struct QueryAllowed<Q>(bool, PhantomData<Q>);
+
+impl<L, R> core::ops::BitOr<QueryAllowed<L>> for QueryAllowed<R>
+where
+    L: Query,
+    R: Query,
+{
+    type Output = QueryAllowed<(L, R)>;
+
+    #[inline]
+    fn bitor(self, rhs: QueryAllowed<L>) -> QueryAllowed<(L, R)> {
+        let allowed = self.0 && rhs.0 && L::allowed_with::<R>();
+        QueryAllowed(allowed, PhantomData)
+    }
+}
+
 /// Trait for types that can query sets of components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
 /// sets of references to the components and optionally `EntityId` to address same components later.
-pub trait Query {
+pub unsafe trait Query {
     /// Fetch value type for this query type.
     /// Contains data from one archetype.
     type Fetch: for<'a> Fetch<'a>;
@@ -91,6 +131,15 @@ pub trait Query {
     fn tracks() -> bool {
         false
     }
+
+    /// Function to validate that query does not cause mutable reference aliasing.
+    fn is_valid() -> bool;
+
+    /// Returns what kind of access the query performs on the component type.
+    fn access(ty: TypeId) -> Access;
+
+    /// Returns `true` if query execution is allowed in parallel with specified.
+    fn allowed_with<Q: Query>() -> bool;
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool;
@@ -145,7 +194,7 @@ macro_rules! for_tuple {
             unsafe fn get_item(&mut self, _idx: usize) {}
         }
 
-        impl Query for () {
+        unsafe impl Query for () {
             type Fetch = ();
 
             #[inline]
@@ -156,6 +205,21 @@ macro_rules! for_tuple {
             #[inline]
             fn tracks() -> bool {
                 false
+            }
+
+            #[inline]
+            fn access(_ty: TypeId) -> Access {
+                Access::None
+            }
+
+            #[inline]
+            fn allowed_with<Q: Query>() -> bool {
+                true
+            }
+
+            #[inline]
+            fn is_valid() -> bool {
+                true
             }
 
             #[inline]
@@ -194,7 +258,7 @@ macro_rules! for_tuple {
             }
         }
 
-        impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
+        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
             type Fetch = ($($a::Fetch,)+);
 
             #[inline]
@@ -205,6 +269,26 @@ macro_rules! for_tuple {
             #[inline]
             fn tracks() -> bool {
                 false $( || $a::tracks()) +
+            }
+
+            #[inline]
+            fn access(ty: TypeId) -> Access {
+                let mut access = Access::None;
+                $(access = merge_access(access, $a::access(ty));)+
+                access
+            }
+
+            #[inline]
+            fn allowed_with<Q: Query>() -> bool {
+                $( <$a as Query>::allowed_with::<Q>() ) && +
+            }
+
+            #[inline]
+            fn is_valid() -> bool {
+                let allowed = $(
+                    QueryAllowed(true, PhantomData::<$a>)
+                ) | +;
+                allowed.0
             }
 
             #[inline]

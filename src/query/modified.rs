@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     alt::{Alt, RefMut},
-    Fetch, ImmutableQuery, Query,
+    Access, Fetch, ImmutableQuery, Query,
 };
 
 /// Query over modified component.
@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<T> Query for Modifed<&T>
+unsafe impl<T> Query for Modifed<&T>
 where
     T: Component,
 {
@@ -79,6 +79,21 @@ where
 
     #[inline]
     fn tracks() -> bool {
+        true
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        <&T as Query>::access(ty)
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        <&T as Query>::allowed_with::<Q>()
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
         true
     }
 
@@ -172,7 +187,7 @@ where
     }
 }
 
-impl<T> Query for Modifed<&mut T>
+unsafe impl<T> Query for Modifed<&mut T>
 where
     T: Component,
 {
@@ -185,6 +200,21 @@ where
 
     #[inline]
     fn tracks() -> bool {
+        true
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        <&mut T as Query>::access(ty)
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        <&mut T as Query>::allowed_with::<Q>()
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
         true
     }
 
@@ -272,7 +302,7 @@ where
     }
 }
 
-impl<T> Query for Modifed<Alt<T>>
+unsafe impl<T> Query for Modifed<Alt<T>>
 where
     T: Component,
 {
@@ -285,6 +315,21 @@ where
 
     #[inline]
     fn tracks() -> bool {
+        true
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        <Alt<T> as Query>::access(ty)
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        <Alt<T> as Query>::allowed_with::<Q>()
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
         true
     }
 

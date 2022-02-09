@@ -723,6 +723,8 @@ impl World {
     where
         Q: Query + ImmutableQuery + NonTrackingQuery,
     {
+        debug_assert!(Q::is_valid(), "Immutable queries are always valid");
+
         assert!(
             !Q::mutates(),
             "Invalid impl of `ImmutableQuery` for `{}`",
@@ -757,6 +759,8 @@ impl World {
     where
         Q: Query + NonTrackingQuery,
     {
+        assert!(Q::is_valid(), "Invalid query specified");
+
         assert!(
             !Q::tracks(),
             "Invalid impl of `NonTrackingQuery` for `{}`",
@@ -877,6 +881,8 @@ impl World {
     where
         Q: Query + ImmutableQuery,
     {
+        debug_assert!(Q::is_valid(), "Immutable queries are always valid");
+
         QueryRef {
             epoch: self.epoch,
             archetypes: &self.archetypes,
@@ -893,6 +899,8 @@ impl World {
     where
         Q: Query,
     {
+        assert!(Q::is_valid(), "Invalid query specified");
+
         QueryMut {
             epoch: &mut self.epoch,
             archetypes: &self.archetypes,
@@ -912,6 +920,8 @@ impl World {
     where
         Q: Query,
     {
+        assert!(Q::is_valid(), "Invalid query specified");
+
         let meta = EntityMeta {
             entities: &mut self.entities,
             archetypes: &self.archetypes,
@@ -934,6 +944,7 @@ impl World {
         Q: Query + NonTrackingQuery + ImmutableQuery,
         F: FnMut(QueryItem<'_, Q>),
     {
+        debug_assert!(Q::is_valid(), "Immutable queries are always valid");
         debug_assert!(!Q::mutates());
 
         for archetype in &self.archetypes {
@@ -955,6 +966,7 @@ impl World {
         Q: Query + ImmutableQuery,
         F: FnMut(QueryItem<'_, Q>),
     {
+        debug_assert!(Q::is_valid(), "Immutable queries are always valid");
         debug_assert!(!Q::mutates());
 
         let tracks_epoch = tracks.epoch;
@@ -1004,6 +1016,8 @@ impl World {
         Q: Query + NonTrackingQuery,
         F: FnMut(QueryItem<'_, Q>),
     {
+        assert!(Q::is_valid(), "Invalid query specified");
+
         if Q::mutates() {
             self.epoch += 1
         };
@@ -1054,6 +1068,8 @@ impl World {
         Q: Query,
         F: FnMut(QueryItem<'_, Q>),
     {
+        assert!(Q::is_valid(), "Invalid query specified");
+
         if Q::mutates() {
             self.epoch += 1
         };

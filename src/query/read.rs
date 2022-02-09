@@ -2,7 +2,7 @@ use core::{any::TypeId, ptr::NonNull};
 
 use crate::{archetype::Archetype, component::Component};
 
-use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
+use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 /// `Fetch` type for the `&T` query.
 #[allow(missing_debug_implementations)]
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<T> Query for &T
+unsafe impl<T> Query for &T
 where
     T: Component,
 {
@@ -39,6 +39,25 @@ where
     #[inline]
     fn mutates() -> bool {
         false
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        if ty == TypeId::of::<T>() {
+            Access::Shared
+        } else {
+            Access::None
+        }
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        matches!(Q::access(TypeId::of::<T>()), Access::None | Access::Shared)
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
+        true
     }
 
     #[inline]

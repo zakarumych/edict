@@ -1,6 +1,8 @@
+use std::any::TypeId;
+
 use crate::archetype::Archetype;
 
-use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
+use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -44,7 +46,7 @@ where
     }
 }
 
-impl<T> Query for Option<T>
+unsafe impl<T> Query for Option<T>
 where
     T: Query,
 {
@@ -53,6 +55,21 @@ where
     #[inline]
     fn mutates() -> bool {
         T::mutates()
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        <T as Query>::access(ty)
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        <T as Query>::allowed_with::<Q>()
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
+        true
     }
 
     #[inline]

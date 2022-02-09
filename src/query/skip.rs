@@ -1,6 +1,8 @@
+use std::any::TypeId;
+
 use crate::{archetype::Archetype, proof::Skip};
 
-use super::{Fetch, ImmutableQuery, NonTrackingQuery, Query};
+use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
 impl Fetch<'_> for Skip {
     type Item = Skip;
@@ -16,12 +18,27 @@ impl Fetch<'_> for Skip {
     }
 }
 
-impl Query for Skip {
+unsafe impl Query for Skip {
     type Fetch = Skip;
 
     #[inline]
     fn mutates() -> bool {
         false
+    }
+
+    #[inline]
+    fn access(_ty: TypeId) -> Access {
+        Access::None
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        true
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
+        true
     }
 
     #[inline]

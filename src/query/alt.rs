@@ -11,7 +11,7 @@ use crate::{
     component::Component,
 };
 
-use super::{Fetch, NonTrackingQuery, Query};
+use super::{Access, Fetch, NonTrackingQuery, Query};
 
 /// Query type that is an alternative to `&mut T`.
 /// Yields mutable reference wrapper that bumps component version on dereference.
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<T> Query for Alt<T>
+unsafe impl<T> Query for Alt<T>
 where
     T: Component,
 {
@@ -96,6 +96,25 @@ where
 
     #[inline]
     fn mutates() -> bool {
+        true
+    }
+
+    #[inline]
+    fn access(ty: TypeId) -> Access {
+        if ty == TypeId::of::<T>() {
+            Access::Mutable
+        } else {
+            Access::None
+        }
+    }
+
+    #[inline]
+    fn allowed_with<Q: Query>() -> bool {
+        matches!(Q::access(TypeId::of::<T>()), Access::None)
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
         true
     }
 

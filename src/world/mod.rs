@@ -533,7 +533,7 @@ impl World {
 
         let (src, dst) = match archetype < insert_info.dst {
             true => (&mut before[archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[archetype as usize]),
+            false => (&mut after[0], &mut before[insert_info.dst as usize]),
         };
 
         let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, idx, bundle, self.epoch) };
@@ -591,7 +591,7 @@ impl World {
 
         let (src, dst) = match archetype < remove_info.dst {
             true => (&mut before[archetype as usize], &mut after[0]),
-            false => (&mut after[0], &mut before[archetype as usize]),
+            false => (&mut after[0], &mut before[remove_info.dst as usize]),
         };
 
         let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(dst, idx) };

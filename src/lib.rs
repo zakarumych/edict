@@ -75,3 +75,6 @@ mod archetype;
 mod hash;
 mod idx;
 mod typeidset;
+
+#[cfg(test)]
+mod test;

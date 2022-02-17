@@ -476,6 +476,20 @@ impl Archetype {
             (component.drop_one)(ptr);
 
             if entity_idx != last_entity_idx {
+                let chunk_idx = chunk_idx(entity_idx);
+
+                let last_epoch = *component.entity_versions.as_ptr().add(last_entity_idx);
+
+                let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
+                let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
+
+                if *chunk_version < last_epoch {
+                    *chunk_version = last_epoch;
+                }
+
+                debug_assert!(*entity_version <= last_epoch);
+                *entity_version = last_epoch;
+
                 let last_ptr = component.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, ptr, size);
             }
@@ -838,6 +852,7 @@ impl Archetype {
 
                 let dst_chunk_version =
                     &mut *dst_component.chunk_versions.as_ptr().add(dst_chunk_idx);
+
                 let dst_entity_version =
                     &mut *dst_component.entity_versions.as_ptr().add(dst_entity_idx);
 
@@ -858,6 +873,23 @@ impl Archetype {
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
 
                 if src_entity_idx != last_entity_idx {
+                    let src_chunk_idx = chunk_idx(src_entity_idx);
+
+                    let last_epoch = *src_component.entity_versions.as_ptr().add(last_entity_idx);
+
+                    let src_chunk_version =
+                        &mut *src_component.chunk_versions.as_ptr().add(src_chunk_idx);
+
+                    let src_entity_version =
+                        &mut *src_component.entity_versions.as_ptr().add(src_entity_idx);
+
+                    if *src_chunk_version < last_epoch {
+                        *src_chunk_version = last_epoch;
+                    }
+
+                    debug_assert!(*src_entity_version <= last_epoch);
+                    *src_entity_version = last_epoch;
+
                     let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);
                     ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
                 }

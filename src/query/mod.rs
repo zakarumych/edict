@@ -383,8 +383,10 @@ where
                     }
                 }
                 Some(idx) => {
-                    if let Some(chunk_idx) = first_of_chunk(idx) {
-                        unsafe { self.fetch.visit_chunk(chunk_idx) }
+                    if Q::mutates() {
+                        if let Some(chunk_idx) = first_of_chunk(idx) {
+                            unsafe { self.fetch.visit_chunk(chunk_idx) }
+                        }
                     }
 
                     debug_assert!(!unsafe { self.fetch.skip_item(idx) });
@@ -405,8 +407,10 @@ where
     {
         let mut acc = init;
         for idx in self.indices {
-            if let Some(chunk_idx) = first_of_chunk(idx) {
-                unsafe { self.fetch.visit_chunk(chunk_idx) }
+            if Q::mutates() {
+                if let Some(chunk_idx) = first_of_chunk(idx) {
+                    unsafe { self.fetch.visit_chunk(chunk_idx) }
+                }
             }
             debug_assert!(!unsafe { self.fetch.skip_item(idx) });
 
@@ -424,8 +428,10 @@ where
                 let entities = archetype.entities().as_ptr();
 
                 for idx in 0..archetype.len() {
-                    if let Some(chunk_idx) = first_of_chunk(idx) {
-                        unsafe { fetch.visit_chunk(chunk_idx) }
+                    if Q::mutates() {
+                        if let Some(chunk_idx) = first_of_chunk(idx) {
+                            unsafe { fetch.visit_chunk(chunk_idx) }
+                        }
                     }
                     debug_assert!(!unsafe { fetch.skip_item(idx) });
 
@@ -555,7 +561,7 @@ where
                             self.indices.nth(CHUNK_LEN_USIZE - 1);
                             continue;
                         }
-                        self.visit_chunk = true;
+                        self.visit_chunk = Q::mutates();
                     }
 
                     if !unsafe { self.fetch.skip_item(idx) } {
@@ -586,7 +592,7 @@ where
                     self.indices.nth(CHUNK_LEN_USIZE - 1);
                     continue;
                 }
-                self.visit_chunk = true;
+                self.visit_chunk = Q::mutates();
             }
 
             if !unsafe { self.fetch.skip_item(idx) } {
@@ -618,7 +624,7 @@ where
                             self.indices.nth(CHUNK_LEN_USIZE - 1);
                             continue;
                         }
-                        self.visit_chunk = true;
+                        self.visit_chunk = Q::mutates();
                     }
 
                     if !unsafe { fetch.skip_item(idx) } {

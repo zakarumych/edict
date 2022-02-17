@@ -16,7 +16,7 @@ use hashbrown::{
 };
 
 use crate::{
-    archetype::{Archetype, CHUNK_LEN_USIZE},
+    archetype::{chunk_idx, Archetype, CHUNK_LEN_USIZE},
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
     entity::{Entities, EntityId},
@@ -708,6 +708,9 @@ impl World {
         let (archetype, idx) = self.entities.get(entity).unwrap();
         let archetype = &self.archetypes[archetype as usize];
         let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
+        unsafe {
+            fetch.visit_chunk(chunk_idx(idx as usize));
+        }
         let item = unsafe { fetch.get_item(idx as usize) };
         item
     }
@@ -776,6 +779,9 @@ impl World {
         match unsafe { Q::fetch(archetype, 0, self.epoch) } {
             None => Err(EntityError::MissingComponents),
             Some(mut fetch) => {
+                unsafe {
+                    fetch.visit_chunk(chunk_idx(idx as usize));
+                }
                 let item = unsafe { fetch.get_item(idx as usize) };
                 Ok(item)
             }
@@ -1658,7 +1664,7 @@ where
 
 /// Error returned in case specified [`EntityId`]
 /// does not reference any live entity in the [`World`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoSuchEntity;
 
 impl fmt::Display for NoSuchEntity {
@@ -1672,7 +1678,7 @@ impl std::error::Error for NoSuchEntity {}
 
 /// Error returned in case specified entity does not contain
 /// component of required type.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MissingComponents;
 
 impl fmt::Display for MissingComponents {
@@ -1686,7 +1692,7 @@ impl std::error::Error for MissingComponents {}
 
 /// Error returned if either entity reference is invalid
 /// or component of required type is not found for an entity.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EntityError {
     /// Error returned in case specified [`EntityId`]
     /// does not reference any live entity in the [`World`].
@@ -1728,9 +1734,21 @@ impl From<MissingComponents> for EntityError {
     }
 }
 
+impl PartialEq<NoSuchEntity> for EntityError {
+    fn eq(&self, _: &NoSuchEntity) -> bool {
+        matches!(self, EntityError::NoSuchEntity)
+    }
+}
+
+impl PartialEq<MissingComponents> for EntityError {
+    fn eq(&self, _: &MissingComponents) -> bool {
+        matches!(self, EntityError::MissingComponents)
+    }
+}
+
 /// Error that may occur when function expects `World` to own an entity with specific id.
 #[cfg(feature = "rc")]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OwnershipError {
     /// Error returned in case specified [`EntityId`]
     /// does not reference any live entity in the [`World`].
@@ -1745,6 +1763,12 @@ pub enum OwnershipError {
 impl From<NoSuchEntity> for OwnershipError {
     fn from(_: NoSuchEntity) -> Self {
         OwnershipError::NoSuchEntity
+    }
+}
+
+impl PartialEq<NoSuchEntity> for OwnershipError {
+    fn eq(&self, _: &NoSuchEntity) -> bool {
+        matches!(self, OwnershipError::NoSuchEntity)
     }
 }
 

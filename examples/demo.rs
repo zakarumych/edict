@@ -20,9 +20,8 @@ struct Parent {
 }
 
 /// Child component type.
-struct Child {
-    parent: EntityId,
-}
+#[derive(Copy, Clone)]
+struct Child;
 
 fn main() {
     // Create new World.
@@ -177,7 +176,7 @@ fn main() {
     },));
 
     let children = world
-        .spawn_batch_owning((0..10).map(|_| (Child { parent },)))
+        .spawn_batch_owning(std::iter::repeat((Child,)).take(10))
         .collect::<Vec<_>>();
 
     let weak_children = children.iter().map(|e| **e).collect::<Vec<_>>();

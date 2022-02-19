@@ -1766,6 +1766,7 @@ impl From<NoSuchEntity> for OwnershipError {
     }
 }
 
+#[cfg(feature = "rc")]
 impl PartialEq<NoSuchEntity> for OwnershipError {
     fn eq(&self, _: &NoSuchEntity) -> bool {
         matches!(self, OwnershipError::NoSuchEntity)

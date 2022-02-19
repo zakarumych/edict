@@ -15,11 +15,12 @@ pub use self::{
 };
 
 use core::{
+    any::TypeId,
+    marker::PhantomData,
     ops::Range,
     ptr::{self},
     slice,
 };
-use std::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},

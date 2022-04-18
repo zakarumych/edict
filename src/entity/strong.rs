@@ -8,6 +8,24 @@ pub(super) struct StrongInner {
     pub shared: NonNull<EntityDataShared>,
 }
 
+#[allow(dead_code)]
+fn entity_data_shared_send_sync() {
+    fn test<T: Send + Sync>() {}
+    test::<EntityDataShared>();
+}
+
+/// # Safety
+///
+/// Referenced `EntityDataShared` is accessed only immutably.
+/// `EntityDataShared` is `Send + Sync`.
+unsafe impl Send for StrongInner {}
+
+/// # Safety
+///
+/// Referenced `EntityDataShared` is accessed only immutably.
+/// `EntityDataShared` is `Send + Sync`.
+unsafe impl Sync for StrongInner {}
+
 impl Drop for StrongInner {
     fn drop(&mut self) {
         let shared = unsafe { &*self.shared.as_ptr() };

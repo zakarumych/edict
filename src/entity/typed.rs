@@ -15,6 +15,12 @@ pub struct Entity<T = ()> {
     pub(super) marker: PhantomData<fn() -> T>,
 }
 
+#[allow(dead_code)]
+fn entity_send_sync() {
+    fn test<T: Send + Sync>() {}
+    test::<Entity>();
+}
+
 impl Entity {
     pub(crate) fn with_bundle<B>(self) -> Entity<B>
     where

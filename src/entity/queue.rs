@@ -12,6 +12,22 @@ pub(crate) struct DropQueue {
     inner: NonNull<DropQueueInner<[UnsafeCell<u32>]>>,
 }
 
+/// # Safety
+///
+/// This is basically `Arc<DropQueueInner>` without weak references
+/// and with known layout.
+///
+/// Access is synchronized with atomic locks.
+unsafe impl Send for DropQueue {}
+
+/// # Safety
+///
+/// This is basically `Arc<DropQueueInner>` without weak references
+/// and with known layout.
+///
+/// Access is synchronized with atomic locks.
+unsafe impl Sync for DropQueue {}
+
 ///
 /// !!!WARNING!!!
 /// `DropQueue::new` relies on this type layout.

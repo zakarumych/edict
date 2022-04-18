@@ -572,7 +572,7 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
+        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
             unreachable_unchecked()
         });
 
@@ -624,7 +624,7 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
+        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
             unreachable_unchecked()
         });
 
@@ -670,7 +670,7 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| unsafe {
+        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
             if info.id != TypeId::of::<T>() {
                 unreachable_unchecked()
             }
@@ -774,10 +774,8 @@ impl Archetype {
             let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
             let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
 
-            unsafe {
-                debug_assert!(*component.version.get() <= epoch);
-                *component.version.get() = epoch;
-            }
+            debug_assert!(*component.version.get() <= epoch);
+            *component.version.get() = epoch;
 
             debug_assert!(*chunk_version <= epoch);
             *chunk_version = epoch;
@@ -785,14 +783,11 @@ impl Archetype {
             debug_assert!(*entity_version <= epoch);
             *entity_version = epoch;
 
-            unsafe {
-                let dst = component.ptr.as_ptr().add(entity_idx * size);
-
-                if occupied(id) {
-                    (component.set_one)(src.as_ptr(), dst);
-                } else {
-                    ptr::copy_nonoverlapping(src.as_ptr(), dst, size);
-                }
+            let dst = component.ptr.as_ptr().add(entity_idx * size);
+            if occupied(id) {
+                (component.set_one)(src.as_ptr(), dst);
+            } else {
+                ptr::copy_nonoverlapping(src.as_ptr(), dst, size);
             }
         });
     }

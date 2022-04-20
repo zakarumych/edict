@@ -839,6 +839,7 @@ impl Archetype {
             let src_component = &self.components[src_type_idx];
             let size = src_component.layout.size();
             let type_id = src_component.id;
+            let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
 
             if let Some(dst_type_idx) = dst.set.get(type_id) {
                 let dst_component = &dst.components[dst_type_idx];
@@ -862,35 +863,34 @@ impl Archetype {
                 debug_assert!(*dst_entity_version <= epoch);
                 *dst_entity_version = epoch;
 
-                let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
                 let dst_ptr = dst_component.ptr.as_ptr().add(dst_entity_idx * size);
 
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
-
-                if src_entity_idx != last_entity_idx {
-                    let src_chunk_idx = chunk_idx(src_entity_idx);
-
-                    let last_epoch = *src_component.entity_versions.as_ptr().add(last_entity_idx);
-
-                    let src_chunk_version =
-                        &mut *src_component.chunk_versions.as_ptr().add(src_chunk_idx);
-
-                    let src_entity_version =
-                        &mut *src_component.entity_versions.as_ptr().add(src_entity_idx);
-
-                    if *src_chunk_version < last_epoch {
-                        *src_chunk_version = last_epoch;
-                    }
-
-                    debug_assert!(*src_entity_version <= last_epoch);
-                    *src_entity_version = last_epoch;
-
-                    let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);
-                    ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
-                }
             } else {
                 let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
                 missing(src_component, src_ptr);
+            }
+
+            if src_entity_idx != last_entity_idx {
+                let src_chunk_idx = chunk_idx(src_entity_idx);
+
+                let last_epoch = *src_component.entity_versions.as_ptr().add(last_entity_idx);
+
+                let src_chunk_version =
+                    &mut *src_component.chunk_versions.as_ptr().add(src_chunk_idx);
+
+                let src_entity_version =
+                    &mut *src_component.entity_versions.as_ptr().add(src_entity_idx);
+
+                if *src_chunk_version < last_epoch {
+                    *src_chunk_version = last_epoch;
+                }
+
+                debug_assert!(*src_entity_version <= last_epoch);
+                *src_entity_version = last_epoch;
+
+                let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);
+                ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
             }
         }
     }

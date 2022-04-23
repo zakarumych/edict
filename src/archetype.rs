@@ -493,6 +493,11 @@ impl Archetype {
                 let last_ptr = component.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, ptr, size);
             }
+
+            #[cfg(debug_assertions)]
+            {
+                *component.entity_versions.as_ptr().add(last_entity_idx) = 0;
+            }
         }
 
         self.entities.swap_remove(entity_idx);
@@ -860,7 +865,7 @@ impl Archetype {
                     *dst_chunk_version = epoch;
                 }
 
-                debug_assert!(*dst_entity_version <= epoch);
+                debug_assert_eq!(*dst_entity_version, 0);
                 *dst_entity_version = epoch;
 
                 let dst_ptr = dst_component.ptr.as_ptr().add(dst_entity_idx * size);
@@ -891,6 +896,10 @@ impl Archetype {
 
                 let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
+            }
+            #[cfg(debug_assertions)]
+            {
+                *src_component.entity_versions.as_ptr().add(last_entity_idx) = 0;
             }
         }
     }

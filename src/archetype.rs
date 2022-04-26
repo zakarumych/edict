@@ -487,7 +487,6 @@ impl Archetype {
                     *chunk_version = last_epoch;
                 }
 
-                debug_assert!(*entity_version <= last_epoch);
                 *entity_version = last_epoch;
 
                 let last_ptr = component.ptr.as_ptr().add(last_entity_idx * size);
@@ -891,7 +890,6 @@ impl Archetype {
                     *src_chunk_version = last_epoch;
                 }
 
-                debug_assert!(*src_entity_version <= last_epoch);
                 *src_entity_version = last_epoch;
 
                 let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);

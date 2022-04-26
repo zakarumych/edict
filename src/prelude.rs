@@ -5,7 +5,7 @@ pub use crate::{
     component::Component,
     entity::EntityId,
     query::{
-        Alt, ImmutableQuery, Modifed, NonTrackingQuery, Query, QueryItem, QueryIter,
+        Alt, ImmutableQuery, Modified, NonTrackingQuery, Query, QueryItem, QueryIter,
         QueryTrackedIter,
     },
     world::{EntityError, MissingComponents, NoSuchEntity, Tracks, World},

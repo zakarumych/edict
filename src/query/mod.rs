@@ -9,7 +9,7 @@
 pub use self::{
     alt::{Alt, FetchAlt},
     filter::{Filter, With, Without},
-    modified::{Modifed, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
+    modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
     read::FetchRead,
     write::FetchWrite,
 };

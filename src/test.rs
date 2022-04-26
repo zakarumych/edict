@@ -1,7 +1,9 @@
 use crate::{
-    query::Modifed,
+    query::Modified,
     world::{EntityError, World},
 };
+
+use alloc::{vec, vec::Vec};
 
 /// Tests that entity spawned into world has all components from bundle.
 #[test]
@@ -101,7 +103,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e, &42)]
@@ -109,7 +111,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![]
@@ -119,7 +121,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e, &42)]
@@ -136,7 +138,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e1, &42), (e2, &23)]
@@ -144,7 +146,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![]
@@ -155,7 +157,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e2, &50)]
@@ -172,7 +174,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e1, &42), (e2, &23)]
@@ -180,7 +182,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![]
@@ -193,7 +195,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .query::<Modifed<&u32>>()
+            .query::<Modified<&u32>>()
             .tracked_iter(&mut tracks)
             .collect::<Vec<_>>(),
         vec![(e2, &100), (e1, &50)]

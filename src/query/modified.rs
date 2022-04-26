@@ -19,7 +19,7 @@ use super::{
 /// `Tracks` to skip components that are not modified since the last time
 /// that `Tracks` instance was used.
 #[derive(Debug)]
-pub struct Modifed<T> {
+pub struct Modified<T> {
     marker: PhantomData<fn() -> T>,
 }
 
@@ -66,7 +66,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modifed<&T>
+unsafe impl<T> Query for Modified<&T>
 where
     T: Component,
 {
@@ -127,7 +127,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modifed<&T> where T: Component {}
+unsafe impl<T> ImmutableQuery for Modified<&T> where T: Component {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
 #[allow(missing_debug_implementations)]
@@ -187,7 +187,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modifed<&mut T>
+unsafe impl<T> Query for Modified<&mut T>
 where
     T: Component,
 {
@@ -302,7 +302,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modifed<Alt<T>>
+unsafe impl<T> Query for Modified<Alt<T>>
 where
     T: Component,
 {

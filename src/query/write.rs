@@ -1,16 +1,16 @@
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{archetype::Archetype, component::Component};
+use crate::{archetype::Archetype, component::Component, epoch::Epoch};
 
 use super::{Access, Fetch, NonTrackingQuery, Query};
 
 /// `Fetch` type for the `&mut T` query.
 #[allow(missing_debug_implementations)]
 pub struct FetchWrite<T> {
-    epoch: u64,
+    epoch: Epoch,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_versions: NonNull<Epoch>,
+    chunk_versions: NonNull<Epoch>,
 }
 
 impl<'a, T> Fetch<'a> for FetchWrite<T>
@@ -79,12 +79,12 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, _: Epoch) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchWrite<T>> {
+    unsafe fn fetch(archetype: &Archetype, _tracks: Epoch, epoch: Epoch) -> Option<FetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());

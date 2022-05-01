@@ -1,6 +1,6 @@
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{archetype::Archetype, component::Component};
+use crate::{archetype::Archetype, component::Component, epoch::Epoch};
 
 use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
@@ -61,12 +61,12 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, _: Epoch) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, _epoch: u64) -> Option<FetchRead<T>> {
+    unsafe fn fetch(archetype: &Archetype, _tracks: Epoch, _epoch: Epoch) -> Option<FetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());

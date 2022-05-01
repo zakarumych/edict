@@ -1,6 +1,6 @@
 use core::{any::TypeId, marker::PhantomData};
 
-use crate::{archetype::Archetype, component::Component};
+use crate::{archetype::Archetype, component::Component, epoch::Epoch};
 
 /// Filters for query iterators.
 /// They affect what archetypes and entities are skipped by query iterator
@@ -8,7 +8,7 @@ use crate::{archetype::Archetype, component::Component};
 pub trait Filter {
     /// Checks if filter requires archetype to be skipped.
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype, tracks: Epoch, epoch: Epoch) -> bool {
         drop(archetype);
         drop(tracks);
         drop(epoch);
@@ -36,7 +36,7 @@ where
     T: Component,
 {
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype, tracks: Epoch, epoch: Epoch) -> bool {
         drop(tracks);
         drop(epoch);
         !archetype.contains_id(TypeId::of::<T>())
@@ -63,7 +63,7 @@ where
     T: Component,
 {
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype, tracks: Epoch, epoch: Epoch) -> bool {
         drop(tracks);
         drop(epoch);
         archetype.contains_id(TypeId::of::<T>())

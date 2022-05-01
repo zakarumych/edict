@@ -25,6 +25,7 @@ use core::{
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     entity::EntityId,
+    epoch::Epoch,
 };
 
 mod alt;
@@ -143,11 +144,11 @@ pub unsafe trait Query {
     fn allowed_with<Q: Query>() -> bool;
 
     /// Checks if archetype must be skipped.
-    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool;
+    fn skip_archetype(archetype: &Archetype, tracks: Epoch) -> bool;
 
     /// Fetches data from one archetype.
     /// Returns [`None`] is archetype does not match query requirements.
-    unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Self::Fetch>;
+    unsafe fn fetch(archetype: &Archetype, tracks: Epoch, epoch: Epoch) -> Option<Self::Fetch>;
 }
 
 /// Query that does not mutate any components.
@@ -224,12 +225,12 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn skip_archetype(_: &Archetype, _: u64) -> bool {
+            fn skip_archetype(_: &Archetype, _: Epoch) -> bool {
                 false
             }
 
             #[inline]
-            unsafe fn fetch(_: & Archetype, _: u64, _: u64) -> Option<()> {
+            unsafe fn fetch(_: & Archetype, _: Epoch, _: Epoch) -> Option<()> {
                 Some(())
             }
         }
@@ -293,12 +294,12 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn skip_archetype(archetype: & Archetype, track: u64) -> bool {
+            fn skip_archetype(archetype: & Archetype, track: Epoch) -> bool {
                 $( $a::skip_archetype(archetype, track) )||+
             }
 
             #[inline]
-            unsafe fn fetch(archetype: & Archetype, track: u64, epoch: u64) -> Option<($($a::Fetch,)+)> {
+            unsafe fn fetch(archetype: & Archetype, track: Epoch, epoch: Epoch) -> Option<($($a::Fetch,)+)> {
                 Some(($( $a::fetch(archetype, track, epoch)?, )+))
             }
         }
@@ -308,7 +309,7 @@ macro_rules! for_tuple {
 
         impl<$($a),+> Filter for ($($a,)+) where $($a: Filter,)+ {
             #[inline]
-            fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
+            fn skip_archetype(&self, archetype: &Archetype, tracks: Epoch, epoch: Epoch) -> bool {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
                 $( $a.skip_archetype(archetype, tracks, epoch) )||+
@@ -325,7 +326,7 @@ for_tuple!();
 /// Supports only `NonTrackingQuery`.
 #[allow(missing_debug_implementations)]
 pub struct QueryIter<'a, Q: Query, F = ()> {
-    epoch: u64,
+    epoch: Epoch,
     archetypes: slice::Iter<'a, Archetype>,
 
     fetch: <Q as Query>::Fetch,
@@ -339,7 +340,7 @@ impl<'a, Q, F> QueryIter<'a, Q, F>
 where
     Q: Query,
 {
-    pub(crate) fn new(epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
+    pub(crate) fn new(epoch: Epoch, archetypes: &'a [Archetype], filter: F) -> Self {
         QueryIter {
             epoch,
             archetypes: archetypes.iter(),
@@ -476,8 +477,8 @@ where
 #[allow(missing_debug_implementations)]
 pub struct QueryTrackedIter<'a, Q: Query, F> {
     filter: F,
-    tracks: u64,
-    epoch: u64,
+    tracks: Epoch,
+    epoch: Epoch,
     archetypes: slice::Iter<'a, Archetype>,
 
     fetch: <Q as Query>::Fetch,
@@ -490,7 +491,7 @@ impl<'a, Q, F> QueryTrackedIter<'a, Q, F>
 where
     Q: Query,
 {
-    pub(crate) fn new(tracks: u64, epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
+    pub(crate) fn new(tracks: Epoch, epoch: Epoch, archetypes: &'a [Archetype], filter: F) -> Self {
         QueryTrackedIter {
             filter,
             tracks,

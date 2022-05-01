@@ -7,7 +7,7 @@ use core::{
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::Ordering,
 };
 
 use alloc::vec::Vec;
@@ -21,6 +21,7 @@ use crate::{
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
     entity::{Entities, EntityId},
+    epoch::{AtomicEpoch, Epoch},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
     idx::MAX_IDX_USIZE,
     query::{
@@ -102,7 +103,7 @@ struct RemoveBundleInfo {
 pub struct World {
     /// Global epoch counter of the World.
     /// Incremented on each mutable query.
-    epoch: AtomicU64,
+    epoch: AtomicEpoch,
 
     /// Collection of entities with their locations.
     entities: Entities,
@@ -156,7 +157,7 @@ impl World {
     #[inline]
     pub fn new() -> Self {
         World {
-            epoch: AtomicU64::new(0),
+            epoch: AtomicEpoch::new(0),
             #[cfg(feature = "rc")]
             entities: Entities::new(1024),
             #[cfg(not(feature = "rc"))]
@@ -1149,7 +1150,7 @@ impl World {
 #[derive(Debug)]
 pub struct SpawnBatch<'a, I> {
     bundles: I,
-    epoch: u64,
+    epoch: Epoch,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut Entities,
@@ -1325,7 +1326,7 @@ where
 #[derive(Debug)]
 pub struct SpawnBatchOwned<'a, I> {
     bundles: I,
-    epoch: u64,
+    epoch: Epoch,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut Entities,
@@ -1483,7 +1484,7 @@ where
 /// Mutable query builder.
 #[derive(Debug)]
 pub struct QueryMut<'a, Q, F> {
-    epoch: &'a mut u64,
+    epoch: &'a mut Epoch,
     archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,
@@ -1601,7 +1602,7 @@ where
 /// Immutable query builder.
 #[derive(Clone, Copy, Debug)]
 pub struct QueryRef<'a, Q, F> {
-    epoch: u64,
+    epoch: Epoch,
     archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,

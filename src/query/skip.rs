@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, proof::Skip};
+use crate::{archetype::Archetype, epoch::Epoch, proof::Skip};
 
 use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
@@ -42,12 +42,12 @@ unsafe impl Query for Skip {
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype, _: u64) -> bool {
+    fn skip_archetype(_: &Archetype, _: Epoch) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn fetch(_: &Archetype, _: u64, _epoch: u64) -> Option<Skip> {
+    unsafe fn fetch(_: &Archetype, _: Epoch, _epoch: Epoch) -> Option<Skip> {
         Some(Skip)
     }
 }

@@ -9,6 +9,7 @@ use core::{
 use crate::{
     archetype::{chunk_idx, Archetype},
     component::Component,
+    epoch::Epoch,
 };
 
 use super::{Access, Fetch, NonTrackingQuery, Query};
@@ -29,9 +30,9 @@ pub struct Alt<T>(PhantomData<T>);
 #[derive(Debug)]
 pub struct RefMut<'a, T: ?Sized> {
     pub(super) component: &'a mut T,
-    pub(super) entity_version: &'a mut u64,
-    pub(super) chunk_version: &'a Cell<u64>,
-    pub(super) epoch: u64,
+    pub(super) entity_version: &'a mut Epoch,
+    pub(super) chunk_version: &'a Cell<Epoch>,
+    pub(super) epoch: Epoch,
 }
 
 impl<T> Deref for RefMut<'_, T> {
@@ -55,10 +56,10 @@ impl<T> DerefMut for RefMut<'_, T> {
 /// `Fetch` type for the `Alt` query.
 #[allow(missing_debug_implementations)]
 pub struct FetchAlt<T> {
-    epoch: u64,
+    epoch: Epoch,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<Cell<u64>>,
+    entity_versions: NonNull<Epoch>,
+    chunk_versions: NonNull<Cell<Epoch>>,
 }
 
 impl<'a, T> Fetch<'a> for FetchAlt<T>
@@ -119,12 +120,12 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, _: Epoch) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchAlt<T>> {
+    unsafe fn fetch(archetype: &Archetype, _tracks: Epoch, epoch: Epoch) -> Option<FetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());

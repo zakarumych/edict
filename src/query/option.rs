@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use crate::archetype::Archetype;
+use crate::{archetype::Archetype, epoch::Epoch};
 
 use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
 
@@ -73,12 +73,16 @@ where
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype, _: u64) -> bool {
+    fn skip_archetype(_: &Archetype, _: Epoch) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Option<T::Fetch>> {
+    unsafe fn fetch(
+        archetype: &Archetype,
+        tracks: Epoch,
+        epoch: Epoch,
+    ) -> Option<Option<T::Fetch>> {
         Some(<T as Query>::fetch(archetype, tracks, epoch))
     }
 }

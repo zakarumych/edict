@@ -78,6 +78,19 @@ where
     }
 
     #[inline]
+    unsafe fn skip_chunk(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn skip_item(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, _: usize) {}
+
+    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
         RefMut {
             component: &mut *self.ptr.as_ptr().add(idx),

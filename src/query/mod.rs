@@ -14,13 +14,7 @@ pub use self::{
     write::FetchWrite,
 };
 
-use core::{
-    any::TypeId,
-    marker::PhantomData,
-    ops::Range,
-    ptr::{self},
-    slice,
-};
+use core::{any::TypeId, marker::PhantomData, ops::Range, ptr, slice};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
@@ -48,24 +42,13 @@ pub trait Fetch<'a> {
     fn dangling() -> Self;
 
     /// Checks if chunk with specified index must be skipped.
-    #[inline]
-    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
-        drop(chunk_idx);
-        false
-    }
+    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool;
 
     /// Checks if item with specified index must be skipped.
-    #[inline]
-    unsafe fn skip_item(&self, idx: usize) -> bool {
-        drop(idx);
-        false
-    }
+    unsafe fn skip_item(&self, idx: usize) -> bool;
 
     /// Notifies this fetch that it visits a chunk.
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        drop(chunk_idx);
-    }
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize);
 
     /// Returns fetched item at specifeid index.
     unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
@@ -192,7 +175,20 @@ macro_rules! for_tuple {
             fn dangling() {}
 
             #[inline]
-            unsafe fn get_item(&mut self, _idx: usize) {}
+            unsafe fn skip_chunk(&self, _: usize) -> bool {
+                false
+            }
+
+            #[inline]
+            unsafe fn skip_item(&self, _: usize) -> bool {
+                false
+            }
+
+            #[inline]
+            unsafe fn visit_chunk(&mut self, _: usize) {}
+
+            #[inline]
+            unsafe fn get_item(&mut self, _: usize) {}
         }
 
         unsafe impl Query for () {
@@ -249,6 +245,29 @@ macro_rules! for_tuple {
             #[inline]
             fn dangling() -> Self {
                 ($($a::dangling(),)+)
+            }
+
+            #[inline]
+            unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                $($a.skip_chunk(chunk_idx) ||)+ false
+            }
+
+            /// Checks if item with specified index must be skipped.
+            #[inline]
+            unsafe fn skip_item(&self, idx: usize) -> bool {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                $($a.skip_item(idx) ||)+ false
+            }
+
+            /// Notifies this fetch that it visits a chunk.
+            #[inline]
+            unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                $($a.visit_chunk(chunk_idx);)+
             }
 
             #[inline]

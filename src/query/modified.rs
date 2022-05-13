@@ -61,6 +61,9 @@ where
     }
 
     #[inline]
+    unsafe fn visit_chunk(&mut self, _: usize) {}
+
+    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
         &*self.ptr.as_ptr().add(idx)
     }
@@ -290,6 +293,9 @@ where
         let version = *self.entity_versions.as_ptr().add(idx);
         version <= self.tracks
     }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, _: usize) {}
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {

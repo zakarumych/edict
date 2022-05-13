@@ -30,6 +30,16 @@ where
     }
 
     #[inline]
+    unsafe fn skip_chunk(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn skip_item(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
         let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
 

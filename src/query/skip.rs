@@ -13,6 +13,19 @@ impl Fetch<'_> for Skip {
     }
 
     #[inline]
+    unsafe fn skip_chunk(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn skip_item(&self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, _: usize) {}
+
+    #[inline]
     unsafe fn get_item(&mut self, _: usize) -> Skip {
         Skip
     }

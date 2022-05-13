@@ -2279,3 +2279,80 @@ macro_rules! for_tuple {
 }
 
 for_tuple!();
+
+#[cfg(test)]
+mod test {
+
+    use crate::prelude::{Modified, World};
+
+    #[derive(Debug)]
+    struct Foo(usize);
+    #[derive(Debug)]
+    struct Bar(usize);
+
+    #[test]
+    fn test_modify_no_modification() {
+        let mut world = World::default();
+
+        world.spawn((Foo(1), Bar(2)));
+        let mut tracks = world.tracks_now();
+
+        // Entity is skipped if no component is modified
+        let result: Vec<_> = world
+            .query::<(Modified<&Foo>, Modified<&Bar>)>()
+            .tracked_into_iter(&mut tracks)
+            .map(|x| x.clone())
+            .collect();
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_modify_one_component() {
+        let mut world = World::default();
+
+        world.spawn((Foo(1), Bar(2)));
+        let mut tracks = world.tracks_now();
+        world.for_each_mut::<(&mut Bar,), _>(|(bar,)| bar.0 += 1);
+
+        // Entity is not skipped if any component is modified
+        let result: Vec<_> = world
+            .query::<(Modified<&Foo>, Modified<&Bar>)>()
+            .tracked_into_iter(&mut tracks)
+            .map(|x| x.clone())
+            .collect();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_no_modification_empty_tuple() {
+        let mut world = World::default();
+
+        world.spawn((Foo(1), Bar(2)));
+        let mut tracks = world.tracks_now();
+
+        // Tuple () does not affect to
+        let result: Vec<_> = world
+            .query::<((Modified<&Foo>, Modified<&Bar>), ())>()
+            .tracked_into_iter(&mut tracks)
+            .map(|x| x.clone())
+            .collect();
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_modify_one_empty_tuple() {
+        let mut world = World::default();
+
+        world.spawn((Foo(1), Bar(2)));
+        let mut tracks = world.tracks_now();
+        world.for_each_mut::<(&mut Bar,), _>(|(bar,)| bar.0 += 1);
+
+        // Tuple () does not affect to
+        let result: Vec<_> = world
+            .query::<((Modified<&Foo>, Modified<&Bar>), ())>()
+            .tracked_into_iter(&mut tracks)
+            .map(|x| x.clone())
+            .collect();
+        assert_eq!(result.len(), 1);
+    }
+}

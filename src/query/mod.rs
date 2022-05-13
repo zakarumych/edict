@@ -176,12 +176,12 @@ macro_rules! for_tuple {
 
             #[inline]
             unsafe fn skip_chunk(&self, _: usize) -> bool {
-                false
+                true
             }
 
             #[inline]
             unsafe fn skip_item(&self, _: usize) -> bool {
-                false
+                true
             }
 
             #[inline]
@@ -251,7 +251,7 @@ macro_rules! for_tuple {
             unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
-                $($a.skip_chunk(chunk_idx) ||)+ false
+                $($a.skip_chunk(chunk_idx) &&)+ true
             }
 
             /// Checks if item with specified index must be skipped.
@@ -259,7 +259,7 @@ macro_rules! for_tuple {
             unsafe fn skip_item(&self, idx: usize) -> bool {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
-                $($a.skip_item(idx) ||)+ false
+                $($a.skip_item(idx) &&)+ true
             }
 
             /// Notifies this fetch that it visits a chunk.

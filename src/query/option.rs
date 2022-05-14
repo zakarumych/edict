@@ -18,15 +18,21 @@ where
     /// Checks if chunk with specified index must be skipped.
     #[inline]
     unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
-        drop(chunk_idx);
-        false
+        if let Some(fetch) = self {
+            fetch.skip_chunk(chunk_idx)
+        } else {
+            false
+        }
     }
 
     /// Checks if item with specified index must be skipped.
     #[inline]
     unsafe fn skip_item(&self, idx: usize) -> bool {
-        drop(idx);
-        false
+        if let Some(fetch) = self {
+            fetch.skip_item(idx)
+        } else {
+            false
+        }
     }
 
     /// Notifies this fetch that it visits a chunk.

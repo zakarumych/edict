@@ -72,6 +72,7 @@ pub mod query;
 pub mod world;
 
 mod archetype;
+mod epoch;
 mod hash;
 mod idx;
 mod typeidset;

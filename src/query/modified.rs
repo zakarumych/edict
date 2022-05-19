@@ -3,6 +3,7 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::{chunk_idx, Archetype},
     component::Component,
+    epoch::Epoch,
 };
 
 use super::{
@@ -26,10 +27,10 @@ pub struct Modified<T> {
 /// `Fetch` type for the `Modified<&T>` query.
 #[allow(missing_debug_implementations)]
 pub struct ModifiedFetchRead<T> {
-    tracks: u64,
+    tracks: Epoch,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_versions: NonNull<Epoch>,
+    chunk_versions: NonNull<Epoch>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchRead<T>
@@ -101,7 +102,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, tracks: Epoch) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
@@ -115,8 +116,8 @@ where
     #[inline]
     unsafe fn fetch(
         archetype: &Archetype,
-        tracks: u64,
-        _epoch: u64,
+        tracks: Epoch,
+        _epoch: Epoch,
     ) -> Option<ModifiedFetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
@@ -135,11 +136,11 @@ unsafe impl<T> ImmutableQuery for Modified<&T> where T: Component {}
 /// `Fetch` type for the `Modified<&mut T>` query.
 #[allow(missing_debug_implementations)]
 pub struct ModifiedFetchWrite<T> {
-    tracks: u64,
-    epoch: u64,
+    tracks: Epoch,
+    epoch: Epoch,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_versions: NonNull<Epoch>,
+    chunk_versions: NonNull<Epoch>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchWrite<T>
@@ -222,7 +223,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, tracks: Epoch) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
@@ -236,8 +237,8 @@ where
     #[inline]
     unsafe fn fetch(
         archetype: &Archetype,
-        tracks: u64,
-        epoch: u64,
+        tracks: Epoch,
+        epoch: Epoch,
     ) -> Option<ModifiedFetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
@@ -258,11 +259,11 @@ where
 #[allow(missing_debug_implementations)]
 /// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<T> {
-    tracks: u64,
-    epoch: u64,
+    tracks: Epoch,
+    epoch: Epoch,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<Cell<u64>>,
+    entity_versions: NonNull<Epoch>,
+    chunk_versions: NonNull<Cell<Epoch>>,
 }
 
 impl<'a, T> Fetch<'a> for ModifiedFetchAlt<T>
@@ -340,7 +341,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype, tracks: Epoch) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
@@ -352,7 +353,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<ModifiedFetchAlt<T>> {
+    unsafe fn fetch(
+        archetype: &Archetype,
+        tracks: Epoch,
+        epoch: Epoch,
+    ) -> Option<ModifiedFetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
         debug_assert_eq!(data.id, TypeId::of::<T>());

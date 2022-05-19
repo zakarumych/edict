@@ -7,6 +7,7 @@ use core::{
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
+    sync::atomic::Ordering,
 };
 
 use alloc::vec::Vec;
@@ -20,6 +21,7 @@ use crate::{
     bundle::{Bundle, DynamicBundle},
     component::{Component, ComponentInfo},
     entity::{Entities, EntityId},
+    epoch::{AtomicEpoch, Epoch},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
     idx::MAX_IDX_USIZE,
     query::{
@@ -101,7 +103,7 @@ struct RemoveBundleInfo {
 pub struct World {
     /// Global epoch counter of the World.
     /// Incremented on each mutable query.
-    epoch: u64,
+    epoch: AtomicEpoch,
 
     /// Collection of entities with their locations.
     entities: Entities,
@@ -155,7 +157,7 @@ impl World {
     #[inline]
     pub fn new() -> Self {
         World {
-            epoch: 0,
+            epoch: AtomicEpoch::new(0),
             #[cfg(feature = "rc")]
             entities: Entities::new(1024),
             #[cfg(not(feature = "rc"))]
@@ -193,8 +195,10 @@ impl World {
         let archetype_idx =
             cached_archetype_idx(&mut self.keys, &mut self.ids, &mut self.archetypes, &bundle);
 
-        self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, self.epoch);
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
+
+        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, *epoch);
         self.entities.set_location(entity.idx, archetype_idx, idx);
         entity
     }
@@ -219,8 +223,10 @@ impl World {
         let archetype_idx =
             cached_archetype_idx(&mut self.keys, &mut self.ids, &mut self.archetypes, &bundle);
 
-        self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch);
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
+
+        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, *epoch);
         self.entities.set_location(entity.idx, archetype_idx, idx);
 
         entity
@@ -263,15 +269,15 @@ impl World {
             &PhantomData::<I::Item>,
         );
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         let archetype = &mut self.archetypes[archetype_idx as usize];
         let entities = &mut self.entities;
-        let epoch = self.epoch;
 
         SpawnBatch {
             bundles: bundles.into_iter(),
-            epoch,
+            epoch: *epoch,
             archetype_idx,
             archetype,
             entities,
@@ -316,15 +322,15 @@ impl World {
             &PhantomData::<I::Item>,
         );
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         let archetype = &mut self.archetypes[archetype_idx as usize];
         let entities = &mut self.entities;
-        let epoch = self.epoch;
 
         SpawnBatchOwned {
             bundles: bundles.into_iter(),
-            epoch,
+            epoch: *epoch,
             archetype_idx,
             archetype,
             entities,
@@ -387,11 +393,12 @@ impl World {
     {
         let (archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         if self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()) {
             unsafe {
-                self.archetypes[archetype as usize].set(idx, component, self.epoch);
+                self.archetypes[archetype as usize].set(idx, component, *epoch);
             }
 
             return Ok(());
@@ -411,7 +418,7 @@ impl World {
             false => (&mut after[0], &mut before[insert_info.dst as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.insert(dst, idx, component, self.epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert(dst, idx, component, *epoch) };
 
         self.entities
             .set_location(entity.idx, insert_info.dst, dst_idx);
@@ -434,7 +441,7 @@ impl World {
     {
         let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
 
-        self.epoch += 1;
+        *self.epoch.get_mut() += 1;
 
         if !self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()) {
             return Err(EntityError::MissingComponents);
@@ -512,7 +519,8 @@ impl World {
             return Ok(());
         }
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         let insert_info = cached_insert_bundle_info(
             &mut self.add_key,
@@ -523,7 +531,7 @@ impl World {
         );
 
         if insert_info.dst == archetype {
-            unsafe { self.archetypes[archetype as usize].set_bundle(idx, bundle, self.epoch) };
+            unsafe { self.archetypes[archetype as usize].set_bundle(idx, bundle, *epoch) };
             return Ok(());
         }
 
@@ -536,7 +544,7 @@ impl World {
             false => (&mut after[0], &mut before[insert_info.dst as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, idx, bundle, self.epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert_bundle(dst, idx, bundle, *epoch) };
 
         self.entities
             .set_location(entity.idx, insert_info.dst, dst_idx);
@@ -574,7 +582,7 @@ impl World {
             return Ok(());
         }
 
-        self.epoch += 1;
+        *self.epoch.get_mut() += 1;
 
         let remove_info = cached_remove_bundle_info::<B>(
             &mut self.sub_key,
@@ -670,9 +678,11 @@ impl World {
             type_name::<Q>()
         );
 
+        let epoch = self.epoch.load(Ordering::Relaxed);
+
         let (archetype, idx) = self.entities.get(entity).unwrap();
         let archetype = &self.archetypes[archetype as usize];
-        let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
+        let mut fetch = unsafe { Q::fetch(archetype, 0, epoch) }.expect("Query is prooven");
         let item = unsafe { fetch.get_item(idx as usize) };
         item
     }
@@ -701,13 +711,14 @@ impl World {
             type_name::<Q>()
         );
 
+        let epoch = self.epoch.get_mut();
         if Q::mutates() {
-            self.epoch += 1;
+            *epoch += 1;
         }
 
         let (archetype, idx) = self.entities.get(entity).unwrap();
         let archetype = &self.archetypes[archetype as usize];
-        let mut fetch = unsafe { Q::fetch(archetype, 0, self.epoch) }.expect("Query is prooven");
+        let mut fetch = unsafe { Q::fetch(archetype, 0, *epoch) }.expect("Query is prooven");
         unsafe {
             fetch.visit_chunk(chunk_idx(idx as usize));
         }
@@ -742,7 +753,8 @@ impl World {
 
         let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
         let archetype = &self.archetypes[archetype as usize];
-        match unsafe { Q::fetch(archetype, 0, self.epoch) } {
+        let epoch = self.epoch.load(Ordering::Relaxed);
+        match unsafe { Q::fetch(archetype, 0, epoch) } {
             None => Err(EntityError::MissingComponents),
             Some(mut fetch) => {
                 let item = unsafe { fetch.get_item(idx as usize) };
@@ -770,13 +782,14 @@ impl World {
             type_name::<Q>()
         );
 
+        let epoch = self.epoch.get_mut();
         if Q::mutates() {
-            self.epoch += 1;
+            *epoch += 1;
         }
 
         let (archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
         let archetype = &self.archetypes[archetype as usize];
-        match unsafe { Q::fetch(archetype, 0, self.epoch) } {
+        match unsafe { Q::fetch(archetype, 0, *epoch) } {
             None => Err(EntityError::MissingComponents),
             Some(mut fetch) => {
                 unsafe {
@@ -803,7 +816,9 @@ impl World {
     /// that happen after this function call as "new" for the first tracking query.
     #[inline]
     pub fn tracks_now(&self) -> Tracks {
-        Tracks { epoch: self.epoch }
+        Tracks {
+            epoch: self.epoch.load(Ordering::Relaxed),
+        }
     }
 
     /// Run world maintenance, completing all deferred operations on it.
@@ -890,7 +905,7 @@ impl World {
         debug_assert!(Q::is_valid(), "Immutable queries are always valid");
 
         QueryRef {
-            epoch: self.epoch,
+            epoch: self.epoch.load(Ordering::Relaxed),
             archetypes: &self.archetypes,
             query: PhantomData,
             filter: (),
@@ -908,7 +923,7 @@ impl World {
         assert!(Q::is_valid(), "Invalid query specified");
 
         QueryMut {
-            epoch: &mut self.epoch,
+            epoch: self.epoch.get_mut(),
             archetypes: &self.archetypes,
             query: PhantomData,
             filter: (),
@@ -933,7 +948,7 @@ impl World {
             archetypes: &self.archetypes,
         };
         let query = QueryMut {
-            epoch: &mut self.epoch,
+            epoch: self.epoch.get_mut(),
             archetypes: &self.archetypes,
             query: PhantomData,
             filter: (),
@@ -953,8 +968,10 @@ impl World {
         debug_assert!(Q::is_valid(), "Immutable queries are always valid");
         debug_assert!(!Q::mutates());
 
+        let epoch = self.epoch.load(Ordering::Relaxed);
+
         for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, epoch) } {
                 for idx in 0..archetype.len() {
                     f(unsafe { fetch.get_item(idx) });
                 }
@@ -975,11 +992,12 @@ impl World {
         debug_assert!(Q::is_valid(), "Immutable queries are always valid");
         debug_assert!(!Q::mutates());
 
+        let world_epoch = self.epoch.load(Ordering::Relaxed);
         let tracks_epoch = tracks.epoch;
-        tracks.epoch = self.epoch;
+        tracks.epoch = world_epoch;
 
         for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, self.epoch) } {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, world_epoch) } {
                 for chunk_idx in 0..archetype.len() / CHUNK_LEN_USIZE {
                     if unsafe { fetch.skip_chunk(chunk_idx) } {
                         continue;
@@ -1024,12 +1042,13 @@ impl World {
     {
         assert!(Q::is_valid(), "Invalid query specified");
 
+        let epoch = self.epoch.get_mut();
         if Q::mutates() {
-            self.epoch += 1
-        };
+            *epoch += 1;
+        }
 
         for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, *epoch) } {
                 if Q::mutates() {
                     for chunk_idx in 0..archetype.len() / CHUNK_LEN_USIZE {
                         debug_assert!(!unsafe { fetch.skip_chunk(chunk_idx) });
@@ -1076,15 +1095,16 @@ impl World {
     {
         assert!(Q::is_valid(), "Invalid query specified");
 
+        let world_epoch = self.epoch.get_mut();
         if Q::mutates() {
-            self.epoch += 1
-        };
+            *world_epoch += 1;
+        }
 
         let tracks_epoch = tracks.epoch;
-        tracks.epoch = self.epoch;
+        tracks.epoch = *world_epoch;
 
         for archetype in &self.archetypes {
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, self.epoch) } {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, tracks_epoch, *world_epoch) } {
                 for chunk_idx in 0..archetype.len() / CHUNK_LEN_USIZE {
                     if unsafe { fetch.skip_chunk(chunk_idx) } {
                         continue;
@@ -1130,7 +1150,7 @@ impl World {
 #[derive(Debug)]
 pub struct SpawnBatch<'a, I> {
     bundles: I,
-    epoch: u64,
+    epoch: Epoch,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut Entities,
@@ -1306,7 +1326,7 @@ where
 #[derive(Debug)]
 pub struct SpawnBatchOwned<'a, I> {
     bundles: I,
-    epoch: u64,
+    epoch: Epoch,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut Entities,
@@ -1464,7 +1484,7 @@ where
 /// Mutable query builder.
 #[derive(Debug)]
 pub struct QueryMut<'a, Q, F> {
-    epoch: &'a mut u64,
+    epoch: &'a mut Epoch,
     archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,
@@ -1582,7 +1602,7 @@ where
 /// Immutable query builder.
 #[derive(Clone, Copy, Debug)]
 pub struct QueryRef<'a, Q, F> {
-    epoch: u64,
+    epoch: Epoch,
     archetypes: &'a [Archetype],
     query: PhantomData<Q>,
     filter: F,

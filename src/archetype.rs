@@ -19,6 +19,7 @@ use crate::{
     bundle::DynamicBundle,
     component::{Component, ComponentInfo},
     entity::EntityId,
+    epoch::Epoch,
     idx::MAX_IDX_USIZE,
     typeidset::TypeIdSet,
 };
@@ -230,9 +231,9 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
-    pub version: UnsafeCell<u64>,
-    pub entity_versions: NonNull<u64>,
-    pub chunk_versions: NonNull<u64>,
+    pub version: UnsafeCell<Epoch>,
+    pub entity_versions: NonNull<Epoch>,
+    pub chunk_versions: NonNull<Epoch>,
     pub info: ComponentInfo,
 }
 
@@ -424,7 +425,7 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
-    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: u64) -> u32
+    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: Epoch) -> u32
     where
         B: DynamicBundle,
     {
@@ -512,7 +513,7 @@ impl Archetype {
     /// # Safety
     ///
     /// Bundle must not contain components that are absent in this archetype.
-    pub unsafe fn set_bundle<B>(&mut self, idx: u32, bundle: B, epoch: u64)
+    pub unsafe fn set_bundle<B>(&mut self, idx: u32, bundle: B, epoch: Epoch)
     where
         B: DynamicBundle,
     {
@@ -528,7 +529,7 @@ impl Archetype {
     /// # Safety
     ///
     /// Archetype must contain that component type.
-    pub unsafe fn set<T>(&mut self, idx: u32, value: T, epoch: u64)
+    pub unsafe fn set<T>(&mut self, idx: u32, value: T, epoch: Epoch)
     where
         T: Component,
     {
@@ -552,7 +553,7 @@ impl Archetype {
         dst: &mut Archetype,
         src_idx: u32,
         bundle: B,
-        epoch: u64,
+        epoch: Epoch,
     ) -> (u32, Option<u32>)
     where
         B: DynamicBundle,
@@ -609,7 +610,7 @@ impl Archetype {
         dst: &mut Archetype,
         src_idx: u32,
         value: T,
-        epoch: u64,
+        epoch: Epoch,
     ) -> (u32, Option<u32>)
     where
         T: Component,
@@ -766,7 +767,7 @@ impl Archetype {
     }
 
     #[inline]
-    unsafe fn write_bundle<B, F>(&mut self, entity_idx: usize, bundle: B, epoch: u64, occupied: F)
+    unsafe fn write_bundle<B, F>(&mut self, entity_idx: usize, bundle: B, epoch: Epoch, occupied: F)
     where
         B: DynamicBundle,
         F: Fn(TypeId) -> bool,
@@ -797,7 +798,7 @@ impl Archetype {
     }
 
     #[inline]
-    unsafe fn write_one<T>(&mut self, entity_idx: usize, value: T, epoch: u64, occupied: bool)
+    unsafe fn write_one<T>(&mut self, entity_idx: usize, value: T, epoch: Epoch, occupied: bool)
     where
         T: Component,
     {

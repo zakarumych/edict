@@ -2279,3 +2279,6 @@ macro_rules! for_tuple {
 }
 
 for_tuple!();
+
+#[cfg(test)]
+mod test;

@@ -634,7 +634,7 @@ where
             {
                 continue;
             }
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
+            if let Some(mut fetch) = unsafe { Q::fetch(archetype, self.tracks, self.epoch) } {
                 let entities = archetype.entities().as_ptr();
                 let mut indices = 0..archetype.len();
 

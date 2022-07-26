@@ -62,6 +62,8 @@
 extern crate alloc;
 extern crate self as edict;
 
+pub mod action;
+mod any;
 pub mod bundle;
 pub mod component;
 pub mod entity;
@@ -69,6 +71,9 @@ pub mod prelude;
 #[cfg(feature = "rc")]
 pub mod proof;
 pub mod query;
+
+#[cfg(feature = "relation")]
+pub mod relation;
 pub mod world;
 
 mod archetype;

@@ -31,7 +31,7 @@ impl Drop for StrongInner {
         let shared = unsafe { &*self.shared.as_ptr() };
         let old = shared.refs.fetch_sub(1, Ordering::Release);
         if old == 1 {
-            shared.queue.drop_entity(self.id.idx);
+            shared.queue.drop_entity(self.id.idx());
         }
     }
 }

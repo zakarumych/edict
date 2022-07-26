@@ -5,7 +5,7 @@ use core::{
     alloc::Layout,
     any::TypeId,
     fmt,
-    mem::{size_of, swap, ManuallyDrop},
+    mem::{align_of, replace, size_of, ManuallyDrop},
     ptr::{self, NonNull},
 };
 
@@ -14,6 +14,17 @@ use smallvec::SmallVec;
 use crate::component::{Component, ComponentInfo};
 
 /// Possible dynamic collection of components that may be inserted into the `World`.
+///
+/// # Safety
+///
+/// Implementors must uphold requirements:
+/// Bundle instance must have a set components.
+/// [`valid`] must return true only if components are not repeated.
+/// [`key`] must return unique value for a set of components or `None`
+/// [`contains_id`] must return true if component type with specified id is contained in bundle.
+/// [`with_ids`] must call provided function with a list of type ids of all contained components.
+/// [`with_components`] must call provided function with a list of component infos of all contained components.
+/// [`put`] must call provided function for each component with pointer to component value, its type id and size.
 pub unsafe trait DynamicBundle {
     /// Returns `true` if given bundle is valid.
     fn valid(&self) -> bool;
@@ -38,7 +49,17 @@ pub unsafe trait DynamicBundle {
 }
 
 /// Static collection of components that may be inserted into the `World`.
-pub trait Bundle: DynamicBundle {
+///
+/// # Safety
+///
+/// Implementors must uphold requirements:
+/// Bundle instance must have a set components.
+/// [`valid`] must return true only if components are not repeated.
+/// [`static_key`] must return unique value for a set of components.
+/// [`static_contains_id`] must return true if component type with specified id is contained in bundle.
+/// [`static_with_ids`] must call provided function with a list of type ids of all contained components.
+/// [`static_with_components`] must call provided function with a list of component infos of all contained components.
+pub unsafe trait Bundle: DynamicBundle {
     /// Returns `true` if given bundle is valid.
     fn static_valid() -> bool;
 
@@ -97,7 +118,7 @@ macro_rules! for_tuple {
             fn put(self, _f: impl FnMut(NonNull<u8>, TypeId, usize)) {}
         }
 
-        impl Bundle for () {
+        unsafe impl Bundle for () {
             fn static_valid() -> bool { true }
 
             #[inline]
@@ -164,7 +185,7 @@ macro_rules! for_tuple {
 
         }
 
-        impl<$($a),+> Bundle for ($($a,)+)
+        unsafe impl<$($a),+> Bundle for ($($a,)+)
         where $($a: Component,)+
         {
             fn static_valid() -> bool {
@@ -208,7 +229,7 @@ macro_rules! for_tuple {
 for_tuple!();
 
 /// Builder for an entity.
-/// Entitiy can be spawned with entity builder.
+/// Entity can be spawned with entity builder.
 /// See [`World::spawn`] and [`World::spawn_owning`].
 pub struct EntityBuilder {
     ptr: NonNull<u8>,
@@ -224,7 +245,7 @@ impl fmt::Debug for EntityBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ds = f.debug_struct("EntityBuilder");
         for info in &self.infos {
-            ds.field("component", &info.debug_name);
+            ds.field("component", &info.debug_name());
         }
         ds.finish()
     }
@@ -232,6 +253,7 @@ impl fmt::Debug for EntityBuilder {
 
 impl EntityBuilder {
     /// Creates new empty entity builder.
+    #[inline]
     pub fn new() -> Self {
         EntityBuilder {
             ptr: NonNull::dangling(),
@@ -256,9 +278,9 @@ impl EntityBuilder {
         }
 
         debug_assert!(self.len <= self.layout.size());
-        let layout = Layout::from_size_align(self.len, self.layout.align()).unwrap();
+        let value_layout = Layout::from_size_align(self.len, self.layout.align()).unwrap();
 
-        let (layout, value_offset) = layout
+        let (new_value_layout, value_offset) = value_layout
             .extend(Layout::new::<T>())
             .expect("EntityBuilder overflow");
 
@@ -266,27 +288,39 @@ impl EntityBuilder {
         self.infos.reserve(1);
         self.offsets.reserve(1);
 
-        if self.layout.align() != layout.align() || self.layout.size() < layout.size() {
-            let mut layout = match self.layout.size().checked_mul(2) {
-                Some(cap) if cap >= layout.size() => {
-                    match Layout::from_size_align(cap, layout.align()) {
-                        Err(_) => layout,
-                        Ok(layout) => layout,
+        if self.layout.align() != new_value_layout.align()
+            || self.layout.size() < new_value_layout.size()
+        {
+            // Those thresholds helps avoiding reallocation.
+            const MIN_LAYOUT_ALIGN: usize = align_of::<u128>();
+            const MIN_LAYOUT_SIZE: usize = 128;
+
+            let cap = if self.layout.size() < new_value_layout.size() {
+                if MIN_LAYOUT_SIZE >= new_value_layout.size() {
+                    MIN_LAYOUT_SIZE
+                } else {
+                    match self.layout.size().checked_mul(2) {
+                        Some(cap) if cap >= new_value_layout.size() => cap,
+                        _ => new_value_layout.size(),
                     }
                 }
-                _ => layout,
+            } else {
+                self.layout.size()
             };
 
+            let align = new_value_layout.align().max(MIN_LAYOUT_ALIGN);
+            let new_layout = Layout::from_size_align(cap, align).unwrap_or(new_value_layout);
+
             unsafe {
-                let ptr = alloc::alloc::alloc(layout);
-                let mut ptr = NonNull::new(ptr).unwrap();
+                let new_ptr = alloc::alloc::alloc(new_layout);
+                let new_ptr = NonNull::new(new_ptr).unwrap();
 
-                ptr::copy_nonoverlapping(self.ptr.as_ptr(), ptr.as_ptr(), self.len);
+                ptr::copy_nonoverlapping(self.ptr.as_ptr(), new_ptr.as_ptr(), self.len);
 
-                swap(&mut self.ptr, &mut ptr);
-                swap(&mut self.layout, &mut layout);
+                let old_ptr = replace(&mut self.ptr, new_ptr);
+                let old_layout = replace(&mut self.layout, new_layout);
 
-                alloc::alloc::dealloc(ptr.as_ptr(), layout);
+                alloc::alloc::dealloc(old_ptr.as_ptr(), old_layout);
             }
         }
 
@@ -305,6 +339,7 @@ impl EntityBuilder {
     }
 
     /// Returns reference to component from builder.
+    #[inline]
     pub fn get<T>(&self) -> Option<&T>
     where
         T: 'static,
@@ -315,6 +350,7 @@ impl EntityBuilder {
     }
 
     /// Returns mutable reference to component from builder.
+    #[inline]
     pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
         T: 'static,
@@ -325,11 +361,13 @@ impl EntityBuilder {
     }
 
     /// Returns iterator over component types in this builder.
+    #[inline]
     pub fn component_types(&self) -> impl Iterator<Item = &ComponentInfo> {
         self.infos.iter()
     }
 
     /// Returns true of the builder is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.ids.is_empty()
     }
@@ -361,7 +399,7 @@ unsafe impl DynamicBundle for EntityBuilder {
     fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
         for (info, &offset) in self.infos.iter().zip(&self.offsets) {
             let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
-            f(ptr, info.id, info.layout.size());
+            f(ptr, info.id(), info.layout().size());
         }
     }
 }

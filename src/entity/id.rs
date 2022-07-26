@@ -1,4 +1,7 @@
-use core::{fmt, num::NonZeroU32};
+use core::{
+    fmt,
+    num::{NonZeroU32, NonZeroU64},
+};
 
 use super::entities::invalid_gen;
 
@@ -7,14 +10,16 @@ use super::entities::invalid_gen;
 /// On access to a component, if entity is expired (no strong refs left) or doesn't have accessed component,
 /// corresponding error is returned.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct EntityId {
-    pub(crate) gen: NonZeroU32,
-    pub(crate) idx: u32,
+    value: NonZeroU64,
 }
 
 impl EntityId {
     pub(crate) fn new(id: u32, gen: NonZeroU32) -> Self {
-        EntityId { gen, idx: id }
+        EntityId {
+            value: unsafe { NonZeroU64::new_unchecked((gen.get() as u64) << 32 | id as u64) },
+        }
     }
 
     /// Returns expired weak entity.
@@ -35,7 +40,7 @@ impl EntityId {
 
     /// Gets 64-bit integer that can be converted back to equal `EntityId`.
     pub fn bits(&self) -> u64 {
-        self.idx as u64 | ((self.gen.get() as u64) << 32)
+        self.value.get()
     }
 
     /// Converts 64-bit integer to `EntityId`.
@@ -44,21 +49,31 @@ impl EntityId {
         let gen = (bits >> 32) as u32;
         let idx = bits as u32;
         let gen = NonZeroU32::new(gen)?;
-        Some(EntityId { gen, idx })
+        Some(EntityId::new(idx, gen))
+    }
+
+    /// Returns generation part of the entity id.
+    pub(crate) fn gen(&self) -> NonZeroU32 {
+        unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
+    }
+
+    /// Returns index part of the entity id.
+    pub(crate) fn idx(&self) -> u32 {
+        self.value.get() as u32
     }
 }
 
 impl fmt::Debug for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityId")
-            .field("gen", &self.gen.get())
-            .field("id", &self.idx)
+            .field("gen", &self.gen().get())
+            .field("id", &self.idx())
             .finish()
     }
 }
 
 impl fmt::Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{{:0x}#{:x}}}", self.gen.get(), self.idx)
+        write!(f, "{{{:0x}#{:x}}}", self.gen().get(), self.idx())
     }
 }

@@ -7,7 +7,7 @@ use super::{id::EntityId, strong::StrongInner};
 /// Owning reference to an entity.
 /// This value can be used to access an entity and keeps the entity alive.
 ///
-/// Supports pinning components to the enitity, making them accessible through [`World::get`]
+/// Supports pinning components to the entity, making them accessible through [`World::get`]
 /// without wrapping in `Option`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Entity<T = ()> {
@@ -48,8 +48,8 @@ impl<T> Entity<T> {
 impl<T> fmt::Debug for Entity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entity")
-            .field("gen", &self.gen.get())
-            .field("id", &self.idx)
+            .field("gen", &self.gen().get())
+            .field("id", &self.idx())
             .finish()
     }
 }
@@ -89,9 +89,9 @@ impl<T> SharedEntity<T> {
 
 impl<T> fmt::Debug for SharedEntity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Entity")
-            .field("gen", &self.gen.get())
-            .field("id", &self.idx)
+        f.debug_struct("SharedEntity")
+            .field("gen", &self.gen().get())
+            .field("id", &self.idx())
             .finish()
     }
 }

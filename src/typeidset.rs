@@ -37,7 +37,7 @@ impl TypeIdSet {
                 }
             }
 
-            let modulo = entries.len();
+            let modulo = entries.len().max(1);
 
             while entries.last() == Some(&no_type_id) {
                 entries.pop();
@@ -71,6 +71,13 @@ impl TypeIdSet {
         } else {
             None
         }
+    }
+
+    /// Returns `Some(idx)` where `idx` is index of the type id in the set.
+    /// Returns `None` if id is not in the set.
+    #[inline]
+    pub fn get_unchecked(&self, id: TypeId) -> usize {
+        type_index(&id, self.modulo)
     }
 
     /// Returns `true` if id is in the set.

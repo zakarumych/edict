@@ -91,8 +91,11 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        <&T as Query>::allowed_with::<Q>()
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        <&T as Query>::conflicts::<Q>()
     }
 
     #[inline]
@@ -106,7 +109,7 @@ where
             None => true,
             Some(idx) => unsafe {
                 let data = archetype.data(idx);
-                debug_assert_eq!(data.id, TypeId::of::<T>());
+                debug_assert_eq!(data.id(), TypeId::of::<T>());
                 *data.version.get() < tracks
             },
         }
@@ -212,8 +215,11 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        <&mut T as Query>::allowed_with::<Q>()
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        <&mut T as Query>::conflicts::<Q>()
     }
 
     #[inline]
@@ -227,7 +233,7 @@ where
             None => true,
             Some(idx) => unsafe {
                 let data = archetype.data(idx);
-                debug_assert_eq!(data.id, TypeId::of::<T>());
+                debug_assert_eq!(data.id(), TypeId::of::<T>());
                 *data.version.get() < tracks
             },
         }
@@ -330,8 +336,11 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        <Alt<T> as Query>::allowed_with::<Q>()
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        <Alt<T> as Query>::conflicts::<Q>()
     }
 
     #[inline]
@@ -345,7 +354,7 @@ where
             None => true,
             Some(idx) => unsafe {
                 let data = archetype.data(idx);
-                debug_assert_eq!(data.id, TypeId::of::<T>());
+                debug_assert_eq!(data.id(), TypeId::of::<T>());
                 *data.version.get() < tracks
             },
         }
@@ -355,7 +364,7 @@ where
     unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<ModifiedFetchAlt<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
-        debug_assert_eq!(data.id, TypeId::of::<T>());
+        debug_assert_eq!(data.id(), TypeId::of::<T>());
 
         if *data.version.get() < tracks {
             return None;

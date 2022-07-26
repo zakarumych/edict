@@ -69,8 +69,11 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        <T as Query>::allowed_with::<Q>()
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        <T as Query>::conflicts::<Q>()
     }
 
     #[inline]

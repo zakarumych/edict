@@ -14,7 +14,7 @@ use super::NoSuchEntity;
 use super::OwnershipError;
 
 /// Meta-information about entities.
-#[derive(Debug)]
+#[allow(missing_debug_implementations)]
 pub struct EntityMeta<'a> {
     pub(super) entities: &'a mut Entities,
     pub(super) archetypes: &'a [Archetype],

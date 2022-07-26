@@ -15,8 +15,9 @@ categories = ["no-std", "game-development", "data-structures"]
 [features]
 std = []
 rc = []
+relation = []
 
-default = ["std", "rc"]
+default = ["std", "rc", "relation"]
 
 [dependencies]
 hashbrown = { version = "0.12", default-features = false }

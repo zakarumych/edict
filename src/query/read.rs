@@ -64,8 +64,11 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        matches!(Q::access(TypeId::of::<T>()), Access::None | Access::Shared)
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        matches!(Q::access(TypeId::of::<T>()), Access::Mutable)
     }
 
     #[inline]
@@ -82,7 +85,7 @@ where
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, _epoch: u64) -> Option<FetchRead<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
-        debug_assert_eq!(data.id, TypeId::of::<T>());
+        debug_assert_eq!(data.id(), TypeId::of::<T>());
 
         Some(FetchRead {
             ptr: data.ptr.cast(),

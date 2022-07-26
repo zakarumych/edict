@@ -24,7 +24,7 @@ mod typed;
 impl<T> PartialEq<SharedEntity<T>> for EntityId {
     #[inline]
     fn eq(&self, other: &SharedEntity<T>) -> bool {
-        self.gen == other.gen && self.idx == other.idx
+        *self == other.id()
     }
 }
 
@@ -32,6 +32,6 @@ impl<T> PartialEq<SharedEntity<T>> for EntityId {
 impl<T> PartialEq<EntityId> for SharedEntity<T> {
     #[inline]
     fn eq(&self, other: &EntityId) -> bool {
-        self.gen == other.gen && self.idx == other.idx
+        self.id() == *other
     }
 }

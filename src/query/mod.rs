@@ -77,19 +77,19 @@ const fn merge_access(lhs: Access, rhs: Access) -> Access {
     }
 }
 
-struct QueryAllowed<Q>(bool, PhantomData<Q>);
+struct QueryConflict<Q>(bool, PhantomData<Q>);
 
-impl<L, R> core::ops::BitOr<QueryAllowed<L>> for QueryAllowed<R>
+impl<L, R> core::ops::BitOr<QueryConflict<L>> for QueryConflict<R>
 where
     L: Query,
     R: Query,
 {
-    type Output = QueryAllowed<(L, R)>;
+    type Output = QueryConflict<(L, R)>;
 
     #[inline]
-    fn bitor(self, rhs: QueryAllowed<L>) -> QueryAllowed<(L, R)> {
-        let allowed = self.0 && rhs.0 && L::allowed_with::<R>();
-        QueryAllowed(allowed, PhantomData)
+    fn bitor(self, rhs: QueryConflict<L>) -> QueryConflict<(L, R)> {
+        let conflict = self.0 || rhs.0 || L::conflicts::<R>();
+        QueryConflict(conflict, PhantomData)
     }
 }
 
@@ -122,8 +122,10 @@ pub unsafe trait Query {
     /// Returns what kind of access the query performs on the component type.
     fn access(ty: TypeId) -> Access;
 
-    /// Returns `true` if query execution is allowed in parallel with specified.
-    fn allowed_with<Q: Query>() -> bool;
+    /// Returns `false` if query execution is allowed in parallel with specified.
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query;
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool;
@@ -210,8 +212,11 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn allowed_with<Q: Query>() -> bool {
-                true
+            fn conflicts<Q>() -> bool
+            where
+                Q: Query,
+            {
+                false
             }
 
             #[inline]
@@ -299,16 +304,17 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn allowed_with<Q: Query>() -> bool {
-                $( <$a as Query>::allowed_with::<Q>() ) && +
+            fn conflicts<Q>() -> bool
+            where
+                Q: Query,
+            {
+                $( <$a as Query>::conflicts::<Q>() ) || +
             }
 
             #[inline]
             fn is_valid() -> bool {
-                let allowed = $(
-                    QueryAllowed(true, PhantomData::<$a>)
-                ) | +;
-                allowed.0
+                let QueryConflict(conflict, _) = $( QueryConflict(false, PhantomData::<$a>) ) | +;
+                !conflict
             }
 
             #[inline]

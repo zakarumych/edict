@@ -79,8 +79,14 @@ where
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        matches!(Q::access(TypeId::of::<T>()), Access::None)
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        matches!(
+            Q::access(TypeId::of::<T>()),
+            Access::Shared | Access::Mutable
+        )
     }
 
     #[inline]
@@ -97,7 +103,7 @@ where
     unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchWrite<T>> {
         let idx = archetype.id_index(TypeId::of::<T>())?;
         let data = archetype.data(idx);
-        debug_assert_eq!(data.id, TypeId::of::<T>());
+        debug_assert_eq!(data.id(), TypeId::of::<T>());
 
         debug_assert!(*data.version.get() < epoch);
         *data.version.get() = epoch;
@@ -106,7 +112,7 @@ where
             epoch,
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions.cast(),
+            chunk_versions: data.chunk_versions,
         })
     }
 }

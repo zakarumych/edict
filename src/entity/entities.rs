@@ -193,11 +193,11 @@ impl Entities {
 
     #[cfg(feature = "rc")]
     pub fn take_ownership(&mut self, id: &EntityId) -> Result<Entity, OwnershipError> {
-        if self.array.len() as u32 <= id.idx {
+        if self.array.len() as u32 <= id.idx() {
             return Err(OwnershipError::NoSuchEntity);
         }
-        let data = &mut self.array[id.idx as usize];
-        if id.gen.get() != data.gen {
+        let data = &mut self.array[id.idx() as usize];
+        if id.gen().get() != data.gen {
             return Err(OwnershipError::NoSuchEntity);
         }
 
@@ -218,10 +218,7 @@ impl Entities {
         };
 
         Ok(Entity {
-            inner: StrongInner {
-                id: *id,
-                shared: shared,
-            },
+            inner: StrongInner { id: *id, shared },
             marker: PhantomData,
         })
     }
@@ -230,7 +227,7 @@ impl Entities {
     pub fn give_ownership<T>(&mut self, entity: Entity<T>) {
         debug_assert!(self.is_owner_of(&entity));
 
-        let data = &mut self.array[entity.idx as usize];
+        let data = &mut self.array[entity.idx() as usize];
 
         match data.shared {
             None => unsafe { unreachable_unchecked() },
@@ -245,11 +242,11 @@ impl Entities {
     }
 
     pub fn despawn(&mut self, id: &EntityId) -> Result<(u32, u32), DespawnError> {
-        if self.array.len() as u32 <= id.idx {
+        if self.array.len() as u32 <= id.idx() {
             return Err(NoSuchEntity.into());
         }
-        let data = &mut self.array[id.idx as usize];
-        if id.gen.get() != data.gen {
+        let data = &mut self.array[id.idx() as usize];
+        if id.gen().get() != data.gen {
             return Err(NoSuchEntity.into());
         }
 
@@ -262,7 +259,7 @@ impl Entities {
 
         if data.gen != u32::MAX {
             data.gen += 1;
-            self.free_entity_ids.push(id.idx);
+            self.free_entity_ids.push(id.idx());
         } else {
             data.gen = 0;
         }
@@ -275,14 +272,22 @@ impl Entities {
         data.idx = idx;
     }
 
+    pub fn get_entity(&self, id: u32) -> Option<EntityId> {
+        if self.array.len() as u32 <= id {
+            return None;
+        }
+        let data = &self.array[id as usize];
+        Some(EntityId::new(id, NonZeroU32::new(data.gen)?))
+    }
+
     pub fn get(&self, id: &EntityId) -> Option<(u32, u32)> {
-        if self.array.len() as u32 <= id.idx {
+        if self.array.len() as u32 <= id.idx() {
             return None;
         }
-        if id.gen.get() != self.array[id.idx as usize].gen {
+        if id.gen().get() != self.array[id.idx() as usize].gen {
             return None;
         }
-        let data = &self.array[id.idx as usize];
+        let data = &self.array[id.idx() as usize];
         Some((data.archetype, data.idx))
     }
 

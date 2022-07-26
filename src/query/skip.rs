@@ -45,8 +45,11 @@ unsafe impl Query for Skip {
     }
 
     #[inline]
-    fn allowed_with<Q: Query>() -> bool {
-        true
+    fn conflicts<Q>() -> bool
+    where
+        Q: Query,
+    {
+        false
     }
 
     #[inline]

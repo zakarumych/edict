@@ -1,5 +1,5 @@
 //! This example contains usage of the main features of Edict ECS.
-use edict::{prelude::*, relation::Relation, world::OwnershipError};
+use edict::{prelude::*, relation::Relation};
 
 /// Just a type.
 /// Being `'static` makes it a proper component type.
@@ -143,7 +143,7 @@ fn main() {
     // Query reports the same.
     assert!(matches!(
         world.query_one::<&Foo>(&e),
-        Err(EntityError::NoSuchEntity)
+        Err(QueryOneError::NoSuchEntity)
     ));
 
     // Owning reference can be obtained immediately on spawn

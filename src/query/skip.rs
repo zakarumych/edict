@@ -2,9 +2,9 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, proof::Skip};
 
-use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
+use super::{fetch::Fetch, phantom::PhantomQuery, Access, ImmutableQuery, Query};
 
-impl Fetch<'_> for Skip {
+unsafe impl Fetch<'_> for Skip {
     type Item = Skip;
 
     #[inline]
@@ -13,12 +13,12 @@ impl Fetch<'_> for Skip {
     }
 
     #[inline]
-    unsafe fn skip_chunk(&self, _: usize) -> bool {
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn skip_item(&self, _: usize) -> bool {
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
         false
     }
 
@@ -35,17 +35,44 @@ unsafe impl Query for Skip {
     type Fetch = Skip;
 
     #[inline]
-    fn mutates() -> bool {
+    fn access(&self, _ty: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn conflicts<Q>(&self, _: &Q) -> bool
+    where
+        Q: Query,
+    {
         false
     }
 
     #[inline]
-    fn access(_ty: TypeId) -> Access {
-        Access::None
+    fn is_valid(&self) -> bool {
+        true
     }
 
     #[inline]
-    fn conflicts<Q>() -> bool
+    fn skip_archetype(&self, _: &Archetype) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn fetch(&mut self, _: &Archetype, _epoch: u64) -> Skip {
+        Skip
+    }
+}
+
+unsafe impl PhantomQuery for Skip {
+    type Fetch = Skip;
+
+    #[inline]
+    fn access(_ty: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn conflicts<Q>(_: &Q) -> bool
     where
         Q: Query,
     {
@@ -58,15 +85,14 @@ unsafe impl Query for Skip {
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype, _: u64) -> bool {
+    fn skip_archetype(_: &Archetype) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn fetch(_: &Archetype, _: u64, _epoch: u64) -> Option<Skip> {
-        Some(Skip)
+    unsafe fn fetch(_: &Archetype, _epoch: u64) -> Skip {
+        Skip
     }
 }
 
 unsafe impl ImmutableQuery for Skip {}
-unsafe impl NonTrackingQuery for Skip {}

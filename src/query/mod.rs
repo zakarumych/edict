@@ -1,138 +1,115 @@
 //! Queries and iterators.
 //!
 //! To efficiently iterate over entities with specific set of components,
-//! or only over thoses where specific component is modified, or missing,
+//! or only over those where specific component is modified, or missing,
 //! [`Query`] is the solution.
 //!
 //! [`Query`] trait has a lot of implementations and is composable using tuples.
 
-pub use self::{
-    alt::{Alt, FetchAlt},
-    filter::{Filter, With, Without},
-    modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
-    read::FetchRead,
-    write::FetchWrite,
-};
-
-use core::{any::TypeId, marker::PhantomData, ops::Range, ptr, slice};
+use core::any::TypeId;
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
+    component::Component,
     entity::EntityId,
 };
 
+pub use self::{
+    alt::{Alt, FetchAlt},
+    fetch::{Fetch, VerifyFetch},
+    filter::{Filter, FilteredFetch, FilteredQuery, With, Without},
+    iter::QueryIter,
+    modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
+    phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryItem},
+    read::{read, FetchRead},
+    write::{write, FetchWrite},
+};
+
+#[cfg(feature = "relation")]
+pub use self::relation::{related, Related, RelatedFetchRead, RelatedReadIter};
+
 mod alt;
+mod fetch;
 mod filter;
+mod iter;
 mod modified;
 mod option;
+mod phantom;
 mod read;
-
+#[cfg(feature = "relation")]
+mod relation;
 #[cfg(feature = "rc")]
 mod skip;
+mod tuple;
 mod write;
-
-pub use self::{alt::*, modified::*, option::*, read::*, write::*};
-
-/// Trait implemented for `Query::Fetch` associated types.
-pub trait Fetch<'a> {
-    /// Item type this fetch type yields.
-    type Item;
-
-    /// Returns `Fetch` value that must not be used.
-    fn dangling() -> Self;
-
-    /// Checks if chunk with specified index must be skipped.
-    unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool;
-
-    /// Checks if item with specified index must be skipped.
-    unsafe fn skip_item(&self, idx: usize) -> bool;
-
-    /// Notifies this fetch that it visits a chunk.
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize);
-
-    /// Returns fetched item at specifeid index.
-    unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
-}
 
 /// Specifies kind of access query performs for particular component.
 #[derive(Clone, Copy, Debug)]
 pub enum Access {
-    /// No access to component.
-    /// Can be aliased with anything.
-    None,
+    /// Read-only access to component versions.
+    /// Can be aliased with [`Access::Write`] in single query.
+    Track,
 
-    /// Shared access to component. Can be aliased with other shared accesses.
-    Shared,
+    /// Shared access to component. Can be aliased with other [`Access::Read`] and [`Access::Track`] accesses.
+    Read,
 
-    /// Cannot be aliased with other mutable and shared accesses.
-    Mutable,
+    /// Cannot be aliased with other [`Access::Read`] access and [`Access::Track`] access in other queries.
+    Write,
 }
 
-const fn merge_access(lhs: Access, rhs: Access) -> Access {
-    match (lhs, rhs) {
-        (Access::None, rhs) => rhs,
-        (lhs, Access::None) => lhs,
-        (Access::Shared, Access::Shared) => Access::Shared,
-        _ => Access::Mutable,
-    }
-}
-
-struct QueryConflict<Q>(bool, PhantomData<Q>);
-
-impl<L, R> core::ops::BitOr<QueryConflict<L>> for QueryConflict<R>
-where
-    L: Query,
-    R: Query,
-{
-    type Output = QueryConflict<(L, R)>;
-
-    #[inline]
-    fn bitor(self, rhs: QueryConflict<L>) -> QueryConflict<(L, R)> {
-        let conflict = self.0 || rhs.0 || L::conflicts::<R>();
-        QueryConflict(conflict, PhantomData)
-    }
-}
-
-/// Trait for types that can query sets of components from entities in the world.
+/// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
-/// sets of references to the components and optionally `EntityId` to address same components later.
+/// references to the components and optionally `EntityId` to address same components later.
 pub unsafe trait Query {
     /// Fetch value type for this query type.
     /// Contains data from one archetype.
     type Fetch: for<'a> Fetch<'a>;
 
-    /// Checks if this query type mutates any of the components.
-    /// Queries that returns [`false`] must never attempt to modify a component.
-    /// [`ImmutableQuery`] must statically return [`false`]
-    /// and never attempt to modify a component.
-    #[inline]
-    fn mutates() -> bool {
-        false
-    }
-
-    /// Checks if this query tracks changes of any of the components.
-    #[inline]
-    fn tracks() -> bool {
-        false
-    }
-
     /// Function to validate that query does not cause mutable reference aliasing.
-    fn is_valid() -> bool;
+    /// e.g. `(&mut T, &mut T)` is not valid query, but `(&T, &T)` is.
+    ///
+    /// Attempt to run invalid query will result in panic.
+    /// It is always user's responsibility to ensure that query is valid.
+    ///
+    /// Typical query validity does not depend on the runtime values.
+    /// So it should be possible to ensure that query is valid by looking at its type.
+    ///
+    /// # Safety
+    ///
+    /// Soundness relies on the correctness of this method.
+    ///
+    /// This method is called before running the query.
+    /// It must return `true` only if it is sound to call `fetch` for any archetype
+    /// that won't be skipped and get items from it.
+    fn is_valid(&self) -> bool;
 
-    /// Returns what kind of access the query performs on the component type.
-    fn access(ty: TypeId) -> Access;
-
-    /// Returns `false` if query execution is allowed in parallel with specified.
-    fn conflicts<Q>() -> bool
+    /// Returns `true` if query execution conflicts with another query.
+    /// This method can be used by complex queries to implement `is_valid`.
+    /// Another use case is within multithreaded scheduler to run non-conflicting queries in parallel.
+    ///
+    /// # Safety
+    ///
+    /// Soundness relies on the correctness of this method.
+    fn conflicts<Q>(&self, other: &Q) -> bool
     where
         Q: Query;
 
+    /// Returns what kind of access the query performs on the component type.
+    ///
+    /// # Safety
+    ///
+    /// Soundness relies on the correctness of this method.
+    fn access(&self, ty: TypeId) -> Option<Access>;
+
     /// Checks if archetype must be skipped.
-    fn skip_archetype(archetype: &Archetype, tracks: u64) -> bool;
+    fn skip_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Fetches data from one archetype.
-    /// Returns [`None`] is archetype does not match query requirements.
-    unsafe fn fetch(archetype: &Archetype, tracks: u64, epoch: u64) -> Option<Self::Fetch>;
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if `skip_archetype` returned `true`.
+    unsafe fn fetch(&mut self, archetype: &Archetype, epoch: u64) -> Self::Fetch;
 }
 
 /// Query that does not mutate any components.
@@ -141,19 +118,415 @@ pub unsafe trait Query {
 ///
 /// `Query::mutate` must return `false`.
 /// `Query` must not borrow components mutably.
-/// `Query` must not change entities versions.
-pub unsafe trait ImmutableQuery {}
+/// `Query` must not modify entities versions.
+pub unsafe trait ImmutableQuery: Query {}
 
-/// Query that does not track component changes.
-///
-/// # Safety
-///
-/// `Query::tracks` must return `false`.
-/// `Query` must not skip entities based on their versions.
-pub unsafe trait NonTrackingQuery {}
+/// Asserts that query is indeed immutable
+/// by checking that it doesn't conflict with query that reads everything.
+pub(crate) fn assert_immutable_query(query: &impl ImmutableQuery) {
+    struct QuasiQueryThatReadsEverything;
+    enum QuasiFetchThatReadsEverything {}
 
-/// Type alias for items returned by query type.
+    unsafe impl<'a> Fetch<'a> for QuasiFetchThatReadsEverything {
+        type Item = Self;
+
+        #[inline]
+        fn dangling() -> Self {
+            unimplemented!()
+        }
+
+        #[inline]
+        unsafe fn skip_chunk(&mut self, _: usize) -> bool {
+            match *self {}
+        }
+
+        #[inline]
+        unsafe fn visit_chunk(&mut self, _: usize) {
+            match *self {}
+        }
+
+        #[inline]
+        unsafe fn skip_item(&mut self, _: usize) -> bool {
+            match *self {}
+        }
+
+        #[inline]
+        unsafe fn get_item(&mut self, _: usize) -> Self {
+            match *self {}
+        }
+    }
+
+    unsafe impl Query for QuasiQueryThatReadsEverything {
+        type Fetch = QuasiFetchThatReadsEverything;
+
+        #[inline]
+        fn is_valid(&self) -> bool {
+            true
+        }
+
+        fn conflicts<Q>(&self, _: &Q) -> bool
+        where
+            Q: Query,
+        {
+            unimplemented!()
+        }
+
+        fn access(&self, _: TypeId) -> Option<Access> {
+            Some(Access::Read)
+        }
+
+        fn skip_archetype(&self, _: &Archetype) -> bool {
+            unimplemented!()
+        }
+
+        unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> QuasiFetchThatReadsEverything {
+            unimplemented!()
+        }
+    }
+
+    assert_eq!(
+        query.conflicts(&QuasiQueryThatReadsEverything),
+        false,
+        "Immutable query must not conflict with query that reads everything"
+    );
+}
+
+#[inline]
+pub(crate) fn debug_assert_immutable_query(query: &impl ImmutableQuery) {
+    #[cfg(debug_assertions)]
+    assert_immutable_query(query);
+}
+
+/// Type alias for items returned by the query type.
 pub type QueryItem<'a, Q> = <<Q as Query>::Fetch as Fetch<'a>>::Item;
+
+/// Mutable query builder.
+#[allow(missing_debug_implementations)]
+pub struct QueryMut<'a, Q, F> {
+    archetypes: &'a [Archetype],
+    epoch: &'a mut u64,
+    query: Q,
+    filter: F,
+}
+
+impl<'a, Q> QueryMut<'a, Q, ()> {
+    pub(crate) fn new(archetypes: &'a [Archetype], epoch: &'a mut u64, query: Q) -> Self {
+        QueryMut {
+            archetypes,
+            epoch,
+            query,
+            filter: (),
+        }
+    }
+}
+
+impl<'a, Q, F> QueryMut<'a, Q, F>
+where
+    Q: Query,
+    F: Filter,
+{
+    /// Creates new layer of tuples of mutable query.
+    pub fn layer(self) -> QueryMut<'a, (Q,), F> {
+        QueryMut {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: (self.query,),
+            filter: self.filter,
+        }
+    }
+
+    /// Adds filter that skips entities that don't have specified component.
+    pub fn with<T>(self) -> QueryMut<'a, Q, (With<T>, F)>
+    where
+        T: Component,
+    {
+        QueryMut {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (With::new(), self.filter),
+        }
+    }
+
+    /// Adds filter that skips entities that have specified component.
+    pub fn without<T>(self) -> QueryMut<'a, Q, (Without<T>, F)>
+    where
+        T: Component,
+    {
+        QueryMut {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (Without::new(), self.filter),
+        }
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
+    where
+        Q: ImmutableQuery + Clone,
+        F: Clone,
+    {
+        debug_assert_immutable_query(&self.filter);
+        debug_assert_immutable_query(&self.query);
+
+        QueryIter::new(
+            FilteredQuery {
+                filter: self.filter.clone(),
+                query: self.query.clone(),
+            },
+            *self.epoch,
+            self.archetypes,
+        )
+    }
+
+    /// Returns iterator over query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter_mut<'b>(&'b mut self) -> QueryIter<'b, FilteredQuery<F, Q>>
+    where
+        Q: Clone,
+        F: Clone,
+    {
+        debug_assert_immutable_query(&self.filter);
+
+        *self.epoch += 1;
+        QueryIter::new(
+            FilteredQuery {
+                filter: self.filter.clone(),
+                query: self.query.clone(),
+            },
+            *self.epoch,
+            self.archetypes,
+        )
+    }
+
+    /// Returns iterator over query results.
+    /// This method is only available with non-tracking queries.
+    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+        debug_assert_immutable_query(&self.filter);
+
+        *self.epoch += 1;
+        QueryIter::new(
+            FilteredQuery {
+                filter: self.filter,
+                query: self.query,
+            },
+            *self.epoch,
+            self.archetypes,
+        )
+    }
+
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that mutate components.
+    /// This method only works queries that does not track for component changes.
+    #[inline]
+    pub fn for_each_mut<Fun>(self, f: Fun)
+    where
+        Q: Query,
+        Fun: FnMut(QueryItem<'_, Q>),
+    {
+        assert!(self.filter.is_valid(), "Invalid query specified");
+        assert!(self.query.is_valid(), "Invalid query specified");
+
+        debug_assert_immutable_query(&self.filter);
+
+        *self.epoch += 1;
+
+        for_each_impl(self.filter, self.query, self.archetypes, *self.epoch, f)
+    }
+
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that mutate components.
+    /// This method only works queries that does not track for component changes.
+    #[inline]
+    pub fn for_each<Fun>(self, f: Fun)
+    where
+        Q: ImmutableQuery,
+        Fun: FnMut(QueryItem<'_, Q>),
+    {
+        assert!(self.filter.is_valid(), "Invalid query specified");
+        assert!(self.query.is_valid(), "Invalid query specified");
+
+        debug_assert_immutable_query(&self.filter);
+        debug_assert_immutable_query(&self.query);
+
+        for_each_impl(self.filter, self.query, self.archetypes, *self.epoch, f)
+    }
+}
+
+impl<'a, Q, F> IntoIterator for QueryMut<'a, Q, F>
+where
+    Q: Query,
+    F: Filter,
+{
+    type Item = (EntityId, QueryItem<'a, Q>);
+    type IntoIter = QueryIter<'a, FilteredQuery<F, Q>>;
+
+    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+        self.into_iter()
+    }
+}
+/// Immutable query builder.
+#[derive(Clone, Copy)]
+#[allow(missing_debug_implementations)]
+pub struct QueryRef<'a, Q, F> {
+    archetypes: &'a [Archetype],
+    epoch: u64,
+    query: Q,
+    filter: F,
+}
+
+impl<'a, Q> QueryRef<'a, Q, ()>
+where
+    Q: ImmutableQuery,
+{
+    pub(crate) fn new(archetypes: &'a [Archetype], epoch: u64, query: Q) -> Self {
+        QueryRef {
+            archetypes,
+            epoch,
+            query,
+            filter: (),
+        }
+    }
+}
+
+impl<'a, Q, F> QueryRef<'a, Q, F>
+where
+    Q: ImmutableQuery,
+    F: Filter,
+{
+    /// Creates new layer of tuples of immutable query.
+    pub fn layer(self) -> QueryRef<'a, (Q,), F> {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: (self.query,),
+            filter: self.filter,
+        }
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
+    where
+        Q: Clone,
+        F: Clone,
+    {
+        debug_assert_immutable_query(&self.query);
+        debug_assert_immutable_query(&self.filter);
+
+        QueryIter::new(
+            FilteredQuery {
+                filter: self.filter.clone(),
+                query: self.query.clone(),
+            },
+            self.epoch,
+            self.archetypes,
+        )
+    }
+
+    /// Returns iterator over immutable query results.
+    /// This method is only available with non-tracking queries.
+    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+        debug_assert_immutable_query(&self.query);
+        debug_assert_immutable_query(&self.filter);
+
+        QueryIter::new(
+            FilteredQuery {
+                filter: self.filter,
+                query: self.query,
+            },
+            self.epoch,
+            self.archetypes,
+        )
+    }
+
+    /// Iterates through world using specified query.
+    ///
+    /// This method can be used for queries that mutate components.
+    /// This method only works queries that does not track for component changes.
+    #[inline]
+    pub fn for_each<Fun>(self, f: Fun)
+    where
+        Q: ImmutableQuery,
+        Fun: FnMut(QueryItem<'_, Q>),
+    {
+        assert!(self.filter.is_valid(), "Invalid query specified");
+        assert!(self.query.is_valid(), "Invalid query specified");
+
+        debug_assert_immutable_query(&self.filter);
+        debug_assert_immutable_query(&self.query);
+
+        for_each_impl(self.filter, self.query, self.archetypes, self.epoch, f)
+    }
+}
+
+impl<'a, Q, F> IntoIterator for QueryRef<'a, Q, F>
+where
+    Q: ImmutableQuery,
+    F: Filter,
+{
+    type Item = (EntityId, QueryItem<'a, Q>);
+    type IntoIter = QueryIter<'a, FilteredQuery<F, Q>>;
+
+    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+        self.into_iter()
+    }
+}
+
+const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+    match (lhs, rhs) {
+        (None, rhs) => rhs,
+        (lhs, None) => lhs,
+        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+        _ => Some(Access::Write),
+    }
+}
+
+fn for_each_impl<Q, F, Fun>(filter: F, query: Q, archetypes: &[Archetype], epoch: u64, mut f: Fun)
+where
+    Q: Query,
+    F: Filter,
+    Fun: FnMut(QueryItem<'_, Q>),
+{
+    let mut query = FilteredQuery {
+        filter: filter,
+        query: query,
+    };
+
+    for archetype in archetypes {
+        if query.skip_archetype(archetype) {
+            continue;
+        }
+
+        let mut fetch = unsafe { query.fetch(archetype, epoch) };
+
+        let mut indices = 0..archetype.len();
+        let mut visit_chunk = false;
+
+        while let Some(idx) = indices.next() {
+            if let Some(chunk_idx) = first_of_chunk(idx) {
+                if unsafe { fetch.skip_chunk(chunk_idx) } {
+                    indices.nth(CHUNK_LEN_USIZE - 1);
+                    continue;
+                }
+                visit_chunk = true;
+            }
+
+            if !unsafe { fetch.skip_item(idx) } {
+                if visit_chunk {
+                    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+                    visit_chunk = false;
+                }
+                let item = unsafe { fetch.get_item(idx) };
+                f(item);
+            }
+        }
+    }
+}
 
 macro_rules! for_tuple {
     () => {
@@ -169,503 +542,39 @@ macro_rules! for_tuple {
         for_tuple!(impl $head $($tail)*);
     };
 
-    (impl) => {
-        impl Fetch<'_> for () {
-            type Item = ();
+    (impl $($a:ident)*) => {
+        impl<'a, $($a,)* Y> QueryMut<'a, ($($a,)*), Y> {
+            /// Adds query to fetch modified components.
+            pub fn modified<T>(self, epoch: u64) -> QueryMut<'a, ($($a,)* Modified<T>,), Y> {
+                #![allow(non_snake_case)]
 
-            #[inline]
-            fn dangling() {}
+                let ($($a,)*) = self.query;
 
-            #[inline]
-            unsafe fn skip_chunk(&self, _: usize) -> bool {
-                false
-            }
-
-            #[inline]
-            unsafe fn skip_item(&self, _: usize) -> bool {
-                false
-            }
-
-            #[inline]
-            unsafe fn visit_chunk(&mut self, _: usize) {}
-
-            #[inline]
-            unsafe fn get_item(&mut self, _: usize) {}
-        }
-
-        unsafe impl Query for () {
-            type Fetch = ();
-
-            #[inline]
-            fn mutates() -> bool {
-                false
-            }
-
-            #[inline]
-            fn tracks() -> bool {
-                false
-            }
-
-            #[inline]
-            fn access(_ty: TypeId) -> Access {
-                Access::None
-            }
-
-            #[inline]
-            fn conflicts<Q>() -> bool
-            where
-                Q: Query,
-            {
-                false
-            }
-
-            #[inline]
-            fn is_valid() -> bool {
-                true
-            }
-
-            #[inline]
-            fn skip_archetype(_: &Archetype, _: u64) -> bool {
-                false
-            }
-
-            #[inline]
-            unsafe fn fetch(_: & Archetype, _: u64, _: u64) -> Option<()> {
-                Some(())
+                QueryMut {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* Modified::<T>::new(epoch),),
+                    filter: self.filter,
+                }
             }
         }
 
-        unsafe impl ImmutableQuery for () {}
-        unsafe impl NonTrackingQuery for () {}
+        impl<'a, $($a,)* Y> QueryRef<'a, ($($a,)*), Y> {
+            /// Adds query to fetch modified components.
+            pub fn modified<T>(self, epoch: u64) -> QueryRef<'a, ($($a,)* Modified<T>,), Y> {
+                #![allow(non_snake_case)]
 
-        impl Filter for () {}
-    };
+                let ($($a,)*) = self.query;
 
-    (impl $($a:ident)+) => {
-        impl<'a $(, $a)+> Fetch<'a> for ($($a,)+)
-        where $($a: Fetch<'a>,)+
-        {
-            type Item = ($($a::Item,)+);
-
-            #[inline]
-            fn dangling() -> Self {
-                ($($a::dangling(),)+)
-            }
-
-            #[inline]
-            unsafe fn skip_chunk(&self, chunk_idx: usize) -> bool {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                $($a.skip_chunk(chunk_idx) ||)+ false
-            }
-
-            /// Checks if item with specified index must be skipped.
-            #[inline]
-            unsafe fn skip_item(&self, idx: usize) -> bool {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                $($a.skip_item(idx) ||)+ false
-            }
-
-            /// Notifies this fetch that it visits a chunk.
-            #[inline]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                $($a.visit_chunk(chunk_idx);)+
-            }
-
-            #[inline]
-            unsafe fn get_item(&mut self, idx: usize) -> ($($a::Item,)+) {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                ($( $a.get_item(idx), )+)
-            }
-        }
-
-        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
-            type Fetch = ($($a::Fetch,)+);
-
-            #[inline]
-            fn mutates() -> bool {
-                false $( || $a::mutates()) +
-            }
-
-            #[inline]
-            fn tracks() -> bool {
-                false $( || $a::tracks()) +
-            }
-
-            #[inline]
-            fn access(ty: TypeId) -> Access {
-                let mut access = Access::None;
-                $(access = merge_access(access, $a::access(ty));)+
-                access
-            }
-
-            #[inline]
-            fn conflicts<Q>() -> bool
-            where
-                Q: Query,
-            {
-                $( <$a as Query>::conflicts::<Q>() ) || +
-            }
-
-            #[inline]
-            fn is_valid() -> bool {
-                let QueryConflict(conflict, _) = $( QueryConflict(false, PhantomData::<$a>) ) | +;
-                !conflict
-            }
-
-            #[inline]
-            fn skip_archetype(archetype: & Archetype, track: u64) -> bool {
-                $( $a::skip_archetype(archetype, track) )||+
-            }
-
-            #[inline]
-            unsafe fn fetch(archetype: & Archetype, track: u64, epoch: u64) -> Option<($($a::Fetch,)+)> {
-                Some(($( $a::fetch(archetype, track, epoch)?, )+))
-            }
-        }
-
-        unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
-        unsafe impl<$($a),+> NonTrackingQuery for ($($a,)+) where $($a: NonTrackingQuery,)+ {}
-
-        impl<$($a),+> Filter for ($($a,)+) where $($a: Filter,)+ {
-            #[inline]
-            fn skip_archetype(&self, archetype: &Archetype, tracks: u64, epoch: u64) -> bool {
-                #[allow(non_snake_case)]
-                let ($($a,)+) = self;
-                $( $a.skip_archetype(archetype, tracks, epoch) )||+
+                QueryRef {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* Modified::<T>::new(epoch),),
+                    filter: self.filter,
+                }
             }
         }
     };
 }
 
 for_tuple!();
-
-/// Iterator over entities with a query `Q`.
-/// Yields `EntityId` and query items for every matching entity.
-///
-/// Supports only `NonTrackingQuery`.
-#[allow(missing_debug_implementations)]
-pub struct QueryIter<'a, Q: Query, F = ()> {
-    epoch: u64,
-    archetypes: slice::Iter<'a, Archetype>,
-
-    fetch: <Q as Query>::Fetch,
-    entities: *const EntityId,
-    indices: Range<usize>,
-
-    filter: F,
-}
-
-impl<'a, Q, F> QueryIter<'a, Q, F>
-where
-    Q: Query,
-{
-    pub(crate) fn new(epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
-        QueryIter {
-            epoch,
-            archetypes: archetypes.iter(),
-            fetch: Q::Fetch::dangling(),
-            entities: ptr::null(),
-            indices: 0..0,
-            filter,
-        }
-    }
-}
-
-impl<'a, Q, F> Iterator for QueryIter<'a, Q, F>
-where
-    Q: Query,
-    F: Filter,
-{
-    type Item = (EntityId, QueryItem<'a, Q>);
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.len();
-        (len, Some(len))
-    }
-
-    #[inline]
-    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
-        loop {
-            match self.indices.next() {
-                None => {
-                    // move to the next archetype.
-                    loop {
-                        let archetype = self.archetypes.next()?;
-                        if self.filter.skip_archetype(archetype, 0, self.epoch) {
-                            continue;
-                        }
-                        if let Some(fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
-                            self.fetch = fetch;
-                            self.entities = archetype.entities().as_ptr();
-                            self.indices = 0..archetype.len();
-                            break;
-                        }
-                    }
-                }
-                Some(idx) => {
-                    if Q::mutates() {
-                        if let Some(chunk_idx) = first_of_chunk(idx) {
-                            unsafe { self.fetch.visit_chunk(chunk_idx) }
-                        }
-                    }
-
-                    debug_assert!(!unsafe { self.fetch.skip_item(idx) });
-
-                    let item = unsafe { self.fetch.get_item(idx) };
-                    let entity = unsafe { *self.entities.add(idx) };
-
-                    return Some((entity, item));
-                }
-            }
-        }
-    }
-
-    fn fold<B, Fun>(mut self, init: B, mut f: Fun) -> B
-    where
-        Self: Sized,
-        Fun: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
-    {
-        let mut acc = init;
-        for idx in self.indices {
-            if Q::mutates() {
-                if let Some(chunk_idx) = first_of_chunk(idx) {
-                    unsafe { self.fetch.visit_chunk(chunk_idx) }
-                }
-            }
-            debug_assert!(!unsafe { self.fetch.skip_item(idx) });
-
-            let item = unsafe { self.fetch.get_item(idx) };
-            let entity = unsafe { *self.entities.add(idx as usize) };
-
-            acc = f(acc, (entity, item));
-        }
-
-        for archetype in self.archetypes {
-            if self.filter.skip_archetype(archetype, 0, self.epoch) {
-                continue;
-            }
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
-                let entities = archetype.entities().as_ptr();
-
-                for idx in 0..archetype.len() {
-                    if Q::mutates() {
-                        if let Some(chunk_idx) = first_of_chunk(idx) {
-                            unsafe { fetch.visit_chunk(chunk_idx) }
-                        }
-                    }
-                    debug_assert!(!unsafe { fetch.skip_item(idx) });
-
-                    let item = unsafe { fetch.get_item(idx) };
-                    let entity = unsafe { *entities.add(idx) };
-
-                    acc = f(acc, (entity, item));
-                }
-            }
-        }
-        acc
-    }
-}
-
-impl<Q, F> ExactSizeIterator for QueryIter<'_, Q, F>
-where
-    Q: Query,
-    F: Filter,
-{
-    fn len(&self) -> usize {
-        self.archetypes
-            .clone()
-            .fold(self.indices.len(), |acc, archetype| {
-                if self.filter.skip_archetype(archetype, 0, self.epoch) {
-                    return acc;
-                }
-
-                if Q::skip_archetype(archetype, 0) {
-                    return acc;
-                }
-
-                acc + archetype.len()
-            })
-    }
-}
-
-/// Iterator over entities with a query `Q`.
-/// Yields `EntityId` and query items for every matching entity.
-///
-/// Does not require `Q` to implement `NonTrackingQuery`.
-#[allow(missing_debug_implementations)]
-pub struct QueryTrackedIter<'a, Q: Query, F> {
-    filter: F,
-    tracks: u64,
-    epoch: u64,
-    archetypes: slice::Iter<'a, Archetype>,
-
-    fetch: <Q as Query>::Fetch,
-    entities: *const EntityId,
-    indices: Range<usize>,
-    visit_chunk: bool,
-}
-
-impl<'a, Q, F> QueryTrackedIter<'a, Q, F>
-where
-    Q: Query,
-{
-    pub(crate) fn new(tracks: u64, epoch: u64, archetypes: &'a [Archetype], filter: F) -> Self {
-        QueryTrackedIter {
-            filter,
-            tracks,
-            epoch,
-            archetypes: archetypes.iter(),
-            fetch: Q::Fetch::dangling(),
-            entities: ptr::null(),
-            indices: 0..0,
-            visit_chunk: false,
-        }
-    }
-}
-
-impl<'a, Q, F> Iterator for QueryTrackedIter<'a, Q, F>
-where
-    Q: Query,
-    F: Filter,
-{
-    type Item = (EntityId, QueryItem<'a, Q>);
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let upper = self
-            .archetypes
-            .clone()
-            .fold(self.indices.len(), |acc, archetype| {
-                if self.filter.skip_archetype(archetype, 0, self.epoch) {
-                    return acc;
-                }
-
-                if Q::skip_archetype(archetype, 0) {
-                    return acc;
-                }
-
-                acc + archetype.len()
-            });
-
-        (0, Some(upper))
-    }
-
-    #[inline]
-    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
-        loop {
-            match self.indices.next() {
-                None => {
-                    // move to the next archetype.
-                    loop {
-                        let archetype = self.archetypes.next()?;
-
-                        if self
-                            .filter
-                            .skip_archetype(archetype, self.tracks, self.epoch)
-                        {
-                            continue;
-                        }
-
-                        if let Some(fetch) = unsafe { Q::fetch(archetype, self.tracks, self.epoch) }
-                        {
-                            self.fetch = fetch;
-                            self.entities = archetype.entities().as_ptr();
-                            self.indices = 0..archetype.len();
-                            break;
-                        }
-                    }
-                }
-                Some(idx) => {
-                    if let Some(chunk_idx) = first_of_chunk(idx) {
-                        if unsafe { self.fetch.skip_chunk(chunk_idx) } {
-                            self.indices.nth(CHUNK_LEN_USIZE - 1);
-                            continue;
-                        }
-                        self.visit_chunk = Q::mutates();
-                    }
-
-                    if !unsafe { self.fetch.skip_item(idx) } {
-                        if self.visit_chunk {
-                            unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
-                            self.visit_chunk = false;
-                        }
-
-                        let item = unsafe { self.fetch.get_item(idx) };
-                        let entity = unsafe { *self.entities.add(idx) };
-
-                        return Some((entity, item));
-                    }
-                }
-            }
-        }
-    }
-
-    fn fold<B, Fun>(mut self, init: B, mut f: Fun) -> B
-    where
-        Self: Sized,
-        Fun: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
-    {
-        let mut acc = init;
-        while let Some(idx) = self.indices.next() {
-            if let Some(chunk_idx) = first_of_chunk(idx) {
-                if unsafe { self.fetch.skip_chunk(chunk_idx) } {
-                    self.indices.nth(CHUNK_LEN_USIZE - 1);
-                    continue;
-                }
-                self.visit_chunk = Q::mutates();
-            }
-
-            if !unsafe { self.fetch.skip_item(idx) } {
-                if self.visit_chunk {
-                    unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
-                    self.visit_chunk = false;
-                }
-                let item = unsafe { self.fetch.get_item(idx) };
-                let entity = unsafe { *self.entities.add(idx as usize) };
-
-                acc = f(acc, (entity, item));
-            }
-        }
-
-        for archetype in self.archetypes {
-            if self
-                .filter
-                .skip_archetype(archetype, self.tracks, self.epoch)
-            {
-                continue;
-            }
-            if let Some(mut fetch) = unsafe { Q::fetch(archetype, 0, self.epoch) } {
-                let entities = archetype.entities().as_ptr();
-                let mut indices = 0..archetype.len();
-
-                while let Some(idx) = indices.next() {
-                    if let Some(chunk_idx) = first_of_chunk(idx) {
-                        if unsafe { fetch.skip_chunk(chunk_idx) } {
-                            self.indices.nth(CHUNK_LEN_USIZE - 1);
-                            continue;
-                        }
-                        self.visit_chunk = Q::mutates();
-                    }
-
-                    if !unsafe { fetch.skip_item(idx) } {
-                        if self.visit_chunk {
-                            unsafe { fetch.visit_chunk(chunk_idx(idx)) }
-                            self.visit_chunk = false;
-                        }
-                        let item = unsafe { fetch.get_item(idx) };
-                        let entity = unsafe { *entities.add(idx) };
-
-                        acc = f(acc, (entity, item));
-                    }
-                }
-            }
-        }
-        acc
-    }
-}

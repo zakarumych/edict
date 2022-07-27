@@ -541,7 +541,12 @@ impl Archetype {
     /// `src_idx` must be in bounds of this archetype.
     /// This archetype must contain specified type.
     /// `dst` archetype must contain all component types from this archetype except specified type.
-    pub unsafe fn remove<T>(&mut self, dst: &mut Archetype, src_idx: u32) -> (u32, Option<u32>, T)
+    pub unsafe fn remove<T>(
+        &mut self,
+        entity: EntityId,
+        dst: &mut Archetype,
+        src_idx: u32,
+    ) -> (u32, Option<u32>, T)
     where
         T: Component,
     {
@@ -552,6 +557,7 @@ impl Archetype {
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
+        debug_assert_eq!(entity, self.entities[src_entity_idx]);
 
         let dst_entity_idx = dst.entities.len();
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
@@ -605,7 +611,6 @@ impl Archetype {
 
         let dst_entity_idx = dst.entities.len();
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
-        debug_assert_eq!(entity, dst.entities[dst_entity_idx]);
 
         dst.reserve(1);
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());

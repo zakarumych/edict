@@ -1,6 +1,6 @@
 use core::{fmt, marker::PhantomData, ops::Deref};
 
-use crate::{bundle::Bundle, world::World};
+use crate::{bundle::Bundle, component::Component, world::World};
 
 use super::{id::EntityId, strong::StrongInner};
 
@@ -112,6 +112,7 @@ impl<T> Deref for SharedEntity<T> {
 
 macro_rules! for_tuple {
     () => {
+        // for_tuple!(for A B);
         for_tuple!(for A B C D E F G H I J K L M N O P);
     };
 
@@ -156,20 +157,29 @@ macro_rules! for_tuple {
         ///
         /// ```
         /// # use edict::prelude::World;
+        /// # impl edict::prelude::Component for Foo {}
         /// # let mut world = World::new();
-        /// let entity = world.spawn_owning((0u32,));
-        /// let entity = entity.pin::<u32>(&mut world);
+        /// struct Foo;
+        ///
+        /// let entity = world.spawn_owning((Foo,));
+        /// let entity = entity.pin::<Foo>(&mut world);
         /// ```
         ///
         /// # Example
         ///
         /// ```should_panic
         /// # use edict::prelude::World;
+        /// # impl edict::prelude::Component for Foo {}
         /// # let mut world = World::new();
-        /// let entity = world.spawn_owning((0u32,));
-        /// let entity = entity.pin::<u8>(&mut world);
+        /// struct Foo;
+        ///
+        /// let entity = world.spawn_owning(());
+        /// let entity = entity.pin::<Foo>(&mut world);
         /// ```
-        pub fn pin<T: 'static>(self, world: &mut World) -> Entity<($($a,)* T,)> {
+        pub fn pin<T>(self, world: &mut World) -> Entity<($($a,)* T,)>
+        where
+            T: Component,
+        {
             assert!(world.has_component_owning::<T, _>(&self));
 
             drop(world);

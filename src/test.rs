@@ -1,7 +1,6 @@
 use crate::{
     prelude::Component,
-    query::Modified,
-    world::{EntityError, World},
+    world::{QueryOneError, World},
 };
 
 use alloc::{vec, vec::Vec};
@@ -25,7 +24,7 @@ fn world_spawn() {
 
     let e = world.spawn((U32(42), Str("qwe")));
     assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<&Str>(&e), Ok(true));
+    assert_eq!(world.has_component::<Str>(&e), Ok(true));
     assert_eq!(
         world.query_one_mut::<(&U32, &Str)>(&e),
         Ok((&U32(42), &Str("qwe")))
@@ -43,7 +42,7 @@ fn world_insert() {
     assert_eq!(world.has_component::<Str>(&e), Ok(false));
     assert_eq!(
         world.query_one_mut::<(&U32, &Str)>(&e),
-        Err(EntityError::MissingComponents)
+        Err(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(world.try_insert(&e, Str("qwe")), Ok(()));
@@ -71,7 +70,7 @@ fn world_remove() {
     assert_eq!(world.has_component::<Str>(&e), Ok(false));
     assert_eq!(
         world.query_one_mut::<(&U32, &Str)>(&e),
-        Err(EntityError::MissingComponents)
+        Err(QueryOneError::NotSatisfied)
     );
 }
 
@@ -85,7 +84,7 @@ fn world_insert_bundle() {
     assert_eq!(world.has_component::<Str>(&e), Ok(false));
     assert_eq!(
         world.query_one_mut::<(&U32, &Str)>(&e),
-        Err(EntityError::MissingComponents)
+        Err(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(
@@ -118,7 +117,7 @@ fn world_remove_bundle() {
     assert_eq!(world.has_component::<Str>(&e), Ok(false));
     assert_eq!(
         world.query_one_mut::<(&U32, &Str)>(&e),
-        Err(EntityError::MissingComponents)
+        Err(QueryOneError::NotSatisfied)
     );
 }
 
@@ -126,21 +125,26 @@ fn world_remove_bundle() {
 fn version_test() {
     let mut world = World::new();
 
-    let mut tracks = world.tracks();
+    let mut epoch = world.epoch();
+
     let e = world.spawn((U32(42), Str("qwe")));
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
     );
 
+    epoch = world.epoch();
+
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![]
     );
@@ -149,8 +153,9 @@ fn version_test() {
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
     );
@@ -160,22 +165,26 @@ fn version_test() {
 fn version_despawn_test() {
     let mut world = World::new();
 
-    let mut tracks = world.tracks();
+    let mut epoch = world.epoch();
     let e1 = world.spawn((U32(42), Str("qwe")));
     let e2 = world.spawn((U32(23), Str("rty")));
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e1, &U32(42)), (e2, &U32(23))]
     );
 
+    epoch = world.epoch();
+
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![]
     );
@@ -185,8 +194,9 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e2, &U32(50))]
     );
@@ -196,22 +206,26 @@ fn version_despawn_test() {
 fn version_insert_test() {
     let mut world = World::new();
 
-    let mut tracks = world.tracks();
+    let mut epoch = world.epoch();
     let e1 = world.spawn((U32(42), Str("qwe")));
     let e2 = world.spawn((U32(23), Str("rty")));
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e1, &U32(42)), (e2, &U32(23))]
     );
 
+    epoch = world.epoch();
+
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![]
     );
@@ -223,8 +237,9 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .query::<Modified<&U32>>()
-            .tracked_iter(&mut tracks)
+            .build_query()
+            .modified::<&U32>(epoch)
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![(e2, &U32(100)), (e1, &U32(50))]
     );

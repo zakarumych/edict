@@ -4,15 +4,19 @@ pub use crate::{
     bundle::{Bundle, DynamicBundle, EntityBuilder},
     component::Component,
     entity::EntityId,
-    query::{
-        Alt, ImmutableQuery, Modified, NonTrackingQuery, Query, QueryItem, QueryIter,
-        QueryTrackedIter,
-    },
-    world::{EntityError, MissingComponents, NoSuchEntity, Tracks, World},
+    query::{ImmutableQuery, Query, QueryItem, QueryIter},
+    world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, World},
 };
 
 #[cfg(feature = "rc")]
 pub use crate::{
     entity::{Entity, SharedEntity},
     proof::Skip,
+    world::OwnershipError,
+};
+
+#[cfg(feature = "relation")]
+pub use crate::{
+    query::{related, Related},
+    relation::Relation,
 };

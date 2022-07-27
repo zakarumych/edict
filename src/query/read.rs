@@ -1,8 +1,8 @@
-use core::{any::TypeId, ptr::NonNull};
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, component::Component};
 
-use super::{Access, Fetch, ImmutableQuery, NonTrackingQuery, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, Query};
 
 /// `Fetch` type for the `&T` query.
 #[allow(missing_debug_implementations)]
@@ -11,7 +11,7 @@ pub struct FetchRead<T> {
     pub(super) ptr: NonNull<T>,
 }
 
-impl<'a, T> Fetch<'a> for FetchRead<T>
+unsafe impl<'a, T> Fetch<'a> for FetchRead<T>
 where
     T: Component,
 {
@@ -25,12 +25,12 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&self, _: usize) -> bool {
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn skip_item(&self, _: usize) -> bool {
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
         false
     }
 
@@ -43,32 +43,27 @@ where
     }
 }
 
-unsafe impl<T> Query for &T
+unsafe impl<T> PhantomQuery for &T
 where
     T: Component,
 {
     type Fetch = FetchRead<T>;
 
     #[inline]
-    fn mutates() -> bool {
-        false
-    }
-
-    #[inline]
-    fn access(ty: TypeId) -> Access {
+    fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
-            Access::Shared
+            Some(Access::Read)
         } else {
-            Access::None
+            None
         }
     }
 
     #[inline]
-    fn conflicts<Q>() -> bool
+    fn conflicts<Q>(query: &Q) -> bool
     where
         Q: Query,
     {
-        matches!(Q::access(TypeId::of::<T>()), Access::Mutable)
+        matches!(query.access(TypeId::of::<T>()), Some(Access::Write))
     }
 
     #[inline]
@@ -77,21 +72,31 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, _epoch: u64) -> Option<FetchRead<T>> {
-        let idx = archetype.id_index(TypeId::of::<T>())?;
+    unsafe fn fetch(archetype: &Archetype, _epoch: u64) -> FetchRead<T> {
+        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
         debug_assert_eq!(data.id(), TypeId::of::<T>());
 
-        Some(FetchRead {
+        FetchRead {
             ptr: data.ptr.cast(),
-        })
+        }
     }
 }
 
-unsafe impl<T> ImmutableQuery for &T where T: Component {}
-unsafe impl<T> NonTrackingQuery for &T where T: Component {}
+unsafe impl<T> ImmutablePhantomQuery for &T where T: Component {}
+
+/// Returns query that yields reference to specified component
+/// for each entity that has that component.
+///
+/// Skips entities that don't have the component.
+pub fn read<'a, T>() -> PhantomData<&'a T>
+where
+    T: Component,
+{
+    PhantomData
+}

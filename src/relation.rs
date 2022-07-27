@@ -58,9 +58,9 @@ pub trait Relation: Copy + Send + Sync + 'static {
     }
 }
 
-struct Origin<R> {
-    target: EntityId,
-    relation: R,
+pub(crate) struct Origin<R> {
+    pub target: EntityId,
+    pub relation: R,
 }
 
 pub(crate) union OriginComponent<R: Relation> {
@@ -125,11 +125,17 @@ where
         }
     }
 
-    fn for_each(&mut self, mut f: impl FnMut(&mut Origin<R>)) {
-        if R::EXCLUSIVE {
-            f(unsafe { &mut self.exclusive });
-        } else {
-            unsafe { &mut self.non_exclusive }.iter_mut().for_each(f);
+    pub fn origins(&self) -> &[Origin<R>] {
+        match R::EXCLUSIVE {
+            false => unsafe { &*self.non_exclusive },
+            true => core::slice::from_ref(unsafe { &*self.exclusive }),
+        }
+    }
+
+    pub fn origins_mut(&mut self) -> &mut [Origin<R>] {
+        match R::EXCLUSIVE {
+            false => unsafe { &mut *self.non_exclusive },
+            true => core::slice::from_mut(unsafe { &mut *self.exclusive }),
         }
     }
 
@@ -220,7 +226,9 @@ where
 {
     #[inline]
     fn on_drop(&mut self, entity: EntityId, encoder: &mut ActionEncoder) {
-        self.for_each(|origin| Self::drop_one(origin, entity, encoder));
+        for origin in self.origins_mut() {
+            Self::drop_one(origin, entity, encoder);
+        }
     }
 
     #[inline]

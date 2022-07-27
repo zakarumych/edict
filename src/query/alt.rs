@@ -11,17 +11,7 @@ use crate::{
     component::Component,
 };
 
-use super::{Access, Fetch, NonTrackingQuery, Query};
-
-/// Query type that is an alternative to `&mut T`.
-/// Yields mutable reference wrapper that bumps component version on dereference.
-/// In contrast with `&mut T` that bumps component version on yield, but works faster.
-/// Use this query if redundant version bumps would cause heavy calculations.
-///
-/// `Alt` is `NonTrackingQuery` as it does not depend on current versions
-/// of the components.
-#[derive(Clone, Copy, Debug)]
-pub struct Alt<T>(PhantomData<T>);
+use super::{phantom::PhantomQuery, Access, Fetch, Query};
 
 /// Item type that `Alt` yields.
 /// Wraps `&mut T` and implements `DerefMut` to `T`.
@@ -31,6 +21,7 @@ pub struct RefMut<'a, T: ?Sized> {
     pub(super) component: &'a mut T,
     pub(super) entity_version: &'a mut u64,
     pub(super) chunk_version: &'a Cell<u64>,
+    pub(super) archetype_version: &'a Cell<u64>,
     pub(super) epoch: u64,
 }
 
@@ -48,6 +39,7 @@ impl<T> DerefMut for RefMut<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         *self.entity_version = self.epoch;
         self.chunk_version.set(self.epoch);
+        self.archetype_version.set(self.epoch);
         self.component
     }
 }
@@ -59,9 +51,10 @@ pub struct FetchAlt<T> {
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<Cell<u64>>,
+    archetype_version: NonNull<Cell<u64>>,
 }
 
-impl<'a, T> Fetch<'a> for FetchAlt<T>
+unsafe impl<'a, T> Fetch<'a> for FetchAlt<T>
 where
     T: Component,
 {
@@ -74,29 +67,65 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            archetype_version: NonNull::dangling(),
         }
     }
 
     #[inline]
-    unsafe fn skip_chunk(&self, _: usize) -> bool {
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn skip_item(&self, _: usize) -> bool {
-        false
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
+        debug_assert!((*chunk_version).get() < self.epoch);
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
+        false
+    }
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
+        let archetype_version = &mut *self.archetype_version.as_ptr();
+        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx(idx));
+        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
+
+        debug_assert!(*entity_version < self.epoch);
+
         RefMut {
             component: &mut *self.ptr.as_ptr().add(idx),
-            entity_version: &mut *self.entity_versions.as_ptr().add(idx),
-            chunk_version: &*self.chunk_versions.as_ptr().add(chunk_idx(idx)),
+            entity_version,
+            chunk_version,
+            archetype_version,
             epoch: self.epoch,
+        }
+    }
+}
+
+/// Query that yields wrapped mutable reference to specified component
+/// for each entity that has that component.
+///
+/// Skips entities that don't have the component.
+///
+/// Works almost as `&mut T` does.
+/// However, it does not updates entity version
+/// unless returned reference wrapper is dereferenced.
+#[allow(missing_debug_implementations)]
+pub struct Alt<T> {
+    marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Alt<T> {
+    /// Returns new `Alt` query instance.
+    ///
+    /// `Alt` is ZST, so this function is "free"
+    #[inline]
+    pub fn new() -> Self {
+        Alt {
+            marker: PhantomData,
         }
     }
 }
@@ -108,28 +137,71 @@ where
     type Fetch = FetchAlt<T>;
 
     #[inline]
-    fn mutates() -> bool {
-        true
-    }
-
-    #[inline]
-    fn access(ty: TypeId) -> Access {
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
-            Access::Mutable
+            Some(Access::Write)
         } else {
-            Access::None
+            None
         }
     }
 
     #[inline]
-    fn conflicts<Q>() -> bool
+    fn conflicts<Q>(&self, query: &Q) -> bool
     where
         Q: Query,
     {
         matches!(
-            Q::access(TypeId::of::<T>()),
-            Access::Shared | Access::Mutable
+            query.access(TypeId::of::<T>()),
+            Some(Access::Read | Access::Write)
         )
+    }
+
+    #[inline]
+    fn is_valid(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<T>())
+    }
+
+    #[inline]
+    unsafe fn fetch(&mut self, archetype: &Archetype, epoch: u64) -> FetchAlt<T> {
+        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
+        let data = archetype.data(idx);
+        debug_assert_eq!(data.id(), TypeId::of::<T>());
+
+        debug_assert!(*data.version.get() < epoch);
+        let archetype_version = NonNull::from(&mut *data.version.get());
+
+        FetchAlt {
+            epoch,
+            ptr: data.ptr.cast(),
+            entity_versions: data.entity_versions,
+            chunk_versions: data.chunk_versions.cast(),
+            archetype_version: archetype_version.cast(),
+        }
+    }
+}
+
+unsafe impl<T> PhantomQuery for Alt<T>
+where
+    T: Component,
+{
+    type Fetch = FetchAlt<T>;
+
+    #[inline]
+    fn access(ty: TypeId) -> Option<Access> {
+        Self::new().access(ty)
+    }
+
+    #[inline]
+    fn conflicts<Q>(query: &Q) -> bool
+    where
+        Q: Query,
+    {
+        Self::new().conflicts(query)
     }
 
     #[inline]
@@ -138,26 +210,12 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        Self::new().skip_archetype(archetype)
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchAlt<T>> {
-        let idx = archetype.id_index(TypeId::of::<T>())?;
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<T>());
-
-        debug_assert!(*data.version.get() < epoch);
-        *data.version.get() = epoch;
-
-        Some(FetchAlt {
-            epoch,
-            ptr: data.ptr.cast(),
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions.cast(),
-        })
+    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchAlt<T> {
+        Self::new().fetch(archetype, epoch)
     }
 }
-
-unsafe impl<T> NonTrackingQuery for Alt<T> {}

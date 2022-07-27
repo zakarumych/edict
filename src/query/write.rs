@@ -1,8 +1,8 @@
-use core::{any::TypeId, ptr::NonNull};
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, component::Component};
 
-use super::{Access, Fetch, NonTrackingQuery, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, Query};
 
 /// `Fetch` type for the `&mut T` query.
 #[allow(missing_debug_implementations)]
@@ -13,7 +13,7 @@ pub struct FetchWrite<T> {
     chunk_versions: NonNull<u64>,
 }
 
-impl<'a, T> Fetch<'a> for FetchWrite<T>
+unsafe impl<'a, T> Fetch<'a> for FetchWrite<T>
 where
     T: Component,
 {
@@ -30,12 +30,12 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&self, _: usize) -> bool {
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn skip_item(&self, _: usize) -> bool {
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
         false
     }
 
@@ -58,34 +58,29 @@ where
     }
 }
 
-unsafe impl<T> Query for &mut T
+unsafe impl<T> PhantomQuery for &mut T
 where
     T: Component,
 {
     type Fetch = FetchWrite<T>;
 
     #[inline]
-    fn mutates() -> bool {
-        true
-    }
-
-    #[inline]
-    fn access(ty: TypeId) -> Access {
+    fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
-            Access::Mutable
+            Some(Access::Write)
         } else {
-            Access::None
+            None
         }
     }
 
     #[inline]
-    fn conflicts<Q>() -> bool
+    fn conflicts<Q>(query: &Q) -> bool
     where
         Q: Query,
     {
         matches!(
-            Q::access(TypeId::of::<T>()),
-            Access::Shared | Access::Mutable
+            query.access(TypeId::of::<T>()),
+            Some(Access::Read | Access::Write)
         )
     }
 
@@ -95,26 +90,35 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype, _: u64) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _tracks: u64, epoch: u64) -> Option<FetchWrite<T>> {
-        let idx = archetype.id_index(TypeId::of::<T>())?;
+    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchWrite<T> {
+        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
         debug_assert_eq!(data.id(), TypeId::of::<T>());
 
         debug_assert!(*data.version.get() < epoch);
         *data.version.get() = epoch;
 
-        Some(FetchWrite {
+        FetchWrite {
             epoch,
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
-        })
+        }
     }
 }
 
-unsafe impl<T> NonTrackingQuery for &mut T {}
+/// Returns query that yields mutable reference to specified component
+/// for each entity that has that component.
+///
+/// Skips entities that don't have the component.
+pub fn write<'a, T>() -> PhantomData<&'a mut T>
+where
+    T: Component,
+{
+    PhantomData
+}

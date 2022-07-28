@@ -1,24 +1,47 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
 use crate::{archetype::Archetype, component::Component};
 
-use super::{fetch::NullFetch, merge_access, Access, Fetch, ImmutableQuery, Query};
+use super::{fetch::UnitFetch, merge_access, Access, Fetch, ImmutableQuery, Query};
+
+/// Tuple of null items.
+pub trait FilterItem {}
+
+impl FilterItem for () {}
+impl<A, B> FilterItem for (A, B)
+where
+    A: FilterItem,
+    B: FilterItem,
+{
+}
+
+pub trait FilterFetch<'a>: Fetch<'a, Item = Self::FilterItem> {
+    type FilterItem: FilterItem;
+}
+
+impl<'a, F> FilterFetch<'a> for F
+where
+    F: Fetch<'a>,
+    F::Item: FilterItem,
+{
+    type FilterItem = F::Item;
+}
 
 /// Filters are queries that yield nothing.
 /// Filters are automatically implemented for `ImmutableQuery` implementations where `Item = ()`.
 /// This means that user cannot implement `Filter` manually and should implement `Query` instead.
-pub unsafe trait Filter: ImmutableQuery<Fetch = Self::NullFetch> {
+pub trait Filter: ImmutableQuery<Fetch = Self::FilterFetch> {
     /// Fetch type that yields nothing.
     /// Used to ensure `Fetch` also yields nothing in the bounds above.
-    type NullFetch: for<'a> Fetch<'a, Item = ()>;
+    type FilterFetch: for<'a> FilterFetch<'a>;
 }
 
-unsafe impl<Q> Filter for Q
+impl<Q> Filter for Q
 where
     Q: ImmutableQuery,
-    Q::Fetch: for<'a> Fetch<'a, Item = ()>,
+    Q::Fetch: for<'a> FilterFetch<'a>,
 {
-    type NullFetch = Q::Fetch;
+    type FilterFetch = Q::Fetch;
 }
 
 /// Combines fetch from query and filter.
@@ -31,7 +54,7 @@ pub struct FilteredFetch<F, Q> {
 
 unsafe impl<'a, F, Q> Fetch<'a> for FilteredFetch<F, Q>
 where
-    F: Fetch<'a, Item = ()>,
+    F: FilterFetch<'a>,
     Q: Fetch<'a>,
 {
     type Item = Q::Item;
@@ -125,26 +148,16 @@ where
 {
 }
 
-/// Filter that allows only archetypes with specified component.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct With<T> {
-    marker: PhantomData<T>,
-}
-
-impl<T> With<T> {
-    /// Returns new instance of `With` filter.
-    pub const fn new() -> Self {
-        With {
-            marker: PhantomData,
-        }
-    }
+phantom_newtype! {
+    /// Filter that allows only archetypes with specified component.
+    pub struct With<T>
 }
 
 unsafe impl<T> Query for With<T>
 where
     T: Component,
 {
-    type Fetch = NullFetch;
+    type Fetch = UnitFetch;
 
     #[inline]
     fn is_valid(&self) -> bool {
@@ -170,31 +183,23 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> NullFetch {
-        NullFetch::new()
+    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> UnitFetch {
+        UnitFetch::new()
     }
 }
 
-/// Filter that allows only archetypes without specified component.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Without<T> {
-    marker: PhantomData<T>,
-}
+unsafe impl<T> ImmutableQuery for With<T> where T: Component {}
 
-impl<T> Without<T> {
-    /// Returns new instance of `Without` filter.
-    pub const fn new() -> Self {
-        Without {
-            marker: PhantomData,
-        }
-    }
+phantom_newtype! {
+    /// Filter that allows only archetypes without specified component.
+    pub struct Without<T>
 }
 
 unsafe impl<T> Query for Without<T>
 where
     T: Component,
 {
-    type Fetch = NullFetch;
+    type Fetch = UnitFetch;
 
     #[inline]
     fn is_valid(&self) -> bool {
@@ -220,7 +225,9 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> NullFetch {
-        NullFetch::new()
+    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> UnitFetch {
+        UnitFetch::new()
     }
 }
+
+unsafe impl<T> ImmutableQuery for Without<T> where T: Component {}

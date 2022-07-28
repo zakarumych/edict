@@ -2,9 +2,12 @@ use edict::{
     action::ActionEncoder,
     entity::EntityId,
     prelude::{Component, World},
-    query::Related,
     relation::Relation,
 };
+
+struct A;
+
+impl Component for A {}
 
 #[derive(Clone, Copy)]
 struct ChildOf;
@@ -17,10 +20,6 @@ impl Relation for ChildOf {
     }
 }
 
-struct A;
-
-impl Component for A {}
-
 fn main() {
     let mut world = World::new();
 
@@ -29,10 +28,8 @@ fn main() {
 
     world.try_add_relation(&a, ChildOf, &b).unwrap();
 
-    for (e, child) in world.query::<Related<&ChildOf>>().iter() {
-        for (ChildOf, parent) in child {
-            println!("{} is child of {}", e, parent);
-        }
+    for (e, ChildOf) in world.build_query().relation_to::<&ChildOf>(b) {
+        println!("{} is child of {}", e, b);
     }
 
     world.despawn(&b).unwrap();

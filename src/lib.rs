@@ -62,6 +62,68 @@
 extern crate alloc;
 extern crate self as edict;
 
+macro_rules! phantom_copy {
+    ($type:ident < $( $a:ident ),+ >) => {
+        impl< $( $a ),+ > Copy for $type < $( $a ),+ > {}
+        impl< $( $a ),+ > Clone for $type < $( $a ),+ > {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+    };
+}
+
+macro_rules! phantom_debug {
+    ($type:ident < $( $a:ident ),+ > { $($fname:ident)* }) => {
+        impl< $( $a ),+ > core::fmt::Debug for $type < $( $a ),+ > {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                f.debug_struct(stringify!($type))
+                    $(.field(stringify!($fname), &self.$fname))*
+                    .finish()
+            }
+        }
+    };
+}
+
+macro_rules! phantom_newtype {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $type:ident < $a:ident >
+    ) => {
+        $(#[$meta])*
+        $vis struct $type < $a > {
+            marker: core::marker::PhantomData< $a >,
+        }
+
+        impl< $a > $type < $a > {
+            /// Constructs new phantom wrapper instance.
+            /// This function is noop as it returns ZST and have no side-effects.
+            pub const fn new() -> Self {
+                $type {
+                    marker: core::marker::PhantomData,
+                }
+            }
+        }
+
+        phantom_copy!($type < $a >);
+
+        impl< $a > core::fmt::Debug for $type < $a >
+        where
+            $a : 'static
+        {
+            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+                write!(f, core::concat!(core::stringify!($type), "<{}>"), core::any::type_name::<$a>())
+            }
+        }
+
+        impl< $a > Default for $type < $a > {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    };
+}
+
 pub mod action;
 mod any;
 pub mod bundle;

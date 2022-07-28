@@ -18,8 +18,9 @@ use crate::{
     component::{Component, ComponentRegistry},
     entity::{Entities, EntityId},
     query::{
-        debug_assert_immutable_query, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery,
-        PhantomQueryItem, Query, QueryMut, QueryRef,
+        debug_assert_immutable_query, filter_relation_to, Fetch, FilterRelationTo,
+        ImmutablePhantomQuery, ImmutableQuery, PhantomQuery, PhantomQueryItem, Query, QueryMut,
+        QueryRef, QueryRelation, QueryRelationTo, With, Without,
     },
 };
 
@@ -1068,8 +1069,119 @@ impl World {
     ///
     /// This method only works with immutable queries.
     #[inline]
+    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (PhantomData<Q>,), ()>
+    where
+        Q: ImmutablePhantomQuery,
+    {
+        self.make_query(PhantomData)
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method only works with immutable queries.
+    #[inline]
+    pub fn make_query<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: ImmutableQuery,
+    {
+        assert!(query.is_valid(), "Invalid query specified");
+
+        QueryRef::new(&self.archetypes, self.epoch, (query,), ())
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that mutate components.
+    #[inline]
+    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, (PhantomData<Q>,), ()>
+    where
+        Q: PhantomQuery,
+    {
+        self.make_query_mut(PhantomData)
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method can be used for queries that mutate components.
+    #[inline]
+    pub fn make_query_mut<'a, Q>(&'a mut self, query: Q) -> QueryMut<'a, (Q,), ()>
+    where
+        Q: Query,
+    {
+        assert!(query.is_valid(), "Invalid query specified");
+
+        QueryMut::new(&self.archetypes, &mut self.epoch, (query,), ())
+    }
+
+    /// Starts building immutable query.
+    #[inline]
     pub fn build_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
-        self.query_with(())
+        QueryRef::new(&self.archetypes, self.epoch, (), ())
+    }
+
+    /// Returns query that iterates over all entities with specified component
+    #[inline]
+    pub fn filter_with<'a, T>(&'a self) -> QueryRef<'a, (), With<T>>
+    where
+        T: Component,
+    {
+        QueryRef::new(&self.archetypes, self.epoch, (), With::new())
+    }
+
+    /// Returns query that iterates over all entities without specified component
+    #[inline]
+    pub fn filter_without<'a, T>(&'a self) -> QueryRef<'a, (), Without<T>>
+    where
+        T: Component,
+    {
+        QueryRef::new(&self.archetypes, self.epoch, (), Without::new())
+    }
+
+    /// Returns query that iterates over all entities with specified relation,
+    /// not bound to any specific entity.
+    ///
+    /// Yields all relation of the type on each entity.
+    #[inline]
+    pub fn query_relation<'a, R>(&'a self) -> QueryRef<'a, (PhantomData<QueryRelation<R>>,), ()>
+    where
+        QueryRelation<R>: ImmutablePhantomQuery,
+    {
+        QueryRef::new(&self.archetypes, self.epoch, (PhantomData,), ())
+    }
+
+    /// Returns query that iterates over all entities with specified relation,
+    /// bound to one specific entity.
+    ///
+    /// Yields one relation of the type on each entity.
+    #[inline]
+    pub fn query_relation_to<'a, R>(
+        &'a self,
+        target: EntityId,
+    ) -> QueryRef<'a, (QueryRelationTo<R>,), ()>
+    where
+        QueryRelationTo<R>: ImmutableQuery,
+    {
+        QueryRef::new(
+            &self.archetypes,
+            self.epoch,
+            (QueryRelationTo::new(target),),
+            (),
+        )
+    }
+
+    /// Returns query that iterates over all entities with specified relation,
+    /// bound to one specific entity.
+    ///
+    /// Yields nothing.
+    #[inline]
+    pub fn filter_relation_to<'a, R>(
+        &'a self,
+        target: EntityId,
+    ) -> QueryRef<'a, (), FilterRelationTo<R>>
+    where
+        R: Relation,
+    {
+        QueryRef::new(&self.archetypes, self.epoch, (), filter_relation_to(target))
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1077,55 +1189,76 @@ impl World {
     /// This method only works with immutable queries.
     #[inline]
     pub fn build_query_mut<'a>(&'a mut self) -> QueryMut<'a, (), ()> {
-        self.query_with_mut(())
+        QueryMut::new(&self.archetypes, &mut self.epoch, (), ())
     }
 
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
+    /// Returns query that iterates over all entities with specified component
     #[inline]
-    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, PhantomData<Q>, ()>
+    pub fn query_with_mut<'a, T>(&'a mut self) -> QueryMut<'a, (), With<T>>
     where
-        Q: ImmutablePhantomQuery,
+        T: Component,
     {
-        self.query_with(PhantomData)
+        QueryMut::new(&self.archetypes, &mut self.epoch, (), With::new())
     }
 
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
+    /// Returns query that iterates over all entities without specified component
     #[inline]
-    pub fn query_with<'a, Q>(&'a self, query: Q) -> QueryRef<'a, Q, ()>
+    pub fn query_without_mut<'a, T>(&'a mut self) -> QueryMut<'a, (), Without<T>>
     where
-        Q: ImmutableQuery,
+        T: Component,
     {
-        assert!(query.is_valid(), "Invalid query specified");
-
-        QueryRef::new(&self.archetypes, self.epoch, query)
+        QueryMut::new(&self.archetypes, &mut self.epoch, (), Without::new())
     }
 
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that mutate components.
+    /// Returns query that iterates over all entities with specified relation,
     #[inline]
-    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, PhantomData<Q>, ()>
+    pub fn query_relation_mut<'a, R>(
+        &'a mut self,
+    ) -> QueryMut<'a, (PhantomData<QueryRelation<R>>,), ()>
     where
-        Q: PhantomQuery,
+        QueryRelation<R>: PhantomQuery,
     {
-        self.query_with_mut(PhantomData)
+        QueryMut::new(&self.archetypes, &mut self.epoch, (PhantomData,), ())
     }
 
-    /// Queries the world to iterate over entities and components specified by the query type.
+    /// Returns query that iterates over all entities with specified relation,
+    /// bound to one specific entity.
     ///
-    /// This method can be used for queries that mutate components.
+    /// Yields one relation of the type on each entity.
     #[inline]
-    pub fn query_with_mut<'a, Q>(&'a mut self, query: Q) -> QueryMut<'a, Q, ()>
+    pub fn query_relation_to_mut<'a, R>(
+        &'a mut self,
+        target: EntityId,
+    ) -> QueryMut<'a, (QueryRelationTo<R>,), ()>
     where
-        Q: Query,
+        QueryRelationTo<R>: Query,
     {
-        assert!(query.is_valid(), "Invalid query specified");
+        QueryMut::new(
+            &self.archetypes,
+            &mut self.epoch,
+            (QueryRelationTo::new(target),),
+            (),
+        )
+    }
 
-        QueryMut::new(&self.archetypes, &mut self.epoch, query)
+    /// Returns query that iterates over all entities with specified relation,
+    /// bound to one specific entity.
+    ///
+    /// Yields nothing.
+    #[inline]
+    pub fn filter_relation_to_mut<'a, R>(
+        &'a mut self,
+        target: EntityId,
+    ) -> QueryMut<'a, (), FilterRelationTo<R>>
+    where
+        R: Relation,
+    {
+        QueryMut::new(
+            &self.archetypes,
+            &mut self.epoch,
+            (),
+            filter_relation_to(target),
+        )
     }
 
     /// Splits the world into entity-meta and mutable query.
@@ -1135,17 +1268,17 @@ impl World {
     ///
     /// This method can be used for queries that mutate components.
     #[inline]
-    pub fn meta_query_mut<'a, Q>(&'a mut self, query: Q) -> (EntityMeta<'a>, QueryMut<'a, Q, ()>)
+    pub fn meta_query_mut<'a, Q>(&'a mut self, query: Q) -> (EntityMeta<'a>, QueryMut<'a, (Q,), ()>)
     where
-        Q: PhantomQuery,
+        Q: Query,
     {
-        assert!(Q::is_valid(), "Invalid query specified");
+        assert!(query.is_valid(), "Invalid query specified");
 
         let meta = EntityMeta {
             entities: &mut self.entities,
             archetypes: &self.archetypes,
         };
-        let query = QueryMut::new(&self.archetypes, &mut self.epoch, query);
+        let query = QueryMut::new(&self.archetypes, &mut self.epoch, (query,), ());
         (meta, query)
     }
 }

@@ -8,11 +8,17 @@
 
 use core::any::TypeId;
 
+#[cfg(feature = "relation")]
+use core::marker::PhantomData;
+
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     component::Component,
     entity::EntityId,
 };
+
+#[cfg(feature = "relation")]
+use crate::relation::Relation;
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -26,7 +32,11 @@ pub use self::{
 };
 
 #[cfg(feature = "relation")]
-pub use self::relation::{related, Related, RelatedFetchRead, RelatedReadIter};
+pub use self::relation::{
+    filter_relation_to, read_relation, read_relation_to, write_relation, write_relation_to,
+    FetchRelationRead, FetchRelationToRead, FetchRelationToWrite, FetchRelationWrite,
+    FilterFetchRelationTo, FilterRelationTo, QueryRelation, QueryRelationTo, RelationReadIter,
+};
 
 mod alt;
 mod fetch;
@@ -209,22 +219,24 @@ pub struct QueryMut<'a, Q, F> {
     filter: F,
 }
 
-impl<'a, Q> QueryMut<'a, Q, ()> {
-    pub(crate) fn new(archetypes: &'a [Archetype], epoch: &'a mut u64, query: Q) -> Self {
-        QueryMut {
-            archetypes,
-            epoch,
-            query,
-            filter: (),
-        }
-    }
-}
-
 impl<'a, Q, F> QueryMut<'a, Q, F>
 where
     Q: Query,
     F: Filter,
 {
+    pub(crate) fn new(
+        archetypes: &'a [Archetype],
+        epoch: &'a mut u64,
+        query: Q,
+        filter: F,
+    ) -> Self {
+        QueryMut {
+            archetypes,
+            epoch,
+            query,
+            filter,
+        }
+    }
     /// Creates new layer of tuples of mutable query.
     pub fn layer(self) -> QueryMut<'a, (Q,), F> {
         QueryMut {
@@ -258,6 +270,23 @@ where
             epoch: self.epoch,
             query: self.query,
             filter: (Without::new(), self.filter),
+        }
+    }
+
+    /// Adds query to fetch relation.
+    #[cfg(feature = "relation")]
+    pub fn filter_relation_to<R>(
+        self,
+        target: EntityId,
+    ) -> QueryMut<'a, Q, (FilterRelationTo<R>, F)>
+    where
+        R: Relation,
+    {
+        QueryMut {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (filter_relation_to(target), self.filter),
         }
     }
 
@@ -379,25 +408,19 @@ pub struct QueryRef<'a, Q, F> {
     filter: F,
 }
 
-impl<'a, Q> QueryRef<'a, Q, ()>
-where
-    Q: ImmutableQuery,
-{
-    pub(crate) fn new(archetypes: &'a [Archetype], epoch: u64, query: Q) -> Self {
-        QueryRef {
-            archetypes,
-            epoch,
-            query,
-            filter: (),
-        }
-    }
-}
-
 impl<'a, Q, F> QueryRef<'a, Q, F>
 where
     Q: ImmutableQuery,
     F: Filter,
 {
+    pub(crate) fn new(archetypes: &'a [Archetype], epoch: u64, query: Q, filter: F) -> Self {
+        QueryRef {
+            archetypes,
+            epoch,
+            query,
+            filter,
+        }
+    }
     /// Creates new layer of tuples of immutable query.
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
         QueryRef {
@@ -405,6 +428,49 @@ where
             epoch: self.epoch,
             query: (self.query,),
             filter: self.filter,
+        }
+    }
+
+    /// Adds filter that skips entities that don't have specified component.
+    pub fn with<T>(self) -> QueryRef<'a, Q, (With<T>, F)>
+    where
+        T: Component,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (With::new(), self.filter),
+        }
+    }
+
+    /// Adds filter that skips entities that have specified component.
+    pub fn without<T>(self) -> QueryRef<'a, Q, (Without<T>, F)>
+    where
+        T: Component,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (Without::new(), self.filter),
+        }
+    }
+
+    /// Adds query to fetch relation.
+    #[cfg(feature = "relation")]
+    pub fn filter_relation_to<R>(
+        self,
+        target: EntityId,
+    ) -> QueryRef<'a, Q, (FilterRelationTo<R>, F)>
+    where
+        R: Relation,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query,
+            filter: (filter_relation_to(target), self.filter),
         }
     }
 
@@ -557,6 +623,36 @@ macro_rules! for_tuple {
                     filter: self.filter,
                 }
             }
+
+            /// Adds query to fetch relation.
+            #[cfg(feature = "relation")]
+            pub fn relation<R>(self) -> QueryMut<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y> {
+                #![allow(non_snake_case)]
+
+                let ($($a,)*) = self.query;
+
+                QueryMut {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* PhantomData,),
+                    filter: self.filter,
+                }
+            }
+
+            /// Adds query to fetch relation.
+            #[cfg(feature = "relation")]
+            pub fn relation_to<R>(self, entity: EntityId) -> QueryMut<'a, ($($a,)* QueryRelationTo<R>,), Y> {
+                #![allow(non_snake_case)]
+
+                let ($($a,)*) = self.query;
+
+                QueryMut {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* QueryRelationTo::new(entity),),
+                    filter: self.filter,
+                }
+            }
         }
 
         impl<'a, $($a,)* Y> QueryRef<'a, ($($a,)*), Y> {
@@ -573,8 +669,49 @@ macro_rules! for_tuple {
                     filter: self.filter,
                 }
             }
+
+            /// Adds query to fetch relation.
+            #[cfg(feature = "relation")]
+            pub fn relation<R>(self) -> QueryRef<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y> {
+                #![allow(non_snake_case)]
+
+                let ($($a,)*) = self.query;
+
+                QueryRef {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* PhantomData,),
+                    filter: self.filter,
+                }
+            }
+
+            /// Adds query to fetch relation.
+            #[cfg(feature = "relation")]
+            pub fn relation_to<R>(self, entity: EntityId) -> QueryRef<'a, ($($a,)* QueryRelationTo<R>,), Y> {
+                #![allow(non_snake_case)]
+
+                let ($($a,)*) = self.query;
+
+                QueryRef {
+                    archetypes: self.archetypes,
+                    epoch: self.epoch,
+                    query: ($($a,)* QueryRelationTo::new(entity),),
+                    filter: self.filter,
+                }
+            }
         }
     };
 }
 
 for_tuple!();
+
+#[test]
+fn test_filters() {
+    fn is_filter<F: Filter>() {}
+    is_filter::<()>();
+    is_filter::<((), ())>();
+
+    struct A;
+    impl Component for A {}
+    is_filter::<With<A>>();
+}

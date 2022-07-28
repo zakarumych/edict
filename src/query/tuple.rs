@@ -2,7 +2,12 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::archetype::Archetype;
 
-use super::{fetch::Fetch, merge_access, phantom::PhantomQuery, Access, ImmutableQuery, Query};
+use super::{
+    fetch::Fetch,
+    merge_access,
+    phantom::{ImmutablePhantomQuery, PhantomQuery},
+    Access, ImmutableQuery, Query,
+};
 
 struct QueryConflict<Q>(bool, Q);
 
@@ -149,6 +154,7 @@ macro_rules! for_tuple {
         }
 
         unsafe impl ImmutableQuery for () {}
+        unsafe impl ImmutablePhantomQuery for () {}
     };
 
     (impl $($a:ident)+) => {
@@ -239,6 +245,8 @@ macro_rules! for_tuple {
             }
         }
 
+        unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
+
         unsafe impl<$($a),+> PhantomQuery for ($($a,)+) where $($a: PhantomQuery,)+ {
             type Fetch = ($($a::Fetch,)+);
 
@@ -274,7 +282,7 @@ macro_rules! for_tuple {
             }
         }
 
-        unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
+        unsafe impl<$($a),+> ImmutablePhantomQuery for ($($a,)+) where $($a: ImmutablePhantomQuery,)+ {}
     };
 }
 

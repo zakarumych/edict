@@ -236,26 +236,26 @@ pub unsafe trait Fetch<'a> {
 #[repr(transparent)]
 #[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
-pub struct NullFetch {
+pub struct UnitFetch {
     #[cfg(debug_assertions)]
     verify: VerifyFetch,
 }
 
-impl NullFetch {
+impl UnitFetch {
     pub fn new() -> Self {
-        NullFetch {
+        UnitFetch {
             #[cfg(debug_assertions)]
             verify: VerifyFetch::new(),
         }
     }
 }
 
-unsafe impl<'a> Fetch<'a> for NullFetch {
+unsafe impl<'a> Fetch<'a> for UnitFetch {
     type Item = ();
 
     #[inline]
     fn dangling() -> Self {
-        NullFetch {
+        UnitFetch {
             #[cfg(debug_assertions)]
             verify: VerifyFetch::dangling(),
         }

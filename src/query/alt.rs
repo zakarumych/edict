@@ -1,7 +1,6 @@
 use core::{
     any::TypeId,
     cell::Cell,
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
@@ -105,29 +104,16 @@ where
     }
 }
 
-/// Query that yields wrapped mutable reference to specified component
-/// for each entity that has that component.
-///
-/// Skips entities that don't have the component.
-///
-/// Works almost as `&mut T` does.
-/// However, it does not updates entity version
-/// unless returned reference wrapper is dereferenced.
-#[allow(missing_debug_implementations)]
-pub struct Alt<T> {
-    marker: PhantomData<fn() -> T>,
-}
-
-impl<T> Alt<T> {
-    /// Returns new `Alt` query instance.
+phantom_newtype! {
+    /// Query that yields wrapped mutable reference to specified component
+    /// for each entity that has that component.
     ///
-    /// `Alt` is ZST, so this function is "free"
-    #[inline]
-    pub fn new() -> Self {
-        Alt {
-            marker: PhantomData,
-        }
-    }
+    /// Skips entities that don't have the component.
+    ///
+    /// Works almost as `&mut T` does.
+    /// However, it does not updates entity version
+    /// unless returned reference wrapper is dereferenced.
+    pub struct Alt<T>
 }
 
 unsafe impl<T> Query for Alt<T>

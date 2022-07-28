@@ -18,11 +18,13 @@ use super::{
 /// This is tracking query that requires providing subscriber's
 /// `Tracks` to skip components that are not modified since the last time
 /// that `Tracks` instance was used.
-#[derive(Debug)]
 pub struct Modified<T> {
     epoch: u64,
     marker: PhantomData<fn() -> T>,
 }
+
+phantom_copy!(Modified<T>);
+phantom_debug!(Modified<T> { epoch });
 
 impl<T> Modified<T> {
     /// Creates new `Modified` query.

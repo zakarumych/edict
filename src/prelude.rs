@@ -16,7 +16,4 @@ pub use crate::{
 };
 
 #[cfg(feature = "relation")]
-pub use crate::{
-    query::{related, Related},
-    relation::Relation,
-};
+pub use crate::relation::Relation;

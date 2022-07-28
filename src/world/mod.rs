@@ -18,9 +18,9 @@ use crate::{
     component::{Component, ComponentRegistry},
     entity::{Entities, EntityId},
     query::{
-        debug_assert_immutable_query, filter_relation_to, Fetch, FilterRelationTo,
-        ImmutablePhantomQuery, ImmutableQuery, PhantomQuery, PhantomQueryItem, Query, QueryMut,
-        QueryRef, QueryRelation, QueryRelationTo, With, Without,
+        debug_assert_immutable_query, related_to, Fetch, FilterRelationTo, ImmutablePhantomQuery,
+        ImmutableQuery, PhantomQuery, PhantomQueryItem, Query, QueryItem, QueryMut, QueryRef,
+        QueryRelation, QueryRelationTo, With, Without,
     },
 };
 
@@ -884,8 +884,23 @@ impl World {
     where
         Q: ImmutablePhantomQuery,
     {
-        debug_assert!(Q::is_valid(), "Immutable queries are always valid");
-        debug_assert_immutable_query(&PhantomData::<Q>);
+        self.query_one_state(entity, PhantomData::<Q>)
+    }
+
+    /// Queries components from specified entity.
+    ///
+    /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
+    #[inline]
+    pub fn query_one_state<'a, Q>(
+        &'a self,
+        entity: &EntityId,
+        mut query: Q,
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    where
+        Q: ImmutableQuery,
+    {
+        debug_assert!(query.is_valid(), "Immutable queries are always valid");
+        debug_assert_immutable_query(&query);
 
         let (archetype, idx) = self
             .entities
@@ -896,11 +911,11 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if Q::skip_archetype(archetype) {
+        if query.skip_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let mut fetch = unsafe { Q::fetch(archetype, self.epoch) };
+        let mut fetch = unsafe { query.fetch(archetype, self.epoch) };
 
         if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
@@ -927,7 +942,22 @@ impl World {
     where
         Q: PhantomQuery,
     {
-        assert!(Q::is_valid(), "Invalid query specified");
+        self.query_one_state_mut(entity, PhantomData::<Q>)
+    }
+
+    /// Queries components from specified entity.
+    ///
+    /// If query cannot be satisfied, returns `EntityError::MissingComponents`.
+    #[inline]
+    pub fn query_one_state_mut<'a, Q>(
+        &'a mut self,
+        entity: &EntityId,
+        mut query: Q,
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    where
+        Q: Query,
+    {
+        assert!(query.is_valid(), "Invalid query specified");
 
         self.epoch += 1;
 
@@ -940,11 +970,11 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if Q::skip_archetype(archetype) {
+        if query.skip_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let mut fetch = unsafe { Q::fetch(archetype, self.epoch) };
+        let mut fetch = unsafe { query.fetch(archetype, self.epoch) };
 
         if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
@@ -1174,14 +1204,11 @@ impl World {
     ///
     /// Yields nothing.
     #[inline]
-    pub fn filter_relation_to<'a, R>(
-        &'a self,
-        target: EntityId,
-    ) -> QueryRef<'a, (), FilterRelationTo<R>>
+    pub fn related_to<'a, R>(&'a self, target: EntityId) -> QueryRef<'a, (), FilterRelationTo<R>>
     where
         R: Relation,
     {
-        QueryRef::new(&self.archetypes, self.epoch, (), filter_relation_to(target))
+        QueryRef::new(&self.archetypes, self.epoch, (), related_to(target))
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1253,12 +1280,7 @@ impl World {
     where
         R: Relation,
     {
-        QueryMut::new(
-            &self.archetypes,
-            &mut self.epoch,
-            (),
-            filter_relation_to(target),
-        )
+        QueryMut::new(&self.archetypes, &mut self.epoch, (), related_to(target))
     }
 
     /// Splits the world into entity-meta and mutable query.

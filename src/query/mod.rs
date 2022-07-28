@@ -33,7 +33,7 @@ pub use self::{
 
 #[cfg(feature = "relation")]
 pub use self::relation::{
-    filter_relation_to, read_relation, read_relation_to, write_relation, write_relation_to,
+    read_relation, read_relation_to, related_to, write_relation, write_relation_to,
     FetchRelationRead, FetchRelationToRead, FetchRelationToWrite, FetchRelationWrite,
     FilterFetchRelationTo, FilterRelationTo, QueryRelation, QueryRelationTo, RelationReadIter,
 };
@@ -275,10 +275,7 @@ where
 
     /// Adds query to fetch relation.
     #[cfg(feature = "relation")]
-    pub fn filter_relation_to<R>(
-        self,
-        target: EntityId,
-    ) -> QueryMut<'a, Q, (FilterRelationTo<R>, F)>
+    pub fn related_to<R>(self, target: EntityId) -> QueryMut<'a, Q, (FilterRelationTo<R>, F)>
     where
         R: Relation,
     {
@@ -286,7 +283,7 @@ where
             archetypes: self.archetypes,
             epoch: self.epoch,
             query: self.query,
-            filter: (filter_relation_to(target), self.filter),
+            filter: (related_to(target), self.filter),
         }
     }
 
@@ -459,10 +456,7 @@ where
 
     /// Adds query to fetch relation.
     #[cfg(feature = "relation")]
-    pub fn filter_relation_to<R>(
-        self,
-        target: EntityId,
-    ) -> QueryRef<'a, Q, (FilterRelationTo<R>, F)>
+    pub fn related_to<R>(self, target: EntityId) -> QueryRef<'a, Q, (FilterRelationTo<R>, F)>
     where
         R: Relation,
     {
@@ -470,7 +464,7 @@ where
             archetypes: self.archetypes,
             epoch: self.epoch,
             query: self.query,
-            filter: (filter_relation_to(target), self.filter),
+            filter: (related_to(target), self.filter),
         }
     }
 
@@ -611,7 +605,10 @@ macro_rules! for_tuple {
     (impl $($a:ident)*) => {
         impl<'a, $($a,)* Y> QueryMut<'a, ($($a,)*), Y> {
             /// Adds query to fetch modified components.
-            pub fn modified<T>(self, epoch: u64) -> QueryMut<'a, ($($a,)* Modified<T>,), Y> {
+            pub fn modified<T>(self, epoch: u64) -> QueryMut<'a, ($($a,)* Modified<T>,), Y>
+            where
+                Modified<T>: Query,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;
@@ -626,7 +623,10 @@ macro_rules! for_tuple {
 
             /// Adds query to fetch relation.
             #[cfg(feature = "relation")]
-            pub fn relation<R>(self) -> QueryMut<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y> {
+            pub fn relation<R>(self) -> QueryMut<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y>
+            where
+                QueryRelationTo<R>: PhantomQuery,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;
@@ -641,7 +641,10 @@ macro_rules! for_tuple {
 
             /// Adds query to fetch relation.
             #[cfg(feature = "relation")]
-            pub fn relation_to<R>(self, entity: EntityId) -> QueryMut<'a, ($($a,)* QueryRelationTo<R>,), Y> {
+            pub fn relation_to<R>(self, entity: EntityId) -> QueryMut<'a, ($($a,)* QueryRelationTo<R>,), Y>
+            where
+                QueryRelationTo<R>: Query,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;
@@ -657,7 +660,10 @@ macro_rules! for_tuple {
 
         impl<'a, $($a,)* Y> QueryRef<'a, ($($a,)*), Y> {
             /// Adds query to fetch modified components.
-            pub fn modified<T>(self, epoch: u64) -> QueryRef<'a, ($($a,)* Modified<T>,), Y> {
+            pub fn modified<T>(self, epoch: u64) -> QueryRef<'a, ($($a,)* Modified<T>,), Y>
+            where
+                Modified<T>: ImmutableQuery,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;
@@ -672,7 +678,10 @@ macro_rules! for_tuple {
 
             /// Adds query to fetch relation.
             #[cfg(feature = "relation")]
-            pub fn relation<R>(self) -> QueryRef<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y> {
+            pub fn relation<R>(self) -> QueryRef<'a, ($($a,)* PhantomData<QueryRelation<R>>,), Y>
+            where
+                QueryRelation<R>: ImmutablePhantomQuery,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;
@@ -687,7 +696,10 @@ macro_rules! for_tuple {
 
             /// Adds query to fetch relation.
             #[cfg(feature = "relation")]
-            pub fn relation_to<R>(self, entity: EntityId) -> QueryRef<'a, ($($a,)* QueryRelationTo<R>,), Y> {
+            pub fn relation_to<R>(self, entity: EntityId) -> QueryRef<'a, ($($a,)* QueryRelationTo<R>,), Y>
+            where
+                QueryRelationTo<R>: ImmutableQuery,
+            {
                 #![allow(non_snake_case)]
 
                 let ($($a,)*) = self.query;

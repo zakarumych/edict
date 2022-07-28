@@ -2,12 +2,21 @@ use edict::{
     action::ActionEncoder,
     entity::EntityId,
     prelude::{Component, World},
+    query::{related_to, QueryRelation},
     relation::Relation,
 };
 
 struct A;
 
 impl Component for A {}
+
+struct B;
+
+impl Component for B {}
+
+struct C;
+
+impl Component for C {}
 
 #[derive(Clone, Copy)]
 struct ChildOf;
@@ -18,6 +27,13 @@ impl Relation for ChildOf {
     fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
         encoder.despawn(entity);
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Likes;
+
+impl Relation for Likes {
+    const EXCLUSIVE: bool = false;
 }
 
 fn main() {
@@ -35,4 +51,46 @@ fn main() {
     world.despawn(&b).unwrap();
 
     assert_eq!(world.is_alive(&a), false);
+
+    let a = world.spawn(());
+    let b = world.spawn(());
+    let c = world.spawn(());
+
+    world.try_add_relation(&a, Likes, &b).unwrap();
+    world.try_add_relation(&a, Likes, &c).unwrap();
+
+    assert_eq!(world.query_one_state(&a, related_to::<Likes>(b)), Ok(()));
+
+    assert_eq!(world.query_one_state(&a, related_to::<Likes>(c)), Ok(()));
+
+    assert_eq!(
+        world
+            .query_one::<QueryRelation<&Likes>>(&a)
+            .unwrap()
+            .collect::<Vec<_>>(),
+        vec![(&Likes, b), (&Likes, c)]
+    );
+
+    world.despawn(&b).unwrap();
+
+    assert_eq!(
+        world
+            .query_one::<QueryRelation<&Likes>>(&a)
+            .unwrap()
+            .collect::<Vec<_>>(),
+        vec![(&Likes, c)]
+    );
+
+    let since = 0u64;
+
+    let query = world
+        .query::<&A>()
+        .with::<B>()
+        .modified::<&C>(since)
+        .relation_to::<&ChildOf>(b)
+        .related_to::<Likes>(c);
+
+    for (e, (a, c, child_of)) in query {
+        drop((e, a, c, child_of));
+    }
 }

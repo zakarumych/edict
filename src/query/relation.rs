@@ -767,7 +767,7 @@ where
 unsafe impl<R> ImmutableQuery for FilterRelationTo<R> where R: Relation {}
 
 /// Returns relation filter bound to one specific target entity.
-pub fn filter_relation_to<R>(target: EntityId) -> FilterRelationTo<R>
+pub fn related_to<R>(target: EntityId) -> FilterRelationTo<R>
 where
     R: Relation,
 {

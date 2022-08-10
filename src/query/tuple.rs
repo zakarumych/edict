@@ -5,8 +5,8 @@ use crate::archetype::Archetype;
 use super::{
     fetch::Fetch,
     merge_access,
-    phantom::{ImmutablePhantomQuery, PhantomQuery},
-    Access, ImmutableQuery, Query,
+    phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch},
+    Access, ImmutableQuery, Query, QueryFetch,
 };
 
 struct QueryConflict<Q>(bool, Q);
@@ -89,11 +89,20 @@ macro_rules! for_tuple {
             unsafe fn get_item(&mut self, _: usize) {}
         }
 
-        unsafe impl Query for () {
+        impl QueryFetch<'_> for () {
+            type Item = ();
             type Fetch = ();
+        }
+
+        unsafe impl Query for () {
 
             #[inline]
             fn access(&self, _ty: TypeId) -> Option<Access> {
+                None
+            }
+
+            #[inline]
+            fn access_any(&self) -> Option<Access> {
                 None
             }
 
@@ -121,11 +130,20 @@ macro_rules! for_tuple {
             }
         }
 
-        unsafe impl PhantomQuery for () {
+        impl PhantomQueryFetch<'_> for () {
+            type Item = ();
             type Fetch = ();
+        }
+
+        unsafe impl PhantomQuery for () {
 
             #[inline]
             fn access(_ty: TypeId) -> Option<Access> {
+                None
+            }
+
+            #[inline]
+            fn access_any() -> Option<Access> {
                 None
             }
 
@@ -200,15 +218,28 @@ macro_rules! for_tuple {
             }
         }
 
-        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
-            type Fetch = ($($a::Fetch,)+);
+        #[allow(unused_parens)]
+        impl<'a $(, $a)+> QueryFetch<'a> for ($($a,)+) where $($a: Query,)+ {
+            type Item = ($(<$a as QueryFetch<'a>>::Item),+);
+            type Fetch = ($(<$a as QueryFetch<'a>>::Fetch),+);
+        }
 
+        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
             #[inline]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
                 let mut access = None;
                 $(access = merge_access(access, <$a as Query>::access($a, ty));)+
+                access
+            }
+
+            #[inline]
+            fn access_any(&self) -> Option<Access> {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                let mut access = None;
+                $(access = merge_access(access, <$a as Query>::access_any($a));)+
                 access
             }
 
@@ -238,22 +269,35 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            unsafe fn fetch(&mut self, archetype: &Archetype, epoch: u64) -> ($($a::Fetch,)+) {
+            #[allow(unused_parens)]
+            unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: u64) -> ($(<$a as QueryFetch<'a>>::Fetch),+) {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
-                ($( <$a as Query>::fetch($a, archetype, epoch), )+)
+                ($( <$a as Query>::fetch($a, archetype, epoch) ),+)
             }
         }
 
         unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
 
+        #[allow(unused_parens)]
+        impl<'a $(, $a)+> PhantomQueryFetch<'a> for ($($a,)+) where $($a: PhantomQuery,)+ {
+            type Item = ($(<$a as PhantomQueryFetch<'a>>::Item),+);
+            type Fetch = ($(<$a as PhantomQueryFetch<'a>>::Fetch),+);
+        }
+
         unsafe impl<$($a),+> PhantomQuery for ($($a,)+) where $($a: PhantomQuery,)+ {
-            type Fetch = ($($a::Fetch,)+);
 
             #[inline]
             fn access(ty: TypeId) -> Option<Access> {
                 let mut access = None;
                 $(access = merge_access(access, <$a as PhantomQuery>::access(ty));)+
+                access
+            }
+
+            #[inline]
+            fn access_any() -> Option<Access> {
+                let mut access = None;
+                $(access = merge_access(access, <$a as PhantomQuery>::access_any());)+
                 access
             }
 
@@ -277,8 +321,9 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            unsafe fn fetch(archetype: &Archetype, epoch: u64) -> ($($a::Fetch,)+) {
-                ($( <$a as PhantomQuery>::fetch(archetype, epoch), )+)
+            #[allow(unused_parens)]
+            unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> ($(<$a as PhantomQueryFetch<'a>>::Fetch),+) {
+                ($( <$a as PhantomQuery>::fetch(archetype, epoch) ),+)
             }
         }
 

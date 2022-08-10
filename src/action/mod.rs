@@ -16,7 +16,9 @@ use crate::{
     world::World,
 };
 
-mod fun;
+tiny_fn::tiny_fn! {
+    struct ActionFn = FnOnce(world: &mut World, encoder: &mut ActionEncoder);
+}
 
 /// An action that can be recorded by custom drop-glue.
 enum Action {
@@ -30,7 +32,7 @@ enum Action {
     Insert(EntityId, EntityBuilder),
 
     /// Runs a function with the specified entity.
-    Fun(fun::ActionFun),
+    Fun(ActionFn<'static>),
 }
 
 /// Encoder provided to the drop-glue.
@@ -85,7 +87,7 @@ impl ActionEncoder {
     where
         B: Bundle,
     {
-        self.actions.push_back(Action::Fun(fun::ActionFun::new(
+        self.actions.push_back(Action::Fun(ActionFn::new(
             move |world: &mut World, encoder: &mut ActionEncoder| {
                 let _ = world.drop_bundle_with_encoder::<B>(&entity, encoder);
             },
@@ -106,8 +108,7 @@ impl ActionEncoder {
         &mut self,
         fun: impl FnOnce(&mut World, &mut ActionEncoder) + 'static,
     ) -> &mut Self {
-        self.actions
-            .push_back(Action::Fun(fun::ActionFun::new(fun)));
+        self.actions.push_back(Action::Fun(ActionFn::new(fun)));
         self
     }
 
@@ -134,7 +135,7 @@ impl ActionEncoder {
                     let _ = world.try_insert_bundle_with_encoder(&entity, bundle, self);
                 }
                 Action::Fun(fun) => {
-                    fun.execute(world, self);
+                    fun.call(world, self);
                 }
             }
         }

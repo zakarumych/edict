@@ -3,12 +3,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     entity::EntityId,
+    query::{
+        Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery, PhantomQueryFetch,
+        Query, QueryFetch,
+    },
     relation::{Origin, OriginComponent, Relation},
 };
 
-use super::{
-    fetch::Fetch, phantom::PhantomQuery, Access, ImmutablePhantomQuery, ImmutableQuery, Query,
-};
+use super::TargetComponent;
 
 phantom_newtype! {
     /// Query to select entities with specified relation.
@@ -87,11 +89,12 @@ impl<'a, R> ExactSizeIterator for RelationReadIter<'a, R> {
 
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchRelationRead<R: Relation> {
+pub struct FetchRelationRead<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
+    marker: PhantomData<&'a OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FetchRelationRead<R>
+unsafe impl<'a, R> Fetch<'a> for FetchRelationRead<'a, R>
 where
     R: Relation,
 {
@@ -101,6 +104,7 @@ where
     fn dangling() -> Self {
         FetchRelationRead {
             ptr: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -127,17 +131,18 @@ where
     }
 }
 
+impl<'a, R> PhantomQueryFetch<'a> for QueryRelation<&R>
+where
+    R: Relation,
+{
+    type Item = RelationReadIter<'a, R>;
+    type Fetch = FetchRelationRead<'a, R>;
+}
+
 unsafe impl<R> PhantomQuery for QueryRelation<&R>
 where
     R: Relation,
 {
-    type Fetch = FetchRelationRead<R>;
-
-    #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -145,6 +150,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any() -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -158,12 +168,17 @@ where
         )
     }
 
+    #[inline]
+    fn is_valid() -> bool {
+        true
+    }
+
     fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _epoch: u64) -> FetchRelationRead<R> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchRelationRead<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -172,22 +187,12 @@ where
 
         FetchRelationRead {
             ptr: data.ptr.cast(),
+            marker: PhantomData,
         }
     }
 }
 
 unsafe impl<R> ImmutablePhantomQuery for QueryRelation<&R> where R: Relation {}
-
-/// Returns relation reading query not bound to any target entity.
-/// Yields all relations of a given type on entities.
-///
-/// To get relation with specific entity use [`read_relation_to`].
-pub fn read_relation<'a, R>() -> PhantomData<QueryRelation<&'a R>>
-where
-    R: Relation,
-{
-    PhantomData
-}
 
 /// Iterator over relations of a given type on one entity.
 #[allow(missing_debug_implementations)]
@@ -261,14 +266,15 @@ impl<'a, R> ExactSizeIterator for RelationWriteIter<'a, R> {
 
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchRelationWrite<R: Relation> {
+pub struct FetchRelationWrite<'a, R: Relation> {
     epoch: u64,
     ptr: NonNull<OriginComponent<R>>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    marker: PhantomData<&'a mut OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FetchRelationWrite<R>
+unsafe impl<'a, R> Fetch<'a> for FetchRelationWrite<'a, R>
 where
     R: Relation,
 {
@@ -281,6 +287,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -317,17 +324,18 @@ where
     }
 }
 
+impl<'a, R> PhantomQueryFetch<'a> for QueryRelation<&mut R>
+where
+    R: Relation,
+{
+    type Item = RelationWriteIter<'a, R>;
+    type Fetch = FetchRelationWrite<'a, R>;
+}
+
 unsafe impl<R> PhantomQuery for QueryRelation<&mut R>
 where
     R: Relation,
 {
-    type Fetch = FetchRelationWrite<R>;
-
-    #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -335,6 +343,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any() -> Option<Access> {
+        Some(Access::Write)
     }
 
     #[inline]
@@ -348,12 +361,17 @@ where
         )
     }
 
+    #[inline]
+    fn is_valid() -> bool {
+        true
+    }
+
     fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchRelationWrite<R> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchRelationWrite<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -368,19 +386,9 @@ where
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
+            marker: PhantomData,
         }
     }
-}
-
-/// Returns relation writing query not bound to any target entity.
-/// Yields all relations of a given type on entities.
-///
-/// To get relation with specific entity use [`write_relation_to`].
-pub fn write_relation<'a, R>() -> PhantomData<QueryRelation<&'a mut R>>
-where
-    R: Relation,
-{
-    PhantomData
 }
 
 /// Returns relation reading query bound to one specific target entity.
@@ -404,13 +412,14 @@ impl<R> QueryRelationTo<R> {
 
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchRelationToRead<R: Relation> {
+pub struct FetchRelationToRead<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
     ptr: NonNull<OriginComponent<R>>,
+    marker: PhantomData<&'a OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FetchRelationToRead<R>
+unsafe impl<'a, R> Fetch<'a> for FetchRelationToRead<'a, R>
 where
     R: Relation,
 {
@@ -422,6 +431,7 @@ where
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
             item_idx: 0,
+            marker: PhantomData,
         }
     }
 
@@ -457,17 +467,18 @@ where
     }
 }
 
+impl<'a, R> QueryFetch<'a> for QueryRelationTo<&R>
+where
+    R: Relation,
+{
+    type Item = &'a R;
+    type Fetch = FetchRelationToRead<'a, R>;
+}
+
 unsafe impl<R> Query for QueryRelationTo<&R>
 where
     R: Relation,
 {
-    type Fetch = FetchRelationToRead<R>;
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
-    }
-
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -475,6 +486,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -488,12 +504,21 @@ where
         )
     }
 
+    #[inline]
+    fn is_valid(&self) -> bool {
+        true
+    }
+
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, _epoch: u64) -> FetchRelationToRead<R> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        _epoch: u64,
+    ) -> FetchRelationToRead<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -504,37 +529,26 @@ where
             target: self.target,
             ptr: data.ptr.cast(),
             item_idx: 0,
+            marker: PhantomData,
         }
     }
 }
 
 unsafe impl<R> ImmutableQuery for QueryRelationTo<&R> where R: Relation {}
 
-/// Returns relation reading query bound to one specific target entity.
-///
-/// To get relation without specific entity use [`read_relation`].
-pub fn read_relation_to<'a, R>(target: EntityId) -> QueryRelationTo<&'a R>
-where
-    R: Relation,
-{
-    QueryRelationTo {
-        target,
-        phantom: PhantomData,
-    }
-}
-
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchRelationToWrite<R: Relation> {
+pub struct FetchRelationToWrite<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
     epoch: u64,
     ptr: NonNull<OriginComponent<R>>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    marker: PhantomData<&'a mut OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FetchRelationToWrite<R>
+unsafe impl<'a, R> Fetch<'a> for FetchRelationToWrite<'a, R>
 where
     R: Relation,
 {
@@ -549,6 +563,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -594,17 +609,18 @@ where
     }
 }
 
+impl<'a, R> QueryFetch<'a> for QueryRelationTo<&mut R>
+where
+    R: Relation,
+{
+    type Item = &'a R;
+    type Fetch = FetchRelationToWrite<'a, R>;
+}
+
 unsafe impl<R> Query for QueryRelationTo<&mut R>
 where
     R: Relation,
 {
-    type Fetch = FetchRelationToWrite<R>;
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
-    }
-
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -612,6 +628,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        Some(Access::Write)
     }
 
     #[inline]
@@ -625,12 +646,21 @@ where
         )
     }
 
+    #[inline]
+    fn is_valid(&self) -> bool {
+        true
+    }
+
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, epoch: u64) -> FetchRelationToWrite<R> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        epoch: u64,
+    ) -> FetchRelationToWrite<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -647,31 +677,20 @@ where
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
+            marker: PhantomData,
         }
-    }
-}
-
-/// Returns relation writing query bound to one specific target entity.
-///
-/// To get relation without specific entity use [`write_relation`].
-pub fn write_relation_to<'a, R>(target: EntityId) -> QueryRelationTo<&'a mut R>
-where
-    R: Relation,
-{
-    QueryRelationTo {
-        target,
-        phantom: PhantomData,
     }
 }
 
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
-pub struct FilterFetchRelationTo<R: Relation> {
+pub struct FilterFetchRelationTo<'a, R: Relation> {
     target: EntityId,
     ptr: NonNull<OriginComponent<R>>,
+    marker: PhantomData<&'a OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FilterFetchRelationTo<R>
+unsafe impl<'a, R> Fetch<'a> for FilterFetchRelationTo<'a, R>
 where
     R: Relation,
 {
@@ -682,6 +701,7 @@ where
         FilterFetchRelationTo {
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -707,24 +727,35 @@ where
 }
 
 /// Returns relation reading query bound to one specific target entity.
-pub struct FilterRelationTo<R> {
+pub struct WithRelationTo<R> {
     target: EntityId,
     phantom: PhantomData<R>,
 }
 
-phantom_debug!(FilterRelationTo<R> { target });
+phantom_debug!(WithRelationTo<R> { target });
 
-unsafe impl<R> Query for FilterRelationTo<R>
+impl<R> WithRelationTo<R> {
+    /// Returns relation filter bound to one specific target entity.
+    pub const fn new(target: EntityId) -> Self {
+        WithRelationTo {
+            target,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, R> QueryFetch<'a> for WithRelationTo<R>
 where
     R: Relation,
 {
-    type Fetch = FilterFetchRelationTo<R>;
+    type Item = ();
+    type Fetch = FilterFetchRelationTo<'a, R>;
+}
 
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
-    }
-
+unsafe impl<R> Query for WithRelationTo<R>
+where
+    R: Relation,
+{
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -732,6 +763,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -745,12 +781,21 @@ where
         )
     }
 
+    #[inline]
+    fn is_valid(&self) -> bool {
+        true
+    }
+
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, _epoch: u64) -> FilterFetchRelationTo<R> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        _epoch: u64,
+    ) -> FilterFetchRelationTo<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -760,19 +805,148 @@ where
         FilterFetchRelationTo {
             target: self.target,
             ptr: data.ptr.cast(),
+            marker: PhantomData,
         }
     }
 }
 
-unsafe impl<R> ImmutableQuery for FilterRelationTo<R> where R: Relation {}
+unsafe impl<R> ImmutableQuery for WithRelationTo<R> where R: Relation {}
 
-/// Returns relation filter bound to one specific target entity.
-pub fn related_to<R>(target: EntityId) -> FilterRelationTo<R>
+phantom_newtype! {
+    /// Query that yields targets of relations of type `R`.
+    /// For each target it yields slice of entity ids related to the target.
+    pub struct QueryRelated<R>
+}
+
+/// Fetch type for [`Related<R>`]
+#[allow(missing_debug_implementations)]
+pub struct FetchRelated<'a, R> {
+    ptr: NonNull<TargetComponent<R>>,
+    marker: PhantomData<&'a TargetComponent<R>>,
+}
+
+unsafe impl<'a, R> Fetch<'a> for FetchRelated<'a, R>
 where
     R: Relation,
 {
-    FilterRelationTo {
+    type Item = &'a [EntityId];
+
+    #[inline]
+    fn dangling() -> Self {
+        FetchRelated {
+            ptr: NonNull::dangling(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> &'a [EntityId] {
+        let component = &*self.ptr.as_ptr().add(idx);
+        &component.origins[..]
+    }
+}
+
+impl<'a, R> PhantomQueryFetch<'a> for QueryRelated<R>
+where
+    R: Relation,
+{
+    type Item = &'a [EntityId];
+    type Fetch = FetchRelated<'a, R>;
+}
+
+unsafe impl<R> PhantomQuery for QueryRelated<R>
+where
+    R: Relation,
+{
+    #[inline]
+    fn access(ty: TypeId) -> Option<Access> {
+        if ty == TypeId::of::<TargetComponent<R>>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn access_any() -> Option<Access> {
+        Some(Access::Read)
+    }
+
+    #[inline]
+    fn conflicts<Q>(query: &Q) -> bool
+    where
+        Q: Query,
+    {
+        matches!(
+            query.access(TypeId::of::<TargetComponent<R>>()),
+            Some(Access::Write)
+        )
+    }
+
+    #[inline]
+    fn is_valid() -> bool {
+        true
+    }
+
+    #[inline]
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<TargetComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchRelated<'a, R> {
+        let idx = archetype
+            .id_index(TypeId::of::<TargetComponent<R>>())
+            .unwrap_unchecked();
+        let data = archetype.data(idx);
+        debug_assert_eq!(data.id(), TypeId::of::<TargetComponent<R>>());
+
+        FetchRelated {
+            ptr: data.ptr.cast(),
+            marker: PhantomData,
+        }
+    }
+}
+
+unsafe impl<R> ImmutablePhantomQuery for QueryRelated<R> where R: Relation {}
+
+/// Returns relation query not bound to any target entity.
+/// Yields all relations of a given type on entities.
+///
+/// To get relation with specific entity use [`relation_to`].
+pub fn relation<R>() -> PhantomData<QueryRelation<R>>
+where
+    R: Relation,
+{
+    PhantomData
+}
+
+/// Returns relation query bound to one specific target entity.
+///
+/// To get relation without specific entity use [`relation`].
+pub fn relation_to<R>(target: EntityId) -> QueryRelationTo<R> {
+    QueryRelationTo {
         target,
         phantom: PhantomData,
     }
+}
+
+/// Returns relation filter bound to one specific target entity.
+pub fn with_relation_to<R>(target: EntityId) -> WithRelationTo<R>
+where
+    R: Relation,
+{
+    WithRelationTo {
+        target,
+        phantom: PhantomData,
+    }
+}
+
+/// Returns query that yields targets of relations of type `R`.
+/// For each target it yields slice of entity ids related to the target.
+pub fn related<R>() -> QueryRelated<R>
+where
+    R: Relation,
+{
+    QueryRelated::new()
 }

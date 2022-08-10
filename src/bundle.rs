@@ -179,10 +179,9 @@ macro_rules! for_tuple {
                 let ($($a,)+) = self;
                 let ($($a,)+) = ($(ManuallyDrop::new($a),)+);
                 $(
-                    f(NonNull::from(&$a).cast(), TypeId::of::<$a>(), size_of::<$a>());
+                    f(NonNull::from(&*$a).cast(), TypeId::of::<$a>(), size_of::<$a>());
                 )+
             }
-
         }
 
         unsafe impl<$($a),+> Bundle for ($($a,)+)

@@ -1,9 +1,10 @@
 use edict::{
     action::ActionEncoder,
+    component::Component,
     entity::EntityId,
-    prelude::{Component, World},
-    query::{related_to, QueryRelation},
     relation::Relation,
+    relation::{QueryRelation, WithRelationTo},
+    world::WorldBuilder,
 };
 
 struct A;
@@ -32,14 +33,27 @@ impl Relation for ChildOf {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Likes;
 
-impl Relation for Likes {
-    const EXCLUSIVE: bool = false;
+impl Relation for Likes {}
+
+#[derive(Clone, Copy, Debug)]
+struct Enemy;
+
+impl Relation for Enemy {
+    const SYMMETRIC: bool = true;
 }
 
 fn main() {
-    let mut world = World::new();
+    let mut world_builder = WorldBuilder::new();
+    world_builder
+        .register_component::<A>()
+        .on_drop_fn(|a, entity, encoder| {
+            a.on_drop(entity, encoder);
+            println!("A dropped");
+        });
 
-    let a = world.spawn(());
+    let mut world = world_builder.build();
+
+    let a = world.spawn((A,));
     let b = world.spawn(());
 
     world.try_add_relation(&a, ChildOf, &b).unwrap();
@@ -59,10 +73,14 @@ fn main() {
     world.try_add_relation(&a, Likes, &b).unwrap();
     world.try_add_relation(&a, Likes, &c).unwrap();
 
-    assert_eq!(world.query_one_state(&a, related_to::<Likes>(b)), Ok(()));
-
-    assert_eq!(world.query_one_state(&a, related_to::<Likes>(c)), Ok(()));
-
+    assert_eq!(
+        world.query_one_state(&a, WithRelationTo::<Likes>::new(b)),
+        Ok(())
+    );
+    assert_eq!(
+        world.query_one_state(&a, WithRelationTo::<Likes>::new(c)),
+        Ok(())
+    );
     assert_eq!(
         world
             .query_one::<QueryRelation<&Likes>>(&a)
@@ -81,6 +99,28 @@ fn main() {
         vec![(&Likes, c)]
     );
 
+    let b = world.spawn(());
+
+    world.try_add_relation(&a, Enemy, &b).unwrap();
+
+    for (e, enemies) in world.build_query().relation::<&Enemy>() {
+        println!(
+            "{} is enemy of {:?}",
+            e,
+            enemies.into_iter().collect::<Vec<_>>()
+        );
+    }
+
+    let _ = world.despawn(&b);
+
+    for (e, enemies) in world.build_query().relation::<&Enemy>() {
+        println!(
+            "{} is enemy of {:?}",
+            e,
+            enemies.into_iter().collect::<Vec<_>>()
+        );
+    }
+
     let since = 0u64;
 
     let query = world
@@ -88,7 +128,7 @@ fn main() {
         .with::<B>()
         .modified::<&C>(since)
         .relation_to::<&ChildOf>(b)
-        .related_to::<Likes>(c);
+        .with_relation_to::<Likes>(c);
 
     for (e, (a, c, child_of)) in query {
         drop((e, a, c, child_of));

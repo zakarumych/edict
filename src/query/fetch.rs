@@ -171,7 +171,7 @@ impl VerifyFetch {
 /// ```
 pub unsafe trait Fetch<'a> {
     /// Item type this fetch type yields.
-    type Item;
+    type Item: 'a;
 
     /// Returns dummy `Fetch` value that must never be used.
     ///
@@ -191,7 +191,11 @@ pub unsafe trait Fetch<'a> {
     /// Chunk index must in range `0..=chunk_count`,
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool;
+    #[inline]
+    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+        drop(chunk_idx);
+        false
+    }
 
     /// Checks if item with specified index must be skipped.
     ///
@@ -200,7 +204,11 @@ pub unsafe trait Fetch<'a> {
     /// Entity index must in range `0..=entity_count`,
     /// where `entity_count` is the number of entities in the archetype
     /// from which query produced this instance.
-    unsafe fn skip_item(&mut self, idx: usize) -> bool;
+    #[inline]
+    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+        drop(idx);
+        false
+    }
 
     /// Notifies this fetch that it visits a new chunk.
     /// This method is called for each chunk in the archetype that is not skipped.
@@ -213,7 +221,10 @@ pub unsafe trait Fetch<'a> {
     ///
     /// `skip_chunk` must have been called just before this method.
     /// If `skip_chunk` returned `false`, this method must not be called.
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize);
+    #[inline]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        drop(chunk_idx);
+    }
 
     /// Returns fetched item at specified index.
     ///

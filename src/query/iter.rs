@@ -5,7 +5,7 @@ use crate::{
     entity::EntityId,
 };
 
-use super::{fetch::Fetch, Query, QueryItem};
+use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
 
 /// Iterator over entities with a query `Q`.
 /// Yields `EntityId` and query items for every matching entity.
@@ -14,7 +14,7 @@ pub struct QueryIter<'a, Q: Query> {
     query: Q,
     epoch: u64,
     archetypes: slice::Iter<'a, Archetype>,
-    fetch: <Q as Query>::Fetch,
+    fetch: <Q as QueryFetch<'a>>::Fetch,
     entities: NonNull<EntityId>,
     indices: Range<usize>,
     visit_chunk: bool,
@@ -29,7 +29,7 @@ where
             query,
             epoch,
             archetypes: archetypes.iter(),
-            fetch: <Q as Query>::Fetch::dangling(),
+            fetch: <Q as QueryFetch<'a>>::Fetch::dangling(),
             entities: NonNull::dangling(),
             indices: 0..0,
             visit_chunk: false,

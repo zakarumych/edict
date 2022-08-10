@@ -4,7 +4,7 @@ use core::{
     cell::UnsafeCell,
     hint::unreachable_unchecked,
     intrinsics::copy_nonoverlapping,
-    mem::{self, MaybeUninit},
+    mem::{self, size_of, MaybeUninit},
     ops::Deref,
     ptr::{self, NonNull},
 };
@@ -14,12 +14,14 @@ use alloc::{
     boxed::Box,
     vec::Vec,
 };
+use hashbrown::HashMap;
 
 use crate::{
     action::ActionEncoder,
     bundle::DynamicBundle,
     component::{Component, ComponentInfo},
     entity::EntityId,
+    hash::NoOpHasherBuilder,
     idx::MAX_IDX_USIZE,
     typeidset::TypeIdSet,
 };
@@ -43,7 +45,7 @@ impl Deref for ComponentData {
 impl ComponentData {
     pub fn new(info: &ComponentInfo) -> Self {
         ComponentData {
-            ptr: unsafe { NonNull::new_unchecked(info.layout().align() as _) },
+            ptr: NonNull::dangling(),
             version: UnsafeCell::new(0),
             chunk_versions: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
@@ -59,17 +61,13 @@ impl ComponentData {
     }
 
     pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
-        let old_layout = Layout::from_size_align_unchecked(
-            self.info.layout().size() * old_cap,
-            self.info.layout().align(),
-        );
-
-        let new_layout = Layout::from_size_align_unchecked(
-            self.info.layout().size() * new_cap,
-            self.info.layout().align(),
-        );
-
         if self.info.layout().size() != 0 {
+            let new_layout = Layout::from_size_align(
+                self.info.layout().size().checked_mul(len).unwrap(),
+                self.info.layout().align(),
+            )
+            .unwrap();
+
             let mut ptr = NonNull::new_unchecked(alloc(new_layout));
             if len != 0 {
                 copy_nonoverlapping(
@@ -80,6 +78,11 @@ impl ComponentData {
             }
 
             if old_cap != 0 {
+                let old_layout = Layout::from_size_align_unchecked(
+                    self.info.layout().size() * old_cap,
+                    self.info.layout().align(),
+                );
+
                 mem::swap(&mut self.ptr, &mut ptr);
                 dealloc(ptr.as_ptr(), old_layout);
             } else {
@@ -129,13 +132,15 @@ pub struct Archetype {
     indices: Box<[usize]>,
     entities: Vec<EntityId>,
     components: Box<[ComponentData]>,
+    borrows: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
+    borrows_mut: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
 }
 
 impl Drop for Archetype {
     fn drop(&mut self) {
         for &idx in &*self.indices {
             let component = &self.components[idx];
-            component.final_drop(component.ptr.as_ptr(), self.entities.len());
+            component.final_drop(component.ptr, self.entities.len());
         }
     }
 }
@@ -151,11 +156,32 @@ impl Archetype {
 
         let indices = set.indexed().map(|(idx, _)| idx).collect();
 
-        for c in components {
+        for c in components.clone() {
             debug_assert_eq!(c.layout().pad_to_align(), c.layout());
 
             let idx = unsafe { set.get(c.id()).unwrap_unchecked() };
             component_data[idx] = ComponentData::new(c);
+        }
+
+        let mut borrows = HashMap::with_hasher(NoOpHasherBuilder);
+        let mut borrows_mut = HashMap::with_hasher(NoOpHasherBuilder);
+
+        for c in components {
+            let cidx = unsafe { set.get(c.id()).unwrap_unchecked() };
+
+            for (bidx, cb) in c.borrows().iter().enumerate() {
+                borrows
+                    .entry(cb.target())
+                    .or_insert_with(Vec::new)
+                    .push((cidx, bidx));
+
+                if cb.has_borrow_mut() {
+                    borrows_mut
+                        .entry(cb.target())
+                        .or_insert_with(Vec::new)
+                        .push((cidx, bidx));
+                }
+            }
         }
 
         Archetype {
@@ -163,6 +189,8 @@ impl Archetype {
             indices,
             entities: Vec::new(),
             components: component_data,
+            borrows,
+            borrows_mut,
         }
     }
 
@@ -172,6 +200,18 @@ impl Archetype {
         self.set.contains_id(type_id)
     }
 
+    /// Returns `true` if archetype contains compoment with specified id.
+    #[inline]
+    pub fn contains_borrow(&self, type_id: TypeId) -> bool {
+        self.borrows.contains_key(&type_id)
+    }
+
+    /// Returns `true` if archetype contains compoment with specified id.
+    #[inline]
+    pub fn contains_borrow_mut(&self, type_id: TypeId) -> bool {
+        self.borrows_mut.contains_key(&type_id)
+    }
+
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
     #[inline]
@@ -179,7 +219,21 @@ impl Archetype {
         self.set.get(type_id)
     }
 
-    /// Returns `true` if archetype matches compoments set specified.
+    /// Returns index of the component type with specified id.
+    /// This index may be used then to index into lists of ids and infos.
+    #[inline]
+    pub(crate) fn borrow_indices(&self, type_id: TypeId) -> Option<&[(usize, usize)]> {
+        self.borrows.get(&type_id).map(|v| &v[..])
+    }
+
+    /// Returns index of the component type with specified id.
+    /// This index may be used then to index into lists of ids and infos.
+    #[inline]
+    pub(crate) fn borrow_mut_indices(&self, type_id: TypeId) -> Option<&[(usize, usize)]> {
+        self.borrows_mut.get(&type_id).map(|v| &v[..])
+    }
+
+    /// Returns `true` if archetype matches components set specified.
     #[inline]
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
         match type_ids.size_hint() {
@@ -282,7 +336,7 @@ impl Archetype {
             let component = &self.components[type_idx];
             let size = component.layout().size();
 
-            let ptr = component.ptr.as_ptr().add(entity_idx * size);
+            let ptr = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size));
 
             component.drop_one(ptr, entity, encoder);
 
@@ -301,7 +355,7 @@ impl Archetype {
                 *entity_version = last_epoch;
 
                 let last_ptr = component.ptr.as_ptr().add(last_entity_idx * size);
-                ptr::copy_nonoverlapping(last_ptr, ptr, size);
+                ptr::copy_nonoverlapping(last_ptr, ptr.as_ptr(), size);
             }
 
             #[cfg(debug_assertions)]
@@ -381,7 +435,7 @@ impl Archetype {
 
         let id = self.set.get_unchecked(TypeId::of::<T>());
         let component = &self.components[id];
-        let ptr = component.ptr.cast::<T>().as_ptr().add(entity_idx);
+        let ptr = component.ptr.as_ptr().cast::<T>().add(entity_idx);
         &*ptr
     }
 
@@ -403,7 +457,7 @@ impl Archetype {
 
         let id = self.set.get_unchecked(TypeId::of::<T>());
         let component = &self.components[id];
-        let ptr = component.ptr.cast::<T>().as_ptr().add(entity_idx);
+        let ptr = component.ptr.as_ptr().cast::<T>().add(entity_idx);
 
         let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
         let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
@@ -571,7 +625,8 @@ impl Archetype {
             if info.id() != TypeId::of::<T>() {
                 unreachable_unchecked()
             }
-            ptr::copy_nonoverlapping(ptr.cast(), value.as_mut_ptr(), 1)
+
+            value.write(ptr::read(ptr.as_ptr().cast()));
         });
 
         let entity = self.entities.swap_remove(src_entity_idx);
@@ -694,11 +749,11 @@ impl Archetype {
             debug_assert!(*entity_version <= epoch);
             *entity_version = epoch;
 
-            let dst = component.ptr.as_ptr().add(entity_idx * size);
+            let dst = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size));
             if occupied(id) {
-                component.set_one(dst, src.as_ptr(), entity, encoder.as_mut().unwrap());
+                component.set_one(dst, src, entity, encoder.as_mut().unwrap());
             } else {
-                ptr::copy_nonoverlapping(src.as_ptr(), dst, size);
+                ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
             }
         });
     }
@@ -729,17 +784,12 @@ impl Archetype {
         debug_assert!(*entity_version <= epoch);
         *entity_version = epoch;
 
-        let dst = component.ptr.as_ptr().cast::<T>().add(entity_idx);
+        let dst = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size_of::<T>()));
 
         if let Some(encoder) = occupied {
-            component.set_one(
-                component.ptr.as_ptr().cast::<T>().add(entity_idx) as *mut u8,
-                (&value) as *const T as *const u8,
-                entity,
-                encoder,
-            )
+            component.set_one(dst, NonNull::from(&value).cast(), entity, encoder)
         } else {
-            ptr::write(dst, value);
+            ptr::write(dst.as_ptr().cast(), value);
         }
     }
 
@@ -751,7 +801,7 @@ impl Archetype {
         dst_entity_idx: usize,
         mut missing: F,
     ) where
-        F: FnMut(&ComponentInfo, *mut u8),
+        F: FnMut(&ComponentInfo, NonNull<u8>),
     {
         let dst_chunk_idx = chunk_idx(dst_entity_idx);
 
@@ -790,7 +840,7 @@ impl Archetype {
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
             } else {
                 let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
-                missing(src_component, src_ptr);
+                missing(src_component, NonNull::new_unchecked(src_ptr));
             }
 
             if src_entity_idx != last_entity_idx {

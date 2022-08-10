@@ -1,16 +1,14 @@
 use core::{
     any::TypeId,
     cell::Cell,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
 
-use crate::{
-    archetype::{chunk_idx, Archetype},
-    component::Component,
-};
+use crate::archetype::{chunk_idx, Archetype};
 
-use super::{phantom::PhantomQuery, Access, Fetch, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
 
 /// Item type that `Alt` yields.
 /// Wraps `&mut T` and implements `DerefMut` to `T`.
@@ -45,17 +43,18 @@ impl<T> DerefMut for RefMut<'_, T> {
 
 /// `Fetch` type for the `Alt` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchAlt<T> {
+pub struct FetchAlt<'a, T> {
     epoch: u64,
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<Cell<u64>>,
     archetype_version: NonNull<Cell<u64>>,
+    marker: PhantomData<&'a [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for FetchAlt<T>
+unsafe impl<'a, T> Fetch<'a> for FetchAlt<'a, T>
 where
-    T: Component,
+    T: 'static,
 {
     type Item = RefMut<'a, T>;
 
@@ -67,6 +66,7 @@ where
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
             archetype_version: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -116,14 +116,20 @@ phantom_newtype! {
     pub struct Alt<T>
 }
 
-unsafe impl<T> Query for Alt<T>
+impl<'a, T> PhantomQueryFetch<'a> for Alt<T>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = FetchAlt<T>;
+    type Item = RefMut<'a, T>;
+    type Fetch = FetchAlt<'a, T>;
+}
 
+unsafe impl<T> PhantomQuery for Alt<T>
+where
+    T: 'static,
+{
     #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
+    fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
             Some(Access::Write)
         } else {
@@ -132,7 +138,12 @@ where
     }
 
     #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
+    fn access_any() -> Option<Access> {
+        Some(Access::Write)
+    }
+
+    #[inline]
+    fn conflicts<Q>(query: &Q) -> bool
     where
         Q: Query,
     {
@@ -143,17 +154,17 @@ where
     }
 
     #[inline]
-    fn is_valid(&self) -> bool {
+    fn is_valid() -> bool {
         true
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, epoch: u64) -> FetchAlt<T> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchAlt<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
         debug_assert_eq!(data.id(), TypeId::of::<T>());
@@ -167,41 +178,7 @@ where
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions.cast(),
             archetype_version: archetype_version.cast(),
+            marker: PhantomData,
         }
-    }
-}
-
-unsafe impl<T> PhantomQuery for Alt<T>
-where
-    T: Component,
-{
-    type Fetch = FetchAlt<T>;
-
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
-        Self::new().access(ty)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        Self::new().conflicts(query)
-    }
-
-    #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        Self::new().skip_archetype(archetype)
-    }
-
-    #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchAlt<T> {
-        Self::new().fetch(archetype, epoch)
     }
 }

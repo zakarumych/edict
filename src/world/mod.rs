@@ -18,9 +18,8 @@ use crate::{
     component::{Component, ComponentRegistry},
     entity::{Entities, EntityId},
     query::{
-        debug_assert_immutable_query, related_to, Fetch, FilterRelationTo, ImmutablePhantomQuery,
-        ImmutableQuery, PhantomQuery, PhantomQueryItem, Query, QueryItem, QueryMut, QueryRef,
-        QueryRelation, QueryRelationTo, With, Without,
+        debug_assert_immutable_query, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery,
+        PhantomQueryItem, Query, QueryItem,
     },
 };
 
@@ -31,12 +30,16 @@ use crate::{entity::Entity, proof::Proof};
 use crate::relation::Relation;
 
 use self::edges::Edges;
-pub use self::{builder::WorldBuilder, meta::EntityMeta};
+pub use self::{
+    builder::WorldBuilder,
+    meta::EntityMeta,
+    query::{QueryMut, QueryRef},
+};
 
-// mod archetypes;
 mod builder;
 mod edges;
 mod meta;
+mod query;
 
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
@@ -767,16 +770,18 @@ impl World {
                 },
             );
 
-            insert_relation_component(
-                self,
-                *target,
-                (*entity, relation),
-                encoder,
-                |(target, relation)| OriginComponent::new(target, relation),
-                |entity, component, (target, relation), encoder| {
-                    component.set(entity, target, relation, encoder)
-                },
-            );
+            if *target != *entity {
+                insert_relation_component(
+                    self,
+                    *target,
+                    (*entity, relation),
+                    encoder,
+                    |(target, relation)| OriginComponent::new(target, relation),
+                    |entity, component, (target, relation), encoder| {
+                        component.set(entity, target, relation, encoder)
+                    },
+                );
+            }
         } else {
             insert_relation_component(
                 self,
@@ -1139,8 +1144,7 @@ impl World {
         Q: Query,
     {
         assert!(query.is_valid(), "Invalid query specified");
-
-        QueryMut::new(&self.archetypes, &mut self.epoch, (query,), ())
+        self.build_query_mut().extend_query(query)
     }
 
     /// Starts building immutable query.
@@ -1149,138 +1153,12 @@ impl World {
         QueryRef::new(&self.archetypes, self.epoch, (), ())
     }
 
-    /// Returns query that iterates over all entities with specified component
-    #[inline]
-    pub fn filter_with<'a, T>(&'a self) -> QueryRef<'a, (), With<T>>
-    where
-        T: Component,
-    {
-        QueryRef::new(&self.archetypes, self.epoch, (), With::new())
-    }
-
-    /// Returns query that iterates over all entities without specified component
-    #[inline]
-    pub fn filter_without<'a, T>(&'a self) -> QueryRef<'a, (), Without<T>>
-    where
-        T: Component,
-    {
-        QueryRef::new(&self.archetypes, self.epoch, (), Without::new())
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    /// not bound to any specific entity.
-    ///
-    /// Yields all relation of the type on each entity.
-    #[inline]
-    pub fn query_relation<'a, R>(&'a self) -> QueryRef<'a, (PhantomData<QueryRelation<R>>,), ()>
-    where
-        QueryRelation<R>: ImmutablePhantomQuery,
-    {
-        QueryRef::new(&self.archetypes, self.epoch, (PhantomData,), ())
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    /// bound to one specific entity.
-    ///
-    /// Yields one relation of the type on each entity.
-    #[inline]
-    pub fn query_relation_to<'a, R>(
-        &'a self,
-        target: EntityId,
-    ) -> QueryRef<'a, (QueryRelationTo<R>,), ()>
-    where
-        QueryRelationTo<R>: ImmutableQuery,
-    {
-        QueryRef::new(
-            &self.archetypes,
-            self.epoch,
-            (QueryRelationTo::new(target),),
-            (),
-        )
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    /// bound to one specific entity.
-    ///
-    /// Yields nothing.
-    #[inline]
-    pub fn related_to<'a, R>(&'a self, target: EntityId) -> QueryRef<'a, (), FilterRelationTo<R>>
-    where
-        R: Relation,
-    {
-        QueryRef::new(&self.archetypes, self.epoch, (), related_to(target))
-    }
-
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
     /// This method only works with immutable queries.
     #[inline]
     pub fn build_query_mut<'a>(&'a mut self) -> QueryMut<'a, (), ()> {
         QueryMut::new(&self.archetypes, &mut self.epoch, (), ())
-    }
-
-    /// Returns query that iterates over all entities with specified component
-    #[inline]
-    pub fn query_with_mut<'a, T>(&'a mut self) -> QueryMut<'a, (), With<T>>
-    where
-        T: Component,
-    {
-        QueryMut::new(&self.archetypes, &mut self.epoch, (), With::new())
-    }
-
-    /// Returns query that iterates over all entities without specified component
-    #[inline]
-    pub fn query_without_mut<'a, T>(&'a mut self) -> QueryMut<'a, (), Without<T>>
-    where
-        T: Component,
-    {
-        QueryMut::new(&self.archetypes, &mut self.epoch, (), Without::new())
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    #[inline]
-    pub fn query_relation_mut<'a, R>(
-        &'a mut self,
-    ) -> QueryMut<'a, (PhantomData<QueryRelation<R>>,), ()>
-    where
-        QueryRelation<R>: PhantomQuery,
-    {
-        QueryMut::new(&self.archetypes, &mut self.epoch, (PhantomData,), ())
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    /// bound to one specific entity.
-    ///
-    /// Yields one relation of the type on each entity.
-    #[inline]
-    pub fn query_relation_to_mut<'a, R>(
-        &'a mut self,
-        target: EntityId,
-    ) -> QueryMut<'a, (QueryRelationTo<R>,), ()>
-    where
-        QueryRelationTo<R>: Query,
-    {
-        QueryMut::new(
-            &self.archetypes,
-            &mut self.epoch,
-            (QueryRelationTo::new(target),),
-            (),
-        )
-    }
-
-    /// Returns query that iterates over all entities with specified relation,
-    /// bound to one specific entity.
-    ///
-    /// Yields nothing.
-    #[inline]
-    pub fn filter_relation_to_mut<'a, R>(
-        &'a mut self,
-        target: EntityId,
-    ) -> QueryMut<'a, (), FilterRelationTo<R>>
-    where
-        R: Relation,
-    {
-        QueryMut::new(&self.archetypes, &mut self.epoch, (), related_to(target))
     }
 
     /// Splits the world into entity-meta and mutable query.

@@ -1,31 +1,33 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, component::Component};
+use crate::archetype::Archetype;
 
-use super::{phantom::PhantomQuery, Access, Fetch, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
 
 /// `Fetch` type for the `&mut T` query.
 #[allow(missing_debug_implementations)]
-pub struct FetchWrite<T> {
-    epoch: u64,
+pub struct FetchWrite<'a, T> {
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    epoch: u64,
+    marker: PhantomData<&'a mut [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for FetchWrite<T>
+unsafe impl<'a, T> Fetch<'a> for FetchWrite<'a, T>
 where
-    T: Component,
+    T: 'static,
 {
     type Item = &'a mut T;
 
     #[inline]
     fn dangling() -> Self {
         FetchWrite {
-            epoch: 0,
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            epoch: 0,
+            marker: PhantomData,
         }
     }
 
@@ -58,12 +60,18 @@ where
     }
 }
 
+impl<'a, T> PhantomQueryFetch<'a> for &mut T
+where
+    T: 'static,
+{
+    type Item = &'a mut T;
+    type Fetch = FetchWrite<'a, T>;
+}
+
 unsafe impl<T> PhantomQuery for &mut T
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = FetchWrite<T>;
-
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
@@ -71,6 +79,11 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn access_any() -> Option<Access> {
+        Some(Access::Write)
     }
 
     #[inline]
@@ -95,7 +108,7 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchWrite<T> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchWrite<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
         debug_assert_eq!(data.id(), TypeId::of::<T>());
@@ -104,10 +117,11 @@ where
         *data.version.get() = epoch;
 
         FetchWrite {
-            epoch,
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
+            epoch,
+            marker: PhantomData,
         }
     }
 }
@@ -118,7 +132,7 @@ where
 /// Skips entities that don't have the component.
 pub fn write<'a, T>() -> PhantomData<&'a mut T>
 where
-    T: Component,
+    T: 'static,
 {
     PhantomData
 }

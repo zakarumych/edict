@@ -1,13 +1,10 @@
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
-use crate::{
-    archetype::{chunk_idx, Archetype},
-    component::Component,
-};
+use crate::archetype::{chunk_idx, Archetype};
 
 use super::{
     alt::{Alt, RefMut},
-    Access, Fetch, ImmutableQuery, PhantomQuery, Query,
+    Access, Fetch, ImmutableQuery, PhantomQuery, Query, QueryFetch,
 };
 
 /// Query over modified component.
@@ -39,14 +36,15 @@ impl<T> Modified<T> {
 
 /// `Fetch` type for the `Modified<&T>` query.
 #[allow(missing_debug_implementations)]
-pub struct ModifiedFetchRead<T> {
+pub struct ModifiedFetchRead<'a, T> {
     epoch: u64,
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    marker: PhantomData<&'a [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for ModifiedFetchRead<T>
+unsafe impl<'a, T> Fetch<'a> for ModifiedFetchRead<'a, T>
 where
     T: 'a,
 {
@@ -59,6 +57,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -83,15 +82,26 @@ where
     }
 }
 
+impl<'a, T> QueryFetch<'a> for Modified<&T>
+where
+    T: 'static,
+{
+    type Item = &'a T;
+    type Fetch = ModifiedFetchRead<'a, T>;
+}
+
 unsafe impl<T> Query for Modified<&T>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = ModifiedFetchRead<T>;
-
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <&T as PhantomQuery>::access(ty)
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        <&T as PhantomQuery>::access_any()
     }
 
     #[inline]
@@ -122,7 +132,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, _epoch: u64) -> ModifiedFetchRead<T> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        _epoch: u64,
+    ) -> ModifiedFetchRead<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
 
@@ -131,23 +145,25 @@ where
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
+            marker: PhantomData,
         }
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<&T> where T: Component {}
+unsafe impl<T> ImmutableQuery for Modified<&T> where T: 'static {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
 #[allow(missing_debug_implementations)]
-pub struct ModifiedFetchWrite<T> {
+pub struct ModifiedFetchWrite<'a, T> {
     epoch: u64,
     new_epoch: u64,
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    marker: PhantomData<&'a mut [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for ModifiedFetchWrite<T>
+unsafe impl<'a, T> Fetch<'a> for ModifiedFetchWrite<'a, T>
 where
     T: 'a,
 {
@@ -161,6 +177,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -195,15 +212,26 @@ where
     }
 }
 
+impl<'a, T> QueryFetch<'a> for Modified<&mut T>
+where
+    T: 'static,
+{
+    type Item = &'a mut T;
+    type Fetch = ModifiedFetchWrite<'a, T>;
+}
+
 unsafe impl<T> Query for Modified<&mut T>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = ModifiedFetchWrite<T>;
-
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <&mut T as PhantomQuery>::access(ty)
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        <&mut T as PhantomQuery>::access_any()
     }
 
     #[inline]
@@ -234,7 +262,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, new_epoch: u64) -> ModifiedFetchWrite<T> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        new_epoch: u64,
+    ) -> ModifiedFetchWrite<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
 
@@ -247,22 +279,24 @@ where
             ptr: data.ptr.cast(),
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions,
+            marker: PhantomData,
         }
     }
 }
 
 #[allow(missing_debug_implementations)]
 /// `Fetch` type for the `Modified<Alt<T>>` query.
-pub struct ModifiedFetchAlt<T> {
+pub struct ModifiedFetchAlt<'a, T> {
     epoch: u64,
     new_epoch: u64,
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<Cell<u64>>,
     archetype_version: NonNull<Cell<u64>>,
+    marker: PhantomData<&'a mut [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for ModifiedFetchAlt<T>
+unsafe impl<'a, T> Fetch<'a> for ModifiedFetchAlt<'a, T>
 where
     T: 'a,
 {
@@ -277,6 +311,7 @@ where
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
             archetype_version: NonNull::dangling(),
+            marker: PhantomData,
         }
     }
 
@@ -316,15 +351,26 @@ where
     }
 }
 
+impl<'a, T> QueryFetch<'a> for Modified<Alt<T>>
+where
+    T: 'static,
+{
+    type Item = RefMut<'a, T>;
+    type Fetch = ModifiedFetchAlt<'a, T>;
+}
+
 unsafe impl<T> Query for Modified<Alt<T>>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = ModifiedFetchAlt<T>;
-
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(ty)
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        <Alt<T> as PhantomQuery>::access_any()
     }
 
     #[inline]
@@ -355,7 +401,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, archetype: &Archetype, new_epoch: u64) -> ModifiedFetchAlt<T> {
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        new_epoch: u64,
+    ) -> ModifiedFetchAlt<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let data = archetype.data(idx);
         debug_assert_eq!(data.id(), TypeId::of::<T>());
@@ -372,6 +422,7 @@ where
             entity_versions: data.entity_versions,
             chunk_versions: data.chunk_versions.cast(),
             archetype_version: archetype_version.cast(),
+            marker: PhantomData,
         }
     }
 }

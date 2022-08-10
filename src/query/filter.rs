@@ -1,11 +1,11 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, component::Component};
+use crate::archetype::Archetype;
 
-use super::{fetch::UnitFetch, merge_access, Access, Fetch, ImmutableQuery, Query};
+use super::{fetch::UnitFetch, merge_access, Access, Fetch, ImmutableQuery, Query, QueryFetch};
 
-/// Tuple of null items.
-pub trait FilterItem {}
+/// Tuple of filter items.
+pub trait FilterItem: 'static {}
 
 impl FilterItem for () {}
 impl<A, B> FilterItem for (A, B)
@@ -15,33 +15,33 @@ where
 {
 }
 
-pub trait FilterFetch<'a>: Fetch<'a, Item = Self::FilterItem> {
+pub trait FilterFetch<'a>: QueryFetch<'a, Item = Self::FilterItem> {
     type FilterItem: FilterItem;
-}
-
-impl<'a, F> FilterFetch<'a> for F
-where
-    F: Fetch<'a>,
-    F::Item: FilterItem,
-{
-    type FilterItem = F::Item;
 }
 
 /// Filters are queries that yield nothing.
 /// Filters are automatically implemented for `ImmutableQuery` implementations where `Item = ()`.
 /// This means that user cannot implement `Filter` manually and should implement `Query` instead.
-pub trait Filter: ImmutableQuery<Fetch = Self::FilterFetch> {
-    /// Fetch type that yields nothing.
-    /// Used to ensure `Fetch` also yields nothing in the bounds above.
-    type FilterFetch: for<'a> FilterFetch<'a>;
+pub trait Filter:
+    for<'a> FilterFetch<'a>
+    + ImmutableQuery
+    + for<'a> QueryFetch<'a, Item = <Self as FilterFetch<'a>>::FilterItem>
+{
+}
+
+impl<'a, Q> FilterFetch<'a> for Q
+where
+    Q: ImmutableQuery,
+    <Q as QueryFetch<'a>>::Item: FilterItem,
+{
+    type FilterItem = <Q as QueryFetch<'a>>::Item;
 }
 
 impl<Q> Filter for Q
 where
     Q: ImmutableQuery,
-    Q::Fetch: for<'a> FilterFetch<'a>,
+    for<'a> <Q as QueryFetch<'a>>::Item: FilterItem,
 {
-    type FilterFetch = Q::Fetch;
 }
 
 /// Combines fetch from query and filter.
@@ -54,7 +54,7 @@ pub struct FilteredFetch<F, Q> {
 
 unsafe impl<'a, F, Q> Fetch<'a> for FilteredFetch<F, Q>
 where
-    F: FilterFetch<'a>,
+    F: Fetch<'a>,
     Q: Fetch<'a>,
 {
     type Item = Q::Item;
@@ -94,8 +94,17 @@ where
 /// Skips using both and yields using query.
 #[derive(Clone, Copy, Debug)]
 pub struct FilteredQuery<F, Q> {
-    pub(super) filter: F,
-    pub(super) query: Q,
+    pub(crate) filter: F,
+    pub(crate) query: Q,
+}
+
+impl<'a, F, Q> QueryFetch<'a> for FilteredQuery<F, Q>
+where
+    F: Filter,
+    Q: Query,
+{
+    type Item = <Q as QueryFetch<'a>>::Item;
+    type Fetch = FilteredFetch<<F as QueryFetch<'a>>::Fetch, <Q as QueryFetch<'a>>::Fetch>;
 }
 
 unsafe impl<F, Q> Query for FilteredQuery<F, Q>
@@ -103,8 +112,6 @@ where
     F: Filter,
     Q: Query,
 {
-    type Fetch = FilteredFetch<F::Fetch, Q::Fetch>;
-
     #[inline]
     fn is_valid(&self) -> bool {
         self.query.is_valid()
@@ -113,6 +120,11 @@ where
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         merge_access(self.filter.access(ty), self.query.access(ty))
+    }
+
+    #[inline]
+    fn access_any(&self) -> Option<Access> {
+        merge_access(self.filter.access_any(), self.query.access_any())
     }
 
     #[inline]
@@ -129,11 +141,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(
+    unsafe fn fetch<'a>(
         &mut self,
-        archetype: &Archetype,
+        archetype: &'a Archetype,
         index: u64,
-    ) -> FilteredFetch<F::Fetch, Q::Fetch> {
+    ) -> FilteredFetch<<F as QueryFetch<'a>>::Fetch, <Q as QueryFetch<'a>>::Fetch> {
         FilteredFetch {
             filter: self.filter.fetch(archetype, index),
             query: self.query.fetch(archetype, index),
@@ -153,15 +165,26 @@ phantom_newtype! {
     pub struct With<T>
 }
 
+impl<T> QueryFetch<'_> for With<T>
+where
+    T: 'static,
+{
+    type Item = ();
+    type Fetch = UnitFetch;
+}
+
 unsafe impl<T> Query for With<T>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = UnitFetch;
+    #[inline]
+    fn access(&self, _: TypeId) -> Option<Access> {
+        None
+    }
 
     #[inline]
-    fn is_valid(&self) -> bool {
-        true
+    fn access_any(&self) -> Option<Access> {
+        None
     }
 
     #[inline]
@@ -173,8 +196,8 @@ where
     }
 
     #[inline]
-    fn access(&self, _: TypeId) -> Option<Access> {
-        None
+    fn is_valid(&self) -> bool {
+        true
     }
 
     #[inline]
@@ -188,22 +211,33 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for With<T> where T: Component {}
+unsafe impl<T> ImmutableQuery for With<T> where T: 'static {}
 
 phantom_newtype! {
     /// Filter that allows only archetypes without specified component.
     pub struct Without<T>
 }
 
+impl<T> QueryFetch<'_> for Without<T>
+where
+    T: 'static,
+{
+    type Item = ();
+    type Fetch = UnitFetch;
+}
+
 unsafe impl<T> Query for Without<T>
 where
-    T: Component,
+    T: 'static,
 {
-    type Fetch = UnitFetch;
+    #[inline]
+    fn access(&self, _: TypeId) -> Option<Access> {
+        None
+    }
 
     #[inline]
-    fn is_valid(&self) -> bool {
-        true
+    fn access_any(&self) -> Option<Access> {
+        None
     }
 
     #[inline]
@@ -215,8 +249,8 @@ where
     }
 
     #[inline]
-    fn access(&self, _: TypeId) -> Option<Access> {
-        None
+    fn is_valid(&self) -> bool {
+        true
     }
 
     #[inline]
@@ -230,4 +264,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Without<T> where T: Component {}
+unsafe impl<T> ImmutableQuery for Without<T> where T: 'static {}

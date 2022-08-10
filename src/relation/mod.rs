@@ -10,6 +10,14 @@ use core::{marker::PhantomData, mem::ManuallyDrop};
 
 use crate::{action::ActionEncoder, component::Component, entity::EntityId};
 
+pub use self::query::{
+    related, relation, relation_to, with_relation_to, FetchRelated, FetchRelationRead,
+    FetchRelationToRead, FetchRelationToWrite, FetchRelationWrite, FilterFetchRelationTo,
+    QueryRelated, QueryRelation, QueryRelationTo, RelationReadIter, WithRelationTo,
+};
+
+mod query;
+
 /// Trait that must be implemented for relations.
 pub trait Relation: Copy + Send + Sync + 'static {
     /// If `true` then relation can be added only once to an entity.
@@ -18,6 +26,12 @@ pub trait Relation: Copy + Send + Sync + 'static {
     /// If `true` then when relation is added to an entity
     /// it is also added to the target.
     const SYMMETRIC: bool = false;
+
+    // /// If `true` then when relation is added to an entity,
+    // /// the same relation is checked om target and if present,
+    // /// target's targets are added as well.
+    // /// When target is removed, transitively added targets are removed.
+    // const TRANSITIVE: bool = false;
 
     /// Method that is called when relation is removed from origin entity.
     /// Does nothing by default.

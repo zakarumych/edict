@@ -26,6 +26,9 @@ use crate::{
     typeidset::TypeIdSet,
 };
 
+struct Dummy;
+impl Component for Dummy {}
+
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
     pub version: UnsafeCell<u64>,
@@ -54,10 +57,37 @@ impl ComponentData {
     }
 
     pub fn dummy() -> Self {
-        struct Dummy;
-        impl Component for Dummy {}
-
         Self::new(&ComponentInfo::of::<Dummy>())
+    }
+
+    pub fn is_dummy(&self) -> bool {
+        self.info.id() == TypeId::of::<Dummy>()
+    }
+
+    pub unsafe fn drop(&mut self, cap: usize, len: usize) {
+        if self.is_dummy() {
+            return;
+        }
+
+        self.info.final_drop(self.ptr, len);
+
+        if self.info.layout().size() != 0 {
+            let layout = Layout::from_size_align_unchecked(
+                self.info.layout().size() * cap,
+                self.info.layout().align(),
+            );
+
+            dealloc(self.ptr.as_ptr(), layout);
+        }
+
+        dealloc(
+            self.entity_versions.cast().as_ptr(),
+            Layout::array::<u64>(cap).unwrap(),
+        );
+        dealloc(
+            self.chunk_versions.cast().as_ptr(),
+            Layout::array::<u64>(chunks_count(cap)).unwrap(),
+        );
     }
 
     pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
@@ -138,9 +168,10 @@ pub struct Archetype {
 
 impl Drop for Archetype {
     fn drop(&mut self) {
-        for &idx in &*self.indices {
-            let component = &self.components[idx];
-            component.final_drop(component.ptr, self.entities.len());
+        for c in &mut *self.components {
+            unsafe {
+                c.drop(self.entities.capacity(), self.entities.len());
+            }
         }
     }
 }
@@ -707,15 +738,21 @@ impl Archetype {
     #[inline]
     pub(crate) fn reserve(&mut self, additional: usize) {
         let old_cap = self.entities.capacity();
-        self.entities.reserve(additional);
+        let len = self.entities.len();
 
-        if old_cap != self.entities.capacity() {
-            // Capacity changed
-            for &idx in &*self.indices {
-                let component = &mut self.components[idx];
-                unsafe {
-                    component.grow(self.entities.len(), old_cap, self.entities.capacity());
-                }
+        if additional <= old_cap - len {
+            return;
+        }
+
+        // Needs to grow.
+
+        self.entities.reserve(additional);
+        debug_assert_ne!(old_cap, self.entities.capacity(),);
+
+        for &idx in &*self.indices {
+            let component = &mut self.components[idx];
+            unsafe {
+                component.grow(len, old_cap, self.entities.capacity());
             }
         }
     }

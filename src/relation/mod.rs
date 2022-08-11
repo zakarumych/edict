@@ -8,7 +8,14 @@
 
 use core::{marker::PhantomData, mem::ManuallyDrop};
 
-use crate::{action::ActionEncoder, component::Component, entity::EntityId};
+use alloc::{vec, vec::Vec};
+
+use crate::{
+    action::ActionEncoder,
+    borrow_dyn_trait,
+    component::{Component, ComponentBorrow},
+    entity::EntityId,
+};
 
 pub use self::query::{
     related, relation, relation_to, with_relation_to, FetchRelated, FetchRelationRead,
@@ -109,7 +116,7 @@ where
         }
     }
 
-    pub(crate) fn set(
+    pub(crate) fn add(
         &mut self,
         entity: EntityId,
         target: EntityId,
@@ -139,6 +146,35 @@ where
         }
     }
 
+    pub(crate) fn remove(
+        &mut self,
+        entity: EntityId,
+        target: EntityId,
+        encoder: &mut ActionEncoder,
+    ) {
+        match R::EXCLUSIVE {
+            false => {
+                let origins = unsafe { &mut *self.non_exclusive };
+                for idx in 0..origins.len() {
+                    if origins[idx].target == target {
+                        Self::drop_one(&mut origins[idx], entity, encoder);
+                        origins.swap_remove(idx);
+                        if origins.is_empty() {
+                            encoder.remove_component::<Self>(entity);
+                        }
+                        return;
+                    }
+                }
+            }
+            true => {
+                let origin = unsafe { &mut *self.exclusive };
+                if origin.target == target {
+                    encoder.remove_component::<Self>(entity);
+                }
+            }
+        }
+    }
+
     pub fn origins(&self) -> &[Origin<R>] {
         match R::EXCLUSIVE {
             false => unsafe { &*self.non_exclusive },
@@ -153,8 +189,7 @@ where
         }
     }
 
-    /// Called when relation is removed from symmetric entity.
-    /// Or symmetric entity is dropped.
+    /// Called when target relation component is removed from target entity.
     fn on_target_drop(&mut self, entity: EntityId, target: EntityId, encoder: &mut ActionEncoder) {
         debug_assert!(!R::EXCLUSIVE);
 
@@ -172,7 +207,7 @@ where
         }
 
         if origins.is_empty() {
-            encoder.remove_component::<Self>(target);
+            encoder.remove_component::<Self>(entity);
         }
     }
 
@@ -205,27 +240,30 @@ where
             // This is also a target.
             R::on_target_drop(origin.target, entity, encoder);
         }
-        Self::clear_one(origin, entity, encoder);
-        origin.relation = new_origin.relation;
+        if new_origin.target != origin.target {
+            Self::clear_one(origin, entity, encoder);
+        }
+        *origin = new_origin;
     }
 
     fn clear_one(origin: &mut Origin<R>, entity: EntityId, encoder: &mut ActionEncoder) {
         if R::SYMMETRIC {
-            if R::EXCLUSIVE {
-                encoder.remove_component::<Self>(origin.target);
-            } else {
-                let target = origin.target;
-                encoder.custom(move |world, encoder| {
-                    if let Ok(target_component) = world.query_one_mut::<&mut Self>(&target) {
-                        target_component.on_target_drop(target, entity, encoder);
-                    }
-                });
+            if origin.target != entity {
+                if R::EXCLUSIVE {
+                    encoder.remove_component::<Self>(origin.target);
+                } else {
+                    let target = origin.target;
+                    encoder.custom(move |world, encoder| {
+                        if let Ok(target_component) = world.query_one_mut::<&mut Self>(target) {
+                            target_component.on_target_drop(target, entity, encoder);
+                        }
+                    });
+                }
             }
         } else {
             let target = origin.target;
             encoder.custom(move |world, encoder| {
-                if let Ok(target_component) =
-                    world.query_one_mut::<&mut TargetComponent<R>>(&target)
+                if let Ok(target_component) = world.query_one_mut::<&mut TargetComponent<R>>(target)
                 {
                     target_component.on_origin_drop(entity, target, encoder);
                 }
@@ -249,6 +287,21 @@ where
     fn on_set(&mut self, _value: &Self, _entity: EntityId, _encoder: &mut ActionEncoder) -> bool {
         unimplemented!("This method is not intended to be called");
     }
+
+    #[inline]
+    fn borrows<F, T>(f: F) -> T
+    where
+        F: FnOnce(&[ComponentBorrow]) -> T,
+    {
+        if R::SYMMETRIC {
+            f(&[
+                borrow_dyn_trait!(Self as RelationOrigin),
+                borrow_dyn_trait!(Self as RelationTarget),
+            ])
+        } else {
+            f(&[borrow_dyn_trait!(Self as RelationOrigin)])
+        }
+    }
 }
 
 /// Component that is added to target entity of the non-symmetric relation.
@@ -270,7 +323,7 @@ where
         }
     }
 
-    pub(crate) fn set(&mut self, entity: EntityId) {
+    pub(crate) fn add(&mut self, entity: EntityId) {
         debug_assert!(!self.origins.contains(&entity));
         self.origins.push(entity);
     }
@@ -304,7 +357,7 @@ where
                 encoder.remove_component::<OriginComponent<R>>(entity);
             } else {
                 encoder.custom(move |world, encoder| {
-                    if let Ok(origin) = world.query_one_mut::<&mut OriginComponent<R>>(&entity) {
+                    if let Ok(origin) = world.query_one_mut::<&mut OriginComponent<R>>(entity) {
                         origin.on_target_drop(entity, target, encoder);
                     }
                 });
@@ -314,6 +367,55 @@ where
 
     #[inline]
     fn on_set(&mut self, _value: &Self, _entity: EntityId, _encoder: &mut ActionEncoder) -> bool {
-        true
+        unimplemented!("This method is not intended to be called");
+    }
+
+    #[inline]
+    fn borrows<F, T>(f: F) -> T
+    where
+        F: FnOnce(&[ComponentBorrow]) -> T,
+    {
+        f(&[borrow_dyn_trait!(Self as RelationTarget)])
+    }
+}
+
+#[doc(hidden)]
+pub trait RelationOrigin {
+    fn targets(&self) -> Vec<EntityId>;
+}
+
+impl<R> RelationOrigin for OriginComponent<R>
+where
+    R: Relation,
+{
+    fn targets(&self) -> Vec<EntityId> {
+        self.origins().iter().map(|o| o.target).collect()
+    }
+}
+
+#[doc(hidden)]
+pub trait RelationTarget {
+    fn origins(&self) -> Vec<EntityId>;
+}
+
+impl<R> RelationTarget for OriginComponent<R>
+where
+    R: Relation,
+{
+    fn origins(&self) -> Vec<EntityId> {
+        debug_assert!(R::SYMMETRIC);
+
+        self.origins().iter().map(|o| o.target).collect()
+    }
+}
+
+impl<R> RelationTarget for TargetComponent<R>
+where
+    R: Relation,
+{
+    fn origins(&self) -> Vec<EntityId> {
+        debug_assert!(!R::SYMMETRIC);
+
+        self.origins.clone()
     }
 }

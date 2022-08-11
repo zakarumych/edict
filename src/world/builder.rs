@@ -1,3 +1,8 @@
+use alloc::vec;
+
+#[cfg(feature = "rc")]
+use alloc::vec::Vec;
+
 use crate::{
     action::ActionEncoder,
     archetype::Archetype,

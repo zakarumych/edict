@@ -1,5 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
+use alloc::vec::Vec;
+
 use crate::{
     archetype::Archetype,
     query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch, Query},

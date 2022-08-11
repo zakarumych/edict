@@ -4,6 +4,8 @@ use core::{
     marker::PhantomData,
 };
 
+use alloc::vec::Vec;
+
 use hashbrown::hash_map::{Entry, HashMap, RawEntryMut};
 
 use crate::{

@@ -331,14 +331,15 @@ impl World {
     }
 
     #[cfg(not(feature = "rc"))]
-    pub fn despawn_with_encoder(
+    pub(crate) fn despawn_with_encoder(
         &mut self,
         entity: &EntityId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity> {
         let (archetype, idx) = self.entities.despawn(entity)?;
 
-        let opt_id = unsafe { self.archetypes[archetype as usize].despawn_unchecked(idx, encoder) };
+        let opt_id =
+            unsafe { self.archetypes[archetype as usize].despawn_unchecked(*entity, idx, encoder) };
         if let Some(id) = opt_id {
             self.entities.set_location(id, archetype, idx)
         }

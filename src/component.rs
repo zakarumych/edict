@@ -518,5 +518,5 @@ unsafe fn set_one<T, S, D>(
 
 /// This drop is always called for all components when `Archetype` is dropped.
 unsafe fn final_drop<T>(ptr: NonNull<u8>, count: usize) {
-    drop_in_place(slice_from_raw_parts_mut(ptr.as_ptr(), count));
+    drop_in_place(slice_from_raw_parts_mut(ptr.cast::<T>().as_ptr(), count));
 }

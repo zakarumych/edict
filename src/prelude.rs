@@ -5,15 +5,6 @@ pub use crate::{
     component::Component,
     entity::EntityId,
     query::{ImmutableQuery, Query, QueryItem, QueryIter},
+    relation::Relation,
     world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, World},
 };
-
-#[cfg(feature = "rc")]
-pub use crate::{
-    entity::{Entity, SharedEntity},
-    proof::Skip,
-    world::OwnershipError,
-};
-
-#[cfg(feature = "relation")]
-pub use crate::relation::Relation;

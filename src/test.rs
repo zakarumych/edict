@@ -1,5 +1,6 @@
 use crate::{
-    prelude::Component,
+    component::Component,
+    relation::{Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
 
@@ -23,10 +24,10 @@ fn world_spawn() {
     let mut world = World::new();
 
     let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<Str>(&e), Ok(true));
+    assert_eq!(world.has_component::<U32>(e), Ok(true));
+    assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Ok((&U32(42), &Str("qwe")))
     );
 }
@@ -38,17 +39,17 @@ fn world_insert() {
     let mut world = World::new();
 
     let e = world.spawn((U32(42),));
-    assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<Str>(&e), Ok(false));
+    assert_eq!(world.has_component::<U32>(e), Ok(true));
+    assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Err(QueryOneError::NotSatisfied)
     );
 
-    assert_eq!(world.try_insert(&e, Str("qwe")), Ok(()));
-    assert_eq!(world.has_component::<Str>(&e), Ok(true));
+    assert_eq!(world.insert(e, Str("qwe")), Ok(()));
+    assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Ok((&U32(42), &Str("qwe")))
     );
 }
@@ -59,17 +60,17 @@ fn world_remove() {
     let mut world = World::new();
 
     let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<Str>(&e), Ok(true));
+    assert_eq!(world.has_component::<U32>(e), Ok(true));
+    assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Ok((&U32(42), &Str("qwe")))
     );
 
-    assert_eq!(world.remove::<Str>(&e), Ok(Str("qwe")));
-    assert_eq!(world.has_component::<Str>(&e), Ok(false));
+    assert_eq!(world.remove::<Str>(e), Ok(Str("qwe")));
+    assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Err(QueryOneError::NotSatisfied)
     );
 }
@@ -80,21 +81,18 @@ fn world_insert_bundle() {
     let mut world = World::new();
 
     let e = world.spawn((U32(42),));
-    assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<Str>(&e), Ok(false));
+    assert_eq!(world.has_component::<U32>(e), Ok(true));
+    assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Err(QueryOneError::NotSatisfied)
     );
 
+    assert_eq!(world.insert_bundle(e, (Str("qwe"), Bool(true))), Ok(()));
+    assert_eq!(world.has_component::<Str>(e), Ok(true));
+    assert_eq!(world.has_component::<Bool>(e), Ok(true));
     assert_eq!(
-        world.try_insert_bundle(&e, (Str("qwe"), Bool(true))),
-        Ok(())
-    );
-    assert_eq!(world.has_component::<Str>(&e), Ok(true));
-    assert_eq!(world.has_component::<Bool>(&e), Ok(true));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str, &Bool)>(&e),
+        world.query_one_mut::<(&U32, &Str, &Bool)>(e),
         Ok((&U32(42), &Str("qwe"), &Bool(true)))
     );
 }
@@ -105,18 +103,18 @@ fn world_remove_bundle() {
     let mut world = World::new();
 
     let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(&e), Ok(true));
-    assert_eq!(world.has_component::<Str>(&e), Ok(true));
+    assert_eq!(world.has_component::<U32>(e), Ok(true));
+    assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Ok((&U32(42), &Str("qwe")))
     );
 
     // When removing a bundle, any missing component is simply ignored.
-    assert_eq!(world.drop_bundle::<(Str, Bool)>(&e), Ok(()));
-    assert_eq!(world.has_component::<Str>(&e), Ok(false));
+    assert_eq!(world.drop_bundle::<(Str, Bool)>(e), Ok(()));
+    assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(&e),
+        world.query_one_mut::<(&U32, &Str)>(e),
         Err(QueryOneError::NotSatisfied)
     );
 }
@@ -149,7 +147,7 @@ fn version_test() {
         vec![]
     );
 
-    *world.query_one_mut::<&mut U32>(&e).unwrap() = U32(42);
+    *world.query_one_mut::<&mut U32>(e).unwrap() = U32(42);
 
     assert_eq!(
         world
@@ -189,8 +187,8 @@ fn version_despawn_test() {
         vec![]
     );
 
-    *world.query_one_mut::<&mut U32>(&e2).unwrap() = U32(50);
-    assert_eq!(world.despawn(&e1), Ok(()));
+    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(50);
+    assert_eq!(world.despawn(e1), Ok(()));
 
     assert_eq!(
         world
@@ -230,10 +228,10 @@ fn version_insert_test() {
         vec![]
     );
 
-    *world.query_one_mut::<&mut U32>(&e1).unwrap() = U32(50);
-    *world.query_one_mut::<&mut U32>(&e2).unwrap() = U32(100);
+    *world.query_one_mut::<&mut U32>(e1).unwrap() = U32(50);
+    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(100);
 
-    assert_eq!(world.try_insert(&e1, Bool(true)), Ok(()));
+    assert_eq!(world.insert(e1, Bool(true)), Ok(()));
 
     assert_eq!(
         world
@@ -243,4 +241,297 @@ fn version_insert_test() {
             .collect::<Vec<_>>(),
         vec![(e2, &U32(100)), (e1, &U32(50))]
     );
+}
+
+#[test]
+fn test_relation() {
+    let mut world = World::new();
+
+    #[derive(Clone, Copy)]
+    struct A;
+
+    impl Relation for A {
+        const EXCLUSIVE: bool = false;
+        const SYMMETRIC: bool = false;
+    }
+
+    let a = world.spawn(());
+    let b = world.spawn(());
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+
+    world.add_relation(a, A, a).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], a);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(a, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.add_relation(a, A, b).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 2);
+        assert_eq!(origins[0].targets()[0], a);
+        assert_eq!(origins[0].targets()[1], b);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert!(a == e || b == e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.despawn(a).unwrap();
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+}
+
+#[test]
+fn test_exclusive_relation() {
+    let mut world = World::new();
+
+    #[derive(Clone, Copy)]
+    struct A;
+
+    impl Relation for A {
+        const EXCLUSIVE: bool = true;
+        const SYMMETRIC: bool = false;
+    }
+
+    let a = world.spawn(());
+    let b = world.spawn(());
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+
+    world.add_relation(a, A, a).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], a);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(a, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.add_relation(a, A, b).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], b);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(b, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.add_relation(a, A, a).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], a);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(a, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.despawn(a).unwrap();
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+}
+
+#[test]
+fn test_symmetric_relation() {
+    let mut world = World::new();
+
+    #[derive(Clone, Copy)]
+    struct A;
+
+    impl Relation for A {
+        const EXCLUSIVE: bool = false;
+        const SYMMETRIC: bool = true;
+    }
+
+    let a = world.spawn(());
+    let b = world.spawn(());
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+
+    world.add_relation(a, A, a).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], a);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(a, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.despawn(a).unwrap();
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+
+    let a = world.spawn(());
+
+    world.add_relation(a, A, b).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert!(a == e || b == e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], if a == e { b } else { a });
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert!(a == e || b == e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], if a == e { b } else { a });
+    }
+
+    world.despawn(a).unwrap();
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+}
+
+#[test]
+fn test_symmetric_exclusive_relation() {
+    let mut world = World::new();
+
+    #[derive(Clone, Copy)]
+    struct A;
+
+    impl Relation for A {
+        const EXCLUSIVE: bool = true;
+        const SYMMETRIC: bool = true;
+    }
+
+    let a = world.spawn(());
+    let b = world.spawn(());
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
+
+    world.add_relation(a, A, a).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert_eq!(a, e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], a);
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert_eq!(a, e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], a);
+    }
+
+    world.add_relation(a, A, b).unwrap();
+
+    for (e, origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        assert!(a == e || b == e);
+        assert_eq!(origins.len(), 1);
+        assert_eq!(origins[0].targets().len(), 1);
+        assert_eq!(origins[0].targets()[0], if a == e { b } else { a });
+    }
+
+    for (e, targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        assert!(a == e || b == e);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].origins().len(), 1);
+        assert_eq!(targets[0].origins()[0], if a == e { b } else { a });
+    }
+
+    world.despawn(a).unwrap();
+
+    for (_e, _origins) in world.build_query().borrow_all::<&dyn RelationOrigin>() {
+        panic!()
+    }
+
+    for (_e, _targets) in world.build_query().borrow_all::<&dyn RelationTarget>() {
+        panic!()
+    }
 }

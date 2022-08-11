@@ -56,44 +56,44 @@ fn main() {
     let a = world.spawn((A,));
     let b = world.spawn(());
 
-    world.try_add_relation(&a, ChildOf, &b).unwrap();
+    world.add_relation(a, ChildOf, b).unwrap();
 
     for (e, ChildOf) in world.build_query().relation_to::<&ChildOf>(b) {
         println!("{} is child of {}", e, b);
     }
 
-    world.despawn(&b).unwrap();
+    world.despawn(b).unwrap();
 
-    assert_eq!(world.is_alive(&a), false);
+    assert_eq!(world.is_alive(a), false);
 
     let a = world.spawn(());
     let b = world.spawn(());
     let c = world.spawn(());
 
-    world.try_add_relation(&a, Likes, &b).unwrap();
-    world.try_add_relation(&a, Likes, &c).unwrap();
+    world.add_relation(a, Likes, b).unwrap();
+    world.add_relation(a, Likes, c).unwrap();
 
     assert_eq!(
-        world.query_one_state(&a, WithRelationTo::<Likes>::new(b)),
+        world.query_one_state(a, WithRelationTo::<Likes>::new(b)),
         Ok(())
     );
     assert_eq!(
-        world.query_one_state(&a, WithRelationTo::<Likes>::new(c)),
+        world.query_one_state(a, WithRelationTo::<Likes>::new(c)),
         Ok(())
     );
     assert_eq!(
         world
-            .query_one::<QueryRelation<&Likes>>(&a)
+            .query_one::<QueryRelation<&Likes>>(a)
             .unwrap()
             .collect::<Vec<_>>(),
         vec![(&Likes, b), (&Likes, c)]
     );
 
-    world.despawn(&b).unwrap();
+    world.despawn(b).unwrap();
 
     assert_eq!(
         world
-            .query_one::<QueryRelation<&Likes>>(&a)
+            .query_one::<QueryRelation<&Likes>>(a)
             .unwrap()
             .collect::<Vec<_>>(),
         vec![(&Likes, c)]
@@ -101,7 +101,7 @@ fn main() {
 
     let b = world.spawn(());
 
-    world.try_add_relation(&a, Enemy, &b).unwrap();
+    world.add_relation(a, Enemy, b).unwrap();
 
     for (e, enemies) in world.build_query().relation::<&Enemy>() {
         println!(
@@ -111,7 +111,7 @@ fn main() {
         );
     }
 
-    let _ = world.despawn(&b);
+    let _ = world.despawn(b);
 
     for (e, enemies) in world.build_query().relation::<&Enemy>() {
         println!(

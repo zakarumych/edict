@@ -21,15 +21,11 @@ use crate::{
         debug_assert_immutable_query, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery,
         PhantomQueryItem, Query, QueryItem,
     },
+    relation::{OriginComponent, Relation, TargetComponent},
 };
 
-#[cfg(feature = "rc")]
-use crate::{entity::Entity, proof::Proof};
-
-#[cfg(feature = "relation")]
-use crate::relation::Relation;
-
 use self::edges::Edges;
+
 pub use self::{
     builder::WorldBuilder,
     meta::EntityMeta,
@@ -93,10 +89,6 @@ pub struct World {
     edges: Edges,
 
     registry: ComponentRegistry,
-
-    /// Array of indices to drop.
-    #[cfg(feature = "rc")]
-    drop_queue: Vec<u32>,
 
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
@@ -167,34 +159,6 @@ impl World {
         entity
     }
 
-    /// Spawns new entity in this world with provided bundle of components.
-    /// Returns owning reference to the entity.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn spawn_owning<B>(&mut self, bundle: B) -> Entity
-    where
-        B: DynamicBundle,
-    {
-        if !bundle.valid() {
-            panic!(
-                "Specified bundle `{}` is not valid. Check for duplicate component types",
-                type_name::<B>()
-            );
-        }
-
-        let entity = self.entities.spawn_owning();
-
-        let archetype_idx = self
-            .edges
-            .spawn(&mut self.registry, &mut self.archetypes, &bundle);
-
-        self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(*entity, bundle, self.epoch);
-        self.entities.set_location(entity.idx(), archetype_idx, idx);
-
-        entity
-    }
-
     /// Returns an iterator which spawns and yield entities
     /// using bundles returnd from provided iterator.
     ///
@@ -247,99 +211,21 @@ impl World {
         }
     }
 
-    /// Returns an iterator which spawns and yield entities
-    /// using bundles returnd from provided iterator.
-    ///
-    /// When bundles iterator returns `None`, returned iterator returns `None` too.
-    ///
-    /// If bundles iterator is fused, returned iterator is fused too.
-    /// If bundles iterator is double-ended, returned iterator is double-ended too.
-    /// If bundles iterator has exact size, returned iterator has exact size too.
-    ///
-    /// Skipping items on returned iterator will not cause them to be spawned
-    /// and same number of items will be skipped on bundles iterator.
-    ///
-    /// Returned iterator attempts to optimize storage allocation for entities
-    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
-    ///
-    /// When returned iterator is dropped, no more entities will be spawned
-    /// even if bundles iterator has items left.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn spawn_batch_owning<B, I>(&mut self, bundles: I) -> SpawnBatchOwned<'_, I::IntoIter>
-    where
-        I: IntoIterator<Item = B>,
-        B: Bundle,
-    {
-        if !B::static_valid() {
-            panic!(
-                "Specified bundle `{}` is not valid. Check for duplicate component types",
-                type_name::<B>()
-            );
-        }
-
-        let archetype_idx = self.edges.spawn(
-            &mut self.registry,
-            &mut self.archetypes,
-            &PhantomData::<I::Item>,
-        );
-
-        self.epoch += 1;
-
-        let archetype = &mut self.archetypes[archetype_idx as usize];
-        let entities = &mut self.entities;
-        let epoch = self.epoch;
-
-        SpawnBatchOwned {
-            bundles: bundles.into_iter(),
-            epoch,
-            archetype_idx,
-            archetype,
-            entities,
-        }
-    }
-
-    /// Despawns an entity with specified id, currently owned by the `World`.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn despawn(&mut self, entity: &EntityId) -> Result<(), OwnershipError> {
-        with_encoder!(self, encoder => self.despawn_with_encoder(entity, &mut encoder))
-    }
-
-    #[cfg(feature = "rc")]
-    pub(crate) fn despawn_with_encoder(
-        &mut self,
-        entity: &EntityId,
-        encoder: &mut ActionEncoder,
-    ) -> Result<(), OwnershipError> {
-        let (archetype, idx) = self.entities.despawn(entity)?;
-
-        let opt_id =
-            unsafe { self.archetypes[archetype as usize].despawn_unchecked(*entity, idx, encoder) };
-        if let Some(id) = opt_id {
-            self.entities.set_location(id, archetype, idx)
-        }
-
-        Ok(())
-    }
-
     /// Despawns an entity with specified id.
-    #[cfg(not(feature = "rc"))]
     #[inline]
-    pub fn despawn(&mut self, entity: &EntityId) -> Result<(), NoSuchEntity> {
+    pub fn despawn(&mut self, entity: EntityId) -> Result<(), NoSuchEntity> {
         with_encoder!(self, encoder => self.despawn_with_encoder(entity, &mut encoder))
     }
 
-    #[cfg(not(feature = "rc"))]
     pub(crate) fn despawn_with_encoder(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity> {
         let (archetype, idx) = self.entities.despawn(entity)?;
 
         let opt_id =
-            unsafe { self.archetypes[archetype as usize].despawn_unchecked(*entity, idx, encoder) };
+            unsafe { self.archetypes[archetype as usize].despawn_unchecked(entity, idx, encoder) };
         if let Some(id) = opt_id {
             self.entities.set_location(id, archetype, idx)
         }
@@ -347,22 +233,15 @@ impl World {
         Ok(())
     }
 
-    /// Inserts component to the specified entity.
-    ///
-    /// If entity already had component of that type,
-    /// old component value is replaced with new one.
-    /// Otherwise new component is added to the entity.
-    #[cfg(feature = "rc")]
+    /// Searches for an entity with specified index.
+    /// Returns `Ok(entity)` if entity with specified index exists.
+    /// Returns `Err(NoSuchEntity)` otherwise.
     #[inline]
-    pub fn insert<T, P>(&mut self, entity: &Entity<P>, component: T)
-    where
-        T: Component,
-    {
-        assert!(self.entities.is_owner_of(entity));
-        self.try_insert(entity, component).expect("Entity exists");
+    pub fn find_entity(&self, idx: u32) -> Result<EntityId, NoSuchEntity> {
+        self.entities.find_entity(idx).ok_or(NoSuchEntity)
     }
 
-    /// Attemots to inserts component to the specified entity.
+    /// Attempts to inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
@@ -370,17 +249,17 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn try_insert<T>(&mut self, entity: &EntityId, component: T) -> Result<(), NoSuchEntity>
+    pub fn insert<T>(&mut self, entity: EntityId, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
     {
-        with_encoder!(self, encoder => self.try_insert_with_encoder(entity, component, &mut encoder))
+        with_encoder!(self, encoder => self.insert_with_encoder(entity, component, &mut encoder))
     }
 
     #[inline]
-    pub(crate) fn try_insert_with_encoder<T>(
+    pub(crate) fn insert_with_encoder<T>(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         component: T,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity>
@@ -394,7 +273,7 @@ impl World {
         if self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
             unsafe {
                 self.archetypes[src_archetype as usize]
-                    .set(*entity, idx, component, self.epoch, encoder);
+                    .set(entity, idx, component, self.epoch, encoder);
             }
 
             return Ok(());
@@ -415,7 +294,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.insert(*entity, dst, idx, component, self.epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, self.epoch) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -432,7 +311,7 @@ impl World {
     /// If entity does not have component of this type, fails with `Err(EntityError::MissingComponent)`.
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn remove<T>(&mut self, entity: &EntityId) -> Result<T, EntityError>
+    pub fn remove<T>(&mut self, entity: EntityId) -> Result<T, EntityError>
     where
         T: Component,
     {
@@ -459,7 +338,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id, component) = unsafe { src.remove(*entity, dst, idx) };
+        let (dst_idx, opt_src_id, component) = unsafe { src.remove(entity, dst, idx) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -476,7 +355,7 @@ impl World {
     /// If entity does not have component of this type, fails with `Err(EntityError::MissingComponent)`.
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn drop<T>(&mut self, entity: &EntityId) -> Result<(), EntityError>
+    pub fn drop<T>(&mut self, entity: EntityId) -> Result<(), EntityError>
     where
         T: Component,
     {
@@ -488,13 +367,13 @@ impl World {
     /// If entity does not have component of this type, fails with `Err(EntityError::MissingComponent)`.
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn drop_erased(&mut self, entity: &EntityId, id: TypeId) -> Result<(), EntityError> {
+    pub fn drop_erased(&mut self, entity: EntityId, id: TypeId) -> Result<(), EntityError> {
         with_encoder!(self, encoder => self.drop_erased_with_encoder(entity, id, &mut encoder))
     }
 
     pub(crate) fn drop_erased_with_encoder(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         id: TypeId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), EntityError> {
@@ -519,7 +398,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(*entity, dst, idx, encoder) };
+        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -539,38 +418,20 @@ impl World {
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn insert_bundle<B, T>(&mut self, entity: &Entity<T>, bundle: B)
-    where
-        B: DynamicBundle,
-    {
-        assert!(self.entities.is_owner_of(entity));
-        self.try_insert_bundle(entity, bundle).unwrap();
-    }
-
-    /// Inserts bundle of components to the specified entity.
-    /// This is moral equivalent to calling `World::insert` with each component separately,
-    /// but more efficient.
-    ///
-    /// For each component type in bundle:
-    /// If entity already had component of that type,
-    /// old component value is replaced with new one.
-    /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn try_insert_bundle<B>(&mut self, entity: &EntityId, bundle: B) -> Result<(), NoSuchEntity>
+    pub fn insert_bundle<B>(&mut self, entity: EntityId, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
     {
-        with_encoder!(self, encoder => self.try_insert_bundle_with_encoder(entity, bundle, &mut encoder))
+        with_encoder!(self, encoder => self.insert_bundle_with_encoder(entity, bundle, &mut encoder))
     }
 
     #[inline]
-    pub(crate) fn try_insert_bundle_with_encoder<B>(
+    pub(crate) fn insert_bundle_with_encoder<B>(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         bundle: B,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity>
@@ -602,7 +463,7 @@ impl World {
         if dst_archetype == src_archetype {
             unsafe {
                 self.archetypes[src_archetype as usize]
-                    .set_bundle(*entity, idx, bundle, self.epoch, encoder)
+                    .set_bundle(entity, idx, bundle, self.epoch, encoder)
             };
             return Ok(());
         }
@@ -617,7 +478,7 @@ impl World {
         };
 
         let (dst_idx, opt_src_id) =
-            unsafe { src.insert_bundle(*entity, dst, idx, bundle, self.epoch, encoder) };
+            unsafe { src.insert_bundle(entity, dst, idx, bundle, self.epoch, encoder) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -634,7 +495,7 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn drop_bundle<B>(&mut self, entity: &EntityId) -> Result<(), NoSuchEntity>
+    pub fn drop_bundle<B>(&mut self, entity: EntityId) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
     {
@@ -644,7 +505,7 @@ impl World {
     #[inline]
     pub(crate) fn drop_bundle_with_encoder<B>(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity>
     where
@@ -684,7 +545,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(*entity, dst, idx, encoder) };
+        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -697,186 +558,108 @@ impl World {
     }
 
     /// Adds relation between two entities to the [`World`]
-    #[cfg(feature = "relation")]
     #[inline]
-    pub fn add_relation<R, T, U>(&mut self, entity: &Entity<T>, relation: R, target: &Entity<U>)
-    where
-        R: Relation,
-    {
-        with_encoder!(self, encoder => self.add_relation_with_encoder(entity, relation, target, &mut encoder));
-    }
-
-    /// Adds relation between two entities to the [`World`]
-    #[cfg(feature = "relation")]
-    #[inline]
-    pub fn add_relation_with_encoder<R, T, U>(
+    pub fn add_relation<R>(
         &mut self,
-        entity: &Entity<T>,
+        entity: EntityId,
         relation: R,
-        target: &Entity<U>,
-        encoder: &mut ActionEncoder,
-    ) where
-        R: Relation,
-    {
-        debug_assert!(self.entities.is_owner_of(entity));
-        debug_assert!(self.entities.is_owner_of(target));
-
-        self.try_add_relation_with_encoder(entity, relation, target, encoder)
-            .expect("Entities exist");
-    }
-
-    /// Adds relation between two entities to the [`World`]
-    #[cfg(feature = "relation")]
-    #[inline]
-    pub fn try_add_relation<R>(
-        &mut self,
-        entity: &EntityId,
-        relation: R,
-        target: &EntityId,
+        target: EntityId,
     ) -> Result<(), NoSuchEntity>
     where
         R: Relation,
     {
-        with_encoder!(self, encoder => self.try_add_relation_with_encoder(entity, relation, target, &mut encoder))
+        with_encoder!(self, encoder => self.add_relation_with_encoder(entity, relation, target, &mut encoder))
     }
 
     /// Adds relation between two entities to the [`World`]
-    #[cfg(feature = "relation")]
-    pub fn try_add_relation_with_encoder<R>(
+    pub fn add_relation_with_encoder<R>(
         &mut self,
-        entity: &EntityId,
+        entity: EntityId,
         relation: R,
-        target: &EntityId,
+        target: EntityId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity>
     where
         R: Relation,
     {
-        use crate::relation::{OriginComponent, TargetComponent};
-
         self.entities.get(entity).ok_or(NoSuchEntity)?;
         self.entities.get(target).ok_or(NoSuchEntity)?;
 
         self.epoch += 1;
 
         if R::SYMMETRIC {
-            insert_relation_component(
+            insert_component(
                 self,
-                *entity,
-                (*target, relation),
+                entity,
+                relation,
                 encoder,
-                |(target, relation)| OriginComponent::new(target, relation),
-                |entity, component, (target, relation), encoder| {
-                    component.set(entity, target, relation, encoder)
-                },
+                |relation| OriginComponent::new(target, relation),
+                |component, relation, encoder| component.add(entity, target, relation, encoder),
             );
 
-            if *target != *entity {
-                insert_relation_component(
+            if target != entity {
+                insert_component(
                     self,
-                    *target,
-                    (*entity, relation),
+                    target,
+                    relation,
                     encoder,
-                    |(target, relation)| OriginComponent::new(target, relation),
-                    |entity, component, (target, relation), encoder| {
-                        component.set(entity, target, relation, encoder)
-                    },
+                    |relation| OriginComponent::new(entity, relation),
+                    |component, relation, encoder| component.add(target, entity, relation, encoder),
                 );
             }
         } else {
-            insert_relation_component(
+            insert_component(
                 self,
-                *entity,
-                (*target, relation),
+                entity,
+                relation,
                 encoder,
-                |(target, relation)| OriginComponent::new(target, relation),
-                |entity, component, (target, relation), encoder| {
-                    component.set(entity, target, relation, encoder)
-                },
+                |relation| OriginComponent::new(target, relation),
+                |component, relation, encoder| component.add(entity, target, relation, encoder),
             );
 
-            insert_relation_component(
+            insert_component(
                 self,
-                *target,
-                *entity,
+                target,
+                (),
                 encoder,
-                |entity| TargetComponent::<R>::new(entity),
-                |_, component, entity, _| component.set(entity),
+                |()| TargetComponent::<R>::new(entity),
+                |component, (), _| component.add(entity),
             );
         }
         Ok(())
     }
 
-    /// Checks that entity has components of all types from the bundle.
-    /// Pins those types to the entity.
-    ///
-    /// Pinning serves as API level contract.
-    ///
-    /// Pinned components are not enforced to stay at entity
-    /// and can be removed using `World::remove` or `World::remove_bundle`
-    /// with a clone of the `Entity` without component types pinned.
-    #[cfg(feature = "rc")]
+    /// Adds relation between two entities to the [`World`]
     #[inline]
-    pub fn pin_bundle<B>(&mut self, entity: Entity) -> Entity<B>
+    pub fn drop_relation<R>(
+        &mut self,
+        entity: EntityId,
+        target: EntityId,
+    ) -> Result<(), NoSuchEntity>
     where
-        B: Bundle,
+        R: Relation,
     {
-        if !B::static_valid() {
-            panic!(
-                "Specified bundle `{}` is not valid. Check for duplicate component types",
-                type_name::<B>()
-            );
-        }
-
-        assert!(self.entities.is_owner_of(&entity));
-
-        let (archetype, _idx) = self.entities.get(&entity).unwrap();
-
-        let archetype = &self.archetypes[archetype as usize];
-
-        if B::static_with_ids(|ids| ids.iter().any(|&id| !archetype.contains_id(id))) {
-            panic!("Attampt to pin missing components");
-        }
-
-        entity.with_bundle()
+        with_encoder!(self, encoder => self.drop_relation_with_encoder::<R>(entity, target, &mut encoder))
     }
 
-    /// Queries components from specified entity.
-    ///
-    /// Requires access to all components in query.
-    /// Components proved by entity reference must be queried or skipped in order
-    /// followed by list of optionals.
-    ///
-    /// # Panics
-    ///
-    /// If `Entity` was not created by this world, this function will panic.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn get<'a, Q, A: 'a>(&'a self, entity: &Entity<A>) -> PhantomQueryItem<'a, Q>
+    /// Adds relation between two entities to the [`World`]
+    pub fn drop_relation_with_encoder<R>(
+        &mut self,
+        entity: EntityId,
+        target: EntityId,
+        encoder: &mut ActionEncoder,
+    ) -> Result<(), NoSuchEntity>
     where
-        &'a A: Proof<Q>,
-        Q: ImmutablePhantomQuery,
+        R: Relation,
     {
-        self.query_one::<Q>(entity).expect("Query is proven")
-    }
+        self.entities.get(entity).ok_or(NoSuchEntity)?;
+        self.entities.get(target).ok_or(NoSuchEntity)?;
 
-    /// Queries components from specified entity.
-    ///
-    /// Requires access to all components in query.
-    /// Components proved by entity reference must be queried or skipped in order
-    /// followed by list of optionals.
-    ///
-    /// # Panics
-    ///
-    /// If `Entity` was not created by this world, this function will panic.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn get_mut<'a, Q, A: 'a>(&'a mut self, entity: &Entity<A>) -> PhantomQueryItem<'a, Q>
-    where
-        &'a mut A: Proof<Q>,
-        Q: PhantomQuery,
-    {
-        self.query_one_mut::<Q>(entity).expect("Query is proven")
+        if let Ok(c) = self.query_one_mut::<&mut OriginComponent<R>>(entity) {
+            c.remove(entity, target, encoder);
+        }
+
+        Ok(())
     }
 
     /// Queries components from specified entity.
@@ -885,7 +668,7 @@ impl World {
     #[inline]
     pub fn query_one<'a, Q>(
         &'a self,
-        entity: &EntityId,
+        entity: EntityId,
     ) -> Result<PhantomQueryItem<'a, Q>, QueryOneError>
     where
         Q: ImmutablePhantomQuery,
@@ -899,7 +682,7 @@ impl World {
     #[inline]
     pub fn query_one_state<'a, Q>(
         &'a self,
-        entity: &EntityId,
+        entity: EntityId,
         mut query: Q,
     ) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
@@ -943,7 +726,7 @@ impl World {
     #[inline]
     pub fn query_one_mut<'a, Q>(
         &'a mut self,
-        entity: &EntityId,
+        entity: EntityId,
     ) -> Result<PhantomQueryItem<'a, Q>, QueryOneError>
     where
         Q: PhantomQuery,
@@ -957,7 +740,7 @@ impl World {
     #[inline]
     pub fn query_one_state_mut<'a, Q>(
         &'a mut self,
-        entity: &EntityId,
+        entity: EntityId,
         mut query: Q,
     ) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
@@ -1005,99 +788,18 @@ impl World {
         self.epoch
     }
 
-    /// Run world maintenance, completing all deferred operations on it.
-    ///
-    /// Currently deferred operations are:
-    /// * Despawn of entities with no strong references left
-    #[inline]
-    pub fn maintain(&mut self) {
-        #[cfg(feature = "rc")]
-        {
-            let mut encoder = self
-                .cached_encoder
-                .take()
-                .unwrap_or_else(ActionEncoder::new);
-
-            let queue = self.entities.drop_queue();
-
-            loop {
-                queue.drain(&mut self.drop_queue);
-
-                if self.drop_queue.is_empty() {
-                    if encoder.execute(self) {
-                        // Check again.
-                        continue;
-                    }
-
-                    break;
-                }
-
-                #[inline(never)]
-                #[cold]
-                fn missing_entity() -> EntityId {
-                    panic!("Drop queue yielded non-existing entity")
-                }
-
-                for id in self.drop_queue.drain(..) {
-                    let entity = self.entities.get_entity(id).unwrap_or_else(missing_entity);
-
-                    let (archetype, idx) = self.entities.dropped(id);
-                    let opt_id = unsafe {
-                        self.archetypes[archetype as usize].despawn_unchecked(
-                            entity,
-                            idx,
-                            &mut encoder,
-                        )
-                    };
-                    if let Some(id) = opt_id {
-                        self.entities.set_location(id, archetype, idx)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Transfers ownership of the entity from the caller to the `World`.
-    /// After this call, entity won't be despawned until [`World::despawn`] is called with this entity id.
-    #[cfg(feature = "rc")]
-    pub fn keep<T>(&mut self, entity: Entity<T>) {
-        assert!(self.entities.is_owner_of(&entity));
-        self.entities.give_ownership(entity);
-    }
-
-    /// Transfers ownership of the entity from the `World` to the caller.
-    /// After this call, entity should be despawned by dropping returned entity reference,
-    /// or by returning ownership to the `World` and then called [`World::despawn`]
-    ///
-    /// Returns error if entity with specified id does not exists,
-    /// or if that entity is not owned by the `World`.
-    #[cfg(feature = "rc")]
-    pub fn take(&mut self, entity: &EntityId) -> Result<Entity, OwnershipError> {
-        self.entities.take_ownership(entity)
-    }
-
-    /// Checks if specified entity has componet of specified type.
-    #[cfg(feature = "rc")]
-    #[inline]
-    pub fn has_component_owning<T: 'static, U>(&self, entity: &Entity<U>) -> bool {
-        assert!(self.entities.is_owner_of(entity));
-
-        let (archetype, _idx) = self.entities.get(entity).unwrap();
-        self.archetypes[archetype as usize].contains_id(TypeId::of::<T>())
-    }
-
     /// Attemtps to check if specified entity has componet of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn has_component<T: 'static>(&self, entity: &EntityId) -> Result<bool, NoSuchEntity> {
+    pub fn has_component<T: 'static>(&self, entity: EntityId) -> Result<bool, NoSuchEntity> {
         let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
         Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
     }
 
     /// Checks if specified entity is still alive.
     #[inline]
-    pub fn is_alive(&self, entity: &EntityId) -> bool {
+    pub fn is_alive(&self, entity: EntityId) -> bool {
         self.entities.get(entity).is_some()
     }
 
@@ -1359,166 +1061,6 @@ where
 {
 }
 
-/// Spawning iterator. Produced by [`World::spawn_batch`].
-#[cfg(feature = "rc")]
-#[allow(missing_debug_implementations)]
-pub struct SpawnBatchOwned<'a, I> {
-    bundles: I,
-    epoch: u64,
-    archetype_idx: u32,
-    archetype: &'a mut Archetype,
-    entities: &'a mut Entities,
-}
-
-#[cfg(feature = "rc")]
-impl<B, I> Iterator for SpawnBatchOwned<'_, I>
-where
-    I: Iterator<Item = B>,
-    B: Bundle,
-{
-    type Item = Entity;
-
-    fn next(&mut self) -> Option<Entity> {
-        let bundle = self.bundles.next()?;
-
-        let entity = self.entities.spawn_owning();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
-
-        self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
-
-        Some(entity)
-    }
-
-    fn nth(&mut self, n: usize) -> Option<Entity> {
-        // No reason to create entities
-        // for which the only reference is immediatelly dropped
-        let bundle = self.bundles.nth(n)?;
-
-        let entity = self.entities.spawn_owning();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
-
-        self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
-
-        Some(entity)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.bundles.size_hint()
-    }
-
-    fn fold<T, F>(mut self, init: T, mut f: F) -> T
-    where
-        F: FnMut(T, Entity) -> T,
-    {
-        spawn_reserve(&self.bundles, self.archetype);
-
-        let entities = &mut self.entities;
-        let archetype = &mut self.archetype;
-        let archetype_idx = self.archetype_idx;
-        let epoch = self.epoch;
-
-        self.bundles.fold(init, |acc, bundle| {
-            let entity = entities.spawn_owning();
-            let idx = archetype.spawn(*entity, bundle, epoch);
-            entities.set_location(entity.idx(), archetype_idx, idx);
-            f(acc, entity)
-        })
-    }
-
-    fn collect<T>(self) -> T
-    where
-        T: FromIterator<Entity>,
-    {
-        // `FromIterator::from_iter` would probably just call `fn next()`
-        // until the end of the iterator.
-        //
-        // Hence we should reserve space in archetype here.
-        spawn_reserve(&self.bundles, self.archetype);
-
-        FromIterator::from_iter(self)
-    }
-
-    fn count(self) -> usize {
-        // Entities are conceptually despawned immediately.
-        // Just report the count in this case.
-        self.bundles.count()
-    }
-}
-
-#[cfg(feature = "rc")]
-impl<B, I> ExactSizeIterator for SpawnBatchOwned<'_, I>
-where
-    I: ExactSizeIterator<Item = B>,
-    B: Bundle,
-{
-    fn len(&self) -> usize {
-        self.bundles.len()
-    }
-}
-
-#[cfg(feature = "rc")]
-impl<B, I> DoubleEndedIterator for SpawnBatchOwned<'_, I>
-where
-    I: DoubleEndedIterator<Item = B>,
-    B: Bundle,
-{
-    fn next_back(&mut self) -> Option<Entity> {
-        let bundle = self.bundles.next_back()?;
-
-        let entity = self.entities.spawn_owning();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
-
-        self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
-
-        Some(entity)
-    }
-
-    fn nth_back(&mut self, n: usize) -> Option<Entity> {
-        // No reason to create entities
-        // for which the only reference is immediatelly dropped
-        let bundle = self.bundles.nth_back(n)?;
-
-        let entity = self.entities.spawn_owning();
-        let idx = self.archetype.spawn(*entity, bundle, self.epoch);
-
-        self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
-
-        Some(entity)
-    }
-
-    fn rfold<T, F>(mut self, init: T, mut f: F) -> T
-    where
-        Self: Sized,
-        F: FnMut(T, Entity) -> T,
-    {
-        spawn_reserve(&self.bundles, self.archetype);
-
-        let entities = &mut self.entities;
-        let archetype = &mut self.archetype;
-        let archetype_idx = self.archetype_idx;
-        let epoch = self.epoch;
-
-        self.bundles.rfold(init, |acc, bundle| {
-            let entity = entities.spawn_owning();
-            let idx = archetype.spawn(*entity, bundle, epoch);
-            entities.set_location(entity.idx(), archetype_idx, idx);
-            f(acc, entity)
-        })
-    }
-}
-
-#[cfg(feature = "rc")]
-impl<B, I> FusedIterator for SpawnBatchOwned<'_, I>
-where
-    I: FusedIterator<Item = B>,
-    B: Bundle,
-{
-}
-
 /// Error returned in case specified [`EntityId`]
 /// does not reference any live entity in the [`World`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1647,73 +1189,25 @@ impl PartialEq<NoSuchEntity> for QueryOneError {
     }
 }
 
-/// Error that may occur when function expects `World` to own an entity with specific id.
-#[cfg(feature = "rc")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum OwnershipError {
-    /// Error returned in case specified [`EntityId`]
-    /// does not reference any live entity in the [`World`].
-    NoSuchEntity,
-
-    /// Error returned in case specified [`EntityId`]
-    /// does not reference an entity currently owned by [`World`].
-    NotOwned,
-}
-
-#[cfg(feature = "rc")]
-impl From<NoSuchEntity> for OwnershipError {
-    fn from(_: NoSuchEntity) -> Self {
-        OwnershipError::NoSuchEntity
-    }
-}
-
-#[cfg(feature = "rc")]
-impl PartialEq<NoSuchEntity> for OwnershipError {
-    fn eq(&self, _: &NoSuchEntity) -> bool {
-        matches!(self, OwnershipError::NoSuchEntity)
-    }
-}
-
-#[cfg(feature = "rc")]
-impl fmt::Display for OwnershipError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
-            Self::NotOwned => f.write_str("Entity is not owned by World"),
-        }
-    }
-}
-
-#[cfg(feature = "rc")]
-#[cfg(feature = "std")]
-impl std::error::Error for OwnershipError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NoSuchEntity => Some(&NoSuchEntity),
-            _ => None,
-        }
-    }
-}
-
-/// Inserts relation component.
+/// Inserts component.
 /// This function uses different code to assign component when it already exists on entity.
-fn insert_relation_component<T, C>(
+fn insert_component<T, C>(
     world: &mut World,
     entity: EntityId,
     value: T,
     encoder: &mut ActionEncoder,
     into_component: impl FnOnce(T) -> C,
-    set_component: impl FnOnce(EntityId, &mut C, T, &mut ActionEncoder),
+    set_component: impl FnOnce(&mut C, T, &mut ActionEncoder),
 ) where
     C: Component,
 {
-    let (src_archetype, idx) = world.entities.get(&entity).unwrap();
+    let (src_archetype, idx) = world.entities.get(entity).unwrap();
 
     if world.archetypes[src_archetype as usize].contains_id(TypeId::of::<C>()) {
         let component =
             unsafe { world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch) };
 
-        set_component(entity, component, value, encoder);
+        set_component(component, value, encoder);
 
         return;
     }

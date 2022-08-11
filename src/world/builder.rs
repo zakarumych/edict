@@ -1,8 +1,5 @@
 use alloc::vec;
 
-#[cfg(feature = "rc")]
-use alloc::vec::Vec;
-
 use crate::{
     action::ActionEncoder,
     archetype::Archetype,
@@ -36,15 +33,10 @@ impl WorldBuilder {
 
         World {
             epoch: 0,
-            #[cfg(feature = "rc")]
-            entities: Entities::new(1024),
-            #[cfg(not(feature = "rc"))]
             entities: Entities::new(),
             archetypes: vec![null_archetype],
             edges: Edges::new(),
             registry: self.registry,
-            #[cfg(feature = "rc")]
-            drop_queue: Vec::new(),
             cached_encoder: Some(ActionEncoder::new()),
         }
     }

@@ -89,7 +89,7 @@ impl ActionEncoder {
     {
         self.actions.push_back(Action::Fun(ActionFn::new(
             move |world: &mut World, encoder: &mut ActionEncoder| {
-                let _ = world.drop_bundle_with_encoder::<B>(&entity, encoder);
+                let _ = world.drop_bundle_with_encoder::<B>(entity, encoder);
             },
         )));
         self
@@ -126,13 +126,13 @@ impl ActionEncoder {
         while let Some(action) = self.actions.pop_front() {
             match action {
                 Action::Remove(entity, id) => {
-                    let _ = world.drop_erased_with_encoder(&entity, id, self);
+                    let _ = world.drop_erased_with_encoder(entity, id, self);
                 }
                 Action::Despawn(entity) => {
-                    let _ = world.despawn_with_encoder(&entity, self);
+                    let _ = world.despawn_with_encoder(entity, self);
                 }
                 Action::Insert(entity, bundle) => {
-                    let _ = world.try_insert_bundle_with_encoder(&entity, bundle, self);
+                    let _ = world.insert_bundle_with_encoder(entity, bundle, self);
                 }
                 Action::Fun(fun) => {
                     fun.call(world, self);

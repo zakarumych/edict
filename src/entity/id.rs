@@ -22,7 +22,7 @@ impl EntityId {
         }
     }
 
-    /// Returns expired weak entity.
+    /// Returns expired entity id.
     ///
     /// This function exists primarily to make dummy EntityId values.
     ///
@@ -31,8 +31,8 @@ impl EntityId {
     /// ```
     /// # use edict::prelude::{World, EntityId};
     /// # let mut world = World::new();
-    /// let weak = EntityId::dangling();
-    /// assert_eq!(world.is_alive(&weak), false);
+    /// let id = EntityId::dangling();
+    /// assert_eq!(world.is_alive(id), false);
     /// ```
     pub fn dangling() -> Self {
         EntityId::new(0, invalid_gen())

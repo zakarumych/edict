@@ -9,10 +9,8 @@ use crate::{
         ImmutableQuery, Modified, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny,
         QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
+    relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
 };
-
-#[cfg(feature = "relation")]
-use crate::relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo};
 
 pub trait ExtendTuple<E>: Sized {
     type Output;
@@ -131,7 +129,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn with_relation_to<R>(self, target: EntityId) -> QueryMut<'a, Q, (WithRelationTo<R>, F)>
     where
         R: Relation,
@@ -192,7 +189,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn relation<R>(
         self,
     ) -> QueryMut<'a, <Q as ExtendTuple<PhantomData<QueryRelation<R>>>>::Output, F>
@@ -209,7 +205,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn relation_to<R>(
         self,
         entity: EntityId,
@@ -227,7 +222,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn related<R>(
         self,
     ) -> QueryMut<'a, <Q as ExtendTuple<PhantomData<QueryRelated<R>>>>::Output, F>
@@ -475,7 +469,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn with_relation_to<R>(self, target: EntityId) -> QueryRef<'a, Q, (WithRelationTo<R>, F)>
     where
         R: Relation,
@@ -503,7 +496,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn relation<R>(
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelation<R>>>>::Output, F>
@@ -520,7 +512,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn relation_to<R>(
         self,
         entity: EntityId,
@@ -538,7 +529,6 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[cfg(feature = "relation")]
     pub fn related<R>(
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelated<R>>>>::Output, F>

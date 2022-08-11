@@ -63,7 +63,7 @@ impl ComponentData {
     pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
         if self.info.layout().size() != 0 {
             let new_layout = Layout::from_size_align(
-                self.info.layout().size().checked_mul(len).unwrap(),
+                self.info.layout().size().checked_mul(new_cap).unwrap(),
                 self.info.layout().align(),
             )
             .unwrap();
@@ -706,15 +706,15 @@ impl Archetype {
 
     #[inline]
     pub(crate) fn reserve(&mut self, additional: usize) {
-        let cap = self.entities.capacity();
+        let old_cap = self.entities.capacity();
         self.entities.reserve(additional);
 
-        if cap != self.entities.capacity() {
+        if old_cap != self.entities.capacity() {
             // Capacity changed
             for &idx in &*self.indices {
                 let component = &mut self.components[idx];
                 unsafe {
-                    component.grow(self.entities.len(), cap, self.entities.capacity());
+                    component.grow(self.entities.len(), old_cap, self.entities.capacity());
                 }
             }
         }

@@ -2,7 +2,7 @@
 
 use core::{
     alloc::Layout,
-    any::{type_name, TypeId},
+    any::{type_name, Any, TypeId},
     borrow::{Borrow, BorrowMut},
     marker::PhantomData,
     mem::{transmute, ManuallyDrop},
@@ -10,9 +10,9 @@ use core::{
 };
 
 use alloc::sync::Arc;
-use hashbrown::hash_map::HashMap;
+use hashbrown::hash_map::{Entry, HashMap};
 
-use crate::{action::ActionEncoder, any::UnsafeAny, entity::EntityId, hash::NoOpHasherBuilder};
+use crate::{action::ActionEncoder, entity::EntityId, hash::NoOpHasherBuilder};
 
 #[doc(hidden)]
 pub type BorrowFn<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r ()>) -> &'r T;
@@ -182,14 +182,14 @@ pub struct ComponentInfo {
     drop_one: DropOneFn,
 
     /// Context for `drop_one` command when component is dropped.
-    on_drop: Arc<UnsafeAny>,
+    on_drop: Arc<dyn Any + Send + Sync>,
 
     /// Function that replaces component at target location.
     /// Supports custom hooks.
     set_one: SetOneFn,
 
     /// Context for `set_one` command.
-    on_set: Arc<UnsafeAny>,
+    on_set: Arc<dyn Any + Send + Sync>,
 
     /// Function that calls drop glue for a component.
     /// Does not support custom hooks.
@@ -211,11 +211,30 @@ impl ComponentInfo {
             layout: Layout::new::<T>(),
             debug_name: type_name::<T>(),
             drop_one: drop_one::<T, DefaultDropHook>,
-            on_drop: UnsafeAny::from_arc(Arc::new(DefaultDropHook)),
+            on_drop: Arc::new(DefaultDropHook),
             set_one: set_one::<T, DefaultSetHook, DefaultDropHook>,
-            on_set: UnsafeAny::from_arc(Arc::new(DefaultSetHook)),
+            on_set: Arc::new(DefaultSetHook),
             final_drop: final_drop::<T>,
             borrows: T::borrows(|slice| Arc::from(slice)),
+        }
+    }
+
+    /// Returns component information for specified external type.
+    #[inline(always)]
+    pub fn external<T>() -> Self
+    where
+        T: 'static,
+    {
+        ComponentInfo {
+            id: TypeId::of::<T>(),
+            layout: Layout::new::<T>(),
+            debug_name: type_name::<T>(),
+            drop_one: drop_one::<T, ExternalDropHook>,
+            on_drop: Arc::new(ExternalDropHook),
+            set_one: set_one::<T, ExternalSetHook, ExternalDropHook>,
+            on_set: Arc::new(ExternalSetHook),
+            final_drop: final_drop::<T>,
+            borrows: Arc::new([]),
         }
     }
 
@@ -340,27 +359,80 @@ where
     }
 }
 
+/// External drop hook type.
+#[derive(Clone, Copy, Debug)]
+pub struct ExternalDropHook;
+
+impl<T> DropHook<T> for ExternalDropHook {
+    fn on_drop(&self, _component: &mut T, _entity: EntityId, _encoder: &mut ActionEncoder) {}
+}
+
+/// External set hook type.
+#[derive(Clone, Copy, Debug)]
+pub struct ExternalSetHook;
+
+impl<T> SetHook<T> for ExternalSetHook {
+    fn on_set(
+        &self,
+        _dst: &mut T,
+        _src: &T,
+        _entity: EntityId,
+        _encoder: &mut ActionEncoder,
+    ) -> bool {
+        false
+    }
+}
+
 /// Reference to [`ComponentInfo`] registered to [`ComponentRegistry`].
 /// Allows user to setup custom drop and set hooks.
 #[allow(missing_debug_implementations)]
 pub struct ComponentInfoRef<
     'a,
-    T: Component,
+    T: 'static,
     D: DropHook<T> = DefaultDropHook,
     S: SetHook<T> = DefaultSetHook,
 > {
-    info: &'a mut ComponentInfo,
+    info: Option<&'a mut ComponentInfo>,
     phantom: PhantomData<T>,
     drop: ManuallyDrop<D>,
     set: ManuallyDrop<S>,
 }
 
-impl<'a, T, D, S> ComponentInfoRef<'a, T, D, S>
+impl<T, D, S> Drop for ComponentInfoRef<'_, T, D, S>
 where
-    T: Component,
+    T: 'static,
     D: DropHook<T>,
     S: SetHook<T>,
 {
+    #[inline]
+    fn drop(&mut self) {
+        self.drop_impl();
+    }
+}
+
+impl<'a, T, D, S> ComponentInfoRef<'a, T, D, S>
+where
+    T: 'static,
+    D: DropHook<T>,
+    S: SetHook<T>,
+{
+    #[inline]
+    fn drop_impl(&mut self) {
+        self.info.as_mut().unwrap().drop_one = drop_one::<T, D>;
+        self.info.as_mut().unwrap().on_drop =
+            Arc::new(unsafe { ManuallyDrop::take(&mut self.drop) });
+        self.info.as_mut().unwrap().set_one = set_one::<T, S, D>;
+        self.info.as_mut().unwrap().on_set = Arc::new(unsafe { ManuallyDrop::take(&mut self.set) });
+    }
+
+    /// Finishes component registration.
+    /// Returns resulting [`ComponentInfo`]
+    pub fn finish(self) -> &'a ComponentInfo {
+        let mut me = ManuallyDrop::new(self);
+        me.drop_impl();
+        me.info.take().unwrap()
+    }
+
     /// Configures drop hook for this component.
     /// Drop hook is executed when component is dropped.
     ///
@@ -419,23 +491,6 @@ where
     }
 }
 
-impl<T, D, S> Drop for ComponentInfoRef<'_, T, D, S>
-where
-    T: Component,
-    D: DropHook<T>,
-    S: SetHook<T>,
-{
-    #[inline]
-    fn drop(&mut self) {
-        self.info.drop_one = drop_one::<T, D>;
-        self.info.on_drop =
-            UnsafeAny::from_arc(Arc::new(unsafe { ManuallyDrop::take(&mut self.drop) }));
-        self.info.set_one = set_one::<T, S, D>;
-        self.info.on_set =
-            UnsafeAny::from_arc(Arc::new(unsafe { ManuallyDrop::take(&mut self.set) }));
-    }
-}
-
 /// Container for [`ComponentInfo`]s.
 pub(crate) struct ComponentRegistry {
     components: HashMap<TypeId, ComponentInfo, NoOpHasherBuilder>,
@@ -448,25 +503,62 @@ impl ComponentRegistry {
         }
     }
 
-    pub fn register<T>(&mut self) -> ComponentInfoRef<'_, T>
+    pub fn get_or_register<T>(&mut self) -> &ComponentInfo
     where
         T: Component,
     {
-        let info = self
-            .components
+        self.components
             .entry(TypeId::of::<T>())
-            .or_insert_with(ComponentInfo::of::<T>);
+            .or_insert_with(ComponentInfo::of::<T>)
+    }
+
+    pub fn get_or_register_raw(&mut self, info: ComponentInfo) -> &ComponentInfo {
+        self.components.entry(info.id()).or_insert(info)
+    }
+
+    pub fn register_raw(&mut self, info: ComponentInfo) {
+        match self.components.entry(info.id()) {
+            Entry::Occupied(_) => panic!("Component already registered"),
+            Entry::Vacant(e) => {
+                e.insert(info);
+            }
+        }
+    }
+
+    pub fn register_component<'a, T>(&'a mut self) -> ComponentInfoRef<'a, T>
+    where
+        T: Component,
+    {
+        let info = match self.components.entry(TypeId::of::<T>()) {
+            Entry::Occupied(_) => panic!("Component already registered"),
+            Entry::Vacant(e) => e.insert(ComponentInfo::of::<T>()),
+        };
 
         ComponentInfoRef {
-            info,
+            info: Some(info),
             phantom: PhantomData,
             drop: ManuallyDrop::new(DefaultDropHook),
             set: ManuallyDrop::new(DefaultSetHook),
         }
     }
 
-    pub fn register_erased(&mut self, info: ComponentInfo) {
-        self.components.entry(info.id).or_insert(info);
+    pub fn register_external<'a, T>(
+        &'a mut self,
+    ) -> ComponentInfoRef<'a, T, ExternalDropHook, ExternalSetHook>
+    where
+        T: 'static,
+    {
+        let info = match self.components.entry(TypeId::of::<T>()) {
+            Entry::Occupied(_) => panic!("Component already registered"),
+            Entry::Vacant(e) => e.insert(ComponentInfo::external::<T>()),
+        };
+
+        ComponentInfoRef {
+            info: Some(info),
+            phantom: PhantomData,
+            drop: ManuallyDrop::new(ExternalDropHook),
+            set: ManuallyDrop::new(ExternalSetHook),
+        }
     }
 
     pub fn get_info(&self, id: TypeId) -> Option<&ComponentInfo> {
@@ -474,43 +566,43 @@ impl ComponentRegistry {
     }
 }
 
-type DropOneFn = unsafe fn(&UnsafeAny, NonNull<u8>, EntityId, &mut ActionEncoder);
+type DropOneFn = unsafe fn(&dyn Any, NonNull<u8>, EntityId, &mut ActionEncoder);
 type SetOneFn =
-    unsafe fn(&UnsafeAny, &UnsafeAny, NonNull<u8>, NonNull<u8>, EntityId, &mut ActionEncoder);
+    unsafe fn(&dyn Any, &dyn Any, NonNull<u8>, NonNull<u8>, EntityId, &mut ActionEncoder);
 type FinalDrop = unsafe fn(NonNull<u8>, usize);
 
 unsafe fn drop_one<T, D>(
-    hook: &UnsafeAny,
+    hook: &dyn Any,
     ptr: NonNull<u8>,
     entity: EntityId,
     encoder: &mut ActionEncoder,
 ) where
-    T: Component,
+    T: 'static,
     D: DropHook<T>,
 {
     let mut ptr = ptr.cast::<T>();
-    let hook = hook.downcast_ref_unchecked::<D>();
+    let hook = &*(hook as *const _ as *const D);
     hook.on_drop(ptr.as_mut(), entity, encoder);
     drop_in_place(ptr.as_mut());
 }
 
 unsafe fn set_one<T, S, D>(
-    on_set: &UnsafeAny,
-    on_drop: &UnsafeAny,
+    on_set: &dyn Any,
+    on_drop: &dyn Any,
     dst: NonNull<u8>,
     src: NonNull<u8>,
     entity: EntityId,
     encoder: &mut ActionEncoder,
 ) where
-    T: Component,
+    T: 'static,
     S: SetHook<T>,
     D: DropHook<T>,
 {
     let src = src.cast::<T>();
     let mut dst = dst.cast::<T>();
-    let on_set = on_set.downcast_ref_unchecked::<S>();
+    let on_set = &*(on_set as *const _ as *const S);
     if on_set.on_set(dst.as_mut(), src.as_ref(), entity, encoder) {
-        let on_drop = on_drop.downcast_ref_unchecked::<D>();
+        let on_drop = &*(on_drop as *const _ as *const D);
         on_drop.on_drop(dst.as_mut(), entity, encoder);
     }
     *dst.as_mut() = ptr::read(src.as_ref());

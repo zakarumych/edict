@@ -14,8 +14,11 @@ use alloc::vec::Vec;
 use crate::{
     action::ActionEncoder,
     archetype::{chunk_idx, Archetype},
-    bundle::{Bundle, DynamicBundle},
-    component::{Component, ComponentRegistry},
+    bundle::{
+        Bundle, BundleDesc, ComponentBundle, ComponentBundleDesc, DynamicBundle,
+        DynamicComponentBundle,
+    },
+    component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entities, EntityId},
     query::{
         debug_assert_immutable_query, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery,
@@ -138,7 +141,25 @@ impl World {
     #[inline]
     pub fn spawn<B>(&mut self, bundle: B) -> EntityId
     where
+        B: DynamicComponentBundle,
+    {
+        self.spawn_impl(bundle, register_bundle::<B>)
+    }
+
+    /// Spawns new entity in this world with provided bundle of components.
+    /// World keeps ownership of the spawned entity and entity id is returned.
+    #[inline]
+    pub fn spawn_external<B>(&mut self, bundle: B) -> EntityId
+    where
         B: DynamicBundle,
+    {
+        self.spawn_impl(bundle, assert_registered_bundle::<B>)
+    }
+
+    fn spawn_impl<B, F>(&mut self, bundle: B, register_bundle: F) -> EntityId
+    where
+        B: DynamicBundle,
+        F: FnOnce(&mut ComponentRegistry, &B),
     {
         if !bundle.valid() {
             panic!(
@@ -149,9 +170,12 @@ impl World {
 
         let entity = self.entities.spawn();
 
-        let archetype_idx = self
-            .edges
-            .spawn(&mut self.registry, &mut self.archetypes, &bundle);
+        let archetype_idx = self.edges.spawn(
+            &mut self.registry,
+            &mut self.archetypes,
+            &bundle,
+            |registry| register_bundle(registry, &bundle),
+        );
 
         self.epoch += 1;
         let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, self.epoch);
@@ -180,7 +204,50 @@ impl World {
     pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
+        B: ComponentBundle,
+    {
+        self.spawn_batch_impl(bundles, |registry| {
+            register_bundle(registry, &PhantomData::<B>)
+        })
+    }
+
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles returnd from provided iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will not cause them to be spawned
+    /// and same number of items will be skipped on bundles iterator.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    #[inline]
+    pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
+    where
+        I: IntoIterator<Item = B>,
         B: Bundle,
+    {
+        self.spawn_batch_impl(bundles, |registry| {
+            assert_registered_bundle(registry, &PhantomData::<B>)
+        })
+    }
+
+    fn spawn_batch_impl<B, I, F>(
+        &mut self,
+        bundles: I,
+        register_bundle: F,
+    ) -> SpawnBatch<'_, I::IntoIter>
+    where
+        I: IntoIterator<Item = B>,
+        B: Bundle,
+        F: FnOnce(&mut ComponentRegistry),
     {
         if !B::static_valid() {
             panic!(
@@ -194,6 +261,7 @@ impl World {
             &mut self.archetypes,
             0,
             &PhantomData::<I::Item>,
+            register_bundle,
         );
 
         self.epoch += 1;
@@ -256,6 +324,21 @@ impl World {
         with_encoder!(self, encoder => self.insert_with_encoder(entity, component, &mut encoder))
     }
 
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    #[inline]
+    pub fn insert_external<T>(&mut self, entity: EntityId, component: T) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        with_encoder!(self, encoder => self.insert_with_encoder_external(entity, component, &mut encoder))
+    }
+
     #[inline]
     pub(crate) fn insert_with_encoder<T>(
         &mut self,
@@ -265,6 +348,34 @@ impl World {
     ) -> Result<(), NoSuchEntity>
     where
         T: Component,
+    {
+        self.insert_with_encoder_impl(entity, component, encoder, register_one::<T>)
+    }
+
+    #[inline]
+    pub(crate) fn insert_with_encoder_external<T>(
+        &mut self,
+        entity: EntityId,
+        component: T,
+        encoder: &mut ActionEncoder,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        self.insert_with_encoder_impl(entity, component, encoder, assert_registered_one::<T>)
+    }
+
+    #[inline]
+    pub(crate) fn insert_with_encoder_impl<T, F>(
+        &mut self,
+        entity: EntityId,
+        component: T,
+        encoder: &mut ActionEncoder,
+        get_or_register: F,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+        F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
@@ -279,9 +390,13 @@ impl World {
             return Ok(());
         }
 
-        let dst_archetype =
-            self.edges
-                .insert::<T>(&mut self.registry, &mut self.archetypes, src_archetype);
+        let dst_archetype = self.edges.insert(
+            TypeId::of::<T>(),
+            &mut self.registry,
+            &mut self.archetypes,
+            src_archetype,
+            get_or_register,
+        );
 
         debug_assert_ne!(src_archetype, dst_archetype);
 
@@ -313,7 +428,7 @@ impl World {
     #[inline]
     pub fn remove<T>(&mut self, entity: EntityId) -> Result<T, EntityError>
     where
-        T: Component,
+        T: 'static,
     {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
 
@@ -357,7 +472,7 @@ impl World {
     #[inline]
     pub fn drop<T>(&mut self, entity: EntityId) -> Result<(), EntityError>
     where
-        T: Component,
+        T: 'static,
     {
         self.drop_erased(entity, TypeId::of::<T>())
     }
@@ -423,7 +538,7 @@ impl World {
     #[inline]
     pub fn insert_bundle<B>(&mut self, entity: EntityId, bundle: B) -> Result<(), NoSuchEntity>
     where
-        B: DynamicBundle,
+        B: DynamicComponentBundle,
     {
         with_encoder!(self, encoder => self.insert_bundle_with_encoder(entity, bundle, &mut encoder))
     }
@@ -436,7 +551,56 @@ impl World {
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity>
     where
+        B: DynamicComponentBundle,
+    {
+        self.insert_bundle_with_encoder_impl(entity, bundle, encoder, register_bundle::<B>)
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    #[inline]
+    pub fn insert_external_bundle<B>(
+        &mut self,
+        entity: EntityId,
+        bundle: B,
+    ) -> Result<(), NoSuchEntity>
+    where
         B: DynamicBundle,
+    {
+        with_encoder!(self, encoder => self.insert_external_bundle_with_encoder(entity, bundle, &mut encoder))
+    }
+
+    #[inline]
+    pub(crate) fn insert_external_bundle_with_encoder<B>(
+        &mut self,
+        entity: EntityId,
+        bundle: B,
+        encoder: &mut ActionEncoder,
+    ) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicBundle,
+    {
+        self.insert_bundle_with_encoder_impl(entity, bundle, encoder, assert_registered_bundle::<B>)
+    }
+
+    fn insert_bundle_with_encoder_impl<B, F>(
+        &mut self,
+        entity: EntityId,
+        bundle: B,
+        encoder: &mut ActionEncoder,
+        register_bundle: F,
+    ) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicBundle,
+        F: FnOnce(&mut ComponentRegistry, &B),
     {
         if !bundle.valid() {
             panic!(
@@ -458,6 +622,7 @@ impl World {
             &mut self.archetypes,
             src_archetype,
             &bundle,
+            |registry| register_bundle(registry, &bundle),
         );
 
         if dst_archetype == src_archetype {
@@ -1214,10 +1379,13 @@ fn insert_component<T, C>(
 
     let component = into_component(value);
 
-    let dst_archetype =
-        world
-            .edges
-            .insert::<C>(&mut world.registry, &mut world.archetypes, src_archetype);
+    let dst_archetype = world.edges.insert(
+        TypeId::of::<C>(),
+        &mut world.registry,
+        &mut world.archetypes,
+        src_archetype,
+        |registry| registry.get_or_register::<C>(),
+    );
 
     debug_assert_ne!(src_archetype, dst_archetype);
 
@@ -1239,4 +1407,42 @@ fn insert_component<T, C>(
     if let Some(src_id) = opt_src_id {
         world.entities.set_location(src_id, src_archetype, idx);
     }
+}
+
+fn register_one<T: Component>(registry: &mut ComponentRegistry) -> &ComponentInfo {
+    registry.get_or_register::<T>()
+}
+
+fn assert_registered_one<T: 'static>(registry: &mut ComponentRegistry) -> &ComponentInfo {
+    match registry.get_info(TypeId::of::<T>()) {
+        Some(info) => info,
+        None => panic!(
+            "Component {}({:?}) is not registered",
+            type_name::<T>(),
+            TypeId::of::<T>()
+        ),
+    }
+}
+
+fn register_bundle<B: ComponentBundleDesc>(registry: &mut ComponentRegistry, bundle: &B) {
+    bundle.with_components(|infos| {
+        for info in infos {
+            registry.get_or_register_raw(info.clone());
+        }
+    });
+}
+
+fn assert_registered_bundle<B: BundleDesc>(registry: &mut ComponentRegistry, bundle: &B) {
+    bundle.with_ids(|ids| {
+        for (idx, id) in ids.iter().enumerate() {
+            if registry.get_info(*id).is_none() {
+                panic!(
+                    "Component {:?} - ({}[{}]) is not registered",
+                    id,
+                    type_name::<B>(),
+                    idx
+                );
+            }
+        }
+    })
 }

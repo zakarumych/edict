@@ -88,8 +88,7 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        // !archetype.contains_id(TypeId::of::<T>())
-        !archetype.contains_borrow(TypeId::of::<T>())
+        !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]

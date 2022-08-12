@@ -5,6 +5,7 @@ use core::{
     alloc::Layout,
     any::TypeId,
     fmt,
+    marker::PhantomData,
     mem::{align_of, replace, size_of, ManuallyDrop},
     ptr::{self, NonNull},
 };
@@ -13,7 +14,7 @@ use smallvec::SmallVec;
 
 use crate::component::{Component, ComponentInfo};
 
-/// Possible dynamic collection of components that may be inserted into the `World`.
+/// Possibly dynamic collection of components that may be inserted into the `World`.
 ///
 /// # Safety
 ///
@@ -40,12 +41,16 @@ pub unsafe trait DynamicBundle {
     /// Calls provided closure with slice of ids of types that this bundle contains.
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
 
-    /// Calls provided closure with slice of component infos of types that this bundle contains.
-    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
-
     /// Calls provided closure with pointer to a component, its type and size.
     /// Closure is expected to read components from the pointer and take ownership.
     fn put(self, f: impl FnMut(NonNull<u8>, TypeId, usize));
+}
+
+/// Possibly dynamic collection of components that may be inserted into the `World`.
+/// Where all elements implement `Component` and so support auto-registration.
+pub unsafe trait DynamicComponentBundle: DynamicBundle {
+    /// Calls provided closure with slice of component infos of types that this bundle contains.
+    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }
 
 /// Static collection of components that may be inserted into the `World`.
@@ -71,7 +76,11 @@ pub unsafe trait Bundle: DynamicBundle {
 
     /// Calls provided closure with slice of ids of types that this bundle contains.
     fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R;
+}
 
+/// Static collection of components that may be inserted into the `World`.
+/// Where all elements implement `Component` and so support auto-registration.
+pub unsafe trait ComponentBundle: Bundle + DynamicComponentBundle {
     /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }
@@ -109,13 +118,16 @@ macro_rules! for_tuple {
             fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
                 Self::static_with_ids(f)
             }
+
+            #[inline]
+            fn put(self, _f: impl FnMut(NonNull<u8>, TypeId, usize)) {}
+        }
+
+        unsafe impl DynamicComponentBundle for () {
             #[inline]
             fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 Self::static_with_components(f)
             }
-
-            #[inline]
-            fn put(self, _f: impl FnMut(NonNull<u8>, TypeId, usize)) {}
         }
 
         unsafe impl Bundle for () {
@@ -135,7 +147,9 @@ macro_rules! for_tuple {
             fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R {
                 f(&[])
             }
+        }
 
+        unsafe impl ComponentBundle for () {
             #[inline]
             fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 f(&[])
@@ -145,7 +159,7 @@ macro_rules! for_tuple {
 
     (impl $($a:ident)+) => {
         unsafe impl<$($a),+> DynamicBundle for ($($a,)+)
-        where $($a: Component,)+
+        where $($a: 'static,)+
         {
             #[inline]
             fn valid(&self) -> bool {
@@ -168,11 +182,6 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
-                <Self as Bundle>::static_with_components(f)
-            }
-
-            #[inline]
             fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
                 #![allow(non_snake_case)]
 
@@ -184,8 +193,17 @@ macro_rules! for_tuple {
             }
         }
 
-        unsafe impl<$($a),+> Bundle for ($($a,)+)
+        unsafe impl<$($a),+> DynamicComponentBundle for ($($a,)+)
         where $($a: Component,)+
+        {
+            #[inline]
+            fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
+                <Self as ComponentBundle>::static_with_components(f)
+            }
+        }
+
+        unsafe impl<$($a),+> Bundle for ($($a,)+)
+        where $($a: 'static,)+
         {
             fn static_valid() -> bool {
                 let mut ids: &[_] = &[$(TypeId::of::<$a>(),)+];
@@ -216,7 +234,12 @@ macro_rules! for_tuple {
             fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R {
                 f(&[$(TypeId::of::<$a>(),)+])
             }
+        }
 
+
+        unsafe impl<$($a),+> ComponentBundle for ($($a,)+)
+        where $($a: Component,)+
+        {
             #[inline]
             fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 f(&[$(ComponentInfo::of::<$a>(),)+])
@@ -238,6 +261,15 @@ pub struct EntityBuilder {
     ids: SmallVec<[TypeId; 8]>,
     infos: SmallVec<[ComponentInfo; 8]>,
     offsets: SmallVec<[usize; 8]>,
+}
+
+impl Drop for EntityBuilder {
+    fn drop(&mut self) {
+        for (info, &offset) in self.infos.iter().zip(&self.offsets) {
+            let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
+            info.final_drop(ptr, 1);
+        }
+    }
 }
 
 impl fmt::Debug for EntityBuilder {
@@ -390,15 +422,83 @@ unsafe impl DynamicBundle for EntityBuilder {
     }
 
     #[inline]
+    fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
+        let me = ManuallyDrop::new(self);
+        for (info, &offset) in me.infos.iter().zip(&me.offsets) {
+            let ptr = unsafe { NonNull::new_unchecked(me.ptr.as_ptr().add(offset)) };
+            f(ptr, info.id(), info.layout().size());
+        }
+    }
+}
+
+unsafe impl DynamicComponentBundle for EntityBuilder {
+    #[inline]
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
         f(&self.infos)
     }
+}
+
+/// Umbrella trait for [`DynamicBundle`] and [`Bundle`].
+pub(super) trait BundleDesc {
+    /// Returns static key if the bundle type have one.
+    fn key() -> Option<TypeId>;
+
+    /// Calls provided closure with slice of ids of types that this bundle contains.
+    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
+}
+
+/// Umbrella trait for [`DynamicBundle`] and [`Bundle`].
+pub(super) trait ComponentBundleDesc: BundleDesc {
+    /// Calls provided closure with slice of component types that this bundle contains.
+    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
+}
+
+impl<B> BundleDesc for B
+where
+    B: DynamicBundle,
+{
+    #[inline]
+    fn key() -> Option<TypeId> {
+        <B as DynamicBundle>::key()
+    }
 
     #[inline]
-    fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
-        for (info, &offset) in self.infos.iter().zip(&self.offsets) {
-            let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
-            f(ptr, info.id(), info.layout().size());
-        }
+    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
+        DynamicBundle::with_ids(self, f)
+    }
+}
+
+impl<B> ComponentBundleDesc for B
+where
+    B: DynamicComponentBundle,
+{
+    #[inline]
+    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
+        DynamicComponentBundle::with_components(self, f)
+    }
+}
+
+impl<B> BundleDesc for PhantomData<B>
+where
+    B: Bundle,
+{
+    #[inline]
+    fn key() -> Option<TypeId> {
+        Some(B::static_key())
+    }
+
+    #[inline]
+    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
+        B::static_with_ids(f)
+    }
+}
+
+impl<B> ComponentBundleDesc for PhantomData<B>
+where
+    B: ComponentBundle,
+{
+    #[inline]
+    fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
+        B::static_with_components(f)
     }
 }

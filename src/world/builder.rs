@@ -3,7 +3,10 @@ use alloc::vec;
 use crate::{
     action::ActionEncoder,
     archetype::Archetype,
-    component::{Component, ComponentInfoRef, ComponentRegistry},
+    component::{
+        Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
+        ExternalSetHook,
+    },
     entity::Entities,
 };
 
@@ -42,10 +45,25 @@ impl WorldBuilder {
     }
 
     /// Registers new component type and allows modifying it.
+    pub fn register_raw(&mut self, info: ComponentInfo) {
+        self.registry.register_raw(info);
+    }
+
+    /// Registers new component type and allows modifying it.
     pub fn register_component<T>(&mut self) -> ComponentInfoRef<'_, T>
     where
         T: Component,
     {
-        self.registry.register::<T>()
+        self.registry.register_component::<T>()
+    }
+
+    /// Registers new component type and allows modifying it.
+    pub fn register_external<T>(
+        &mut self,
+    ) -> ComponentInfoRef<'_, T, ExternalDropHook, ExternalSetHook>
+    where
+        T: 'static,
+    {
+        self.registry.register_external::<T>()
     }
 }

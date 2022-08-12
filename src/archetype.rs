@@ -17,17 +17,11 @@ use alloc::{
 use hashbrown::HashMap;
 
 use crate::{
-    action::ActionEncoder,
-    bundle::DynamicBundle,
-    component::{Component, ComponentInfo},
-    entity::EntityId,
-    hash::NoOpHasherBuilder,
-    idx::MAX_IDX_USIZE,
-    typeidset::TypeIdSet,
+    action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
+    hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, typeidset::TypeIdSet,
 };
 
 struct Dummy;
-impl Component for Dummy {}
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
@@ -57,7 +51,7 @@ impl ComponentData {
     }
 
     pub fn dummy() -> Self {
-        Self::new(&ComponentInfo::of::<Dummy>())
+        Self::new(&ComponentInfo::external::<Dummy>())
     }
 
     pub fn is_dummy(&self) -> bool {
@@ -439,7 +433,7 @@ impl Archetype {
         epoch: u64,
         encoder: &mut ActionEncoder,
     ) where
-        T: Component,
+        T: 'static,
     {
         let entity_idx = idx as usize;
 
@@ -457,7 +451,7 @@ impl Archetype {
     #[inline]
     pub unsafe fn get<T>(&mut self, idx: u32) -> &T
     where
-        T: Component,
+        T: 'static,
     {
         let entity_idx = idx as usize;
 
@@ -478,7 +472,7 @@ impl Archetype {
     #[inline]
     pub unsafe fn get_mut<T>(&mut self, idx: u32, epoch: u64) -> &mut T
     where
-        T: Component,
+        T: 'static,
     {
         let entity_idx = idx as usize;
         let chunk_idx = chunk_idx(entity_idx);
@@ -584,7 +578,7 @@ impl Archetype {
         epoch: u64,
     ) -> (u32, Option<u32>)
     where
-        T: Component,
+        T: 'static,
     {
         debug_assert!(self.ids().all(|id| dst.set.get(id).is_some()));
         debug_assert!(self.set.get(TypeId::of::<T>()).is_none());
@@ -633,7 +627,7 @@ impl Archetype {
         src_idx: u32,
     ) -> (u32, Option<u32>, T)
     where
-        T: Component,
+        T: 'static,
     {
         debug_assert!(dst.ids().all(|id| self.set.get(id).is_some()));
         debug_assert!(dst.set.get(TypeId::of::<T>()).is_none());
@@ -804,7 +798,7 @@ impl Archetype {
         epoch: u64,
         occupied: Option<&mut ActionEncoder>,
     ) where
-        T: Component,
+        T: 'static,
     {
         let chunk_idx = chunk_idx(entity_idx);
 

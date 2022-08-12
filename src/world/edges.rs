@@ -1,7 +1,6 @@
 use core::{
     any::TypeId,
     hash::{BuildHasher, Hash, Hasher},
-    marker::PhantomData,
 };
 
 use alloc::vec::Vec;
@@ -10,8 +9,7 @@ use hashbrown::hash_map::{Entry, HashMap, RawEntryMut};
 
 use crate::{
     archetype::Archetype,
-    bundle::{Bundle, DynamicBundle},
-    component::Component,
+    bundle::{Bundle, BundleDesc},
     component::{ComponentInfo, ComponentRegistry},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
     idx::MAX_IDX_USIZE,
@@ -58,77 +56,19 @@ impl Edges {
     }
 }
 
-/// Umbrella trait for [`DynamicBundle`] and [`Bundle`].
-pub(super) trait AsBundle {
-    /// Returns static key if the bundle type have one.
-    fn key() -> Option<TypeId>;
-
-    /// Calls provided closure with slice of ids of types that this bundle contains.
-    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
-
-    /// Calls provided closure with slice of component infos of types that this bundle contains.
-    fn register_components(&self, registry: &mut ComponentRegistry);
-}
-
-impl<B> AsBundle for B
-where
-    B: DynamicBundle,
-{
-    #[inline]
-    fn key() -> Option<TypeId> {
-        <B as DynamicBundle>::key()
-    }
-
-    #[inline]
-    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
-        DynamicBundle::with_ids(self, f)
-    }
-
-    #[inline]
-    fn register_components(&self, registry: &mut ComponentRegistry) {
-        DynamicBundle::with_components(self, |infos| {
-            for info in infos {
-                registry.register_erased(info.clone());
-            }
-        })
-    }
-}
-
-impl<B> AsBundle for PhantomData<B>
-where
-    B: Bundle,
-{
-    #[inline]
-    fn key() -> Option<TypeId> {
-        Some(B::static_key())
-    }
-
-    #[inline]
-    fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
-        B::static_with_ids(f)
-    }
-
-    #[inline]
-    fn register_components(&self, registry: &mut ComponentRegistry) {
-        B::static_with_components(|infos| {
-            for info in infos {
-                registry.register_erased(info.clone());
-            }
-        })
-    }
-}
-
 impl Edges {
-    pub fn spawn<B>(
+    pub fn spawn<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
         archetypes: &mut Vec<Archetype>,
         bundle: &B,
+        register_components: F,
     ) -> u32
     where
-        B: AsBundle,
+        B: BundleDesc,
+        F: FnOnce(&mut ComponentRegistry),
     {
-        let mut very_slow = || {
+        let very_slow = move || {
             colder();
             match archetypes
                 .iter()
@@ -138,10 +78,13 @@ impl Edges {
                     coldest();
                     assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
 
-                    bundle.register_components(registry);
+                    register_components(registry);
 
                     let archetype = bundle.with_ids(|ids| {
-                        Archetype::new(ids.iter().map(|id| registry.get_info(*id).unwrap()))
+                        Archetype::new(ids.iter().map(|id| match registry.get_info(*id) {
+                            None => panic!("Component {:?} is not registered", id),
+                            Some(info) => info,
+                        }))
                     });
 
                     archetypes.push(archetype);
@@ -188,34 +131,31 @@ impl Edges {
         }
     }
 
-    pub fn insert<T>(
+    pub fn insert<F>(
         &mut self,
+        id: TypeId,
         registry: &mut ComponentRegistry,
         archetypes: &mut Vec<Archetype>,
         src: u32,
+        register_component: F,
     ) -> u32
     where
-        T: Component,
+        F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
-        let mut slow = || {
+        let slow = || {
             cold();
             match archetypes.iter().position(|a| {
-                let ids = archetypes[src as usize]
-                    .ids()
-                    .chain(Some(TypeId::of::<T>()));
+                let ids = archetypes[src as usize].ids().chain(Some(id));
                 a.matches(ids)
             }) {
                 None => {
                     colder();
                     assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
 
-                    registry.register::<T>();
+                    let info = register_component(registry);
 
-                    let archetype = Archetype::new(
-                        archetypes[src as usize]
-                            .infos()
-                            .chain(Some(&ComponentInfo::of::<T>())),
-                    );
+                    let archetype =
+                        Archetype::new(archetypes[src as usize].infos().chain(Some(info)));
 
                     archetypes.push(archetype);
                     archetypes.len() as u32 - 1
@@ -224,7 +164,7 @@ impl Edges {
             }
         };
 
-        match self.add_one.entry((src, TypeId::of::<T>())) {
+        match self.add_one.entry((src, id)) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let idx = slow();
@@ -234,17 +174,19 @@ impl Edges {
         }
     }
 
-    pub fn insert_bundle<B>(
+    pub fn insert_bundle<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
         archetypes: &mut Vec<Archetype>,
         src: u32,
         bundle: &B,
+        register_components: F,
     ) -> u32
     where
-        B: AsBundle,
+        B: BundleDesc,
+        F: FnOnce(&mut ComponentRegistry),
     {
-        let mut very_slow = || {
+        let very_slow = || {
             colder();
             match archetypes.iter().position(|a| {
                 bundle.with_ids(|ids| {
@@ -256,7 +198,7 @@ impl Edges {
                     coldest();
                     assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
 
-                    bundle.register_components(registry);
+                    register_components(registry);
 
                     let archetype = bundle.with_ids(|ids| {
                         Archetype::new(
@@ -264,7 +206,10 @@ impl Edges {
                                 .ids()
                                 .filter(|aid| ids.iter().all(|id| *id != *aid))
                                 .chain(ids.iter().copied())
-                                .map(|id| registry.get_info(id).unwrap()),
+                                .map(|id| match registry.get_info(id) {
+                                    None => panic!("Component {:?} is not registered", id),
+                                    Some(info) => info,
+                                }),
                         )
                     });
 

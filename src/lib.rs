@@ -125,7 +125,6 @@ macro_rules! phantom_newtype {
 }
 
 pub mod action;
-mod any;
 pub mod bundle;
 pub mod component;
 pub mod entity;

@@ -183,8 +183,8 @@ where
         FetchAlt {
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
-            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)).cast(),
+            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
+            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()).cast(),
             archetype_version: NonNull::from(&mut data.version).cast(),
             _borrow: borrow,
             marker: PhantomData,

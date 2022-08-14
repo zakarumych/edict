@@ -254,7 +254,7 @@ where
                 } else {
                     let target = origin.target;
                     encoder.custom(move |world, encoder| {
-                        if let Ok(target_component) = world.query_one_mut::<&mut Self>(target) {
+                        if let Ok(target_component) = world.query_one::<&mut Self>(target) {
                             target_component.on_target_drop(target, entity, encoder);
                         }
                     });
@@ -263,8 +263,7 @@ where
         } else {
             let target = origin.target;
             encoder.custom(move |world, encoder| {
-                if let Ok(target_component) = world.query_one_mut::<&mut TargetComponent<R>>(target)
-                {
+                if let Ok(target_component) = world.query_one::<&mut TargetComponent<R>>(target) {
                     target_component.on_origin_drop(entity, target, encoder);
                 }
             });
@@ -357,7 +356,7 @@ where
                 encoder.remove_component::<OriginComponent<R>>(entity);
             } else {
                 encoder.custom(move |world, encoder| {
-                    if let Ok(origin) = world.query_one_mut::<&mut OriginComponent<R>>(entity) {
+                    if let Ok(origin) = world.query_one::<&mut OriginComponent<R>>(entity) {
                         origin.on_target_drop(entity, target, encoder);
                     }
                 });

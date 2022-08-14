@@ -7,6 +7,7 @@ use core::{
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use alloc::vec::Vec;
@@ -26,15 +27,10 @@ use crate::{
 
 use self::edges::Edges;
 
-pub use self::{
-    builder::WorldBuilder,
-    meta::EntityMeta,
-    query::{QueryMut, QueryRef},
-};
+pub use self::{builder::WorldBuilder, query::QueryRef};
 
 mod builder;
 mod edges;
-mod meta;
 mod query;
 
 /// Limits on reserving of space for entities and components
@@ -78,7 +74,7 @@ fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
 pub struct World {
     /// Global epoch counter of the World.
     /// Incremented on each mutable query.
-    epoch: u64,
+    epoch: AtomicU64,
 
     /// Collection of entities with their locations.
     entities: Entities,
@@ -174,8 +170,9 @@ impl World {
             |registry| register_bundle(registry, &bundle),
         );
 
-        self.epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, self.epoch);
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
+        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, *epoch);
         self.entities.set_location(entity.idx(), archetype_idx, idx);
         entity
     }
@@ -261,15 +258,15 @@ impl World {
             register_bundle,
         );
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         let archetype = &mut self.archetypes[archetype_idx as usize];
         let entities = &mut self.entities;
-        let epoch = self.epoch;
 
         SpawnBatch {
             bundles: bundles.into_iter(),
-            epoch,
+            epoch: *epoch,
             archetype_idx,
             archetype,
             entities,
@@ -376,12 +373,13 @@ impl World {
     {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         if self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
             unsafe {
                 self.archetypes[src_archetype as usize]
-                    .set(entity, idx, component, self.epoch, encoder);
+                    .set(entity, idx, component, *epoch, encoder);
             }
 
             return Ok(());
@@ -406,7 +404,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, self.epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, *epoch) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -428,8 +426,6 @@ impl World {
         T: 'static,
     {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
-
-        self.epoch += 1;
 
         if !self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
             return Err(EntityError::MissingComponents);
@@ -490,8 +486,6 @@ impl World {
         encoder: &mut ActionEncoder,
     ) -> Result<(), EntityError> {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
-
-        self.epoch += 1;
 
         if !self.archetypes[src_archetype as usize].contains_id(id) {
             return Err(EntityError::MissingComponents);
@@ -612,7 +606,8 @@ impl World {
             return Ok(());
         }
 
-        self.epoch += 1;
+        let epoch = self.epoch.get_mut();
+        *epoch += 1;
 
         let dst_archetype = self.edges.insert_bundle(
             &mut self.registry,
@@ -625,7 +620,7 @@ impl World {
         if dst_archetype == src_archetype {
             unsafe {
                 self.archetypes[src_archetype as usize]
-                    .set_bundle(entity, idx, bundle, self.epoch, encoder)
+                    .set_bundle(entity, idx, bundle, *epoch, encoder)
             };
             return Ok(());
         }
@@ -640,7 +635,7 @@ impl World {
         };
 
         let (dst_idx, opt_src_id) =
-            unsafe { src.insert_bundle(entity, dst, idx, bundle, self.epoch, encoder) };
+            unsafe { src.insert_bundle(entity, dst, idx, bundle, *epoch, encoder) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -689,8 +684,6 @@ impl World {
             // No components to remove.
             return Ok(());
         }
-
-        self.epoch += 1;
 
         let dst_archetype = self
             .edges
@@ -747,7 +740,7 @@ impl World {
         self.entities.get(entity).ok_or(NoSuchEntity)?;
         self.entities.get(target).ok_or(NoSuchEntity)?;
 
-        self.epoch += 1;
+        *self.epoch.get_mut() += 1;
 
         if R::SYMMETRIC {
             insert_component(
@@ -817,7 +810,7 @@ impl World {
         self.entities.get(entity).ok_or(NoSuchEntity)?;
         self.entities.get(target).ok_or(NoSuchEntity)?;
 
-        if let Ok(c) = self.query_one_mut::<&mut OriginComponent<R>>(entity) {
+        if let Ok(c) = self.query_one::<&mut OriginComponent<R>>(entity) {
             c.remove(entity, target, encoder);
         }
 
@@ -852,64 +845,7 @@ impl World {
     {
         assert!(query.is_valid(), "Invalid query specified");
 
-        let (archetype, idx) = self
-            .entities
-            .get(entity)
-            .ok_or(QueryOneError::NoSuchEntity)?;
-
-        let archetype = &self.archetypes[archetype as usize];
-
-        debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
-
-        if query.skip_archetype(archetype) {
-            return Err(QueryOneError::NotSatisfied);
-        }
-
-        let mut fetch = unsafe { query.fetch(archetype, self.epoch) };
-
-        if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
-            return Err(QueryOneError::NotSatisfied);
-        }
-
-        unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) }
-
-        if unsafe { fetch.skip_item(idx as usize) } {
-            return Err(QueryOneError::NotSatisfied);
-        }
-
-        let item = unsafe { fetch.get_item(idx as usize) };
-        Ok(item)
-    }
-
-    /// Queries components from specified entity.
-    ///
-    /// If query cannot be satisfied, returns `EntityError::MissingComponents`.
-    #[inline]
-    pub fn query_one_mut<'a, Q>(
-        &'a mut self,
-        entity: EntityId,
-    ) -> Result<PhantomQueryItem<'a, Q>, QueryOneError>
-    where
-        Q: PhantomQuery,
-    {
-        self.query_one_state_mut(entity, PhantomData::<Q>)
-    }
-
-    /// Queries components from specified entity.
-    ///
-    /// If query cannot be satisfied, returns `EntityError::MissingComponents`.
-    #[inline]
-    pub fn query_one_state_mut<'a, Q>(
-        &'a mut self,
-        entity: EntityId,
-        mut query: Q,
-    ) -> Result<QueryItem<'a, Q>, QueryOneError>
-    where
-        Q: Query,
-    {
-        assert!(query.is_valid(), "Invalid query specified");
-
-        self.epoch += 1;
+        let epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
 
         let (archetype, idx) = self
             .entities
@@ -924,7 +860,7 @@ impl World {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let mut fetch = unsafe { query.fetch(archetype, self.epoch) };
+        let mut fetch = unsafe { query.fetch(archetype, epoch) };
 
         if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
@@ -946,7 +882,7 @@ impl World {
     /// that happen after this function call as "new" for the first tracking query.
     #[inline]
     pub fn epoch(&self) -> u64 {
-        self.epoch
+        self.epoch.load(Ordering::Relaxed)
     }
 
     /// Attemtps to check if specified entity has componet of specified type.
@@ -972,78 +908,26 @@ impl World {
     where
         Q: PhantomQuery,
     {
-        self.make_query(PhantomData)
+        self.query_state(PhantomData)
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
     /// This method only works with immutable queries.
     #[inline]
-    pub fn make_query<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
+    pub fn query_state<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
     where
         Q: Query,
     {
         assert!(query.is_valid(), "Invalid query specified");
 
-        QueryRef::new(&self.archetypes, self.epoch, (query,), ())
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that mutate components.
-    #[inline]
-    pub fn query_mut<'a, Q>(&'a mut self) -> QueryMut<'a, (PhantomData<Q>,), ()>
-    where
-        Q: PhantomQuery,
-    {
-        self.make_query_mut(PhantomData)
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method can be used for queries that mutate components.
-    #[inline]
-    pub fn make_query_mut<'a, Q>(&'a mut self, query: Q) -> QueryMut<'a, (Q,), ()>
-    where
-        Q: Query,
-    {
-        assert!(query.is_valid(), "Invalid query specified");
-        self.build_query_mut().extend_query(query)
+        QueryRef::new(&self.archetypes, &self.epoch, (query,), ())
     }
 
     /// Starts building immutable query.
     #[inline]
     pub fn build_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
-        QueryRef::new(&self.archetypes, self.epoch, (), ())
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
-    #[inline]
-    pub fn build_query_mut<'a>(&'a mut self) -> QueryMut<'a, (), ()> {
-        QueryMut::new(&self.archetypes, &mut self.epoch, (), ())
-    }
-
-    /// Splits the world into entity-meta and mutable query.
-    /// Queries the world to iterate over entities and components specified by the query type.
-    /// `EntityMeta` can be used to fetch and control some meta-information about entities while query is alive,
-    /// including checking if entity is alive, checking components attached to entity and taking, giving entity ownership.
-    ///
-    /// This method can be used for queries that mutate components.
-    #[inline]
-    pub fn meta_query_mut<'a, Q>(&'a mut self, query: Q) -> (EntityMeta<'a>, QueryMut<'a, (Q,), ()>)
-    where
-        Q: Query,
-    {
-        assert!(query.is_valid(), "Invalid query specified");
-
-        let meta = EntityMeta {
-            entities: &mut self.entities,
-            archetypes: &self.archetypes,
-        };
-        let query = QueryMut::new(&self.archetypes, &mut self.epoch, (query,), ());
-        (meta, query)
+        QueryRef::new(&self.archetypes, &self.epoch, (), ())
     }
 }
 
@@ -1365,8 +1249,9 @@ fn insert_component<T, C>(
     let (src_archetype, idx) = world.entities.get(entity).unwrap();
 
     if world.archetypes[src_archetype as usize].contains_id(TypeId::of::<C>()) {
-        let component =
-            unsafe { world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch) };
+        let component = unsafe {
+            world.archetypes[src_archetype as usize].get_mut::<C>(idx, *world.epoch.get_mut())
+        };
 
         set_component(component, value, encoder);
 
@@ -1394,7 +1279,8 @@ fn insert_component<T, C>(
         false => (&mut after[0], &mut before[dst_archetype as usize]),
     };
 
-    let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, world.epoch) };
+    let (dst_idx, opt_src_id) =
+        unsafe { src.insert(entity, dst, idx, component, *world.epoch.get_mut()) };
 
     world
         .entities

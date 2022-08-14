@@ -58,9 +58,12 @@ fn main() {
     let a = world.spawn((A,));
     let b = world.spawn((B,));
 
+    // Spawn entity with both.
+    let c = world.spawn((A, B));
+
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
-    for (_, display) in world.build_query().borrow_any::<&dyn Display>() {
+    for (_, display) in world.build_query().borrow_any::<&mut dyn Display>() {
         println!("{}", display);
     }
 
@@ -73,9 +76,6 @@ fn main() {
     {
         println!("{}", a.downcast_ref::<A>().unwrap());
     }
-
-    // Spawn entity with both.
-    let c = world.spawn((A, B));
 
     // Borrow all components that expose `Display` trait.
     // This query yields vector of `&dyn Display` trait objects for each entity.

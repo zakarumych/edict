@@ -1,4 +1,8 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::{
+    any::TypeId,
+    marker::PhantomData,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
@@ -51,303 +55,9 @@ for_tuple!();
 
 /// Mutable query builder.
 #[allow(missing_debug_implementations)]
-pub struct QueryMut<'a, Q, F> {
-    archetypes: &'a [Archetype],
-    epoch: &'a mut u64,
-    query: Q,
-    filter: F,
-}
-
-impl<'a, Q, F> QueryMut<'a, Q, F>
-where
-    Q: Query,
-    F: Filter,
-{
-    pub(crate) fn new(
-        archetypes: &'a [Archetype],
-        epoch: &'a mut u64,
-        query: Q,
-        filter: F,
-    ) -> Self {
-        QueryMut {
-            archetypes,
-            epoch,
-            query,
-            filter,
-        }
-    }
-
-    /// Creates new layer of tuples of mutable query.
-    pub fn layer(self) -> QueryMut<'a, (Q,), F> {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: (self.query,),
-            filter: self.filter,
-        }
-    }
-
-    /// Adds specified query.
-    pub fn extend_query<T>(self, query: T) -> QueryMut<'a, <Q as ExtendTuple<T>>::Output, F>
-    where
-        T: Query,
-        Q: ExtendTuple<T>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(query),
-            filter: self.filter,
-        }
-    }
-
-    /// Adds filter that skips entities that don't have specified component.
-    pub fn with<T>(self) -> QueryMut<'a, Q, (With<T>, F)>
-    where
-        T: Component,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (With::new(), self.filter),
-        }
-    }
-
-    /// Adds filter that skips entities that have specified component.
-    pub fn without<T>(self) -> QueryMut<'a, Q, (Without<T>, F)>
-    where
-        T: Component,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (Without::new(), self.filter),
-        }
-    }
-
-    /// Adds query to fetch relation.
-    pub fn with_relation_to<R>(self, target: EntityId) -> QueryMut<'a, Q, (WithRelationTo<R>, F)>
-    where
-        R: Relation,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (WithRelationTo::new(target), self.filter),
-        }
-    }
-
-    /// Adds query to fetch modified components.
-    pub fn modified<T>(self, epoch: u64) -> QueryMut<'a, <Q as ExtendTuple<Modified<T>>>::Output, F>
-    where
-        Modified<T>: Query,
-        Q: ExtendTuple<Modified<T>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(Modified::<T>::new(epoch)),
-            filter: self.filter,
-        }
-    }
-
-    /// Extends query to borrow from components.
-    pub fn borrow_any<T>(
-        self,
-    ) -> QueryMut<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAny<T>>>>::Output, F>
-    where
-        QueryBorrowAny<T>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryBorrowAny<T>>),
-            filter: self.filter,
-        }
-    }
-
-    /// Extends query to borrow from components.
-    pub fn borrow_one<T>(
-        self,
-        id: TypeId,
-    ) -> QueryMut<'a, <Q as ExtendTuple<QueryBorrowOne<T>>>::Output, F>
-    where
-        QueryBorrowOne<T>: Query,
-        Q: ExtendTuple<QueryBorrowOne<T>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(QueryBorrowOne::<T>::new(id)),
-            filter: self.filter,
-        }
-    }
-
-    /// Adds query to fetch relation.
-    pub fn relation<R>(
-        self,
-    ) -> QueryMut<'a, <Q as ExtendTuple<PhantomData<QueryRelation<R>>>>::Output, F>
-    where
-        QueryRelation<R>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryRelation<R>>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryRelation<R>>),
-            filter: self.filter,
-        }
-    }
-
-    /// Adds query to fetch relation.
-    pub fn relation_to<R>(
-        self,
-        entity: EntityId,
-    ) -> QueryMut<'a, <Q as ExtendTuple<QueryRelationTo<R>>>::Output, F>
-    where
-        QueryRelationTo<R>: Query,
-        Q: ExtendTuple<QueryRelationTo<R>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(QueryRelationTo::new(entity)),
-            filter: self.filter,
-        }
-    }
-
-    /// Adds query to fetch relation.
-    pub fn related<R>(
-        self,
-    ) -> QueryMut<'a, <Q as ExtendTuple<PhantomData<QueryRelated<R>>>>::Output, F>
-    where
-        QueryRelationTo<R>: Query,
-        Q: ExtendTuple<PhantomData<QueryRelated<R>>>,
-    {
-        QueryMut {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryRelated<R>>),
-            filter: self.filter,
-        }
-    }
-
-    /// Returns iterator over immutable query results.
-    /// This method is only available with non-tracking queries.
-    pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
-    where
-        Q: Query + Clone,
-        F: Clone,
-    {
-        debug_assert_immutable_query(&self.filter);
-
-        QueryIter::new(
-            FilteredQuery {
-                filter: self.filter.clone(),
-                query: self.query.clone(),
-            },
-            *self.epoch,
-            self.archetypes,
-        )
-    }
-
-    /// Returns iterator over query results.
-    /// This method is only available with non-tracking queries.
-    pub fn iter_mut<'b>(&'b mut self) -> QueryIter<'b, FilteredQuery<F, Q>>
-    where
-        Q: Clone,
-        F: Clone,
-    {
-        debug_assert_immutable_query(&self.filter);
-
-        *self.epoch += 1;
-        QueryIter::new(
-            FilteredQuery {
-                filter: self.filter.clone(),
-                query: self.query.clone(),
-            },
-            *self.epoch,
-            self.archetypes,
-        )
-    }
-
-    /// Returns iterator over query results.
-    /// This method is only available with non-tracking queries.
-    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
-        debug_assert_immutable_query(&self.filter);
-
-        *self.epoch += 1;
-        QueryIter::new(
-            FilteredQuery {
-                filter: self.filter,
-                query: self.query,
-            },
-            *self.epoch,
-            self.archetypes,
-        )
-    }
-
-    /// Iterates through world using specified query.
-    ///
-    /// This method can be used for queries that mutate components.
-    /// This method only works queries that does not track for component changes.
-    #[inline]
-    pub fn for_each_mut<Fun>(self, f: Fun)
-    where
-        Q: Query,
-        Fun: FnMut(QueryItem<'_, Q>),
-    {
-        assert!(self.filter.is_valid(), "Invalid query specified");
-        assert!(self.query.is_valid(), "Invalid query specified");
-
-        debug_assert_immutable_query(&self.filter);
-
-        *self.epoch += 1;
-
-        for_each_impl(self.filter, self.query, self.archetypes, *self.epoch, f)
-    }
-
-    /// Iterates through world using specified query.
-    ///
-    /// This method can be used for queries that mutate components.
-    /// This method only works queries that does not track for component changes.
-    #[inline]
-    pub fn for_each<Fun>(self, f: Fun)
-    where
-        Q: Query,
-        Fun: FnMut(QueryItem<'_, Q>),
-    {
-        assert!(self.filter.is_valid(), "Invalid query specified");
-        assert!(self.query.is_valid(), "Invalid query specified");
-
-        debug_assert_immutable_query(&self.filter);
-
-        for_each_impl(self.filter, self.query, self.archetypes, *self.epoch, f)
-    }
-}
-
-impl<'a, Q, F> IntoIterator for QueryMut<'a, Q, F>
-where
-    Q: Query,
-    F: Filter,
-{
-    type Item = (EntityId, QueryItem<'a, Q>);
-    type IntoIter = QueryIter<'a, FilteredQuery<F, Q>>;
-
-    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
-        self.into_iter()
-    }
-}
-/// Query builder.
-#[derive(Clone, Copy)]
-#[allow(missing_debug_implementations)]
 pub struct QueryRef<'a, Q, F> {
     archetypes: &'a [Archetype],
-    epoch: u64,
+    epoch: &'a AtomicU64,
     query: Q,
     filter: F,
 }
@@ -357,7 +67,12 @@ where
     Q: Query,
     F: Filter,
 {
-    pub(crate) fn new(archetypes: &'a [Archetype], epoch: u64, query: Q, filter: F) -> Self {
+    pub(crate) fn new(
+        archetypes: &'a [Archetype],
+        epoch: &'a AtomicU64,
+        query: Q,
+        filter: F,
+    ) -> Self {
         QueryRef {
             archetypes,
             epoch,
@@ -366,7 +81,7 @@ where
         }
     }
 
-    /// Creates new layer of tuples of immutable query.
+    /// Creates new layer of tuples of mutable query.
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
         QueryRef {
             archetypes: self.archetypes,
@@ -416,55 +131,6 @@ where
         }
     }
 
-    /// Extends query to borrow from any viable component.
-    pub fn borrow_any<T>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAny<T>>>>::Output, F>
-    where
-        QueryBorrowAny<T>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
-    {
-        QueryRef {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryBorrowAny<T>>),
-            filter: self.filter,
-        }
-    }
-
-    /// Extends query to borrow from all viable components.
-    pub fn borrow_all<T>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAll<T>>>>::Output, F>
-    where
-        QueryBorrowAll<T>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
-    {
-        QueryRef {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryBorrowAll<T>>),
-            filter: self.filter,
-        }
-    }
-
-    /// Extends query to borrow from specific component.
-    pub fn borrow_one<T>(
-        self,
-        id: TypeId,
-    ) -> QueryRef<'a, <Q as ExtendTuple<QueryBorrowOne<T>>>::Output, F>
-    where
-        QueryBorrowOne<T>: Query,
-        Q: ExtendTuple<QueryBorrowOne<T>>,
-    {
-        QueryRef {
-            archetypes: self.archetypes,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(QueryBorrowOne::<T>::new(id)),
-            filter: self.filter,
-        }
-    }
-
     /// Adds query to fetch relation.
     pub fn with_relation_to<R>(self, target: EntityId) -> QueryRef<'a, Q, (WithRelationTo<R>, F)>
     where
@@ -488,6 +154,55 @@ where
             archetypes: self.archetypes,
             epoch: self.epoch,
             query: self.query.extend_tuple(Modified::<T>::new(epoch)),
+            filter: self.filter,
+        }
+    }
+
+    /// Extends query to borrow from components.
+    pub fn borrow_any<T>(
+        self,
+    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAny<T>>>>::Output, F>
+    where
+        QueryBorrowAny<T>: PhantomQuery,
+        Q: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query.extend_tuple(PhantomData::<QueryBorrowAny<T>>),
+            filter: self.filter,
+        }
+    }
+
+    /// Extends query to borrow from components.
+    pub fn borrow_one<T>(
+        self,
+        id: TypeId,
+    ) -> QueryRef<'a, <Q as ExtendTuple<QueryBorrowOne<T>>>::Output, F>
+    where
+        QueryBorrowOne<T>: Query,
+        Q: ExtendTuple<QueryBorrowOne<T>>,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query.extend_tuple(QueryBorrowOne::<T>::new(id)),
+            filter: self.filter,
+        }
+    }
+
+    /// Extends query to borrow from components.
+    pub fn borrow_all<T>(
+        self,
+    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAll<T>>>>::Output, F>
+    where
+        QueryBorrowAll<T>: PhantomQuery,
+        Q: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            epoch: self.epoch,
+            query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
         }
     }
@@ -545,7 +260,7 @@ where
     /// This method is only available with non-tracking queries.
     pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
     where
-        Q: Clone,
+        Q: Query + Clone,
         F: Clone,
     {
         debug_assert_immutable_query(&self.filter);
@@ -555,22 +270,23 @@ where
                 filter: self.filter.clone(),
                 query: self.query.clone(),
             },
-            self.epoch,
+            self.epoch.load(Ordering::Relaxed),
             self.archetypes,
         )
     }
 
-    /// Returns iterator over immutable query results.
+    /// Returns iterator over query results.
     /// This method is only available with non-tracking queries.
     pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
         debug_assert_immutable_query(&self.filter);
 
+        let epoch = 1 + self.epoch.fetch_add(1, Ordering::Relaxed);
         QueryIter::new(
             FilteredQuery {
                 filter: self.filter,
                 query: self.query,
             },
-            self.epoch,
+            epoch,
             self.archetypes,
         )
     }
@@ -590,7 +306,8 @@ where
 
         debug_assert_immutable_query(&self.filter);
 
-        for_each_impl(self.filter, self.query, self.archetypes, self.epoch, f)
+        let epoch = 1 + self.epoch.fetch_add(1, Ordering::Relaxed);
+        for_each_impl(self.filter, self.query, self.archetypes, epoch, f)
     }
 }
 

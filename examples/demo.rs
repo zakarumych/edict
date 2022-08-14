@@ -26,15 +26,7 @@ impl<T> Component for Value<T> where T: Send + Sync + 'static {}
 
 fn main() {
     // Create new World.
-    let mut world_builder = World::builder();
-
-    world_builder
-        .register_component::<Foo>()
-        .on_drop_fn(|_, _, _| {
-            println!("Foo dropped");
-        });
-
-    let mut world = world_builder.build();
+    let mut world = World::new();
 
     // World doesn't not contain any entities yet.
 

@@ -137,7 +137,6 @@ pub mod world;
 mod archetype;
 mod hash;
 mod idx;
-// mod ptr;
 mod typeidset;
 
 #[cfg(test)]

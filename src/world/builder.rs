@@ -1,3 +1,5 @@
+use core::sync::atomic::AtomicU64;
+
 use alloc::vec;
 
 use crate::{
@@ -35,7 +37,7 @@ impl WorldBuilder {
         let null_archetype = Archetype::new(core::iter::empty());
 
         World {
-            epoch: 0,
+            epoch: AtomicU64::new(0),
             entities: Entities::new(),
             archetypes: vec![null_archetype],
             edges: Edges::new(),

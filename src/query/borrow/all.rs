@@ -1,6 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use alloc::vec::Vec;
+use atomicell::borrow::AtomicBorrow;
 
 use crate::{
     archetype::Archetype,
@@ -16,7 +17,8 @@ pub struct QueryBorrowAll<T> {
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
-    borrow: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
+    borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
+    _borrow: AtomicBorrow<'a>,
 }
 
 /// Fetch for [`QueryBorrowAll<&T>`].
@@ -58,7 +60,7 @@ where
         self.components
             .iter()
             .map(|c| {
-                (c.borrow)(
+                (c.borrow_fn)(
                     NonNull::new_unchecked(c.ptr.as_ptr().add(idx * c.size)),
                     PhantomData::<&'a ()>,
                 )
@@ -114,13 +116,16 @@ where
             .unwrap_unchecked()
             .iter()
             .map(|&(cidx, bidx)| {
-                let data = archetype.data(cidx);
-                debug_assert_eq!(data.borrows()[bidx].target(), TypeId::of::<T>());
+                let component = archetype.component(cidx);
+                debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
+
+                let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
                 FetchBorrowAllReadComponent {
                     ptr: data.ptr,
-                    size: data.layout().size(),
-                    borrow: data.borrows()[bidx].borrow(),
+                    size: component.layout().size(),
+                    borrow_fn: component.borrows()[bidx].borrow(),
+                    _borrow: borrow,
                 }
             })
             .collect();

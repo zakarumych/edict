@@ -1,7 +1,6 @@
 use core::{
     alloc::Layout,
     any::TypeId,
-    cell::UnsafeCell,
     hint::unreachable_unchecked,
     intrinsics::copy_nonoverlapping,
     mem::{self, size_of, MaybeUninit},
@@ -10,10 +9,11 @@ use core::{
 };
 
 use alloc::{
-    alloc::{alloc, alloc_zeroed, dealloc},
+    alloc::{alloc, dealloc},
     boxed::Box,
     vec::Vec,
 };
+use atomicell::AtomicCell;
 use hashbrown::HashMap;
 
 use crate::{
@@ -25,13 +25,17 @@ struct Dummy;
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
-    pub version: UnsafeCell<u64>,
-    pub entity_versions: NonNull<u64>,
-    pub chunk_versions: NonNull<u64>,
-    pub info: ComponentInfo,
+    pub version: u64,
+    pub entity_versions: Box<[u64]>,
+    pub chunk_versions: Box<[u64]>,
 }
 
-impl Deref for ComponentData {
+pub(crate) struct ArchetypeComponent {
+    pub info: ComponentInfo,
+    pub data: AtomicCell<ComponentData>,
+}
+
+impl Deref for ArchetypeComponent {
     type Target = ComponentInfo;
 
     fn deref(&self) -> &ComponentInfo {
@@ -39,13 +43,15 @@ impl Deref for ComponentData {
     }
 }
 
-impl ComponentData {
+impl ArchetypeComponent {
     pub fn new(info: &ComponentInfo) -> Self {
-        ComponentData {
-            ptr: NonNull::dangling(),
-            version: UnsafeCell::new(0),
-            chunk_versions: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
+        ArchetypeComponent {
+            data: AtomicCell::new(ComponentData {
+                ptr: NonNull::dangling(),
+                version: 0,
+                chunk_versions: Box::new([]),
+                entity_versions: Box::new([]),
+            }),
             info: info.clone(),
         }
     }
@@ -63,7 +69,9 @@ impl ComponentData {
             return;
         }
 
-        self.info.final_drop(self.ptr, len);
+        let data = self.data.get_mut();
+
+        self.info.final_drop(data.ptr, len);
 
         if self.info.layout().size() != 0 {
             let layout = Layout::from_size_align_unchecked(
@@ -71,20 +79,13 @@ impl ComponentData {
                 self.info.layout().align(),
             );
 
-            dealloc(self.ptr.as_ptr(), layout);
+            dealloc(data.ptr.as_ptr(), layout);
         }
-
-        dealloc(
-            self.entity_versions.cast().as_ptr(),
-            Layout::array::<u64>(cap).unwrap(),
-        );
-        dealloc(
-            self.chunk_versions.cast().as_ptr(),
-            Layout::array::<u64>(chunks_count(cap)).unwrap(),
-        );
     }
 
     pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
+        let data = self.data.get_mut();
+
         if self.info.layout().size() != 0 {
             let new_layout = Layout::from_size_align(
                 self.info.layout().size().checked_mul(new_cap).unwrap(),
@@ -95,7 +96,7 @@ impl ComponentData {
             let mut ptr = NonNull::new_unchecked(alloc(new_layout));
             if len != 0 {
                 copy_nonoverlapping(
-                    self.ptr.as_ptr(),
+                    data.ptr.as_ptr(),
                     ptr.as_ptr(),
                     len * self.info.layout().size(),
                 );
@@ -107,42 +108,22 @@ impl ComponentData {
                     self.info.layout().align(),
                 );
 
-                mem::swap(&mut self.ptr, &mut ptr);
+                mem::swap(&mut data.ptr, &mut ptr);
                 dealloc(ptr.as_ptr(), old_layout);
             } else {
-                self.ptr = ptr;
+                data.ptr = ptr;
             }
         }
 
-        let mut ptr =
-            NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new_cap).unwrap())).cast();
-        if len != 0 {
-            copy_nonoverlapping(self.entity_versions.as_ptr(), ptr.as_ptr(), len);
-        }
+        let mut entity_versions = core::mem::take(&mut data.entity_versions).into_vec();
+        entity_versions.reserve_exact(new_cap - old_cap);
+        entity_versions.resize(new_cap, 0);
+        data.entity_versions = entity_versions.into_boxed_slice();
 
-        if old_cap != 0 {
-            mem::swap(&mut self.entity_versions, &mut ptr);
-            dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old_cap).unwrap());
-        } else {
-            self.entity_versions = ptr;
-        }
-
-        if chunks_count(new_cap) > chunks_count(old_cap) {
-            let old_cap = chunks_count(old_cap);
-            let new_cap = chunks_count(new_cap);
-
-            let mut ptr =
-                NonNull::new_unchecked(alloc_zeroed(Layout::array::<u64>(new_cap).unwrap())).cast();
-
-            copy_nonoverlapping(self.chunk_versions.as_ptr(), ptr.as_ptr(), len);
-
-            if old_cap != 0 {
-                mem::swap(&mut self.chunk_versions, &mut ptr);
-                dealloc(ptr.cast().as_ptr(), Layout::array::<u64>(old_cap).unwrap());
-            } else {
-                self.chunk_versions = ptr;
-            }
-        }
+        let mut chunk_versions = core::mem::take(&mut data.chunk_versions).into_vec();
+        chunk_versions.reserve_exact(chunks_count(new_cap) - chunks_count(old_cap));
+        chunk_versions.resize(chunks_count(new_cap), 0);
+        data.chunk_versions = chunk_versions.into_boxed_slice();
     }
 }
 
@@ -155,7 +136,7 @@ pub struct Archetype {
     set: TypeIdSet,
     indices: Box<[usize]>,
     entities: Vec<EntityId>,
-    components: Box<[ComponentData]>,
+    components: Box<[ArchetypeComponent]>,
     borrows: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
     borrows_mut: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
 }
@@ -176,7 +157,7 @@ impl Archetype {
         let set = TypeIdSet::new(components.clone().map(|c| c.id()));
 
         let mut component_data: Box<[_]> = (0..set.upper_bound())
-            .map(|_| ComponentData::dummy())
+            .map(|_| ArchetypeComponent::dummy())
             .collect();
 
         let indices = set.indexed().map(|(idx, _)| idx).collect();
@@ -185,7 +166,7 @@ impl Archetype {
             debug_assert_eq!(c.layout().pad_to_align(), c.layout());
 
             let idx = unsafe { set.get(c.id()).unwrap_unchecked() };
-            component_data[idx] = ComponentData::new(c);
+            component_data[idx] = ArchetypeComponent::new(c);
         }
 
         let mut borrows = HashMap::with_hasher(NoOpHasherBuilder);
@@ -358,20 +339,21 @@ impl Archetype {
         let last_entity_idx = self.entities.len() - 1;
 
         for &type_idx in self.indices.iter() {
-            let component = &self.components[type_idx];
-            let size = component.layout().size();
+            let component = &mut self.components[type_idx];
+            let data = component.data.get_mut();
+            let size = component.info.layout().size();
 
-            let ptr = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size));
+            let ptr = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
 
-            component.drop_one(ptr, entity, encoder);
+            component.info.drop_one(ptr, entity, encoder);
 
             if entity_idx != last_entity_idx {
                 let chunk_idx = chunk_idx(entity_idx);
 
-                let last_epoch = *component.entity_versions.as_ptr().add(last_entity_idx);
+                let last_epoch = *data.entity_versions.as_ptr().add(last_entity_idx);
 
-                let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
-                let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
+                let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
+                let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
 
                 if *chunk_version < last_epoch {
                     *chunk_version = last_epoch;
@@ -379,13 +361,13 @@ impl Archetype {
 
                 *entity_version = last_epoch;
 
-                let last_ptr = component.ptr.as_ptr().add(last_entity_idx * size);
+                let last_ptr = data.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, ptr.as_ptr(), size);
             }
 
             #[cfg(debug_assertions)]
             {
-                *component.entity_versions.as_ptr().add(last_entity_idx) = 0;
+                *data.entity_versions.get_unchecked_mut(last_entity_idx) = 0;
             }
         }
 
@@ -459,8 +441,14 @@ impl Archetype {
         debug_assert!(entity_idx < self.entities.len());
 
         let id = self.set.get_unchecked(TypeId::of::<T>());
-        let component = &self.components[id];
-        let ptr = component.ptr.as_ptr().cast::<T>().add(entity_idx);
+        let component = &mut self.components[id];
+        let ptr = component
+            .data
+            .get_mut()
+            .ptr
+            .as_ptr()
+            .cast::<T>()
+            .add(entity_idx);
         &*ptr
     }
 
@@ -481,14 +469,15 @@ impl Archetype {
         debug_assert!(entity_idx < self.entities.len());
 
         let id = self.set.get_unchecked(TypeId::of::<T>());
-        let component = &self.components[id];
-        let ptr = component.ptr.as_ptr().cast::<T>().add(entity_idx);
+        let component = &mut self.components[id];
+        let data = component.data.get_mut();
+        let ptr = data.ptr.as_ptr().cast::<T>().add(entity_idx);
 
-        let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
-        let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
+        let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
+        let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
 
-        debug_assert!(*component.version.get() <= epoch);
-        *component.version.get() = epoch;
+        debug_assert!(data.version <= epoch);
+        data.version = epoch;
 
         debug_assert!(*chunk_version <= epoch);
         *chunk_version = epoch;
@@ -717,9 +706,9 @@ impl Archetype {
         &self.entities
     }
 
-    /// Returns iterator over component type infos.
+    /// Returns archetype component
     #[inline]
-    pub(crate) unsafe fn data(&self, idx: usize) -> &ComponentData {
+    pub(crate) unsafe fn component(&self, idx: usize) -> &ArchetypeComponent {
         debug_assert!(idx < self.components.len());
         &self.components.get_unchecked(idx)
     }
@@ -767,12 +756,13 @@ impl Archetype {
         let chunk_idx = chunk_idx(entity_idx);
 
         bundle.put(|src, id, size| {
-            let component = &self.components[self.set.get(id).unwrap_unchecked()];
-            let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
-            let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
+            let component = &mut self.components[self.set.get(id).unwrap_unchecked()];
+            let data = component.data.get_mut();
+            let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
+            let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
 
-            debug_assert!(*component.version.get() <= epoch);
-            *component.version.get() = epoch;
+            debug_assert!(data.version <= epoch);
+            data.version = epoch;
 
             debug_assert!(*chunk_version <= epoch);
             *chunk_version = epoch;
@@ -780,7 +770,7 @@ impl Archetype {
             debug_assert!(*entity_version <= epoch);
             *entity_version = epoch;
 
-            let dst = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size));
+            let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
             if occupied(id) {
                 component.set_one(dst, src, entity, encoder.as_mut().unwrap());
             } else {
@@ -802,12 +792,13 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component = &self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()];
-        let chunk_version = &mut *component.chunk_versions.as_ptr().add(chunk_idx);
-        let entity_version = &mut *component.entity_versions.as_ptr().add(entity_idx);
+        let component = &mut self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()];
+        let data = component.data.get_mut();
+        let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
+        let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
 
-        debug_assert!(*component.version.get() <= epoch);
-        *component.version.get() = epoch;
+        debug_assert!(data.version <= epoch);
+        data.version = epoch;
 
         debug_assert!(*chunk_version <= epoch);
         *chunk_version = epoch;
@@ -815,7 +806,7 @@ impl Archetype {
         debug_assert!(*entity_version <= epoch);
         *entity_version = epoch;
 
-        let dst = NonNull::new_unchecked(component.ptr.as_ptr().add(entity_idx * size_of::<T>()));
+        let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>()));
 
         if let Some(encoder) = occupied {
             component.set_one(dst, NonNull::from(&value).cast(), entity, encoder)
@@ -839,24 +830,24 @@ impl Archetype {
         let last_entity_idx = self.entities.len() - 1;
 
         for &src_type_idx in self.indices.iter() {
-            let src_component = &self.components[src_type_idx];
-            let size = src_component.layout().size();
-            let type_id = src_component.id();
-            let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
+            let src_component = &mut self.components[src_type_idx];
+            let src_data = src_component.data.get_mut();
+            let size = src_component.info.layout().size();
+            let type_id = src_component.info.id();
+            let src_ptr = src_data.ptr.as_ptr().add(src_entity_idx * size);
 
             if let Some(dst_type_idx) = dst.set.get(type_id) {
-                let dst_component = &dst.components[dst_type_idx];
+                let dst_component = &mut dst.components[dst_type_idx];
+                let dst_data = dst_component.data.get_mut();
 
-                let epoch = *src_component.entity_versions.as_ptr().add(src_entity_idx);
+                let epoch = *src_data.entity_versions.get_unchecked(src_entity_idx);
 
-                let dst_chunk_version =
-                    &mut *dst_component.chunk_versions.as_ptr().add(dst_chunk_idx);
+                let dst_chunk_version = dst_data.chunk_versions.get_unchecked_mut(dst_chunk_idx);
 
-                let dst_entity_version =
-                    &mut *dst_component.entity_versions.as_ptr().add(dst_entity_idx);
+                let dst_entity_version = dst_data.entity_versions.get_unchecked_mut(dst_entity_idx);
 
-                if *dst_component.version.get() < epoch {
-                    *dst_component.version.get() = epoch;
+                if dst_data.version < epoch {
+                    dst_data.version = epoch;
                 }
 
                 if *dst_chunk_version < epoch {
@@ -866,24 +857,22 @@ impl Archetype {
                 debug_assert_eq!(*dst_entity_version, 0);
                 *dst_entity_version = epoch;
 
-                let dst_ptr = dst_component.ptr.as_ptr().add(dst_entity_idx * size);
+                let dst_ptr = dst_data.ptr.as_ptr().add(dst_entity_idx * size);
 
                 ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
             } else {
-                let src_ptr = src_component.ptr.as_ptr().add(src_entity_idx * size);
-                missing(src_component, NonNull::new_unchecked(src_ptr));
+                let src_ptr = src_data.ptr.as_ptr().add(src_entity_idx * size);
+                missing(&src_component.info, NonNull::new_unchecked(src_ptr));
             }
 
             if src_entity_idx != last_entity_idx {
                 let src_chunk_idx = chunk_idx(src_entity_idx);
 
-                let last_epoch = *src_component.entity_versions.as_ptr().add(last_entity_idx);
+                let last_epoch = *src_data.entity_versions.as_ptr().add(last_entity_idx);
 
-                let src_chunk_version =
-                    &mut *src_component.chunk_versions.as_ptr().add(src_chunk_idx);
+                let src_chunk_version = src_data.chunk_versions.get_unchecked_mut(src_chunk_idx);
 
-                let src_entity_version =
-                    &mut *src_component.entity_versions.as_ptr().add(src_entity_idx);
+                let src_entity_version = src_data.entity_versions.get_unchecked_mut(src_entity_idx);
 
                 if *src_chunk_version < last_epoch {
                     *src_chunk_version = last_epoch;
@@ -891,12 +880,12 @@ impl Archetype {
 
                 *src_entity_version = last_epoch;
 
-                let last_ptr = src_component.ptr.as_ptr().add(last_entity_idx * size);
+                let last_ptr = src_data.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
             }
             #[cfg(debug_assertions)]
             {
-                *src_component.entity_versions.as_ptr().add(last_entity_idx) = 0;
+                *src_data.entity_versions.get_unchecked_mut(last_entity_idx) = 0;
             }
         }
     }

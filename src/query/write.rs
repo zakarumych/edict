@@ -1,5 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
+use atomicell::{borrow::AtomicBorrowMut, RefMut};
+
 use crate::archetype::Archetype;
 
 use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
@@ -11,6 +13,7 @@ pub struct FetchWrite<'a, T> {
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
     epoch: u64,
+    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
 
@@ -27,6 +30,7 @@ where
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
             epoch: 0,
+            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -109,18 +113,23 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchWrite<'a, T> {
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<T>());
+        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        debug_assert!(*data.version.get() < epoch);
-        *data.version.get() = epoch;
+        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<T>());
+
+        let (data, borrow) = RefMut::into_split(component.data.borrow_mut());
+
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
 
         FetchWrite {
             ptr: data.ptr.cast(),
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions,
+            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
+            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)),
             epoch,
+            _borrow: borrow,
             marker: PhantomData,
         }
     }

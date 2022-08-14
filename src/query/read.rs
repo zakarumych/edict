@@ -1,5 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
+use atomicell::{borrow::AtomicBorrow, Ref};
+
 use crate::archetype::Archetype;
 
 use super::{
@@ -11,6 +13,7 @@ use super::{
 
 pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,
+    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a [T]>,
 }
 
@@ -24,6 +27,7 @@ where
     fn dangling() -> Self {
         FetchRead {
             ptr: NonNull::dangling(),
+            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -94,11 +98,14 @@ where
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchRead<'a, T> {
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<T>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<T>());
+
+        let (data, borrow) = Ref::into_split(component.data.borrow());
 
         FetchRead {
             ptr: data.ptr.cast(),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }

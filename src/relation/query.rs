@@ -1,5 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
+use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
+
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -91,6 +93,7 @@ impl<'a, R> ExactSizeIterator for RelationReadIter<'a, R> {
 #[allow(missing_debug_implementations)]
 pub struct FetchRelationRead<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
+    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
@@ -104,6 +107,7 @@ where
     fn dangling() -> Self {
         FetchRelationRead {
             ptr: NonNull::dangling(),
+            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -182,11 +186,15 @@ where
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<OriginComponent<R>>());
+        let component = archetype.component(idx);
+
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
         FetchRelationRead {
             ptr: data.ptr.cast(),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -271,6 +279,7 @@ pub struct FetchRelationWrite<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut OriginComponent<R>>,
 }
 
@@ -287,6 +296,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -372,20 +382,27 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchRelationWrite<'a, R> {
+        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<OriginComponent<R>>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        debug_assert!(*data.version.get() < epoch);
-        *data.version.get() = epoch;
+        let mut data = component.data.borrow_mut();
+
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
+
+        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchRelationWrite {
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions,
+            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
+            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -416,6 +433,7 @@ pub struct FetchRelationToRead<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
     ptr: NonNull<OriginComponent<R>>,
+    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
@@ -431,6 +449,7 @@ where
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
             item_idx: 0,
+            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -522,13 +541,16 @@ where
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<OriginComponent<R>>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
         FetchRelationToRead {
             target: self.target,
             ptr: data.ptr.cast(),
             item_idx: 0,
+            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -545,6 +567,7 @@ pub struct FetchRelationToWrite<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
+    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut OriginComponent<R>>,
 }
 
@@ -563,6 +586,7 @@ where
             ptr: NonNull::dangling(),
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
+            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -661,22 +685,29 @@ where
         archetype: &'a Archetype,
         epoch: u64,
     ) -> FetchRelationToWrite<'a, R> {
+        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<OriginComponent<R>>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        debug_assert!(*data.version.get() < epoch);
-        *data.version.get() = epoch;
+        let mut data = component.data.borrow_mut();
+
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
+
+        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchRelationToWrite {
             target: self.target,
             item_idx: 0,
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions,
+            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
+            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -687,6 +718,7 @@ where
 pub struct FilterFetchRelationTo<'a, R: Relation> {
     target: EntityId,
     ptr: NonNull<OriginComponent<R>>,
+    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
@@ -701,6 +733,7 @@ where
         FilterFetchRelationTo {
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
+            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -799,12 +832,15 @@ where
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<OriginComponent<R>>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
         FilterFetchRelationTo {
             target: self.target,
             ptr: data.ptr.cast(),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -822,6 +858,7 @@ phantom_newtype! {
 #[allow(missing_debug_implementations)]
 pub struct FetchRelated<'a, R> {
     ptr: NonNull<TargetComponent<R>>,
+    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a TargetComponent<R>>,
 }
 
@@ -835,6 +872,7 @@ where
     fn dangling() -> Self {
         FetchRelated {
             ptr: NonNull::dangling(),
+            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -898,11 +936,14 @@ where
         let idx = archetype
             .id_index(TypeId::of::<TargetComponent<R>>())
             .unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<TargetComponent<R>>());
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
         FetchRelated {
             ptr: data.ptr.cast(),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }

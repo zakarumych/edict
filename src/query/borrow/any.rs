@@ -1,5 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
+use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
+
 use crate::{
     archetype::Archetype,
     query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch, Query},
@@ -16,7 +18,8 @@ pub struct QueryBorrowAny<T> {
 pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
-    borrow: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
+    borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
+    _borrow: AtomicBorrow<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyRead<'a, T>
@@ -30,7 +33,8 @@ where
         FetchBorrowAnyRead {
             ptr: NonNull::dangling(),
             size: 0,
-            borrow: |_, _| unreachable!(),
+            borrow_fn: |_, _| unreachable!(),
+            _borrow: AtomicBorrow::dummy(),
         }
     }
 
@@ -49,7 +53,7 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
-        (self.borrow)(
+        (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
             PhantomData::<&'a ()>,
         )
@@ -100,13 +104,16 @@ where
             .unwrap_unchecked()
             .get_unchecked(0);
 
-        let data = archetype.data(cidx);
-        debug_assert_eq!(data.borrows()[bidx].target(), TypeId::of::<T>());
+        let component = archetype.component(cidx);
+        debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
         FetchBorrowAnyRead {
             ptr: data.ptr,
-            size: data.layout().size(),
-            borrow: data.borrows()[bidx].borrow(),
+            size: component.layout().size(),
+            borrow_fn: component.borrows()[bidx].borrow(),
+            _borrow: borrow,
         }
     }
 }
@@ -118,11 +125,12 @@ unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: ?Sized + 's
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
-    borrow: unsafe fn(NonNull<u8>, PhantomData<&'a mut ()>) -> &'a mut T,
+    borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a mut ()>) -> &'a mut T,
     marker: PhantomData<fn() -> T>,
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<u64>,
     epoch: u64,
+    _borrow: AtomicBorrowMut<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyWrite<'a, T>
@@ -136,11 +144,12 @@ where
         FetchBorrowAnyWrite {
             ptr: NonNull::dangling(),
             size: 0,
-            borrow: |_, _| unreachable!(),
+            borrow_fn: |_, _| unreachable!(),
             marker: PhantomData,
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
             epoch: 0,
+            _borrow: AtomicBorrowMut::dummy(),
         }
     }
 
@@ -169,7 +178,7 @@ where
         debug_assert!(*entity_version < self.epoch);
         *entity_version = self.epoch;
 
-        (self.borrow)(
+        (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
             PhantomData::<&'a mut ()>,
         )
@@ -220,20 +229,25 @@ where
             .unwrap_unchecked()
             .get_unchecked(0);
 
-        let data = archetype.data(cidx);
-        debug_assert_eq!(data.borrows()[bidx].target(), TypeId::of::<T>());
+        let component = archetype.component(cidx);
+        debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
 
-        debug_assert!(*data.version.get() < epoch);
-        *data.version.get() = epoch;
+        let mut data = component.data.borrow_mut();
+
+        debug_assert!(data.version < epoch);
+        data.version = epoch;
+
+        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchBorrowAnyWrite {
             ptr: data.ptr,
-            size: data.layout().size(),
-            borrow: data.borrows()[bidx].borrow_mut().unwrap_unchecked(),
+            size: component.layout().size(),
+            borrow_fn: component.borrows()[bidx].borrow_mut().unwrap_unchecked(),
             marker: PhantomData,
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions,
+            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
+            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)),
             epoch,
+            _borrow: borrow,
         }
     }
 }

@@ -20,10 +20,7 @@ use crate::{
     },
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entities, EntityId},
-    query::{
-        debug_assert_immutable_query, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery,
-        PhantomQueryItem, Query, QueryItem,
-    },
+    query::{Fetch, PhantomQuery, PhantomQueryItem, Query, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
 };
 
@@ -836,7 +833,7 @@ impl World {
         entity: EntityId,
     ) -> Result<PhantomQueryItem<'a, Q>, QueryOneError>
     where
-        Q: ImmutablePhantomQuery,
+        Q: PhantomQuery,
     {
         self.query_one_state(entity, PhantomData::<Q>)
     }
@@ -851,10 +848,9 @@ impl World {
         mut query: Q,
     ) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
-        Q: ImmutableQuery,
+        Q: Query,
     {
-        debug_assert!(query.is_valid(), "Immutable queries are always valid");
-        debug_assert_immutable_query(&query);
+        assert!(query.is_valid(), "Invalid query specified");
 
         let (archetype, idx) = self
             .entities
@@ -974,7 +970,7 @@ impl World {
     #[inline]
     pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (PhantomData<Q>,), ()>
     where
-        Q: ImmutablePhantomQuery,
+        Q: PhantomQuery,
     {
         self.make_query(PhantomData)
     }
@@ -985,7 +981,7 @@ impl World {
     #[inline]
     pub fn make_query<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
     where
-        Q: ImmutableQuery,
+        Q: Query,
     {
         assert!(query.is_valid(), "Invalid query specified");
 

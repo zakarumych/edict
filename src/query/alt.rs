@@ -6,6 +6,8 @@ use core::{
     ptr::NonNull,
 };
 
+use atomicell::borrow::AtomicBorrowMut;
+
 use crate::archetype::{chunk_idx, Archetype};
 
 use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
@@ -49,6 +51,7 @@ pub struct FetchAlt<'a, T> {
     entity_versions: NonNull<u64>,
     chunk_versions: NonNull<Cell<u64>>,
     archetype_version: NonNull<Cell<u64>>,
+    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a [T]>,
 }
 
@@ -66,6 +69,7 @@ where
             entity_versions: NonNull::dangling(),
             chunk_versions: NonNull::dangling(),
             archetype_version: NonNull::dangling(),
+            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -165,19 +169,24 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchAlt<'a, T> {
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let data = archetype.data(idx);
-        debug_assert_eq!(data.id(), TypeId::of::<T>());
+        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        debug_assert!(*data.version.get() < epoch);
-        let archetype_version = NonNull::from(&mut *data.version.get());
+        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<T>());
+        let data = component.data.borrow_mut();
+
+        debug_assert!(data.version < epoch);
+
+        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchAlt {
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: data.entity_versions,
-            chunk_versions: data.chunk_versions.cast(),
-            archetype_version: archetype_version.cast(),
+            entity_versions: NonNull::from(data.entity_versions.get_unchecked_mut(0)),
+            chunk_versions: NonNull::from(data.chunk_versions.get_unchecked_mut(0)).cast(),
+            archetype_version: NonNull::from(&mut data.version).cast(),
+            _borrow: borrow,
             marker: PhantomData,
         }
     }

@@ -5,9 +5,8 @@ use crate::{
     component::Component,
     entity::EntityId,
     query::{
-        debug_assert_immutable_query, Fetch, Filter, FilteredQuery, ImmutablePhantomQuery,
-        ImmutableQuery, Modified, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny,
-        QueryBorrowOne, QueryItem, QueryIter, With, Without,
+        debug_assert_immutable_query, Fetch, Filter, FilteredQuery, Modified, PhantomQuery, Query,
+        QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
     relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
 };
@@ -241,11 +240,10 @@ where
     /// This method is only available with non-tracking queries.
     pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
     where
-        Q: ImmutableQuery + Clone,
+        Q: Query + Clone,
         F: Clone,
     {
         debug_assert_immutable_query(&self.filter);
-        debug_assert_immutable_query(&self.query);
 
         QueryIter::new(
             FilteredQuery {
@@ -320,14 +318,13 @@ where
     #[inline]
     pub fn for_each<Fun>(self, f: Fun)
     where
-        Q: ImmutableQuery,
+        Q: Query,
         Fun: FnMut(QueryItem<'_, Q>),
     {
         assert!(self.filter.is_valid(), "Invalid query specified");
         assert!(self.query.is_valid(), "Invalid query specified");
 
         debug_assert_immutable_query(&self.filter);
-        debug_assert_immutable_query(&self.query);
 
         for_each_impl(self.filter, self.query, self.archetypes, *self.epoch, f)
     }
@@ -345,7 +342,7 @@ where
         self.into_iter()
     }
 }
-/// Immutable query builder.
+/// Query builder.
 #[derive(Clone, Copy)]
 #[allow(missing_debug_implementations)]
 pub struct QueryRef<'a, Q, F> {
@@ -357,7 +354,7 @@ pub struct QueryRef<'a, Q, F> {
 
 impl<'a, Q, F> QueryRef<'a, Q, F>
 where
-    Q: ImmutableQuery,
+    Q: Query,
     F: Filter,
 {
     pub(crate) fn new(archetypes: &'a [Archetype], epoch: u64, query: Q, filter: F) -> Self {
@@ -382,7 +379,7 @@ where
     /// Adds specified query.
     pub fn extend_query<T>(self, query: T) -> QueryRef<'a, <Q as ExtendTuple<T>>::Output, F>
     where
-        T: ImmutableQuery,
+        T: Query,
         Q: ExtendTuple<T>,
     {
         QueryRef {
@@ -424,7 +421,7 @@ where
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAny<T>>>>::Output, F>
     where
-        QueryBorrowAny<T>: ImmutablePhantomQuery,
+        QueryBorrowAny<T>: PhantomQuery,
         Q: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
     {
         QueryRef {
@@ -440,7 +437,7 @@ where
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAll<T>>>>::Output, F>
     where
-        QueryBorrowAll<T>: ImmutablePhantomQuery,
+        QueryBorrowAll<T>: PhantomQuery,
         Q: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
     {
         QueryRef {
@@ -457,7 +454,7 @@ where
         id: TypeId,
     ) -> QueryRef<'a, <Q as ExtendTuple<QueryBorrowOne<T>>>::Output, F>
     where
-        QueryBorrowOne<T>: ImmutableQuery,
+        QueryBorrowOne<T>: Query,
         Q: ExtendTuple<QueryBorrowOne<T>>,
     {
         QueryRef {
@@ -484,7 +481,7 @@ where
     /// Adds query to fetch modified components.
     pub fn modified<T>(self, epoch: u64) -> QueryRef<'a, <Q as ExtendTuple<Modified<T>>>::Output, F>
     where
-        Modified<T>: ImmutableQuery,
+        Modified<T>: Query,
         Q: ExtendTuple<Modified<T>>,
     {
         QueryRef {
@@ -500,7 +497,7 @@ where
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelation<R>>>>::Output, F>
     where
-        QueryRelation<R>: ImmutablePhantomQuery,
+        QueryRelation<R>: PhantomQuery,
         Q: ExtendTuple<PhantomData<QueryRelation<R>>>,
     {
         QueryRef {
@@ -517,7 +514,7 @@ where
         entity: EntityId,
     ) -> QueryRef<'a, <Q as ExtendTuple<QueryRelationTo<R>>>::Output, F>
     where
-        QueryRelationTo<R>: ImmutableQuery,
+        QueryRelationTo<R>: Query,
         Q: ExtendTuple<QueryRelationTo<R>>,
     {
         QueryRef {
@@ -533,7 +530,7 @@ where
         self,
     ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelated<R>>>>::Output, F>
     where
-        QueryRelationTo<R>: ImmutableQuery,
+        QueryRelationTo<R>: Query,
         Q: ExtendTuple<PhantomData<QueryRelated<R>>>,
     {
         QueryRef {
@@ -551,7 +548,6 @@ where
         Q: Clone,
         F: Clone,
     {
-        debug_assert_immutable_query(&self.query);
         debug_assert_immutable_query(&self.filter);
 
         QueryIter::new(
@@ -567,7 +563,6 @@ where
     /// Returns iterator over immutable query results.
     /// This method is only available with non-tracking queries.
     pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
-        debug_assert_immutable_query(&self.query);
         debug_assert_immutable_query(&self.filter);
 
         QueryIter::new(
@@ -587,14 +582,13 @@ where
     #[inline]
     pub fn for_each<Fun>(self, f: Fun)
     where
-        Q: ImmutableQuery,
+        Q: Query,
         Fun: FnMut(QueryItem<'_, Q>),
     {
         assert!(self.filter.is_valid(), "Invalid query specified");
         assert!(self.query.is_valid(), "Invalid query specified");
 
         debug_assert_immutable_query(&self.filter);
-        debug_assert_immutable_query(&self.query);
 
         for_each_impl(self.filter, self.query, self.archetypes, self.epoch, f)
     }
@@ -602,7 +596,7 @@ where
 
 impl<'a, Q, F> IntoIterator for QueryRef<'a, Q, F>
 where
-    Q: ImmutableQuery,
+    Q: Query,
     F: Filter,
 {
     type Item = (EntityId, QueryItem<'a, Q>);

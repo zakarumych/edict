@@ -132,6 +132,7 @@ pub mod prelude;
 pub mod proof;
 pub mod query;
 pub mod relation;
+pub mod res;
 pub mod world;
 
 mod archetype;

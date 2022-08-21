@@ -2,15 +2,19 @@
 
 use core::{
     any::{type_name, TypeId},
-    fmt,
+    cell::Cell,
+    convert::TryFrom,
+    fmt::{self, Debug},
     hash::Hash,
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use alloc::vec::Vec;
+use atomicell::{Ref, RefMut};
 
 use crate::{
     action::ActionEncoder,
@@ -23,6 +27,7 @@ use crate::{
     entity::{Entities, EntityId},
     query::{Fetch, PhantomQuery, PhantomQueryItem, Query, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
+    res::Res,
 };
 
 use self::edges::Edges;
@@ -36,6 +41,62 @@ mod query;
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
 const MAX_SPAWN_RESERVE: usize = 1024;
+
+/// Unique id for the archetype set.
+/// Same sets may or may not share id, but different sets never share id.
+/// `World` keeps same id until archetype set changes.
+///
+/// This value starts with 1 because 0 is reserved for empty set.
+static NEXT_ARCHETYPE_SET_ID: AtomicU64 = AtomicU64::new(1);
+
+struct ArchetypeSet {
+    /// Unique archetype set id.
+    /// Changes each time new archetype is added.
+    id: u64,
+
+    archetypes: Vec<Archetype>,
+}
+
+impl Deref for ArchetypeSet {
+    type Target = [Archetype];
+
+    fn deref(&self) -> &[Archetype] {
+        &self.archetypes
+    }
+}
+
+impl DerefMut for ArchetypeSet {
+    fn deref_mut(&mut self) -> &mut [Archetype] {
+        &mut self.archetypes
+    }
+}
+
+impl ArchetypeSet {
+    fn new() -> Self {
+        let null_archetype = Archetype::new(core::iter::empty());
+
+        ArchetypeSet {
+            id: 0,
+            archetypes: vec![null_archetype],
+        }
+    }
+
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn add_with(&mut self, f: impl FnOnce(&[Archetype]) -> Archetype) -> u32 {
+        let len = match u32::try_from(self.archetypes.len()) {
+            Err(_) => panic!("Too many archetypes"),
+            Ok(len) => len,
+        };
+
+        let new_archetype = f(&self.archetypes);
+        self.archetypes.push(new_archetype);
+        self.id = NEXT_ARCHETYPE_SET_ID.fetch_add(1, Ordering::Relaxed);
+        len
+    }
+}
 
 fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
     let (lower, upper) = iter.size_hint();
@@ -70,7 +131,6 @@ fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
 /// maps entity to location of components in archetypes,
 /// moves components of entities between archetypes,
 /// spawns and despawns entities.
-#[allow(missing_debug_implementations)]
 pub struct World {
     /// Global epoch counter of the World.
     /// Incremented on each mutable query.
@@ -80,11 +140,13 @@ pub struct World {
     entities: Entities,
 
     /// Archetypes of entities in the world.
-    archetypes: Vec<Archetype>,
+    archetypes: ArchetypeSet,
 
     edges: Edges,
 
     registry: ComponentRegistry,
+
+    res: Res,
 
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
@@ -92,9 +154,17 @@ pub struct World {
     cached_encoder: Option<ActionEncoder>,
 }
 
+unsafe impl Sync for World {}
+
 impl Default for World {
     fn default() -> Self {
         World::new()
+    }
+}
+
+impl Debug for World {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("World").finish_non_exhaustive()
     }
 }
 
@@ -127,6 +197,12 @@ impl World {
     #[inline]
     pub fn new() -> Self {
         Self::builder().build()
+    }
+
+    /// Returns unique identified of archetype set.
+    #[inline]
+    pub fn archetype_set_id(&self) -> u64 {
+        self.archetypes.id()
     }
 
     /// Spawns new entity in this world with provided bundle of components.
@@ -178,7 +254,7 @@ impl World {
     }
 
     /// Returns an iterator which spawns and yield entities
-    /// using bundles returnd from provided iterator.
+    /// using bundles returned from provided iterator.
     ///
     /// When bundles iterator returns `None`, returned iterator returns `None` too.
     ///
@@ -856,7 +932,7 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if query.skip_archetype(archetype) {
+        if query.skip_archetype_unconditionally(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
@@ -928,6 +1004,76 @@ impl World {
     #[inline]
     pub fn build_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
         QueryRef::new(&self.archetypes, &self.epoch, (), ())
+    }
+
+    /// Iterate over component info of all registered components
+    pub fn iter_component_info(&self) -> impl Iterator<Item = &ComponentInfo> {
+        self.registry.iter_info()
+    }
+
+    /// Returns a slice of all materialized archetypes.
+    pub fn archetypes(&self) -> &[Archetype] {
+        &self.archetypes
+    }
+
+    /// Inserts resource into container.
+    /// Old value is replaced.
+    ///
+    /// For `Res<Send>` resource type have to implement `Send`.
+    /// Allowing `Res<Send>` to be moved into another thread and drop resources there.
+    ///
+    /// `Res<NoSend>` accepts any `'static` resource type.
+    pub fn insert_resource<T: 'static>(&mut self, resource: T) {
+        self.res.insert(resource)
+    }
+
+    /// Returns some reference to potentially `!Sync` resource.
+    /// Returns none if resource is not found.
+    ///
+    /// # Safety
+    ///
+    /// User must ensure that obtained immutable reference is safe.
+    /// For example calling this method from "main" thread is always safe.
+    ///
+    /// If `T` is `Sync` then this method is also safe.
+    /// In this case prefer to use [`get`] method instead.
+    pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Ref<T>> {
+        self.res.get_local()
+    }
+
+    /// Returns some mutable reference to potentially `!Send` resource.
+    /// Returns none if resource is not found.
+    ///
+    /// # Safety
+    ///
+    /// User must ensure that obtained mutable reference is safe.
+    /// For example calling this method from "main" thread is always safe.
+    ///
+    /// If `T` is `Send` then this method is also safe.
+    /// In this case prefer to use [`get_mut`] method instead.
+    pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
+        self.res.get_local_mut()
+    }
+
+    /// Returns some reference to `Sync` resource.
+    /// Returns none if resource is not found.
+    pub fn get_resource<T: Sync + 'static>(&self) -> Option<Ref<T>> {
+        self.res.get()
+    }
+
+    /// Returns some mutable reference to `Send` resource.
+    /// Returns none if resource is not found.
+    pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
+        self.res.get_mut()
+    }
+
+    /// Returns [`WorldLocal`] referencing this `Res`.
+    /// [`WorldLocal`] provides same API but allows to fetch local resources safely.
+    pub fn local(&mut self) -> WorldLocal<'_> {
+        WorldLocal {
+            world: self,
+            marker: PhantomData,
+        }
     }
 }
 
@@ -1327,4 +1473,70 @@ fn assert_registered_bundle<B: BundleDesc>(registry: &mut ComponentRegistry, bun
             }
         }
     })
+}
+
+/// A reference to [`World`] that allows to fetch local resources.
+///
+/// # Examples
+///
+/// [`WorldLocal`] intentionally doesn't implement `Send` or `Sync`.
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<WorldLocal>;
+/// ```
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_sync<T: core::marker::Sync>() {}
+///
+/// test_sync::<WorldLocal>;
+/// ```
+pub struct WorldLocal<'a> {
+    world: &'a mut World,
+    marker: PhantomData<Cell<World>>,
+}
+
+impl Deref for WorldLocal<'_> {
+    type Target = World;
+
+    fn deref(&self) -> &Self::Target {
+        self.world
+    }
+}
+
+impl DerefMut for WorldLocal<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.world
+    }
+}
+
+impl Debug for WorldLocal<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <World as Debug>::fmt(&*self.world, f)
+    }
+}
+
+impl WorldLocal<'_> {
+    /// Returns some reference to a resource.
+    /// Returns none if resource is not found.
+    pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
+        unsafe {
+            // # Safety
+            // Mutable reference to `Res` ensures this is the "main" thread.
+            self.world.get_local_resource()
+        }
+    }
+
+    /// Returns some mutable reference to a resource.
+    /// Returns none if resource is not found.
+    pub fn get_mut<T: 'static>(&self) -> Option<RefMut<T>> {
+        unsafe {
+            // # Safety
+            // Mutable reference to `Res` ensures this is the "main" thread.
+            self.world.get_local_resource_mut()
+        }
+    }
 }

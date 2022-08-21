@@ -30,7 +30,7 @@ pub struct FetchBorrowAllRead<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAllRead<'a, T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'a,
 {
     type Item = Vec<&'a T>;
 
@@ -71,7 +71,7 @@ where
 
 impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAll<&T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'a,
 {
     type Item = Vec<&'a T>;
     type Fetch = FetchBorrowAllRead<'a, T>;
@@ -79,7 +79,7 @@ where
 
 unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'static,
 {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -105,7 +105,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_borrow(TypeId::of::<T>())
     }
 
@@ -137,4 +137,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&T> where T: ?Sized + 'static {}
+unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&T> where T: Sync + ?Sized + 'static {}

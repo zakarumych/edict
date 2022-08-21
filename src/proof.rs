@@ -72,7 +72,7 @@ unsafe impl Query for Skip {
     }
 
     #[inline]
-    fn skip_archetype(&self, _: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
         false
     }
 
@@ -112,7 +112,7 @@ unsafe impl PhantomQuery for Skip {
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(_: &Archetype) -> bool {
         false
     }
 

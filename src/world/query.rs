@@ -23,7 +23,7 @@ pub trait ExtendTuple<E>: Sized {
 
 macro_rules! for_tuple {
     () => {
-        for_tuple!(for A B C D E F G H I J K L M N O);
+        for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
         // for_tuple!(for A);
     };
 
@@ -37,12 +37,12 @@ macro_rules! for_tuple {
     };
 
     (impl $($a:ident)*) => {
-        impl<U $(, $a)*> ExtendTuple<U> for ($($a,)*)
+        impl<Add $(, $a)*> ExtendTuple<Add> for ($($a,)*)
         {
-            type Output = ($($a,)* U,);
+            type Output = ($($a,)* Add,);
 
             #[inline]
-            fn extend_tuple(self, other: U) -> Self::Output {
+            fn extend_tuple(self, other: Add) -> Self::Output {
                 #![allow(non_snake_case)]
                 let ($($a,)*) = self;
                  ($($a,)* other,)
@@ -55,7 +55,7 @@ for_tuple!();
 
 /// Mutable query builder.
 #[allow(missing_debug_implementations)]
-pub struct QueryRef<'a, Q, F> {
+pub struct QueryRef<'a, Q, F = ()> {
     archetypes: &'a [Archetype],
     epoch: &'a AtomicU64,
     query: Q,
@@ -258,7 +258,7 @@ where
 
     /// Returns iterator over immutable query results.
     /// This method is only available with non-tracking queries.
-    pub fn iter<'b>(&'b self) -> QueryIter<'b, FilteredQuery<F, Q>>
+    pub fn iter<'b>(&self) -> QueryIter<'a, FilteredQuery<F, Q>>
     where
         Q: Query + Clone,
         F: Clone,
@@ -336,7 +336,11 @@ where
     };
 
     for archetype in archetypes {
-        if query.skip_archetype(archetype) {
+        if archetype.is_empty() {
+            continue;
+        }
+
+        if query.skip_archetype_unconditionally(archetype) {
             continue;
         }
 

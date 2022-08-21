@@ -63,7 +63,14 @@ pub unsafe trait PhantomQuery: for<'a> PhantomQueryFetch<'a> {
     fn is_valid() -> bool;
 
     /// Checks if archetype must be skipped.
-    fn skip_archetype(archetype: &Archetype) -> bool;
+    /// Without taking into account modifiable state of the archetype.
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool;
+
+    /// Checks if archetype must be skipped.
+    #[inline]
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        Self::skip_archetype_unconditionally(archetype)
+    }
 
     /// Fetches data from one archetype.
     ///
@@ -117,8 +124,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        <Q as PhantomQuery>::skip_archetype(archetype)
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+        <Q as PhantomQuery>::skip_archetype_unconditionally(archetype)
     }
 
     #[inline]

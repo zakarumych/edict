@@ -136,8 +136,9 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        self.filter.skip_archetype(archetype) || self.query.skip_archetype(archetype)
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+        self.filter.skip_archetype_unconditionally(archetype)
+            || self.query.skip_archetype_unconditionally(archetype)
     }
 
     #[inline]
@@ -201,7 +202,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
@@ -254,7 +255,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         archetype.contains_id(TypeId::of::<T>())
     }
 

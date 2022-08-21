@@ -120,6 +120,11 @@ macro_rules! for_tuple {
             }
 
             #[inline]
+            fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
+                false
+            }
+
+            #[inline]
             fn skip_archetype(&self, _: &Archetype) -> bool {
                 false
             }
@@ -158,6 +163,11 @@ macro_rules! for_tuple {
             #[inline]
             fn is_valid() -> bool {
                 true
+            }
+
+            #[inline]
+            fn skip_archetype_unconditionally(_: &Archetype) -> bool {
+                false
             }
 
             #[inline]
@@ -262,6 +272,13 @@ macro_rules! for_tuple {
             }
 
             #[inline]
+            fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+                #[allow(non_snake_case)]
+                let ($($a,)+) = self;
+                $( <$a as Query>::skip_archetype_unconditionally($a, archetype) )||+
+            }
+
+            #[inline]
             fn skip_archetype(&self, archetype: &Archetype) -> bool {
                 #[allow(non_snake_case)]
                 let ($($a,)+) = self;
@@ -313,6 +330,11 @@ macro_rules! for_tuple {
             fn is_valid() -> bool {
                 let QueryConflict(conflict, _) = $( QueryConflict(false, &PhantomData::<$a>) ) | +;
                 !conflict
+            }
+
+            #[inline]
+            fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+                $( <$a as PhantomQuery>::skip_archetype_unconditionally(archetype) )||+
             }
 
             #[inline]

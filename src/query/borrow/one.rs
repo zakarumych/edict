@@ -36,7 +36,7 @@ pub struct FetchBorrowOneRead<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneRead<'a, T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'a,
 {
     type Item = &'a T;
 
@@ -74,7 +74,7 @@ where
 
 impl<'a, T> QueryFetch<'a> for QueryBorrowOne<&T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'a,
 {
     type Item = &'a T;
     type Fetch = FetchBorrowOneRead<'a, T>;
@@ -82,7 +82,7 @@ where
 
 unsafe impl<T> Query for QueryBorrowOne<&T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -112,7 +112,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(self.id)
     }
 
@@ -142,7 +142,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowOne<&T> where T: ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowOne<&T> where T: Sync + ?Sized + 'static {}
 
 /// Fetch for [`QueryBorrowOne<&mut T>`].
 #[allow(missing_debug_implementations)]
@@ -159,7 +159,7 @@ pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneWrite<'a, T>
 where
-    T: ?Sized + 'static,
+    T: Send + ?Sized + 'a,
 {
     type Item = &'a mut T;
 
@@ -211,7 +211,7 @@ where
 
 impl<'a, T> QueryFetch<'a> for QueryBorrowOne<&mut T>
 where
-    T: ?Sized + 'static,
+    T: Send + ?Sized + 'a,
 {
     type Item = &'a mut T;
     type Fetch = FetchBorrowOneWrite<'a, T>;
@@ -219,7 +219,7 @@ where
 
 unsafe impl<T> Query for QueryBorrowOne<&mut T>
 where
-    T: ?Sized + 'static,
+    T: Send + ?Sized + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -249,7 +249,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(self.id)
     }
 

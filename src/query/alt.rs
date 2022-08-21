@@ -57,7 +57,7 @@ pub struct FetchAlt<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchAlt<'a, T>
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = RefMut<'a, T>;
 
@@ -122,7 +122,7 @@ phantom_newtype! {
 
 impl<'a, T> PhantomQueryFetch<'a> for Alt<T>
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = RefMut<'a, T>;
     type Fetch = FetchAlt<'a, T>;
@@ -130,7 +130,7 @@ where
 
 unsafe impl<T> PhantomQuery for Alt<T>
 where
-    T: 'static,
+    T: Send + 'static,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -163,7 +163,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 

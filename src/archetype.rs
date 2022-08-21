@@ -1,3 +1,5 @@
+//! This module contains `Archetype` type definition.
+
 use core::{
     alloc::Layout,
     any::TypeId,
@@ -716,6 +718,11 @@ impl Archetype {
     #[inline]
     pub(crate) fn len(&self) -> usize {
         self.entities.len()
+    }
+
+    #[inline]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.entities.is_empty()
     }
 
     #[inline]

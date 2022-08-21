@@ -19,7 +19,7 @@ pub struct FetchWrite<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchWrite<'a, T>
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = &'a mut T;
 
@@ -66,7 +66,7 @@ where
 
 impl<'a, T> PhantomQueryFetch<'a> for &mut T
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = &'a mut T;
     type Fetch = FetchWrite<'a, T>;
@@ -74,7 +74,7 @@ where
 
 unsafe impl<T> PhantomQuery for &mut T
 where
-    T: 'static,
+    T: Send + 'static,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -107,7 +107,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
@@ -139,9 +139,9 @@ where
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn write<'a, T>() -> PhantomData<&'a mut T>
+pub fn write<T>() -> PhantomData<&'static mut T>
 where
-    T: 'static,
+    T: Send,
 {
     PhantomData
 }

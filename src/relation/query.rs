@@ -99,7 +99,7 @@ pub struct FetchRelationRead<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelationRead<'a, R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     type Item = RelationReadIter<'a, R>;
 
@@ -137,7 +137,7 @@ where
 
 impl<'a, R> PhantomQueryFetch<'a> for QueryRelation<&R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     type Item = RelationReadIter<'a, R>;
     type Fetch = FetchRelationRead<'a, R>;
@@ -145,7 +145,7 @@ where
 
 unsafe impl<R> PhantomQuery for QueryRelation<&R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -177,7 +177,7 @@ where
         true
     }
 
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -200,7 +200,7 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for QueryRelation<&R> where R: Relation {}
+unsafe impl<R> ImmutablePhantomQuery for QueryRelation<&R> where R: Relation + Sync {}
 
 /// Iterator over relations of a given type on one entity.
 #[allow(missing_debug_implementations)]
@@ -285,7 +285,7 @@ pub struct FetchRelationWrite<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelationWrite<'a, R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     type Item = RelationWriteIter<'a, R>;
 
@@ -336,7 +336,7 @@ where
 
 impl<'a, R> PhantomQueryFetch<'a> for QueryRelation<&mut R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     type Item = RelationWriteIter<'a, R>;
     type Fetch = FetchRelationWrite<'a, R>;
@@ -344,7 +344,7 @@ where
 
 unsafe impl<R> PhantomQuery for QueryRelation<&mut R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -376,7 +376,7 @@ where
         true
     }
 
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -439,7 +439,7 @@ pub struct FetchRelationToRead<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelationToRead<'a, R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     type Item = &'a R;
 
@@ -488,7 +488,7 @@ where
 
 impl<'a, R> QueryFetch<'a> for QueryRelationTo<&R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     type Item = &'a R;
     type Fetch = FetchRelationToRead<'a, R>;
@@ -496,7 +496,7 @@ where
 
 unsafe impl<R> Query for QueryRelationTo<&R>
 where
-    R: Relation,
+    R: Relation + Sync,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -528,7 +528,7 @@ where
         true
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -556,7 +556,7 @@ where
     }
 }
 
-unsafe impl<R> ImmutableQuery for QueryRelationTo<&R> where R: Relation {}
+unsafe impl<R> ImmutableQuery for QueryRelationTo<&R> where R: Relation + Sync {}
 
 /// Fetch for the `Related<R>` query.
 #[allow(missing_debug_implementations)]
@@ -573,7 +573,7 @@ pub struct FetchRelationToWrite<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelationToWrite<'a, R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     type Item = &'a R;
 
@@ -635,7 +635,7 @@ where
 
 impl<'a, R> QueryFetch<'a> for QueryRelationTo<&mut R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     type Item = &'a R;
     type Fetch = FetchRelationToWrite<'a, R>;
@@ -643,7 +643,7 @@ where
 
 unsafe impl<R> Query for QueryRelationTo<&mut R>
 where
-    R: Relation,
+    R: Relation + Send,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -675,7 +675,7 @@ where
         true
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -819,7 +819,7 @@ where
         true
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -927,7 +927,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<TargetComponent<R>>())
     }
 

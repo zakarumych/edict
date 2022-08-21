@@ -49,7 +49,7 @@ pub struct ModifiedFetchRead<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchRead<'a, T>
 where
-    T: 'a,
+    T: Sync + 'a,
 {
     type Item = &'a T;
 
@@ -88,7 +88,7 @@ where
 
 impl<'a, T> QueryFetch<'a> for Modified<&T>
 where
-    T: 'static,
+    T: Sync + 'a,
 {
     type Item = &'a T;
     type Fetch = ModifiedFetchRead<'a, T>;
@@ -96,7 +96,7 @@ where
 
 unsafe impl<T> Query for Modified<&T>
 where
-    T: 'static,
+    T: Sync + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -122,11 +122,19 @@ where
     }
 
     #[inline]
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<T>())
+    }
+
+    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(<&T as PhantomQuery>::skip_archetype(archetype), false);
+                debug_assert_eq!(
+                    <&T as PhantomQuery>::skip_archetype_unconditionally(archetype),
+                    false
+                );
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
@@ -159,7 +167,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<&T> where T: 'static {}
+unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
 #[allow(missing_debug_implementations)]
@@ -175,7 +183,7 @@ pub struct ModifiedFetchWrite<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchWrite<'a, T>
 where
-    T: 'a,
+    T: Send + 'a,
 {
     type Item = &'a mut T;
 
@@ -225,7 +233,7 @@ where
 
 impl<'a, T> QueryFetch<'a> for Modified<&mut T>
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = &'a mut T;
     type Fetch = ModifiedFetchWrite<'a, T>;
@@ -233,7 +241,7 @@ where
 
 unsafe impl<T> Query for Modified<&mut T>
 where
-    T: 'static,
+    T: Send + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -259,11 +267,19 @@ where
     }
 
     #[inline]
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<T>())
+    }
+
+    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(<&mut T as PhantomQuery>::skip_archetype(archetype), false);
+                debug_assert_eq!(
+                    <&mut T as PhantomQuery>::skip_archetype_unconditionally(archetype),
+                    false
+                );
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
@@ -317,7 +333,7 @@ pub struct ModifiedFetchAlt<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchAlt<'a, T>
 where
-    T: 'a,
+    T: Send + 'a,
 {
     type Item = RefMut<'a, T>;
 
@@ -373,7 +389,7 @@ where
 
 impl<'a, T> QueryFetch<'a> for Modified<Alt<T>>
 where
-    T: 'static,
+    T: Send + 'a,
 {
     type Item = RefMut<'a, T>;
     type Fetch = ModifiedFetchAlt<'a, T>;
@@ -381,7 +397,7 @@ where
 
 unsafe impl<T> Query for Modified<Alt<T>>
 where
-    T: 'static,
+    T: Send + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -407,11 +423,19 @@ where
     }
 
     #[inline]
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<T>())
+    }
+
+    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(<Alt<T> as PhantomQuery>::skip_archetype(archetype), false);
+                debug_assert_eq!(
+                    <Alt<T> as PhantomQuery>::skip_archetype_unconditionally(archetype),
+                    false
+                );
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());

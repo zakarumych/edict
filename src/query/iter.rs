@@ -49,7 +49,7 @@ where
             .archetypes
             .clone()
             .fold(self.indices.len(), |acc, archetype| {
-                if self.query.skip_archetype(archetype) {
+                if self.query.skip_archetype_unconditionally(archetype) {
                     return acc;
                 }
                 acc + archetype.len()
@@ -67,7 +67,11 @@ where
                     loop {
                         let archetype = self.archetypes.next()?;
 
-                        if self.query.skip_archetype(archetype) {
+                        if archetype.is_empty() {
+                            continue;
+                        }
+
+                        if self.query.skip_archetype_unconditionally(archetype) {
                             continue;
                         }
 
@@ -130,7 +134,10 @@ where
         }
 
         for archetype in self.archetypes {
-            if self.query.skip_archetype(archetype) {
+            if archetype.is_empty() {
+                continue;
+            }
+            if self.query.skip_archetype_unconditionally(archetype) {
                 continue;
             }
             let mut fetch = unsafe { self.query.fetch(archetype, self.epoch) };

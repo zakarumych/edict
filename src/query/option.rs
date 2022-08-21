@@ -91,7 +91,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(_: &Archetype) -> bool {
         false
     }
 
@@ -100,7 +100,7 @@ where
         archetype: &'a Archetype,
         epoch: u64,
     ) -> Option<<T as PhantomQueryFetch<'a>>::Fetch> {
-        if T::skip_archetype(archetype) {
+        if T::skip_archetype_unconditionally(archetype) {
             None
         } else {
             Some(T::fetch(archetype, epoch))
@@ -152,7 +152,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, _: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
         false
     }
 
@@ -164,7 +164,7 @@ where
     ) -> Option<<T as QueryFetch<'a>>::Fetch> {
         match self {
             None => None,
-            Some(query) => match query.skip_archetype(archetype) {
+            Some(query) => match query.skip_archetype_unconditionally(archetype) {
                 false => Some(query.fetch(archetype, epoch)),
                 true => None,
             },

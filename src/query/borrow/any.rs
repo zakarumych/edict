@@ -24,7 +24,7 @@ pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyRead<'a, T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'a,
 {
     type Item = &'a T;
 
@@ -60,14 +60,17 @@ where
     }
 }
 
-impl<'a, T: ?Sized + 'static> PhantomQueryFetch<'a> for QueryBorrowAny<&T> {
+impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAny<&T>
+where
+    T: Sync + ?Sized + 'a,
+{
     type Item = &'a T;
     type Fetch = FetchBorrowAnyRead<'a, T>;
 }
 
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
 where
-    T: ?Sized + 'static,
+    T: Sync + ?Sized + 'static,
 {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -93,7 +96,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_borrow(TypeId::of::<T>())
     }
 
@@ -118,7 +121,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: ?Sized + 'static {}
+unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: Sync + ?Sized + 'static {}
 
 /// Fetch for [`QueryBorrowAny<&mut T>`].
 #[allow(missing_debug_implementations)]
@@ -135,7 +138,7 @@ pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyWrite<'a, T>
 where
-    T: ?Sized + 'static,
+    T: Send + ?Sized + 'static,
 {
     type Item = &'a mut T;
 
@@ -185,14 +188,17 @@ where
     }
 }
 
-impl<'a, T: ?Sized + 'static> PhantomQueryFetch<'a> for QueryBorrowAny<&mut T> {
+impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAny<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
     type Item = &'a mut T;
     type Fetch = FetchBorrowAnyWrite<'a, T>;
 }
 
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
 where
-    T: ?Sized + 'static,
+    T: Send + ?Sized + 'static,
 {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -218,7 +224,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_borrow_mut(TypeId::of::<T>())
     }
 

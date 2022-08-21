@@ -1,18 +1,16 @@
 use core::sync::atomic::AtomicU64;
 
-use alloc::vec;
-
 use crate::{
     action::ActionEncoder,
-    archetype::Archetype,
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
     },
     entity::Entities,
+    res::Res,
 };
 
-use super::{Edges, World};
+use super::{ArchetypeSet, Edges, World};
 
 /// Builder for [`World`] value.
 ///
@@ -34,13 +32,12 @@ impl WorldBuilder {
 
     /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
     pub fn build(self) -> World {
-        let null_archetype = Archetype::new(core::iter::empty());
-
         World {
             epoch: AtomicU64::new(0),
             entities: Entities::new(),
-            archetypes: vec![null_archetype],
+            archetypes: ArchetypeSet::new(),
             edges: Edges::new(),
+            res: Res::new(),
             registry: self.registry,
             cached_encoder: Some(ActionEncoder::new()),
         }

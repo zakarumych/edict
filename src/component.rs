@@ -34,35 +34,173 @@ pub struct ComponentBorrow {
     borrow_mut: Option<BorrowFnMut<()>>,
 }
 
-/// Constructs `ComponentBorrow` to borrow dyn trait object.
+/// Extends output with `ComponentBorrow` to borrow dyn trait object.
+/// `dyn Trait + Send + Sync` and all valid combinations are automatically added.
 #[macro_export]
 macro_rules! borrow_dyn_trait {
-    ($self:ident as $trait:path) => {{
-        fn make_borrow<T>() -> $crate::component::ComponentBorrow
-        where
-            T: $crate::component::Component + $trait,
-        {
-            $crate::component::ComponentBorrow::make(
-                |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn $trait {
-                    unsafe { ptr.cast::<T>().as_ref() }
-                },
-                core::option::Option::Some(
-                    |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &mut dyn $trait {
-                        unsafe { ptr.cast::<T>().as_mut() }
-                    },
-                ),
-            )
+    ($self:ident as $trait:path => $extend:ident) => {{
+        #![allow(dead_code)]
+
+        struct DispatchBorrowSendSync<T>(DispatchBorrowSend<T>);
+        struct DispatchBorrowSend<T>(DispatchBorrowSync<T>);
+        struct DispatchBorrowSync<T>(DispatchBorrow<T>);
+        struct DispatchBorrow<T>(core::marker::PhantomData<T>);
+
+        impl<T> core::ops::Deref for DispatchBorrowSendSync<T> {
+            type Target = DispatchBorrowSend<T>;
+
+            fn deref(&self) -> &DispatchBorrowSend<T> {
+                &self.0
+            }
         }
 
-        make_borrow::<$self>()
+        impl<T> core::ops::Deref for DispatchBorrowSend<T> {
+            type Target = DispatchBorrowSync<T>;
+
+            fn deref(&self) -> &DispatchBorrowSync<T> {
+                &self.0
+            }
+        }
+
+        impl<T> core::ops::Deref for DispatchBorrowSync<T> {
+            type Target = DispatchBorrow<T>;
+
+            fn deref(&self) -> &DispatchBorrow<T> {
+                &self.0
+            }
+        }
+
+        impl<T: $trait + Send + Sync + 'static> DispatchBorrowSendSync<T> {
+            fn insert_all(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                self.insert(extend);
+                self.0.insert(extend);
+                self.0 .0.insert(extend);
+                self.0 .0 .0.insert(extend);
+            }
+
+            fn insert(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                extend.extend(Some($crate::component::ComponentBorrow::make(
+                    |ptr: core::ptr::NonNull<u8>,
+                     core::marker::PhantomData|
+                     -> &(dyn $trait + Send + Sync) {
+                        unsafe { ptr.cast::<T>().as_ref() }
+                    },
+                    core::option::Option::Some(
+                        |ptr: core::ptr::NonNull<u8>,
+                         core::marker::PhantomData|
+                         -> &mut (dyn $trait + Send + Sync) {
+                            unsafe { ptr.cast::<T>().as_mut() }
+                        },
+                    ),
+                )));
+            }
+        }
+
+        impl<T: $trait + Send + 'static> DispatchBorrowSend<T> {
+            fn insert_all(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                self.insert(extend);
+                self.0 .0.insert(extend);
+            }
+
+            fn insert(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                extend.extend(Some($crate::component::ComponentBorrow::make(
+                    |ptr: core::ptr::NonNull<u8>,
+                     core::marker::PhantomData|
+                     -> &(dyn $trait + Send) {
+                        unsafe { ptr.cast::<T>().as_ref() }
+                    },
+                    core::option::Option::Some(
+                        |ptr: core::ptr::NonNull<u8>,
+                         core::marker::PhantomData|
+                         -> &mut (dyn $trait + Send) {
+                            unsafe { ptr.cast::<T>().as_mut() }
+                        },
+                    ),
+                )));
+            }
+        }
+
+        impl<T: $trait + Sync + 'static> DispatchBorrowSync<T> {
+            fn insert_all(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                self.insert(extend);
+                self.0.insert(extend);
+            }
+
+            fn insert(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                extend.extend(Some($crate::component::ComponentBorrow::make(
+                    |ptr: core::ptr::NonNull<u8>,
+                     core::marker::PhantomData|
+                     -> &(dyn $trait + Sync) {
+                        unsafe { ptr.cast::<T>().as_ref() }
+                    },
+                    core::option::Option::Some(
+                        |ptr: core::ptr::NonNull<u8>,
+                         core::marker::PhantomData|
+                         -> &mut (dyn $trait + Sync) {
+                            unsafe { ptr.cast::<T>().as_mut() }
+                        },
+                    ),
+                )));
+            }
+        }
+
+        impl<T: $trait + 'static> DispatchBorrow<T> {
+            fn insert_all(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                self.insert(extend);
+            }
+
+            fn insert(
+                &self,
+                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
+            ) {
+                extend.extend(Some($crate::component::ComponentBorrow::make(
+                    |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn $trait {
+                        unsafe { ptr.cast::<T>().as_ref() }
+                    },
+                    core::option::Option::Some(
+                        |ptr: core::ptr::NonNull<u8>,
+                         core::marker::PhantomData|
+                         -> &mut dyn $trait {
+                            unsafe { ptr.cast::<T>().as_mut() }
+                        },
+                    ),
+                )));
+            }
+        }
+
+        let dispatch = DispatchBorrowSendSync(DispatchBorrowSend(DispatchBorrowSync(
+            DispatchBorrow(core::marker::PhantomData::<$self>),
+        )));
+        dispatch.insert_all(&mut $extend);
     }};
 }
 
 /// Constructs `ComponentBorrow` to borrow dyn trait object.
 #[macro_export]
 macro_rules! borrow_dyn_any {
-    ($self:ident) => {{
-        $crate::borrow_dyn_trait!($self as core::any::Any)
+    ($self:ident => $extend:ident) => {{
+        $crate::borrow_dyn_trait!($self as core::any::Any => $extend)
     }};
 }
 
@@ -76,7 +214,7 @@ impl ComponentBorrow {
     ) -> Self {
         ComponentBorrow {
             target: TypeId::of::<T>(),
-            borrow: unsafe { transmute(borrow) },
+            borrow: unsafe { core::mem::transmute(borrow) },
             borrow_mut: borrow_mut.map(|f| unsafe { transmute(f) }),
         }
     }
@@ -85,7 +223,7 @@ impl ComponentBorrow {
     /// using `Borrow` impl.
     pub fn from_borrow<T, U>() -> Self
     where
-        T: Component + Borrow<U>,
+        T: Borrow<U> + 'static,
         U: ?Sized + 'static,
     {
         ComponentBorrow::make(|ptr, PhantomData| unsafe { ptr.cast::<T>().as_ref() }, None)
@@ -107,7 +245,7 @@ impl ComponentBorrow {
     /// Returns type to borrow self.
     pub fn auto<T>() -> Self
     where
-        T: Component,
+        T: 'static,
     {
         ComponentBorrow::make(
             |ptr, PhantomData| unsafe { ptr.cast::<T>().as_ref() },
@@ -135,7 +273,6 @@ impl ComponentBorrow {
 }
 
 /// Trait that is implemented for all types that can act as a component.
-/// Currently is implemented for all `'static` types.
 pub trait Component: Sized + 'static {
     /// Hook that is executed when entity with component is dropped.
     #[inline]
@@ -156,11 +293,8 @@ pub trait Component: Sized + 'static {
 
     /// Returns array of component borrows supported by the type.
     #[inline]
-    fn borrows<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[ComponentBorrow]) -> R,
-    {
-        f(&[ComponentBorrow::auto::<Self>()])
+    fn borrows() -> Vec<ComponentBorrow> {
+        vec![ComponentBorrow::auto::<Self>()]
     }
 }
 
@@ -215,7 +349,7 @@ impl ComponentInfo {
             set_one: set_one::<T, DefaultSetHook, DefaultDropHook>,
             on_set: Arc::new(DefaultSetHook),
             final_drop: final_drop::<T>,
-            borrows: T::borrows(|slice| Arc::from(slice)),
+            borrows: Arc::from(T::borrows()),
         }
     }
 
@@ -450,6 +584,7 @@ where
             set: unsafe { ptr::read(&me.set) },
         }
     }
+
     /// Configures drop hook for this component.
     /// Drop hook is executed when component is dropped.
     ///
@@ -563,6 +698,10 @@ impl ComponentRegistry {
 
     pub fn get_info(&self, id: TypeId) -> Option<&ComponentInfo> {
         self.components.get(&id)
+    }
+
+    pub fn iter_info(&self) -> impl Iterator<Item = &ComponentInfo> {
+        self.components.values()
     }
 }
 

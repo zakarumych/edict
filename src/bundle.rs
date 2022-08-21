@@ -71,7 +71,7 @@ pub unsafe trait Bundle: DynamicBundle {
     /// Returns static key for the bundle type.
     fn static_key() -> TypeId;
 
-    /// Returns true if bundle has speicifed type id.
+    /// Returns true if bundle has specified type id.
     fn static_contains_id(id: TypeId) -> bool;
 
     /// Calls provided closure with slice of ids of types that this bundle contains.

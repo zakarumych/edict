@@ -16,15 +16,12 @@ impl Display for A {
 }
 
 impl Component for A {
-    fn borrows<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[ComponentBorrow]) -> R,
-    {
-        f(&[
-            ComponentBorrow::auto::<Self>(),
-            borrow_dyn_any!(A),
-            borrow_dyn_trait!(A as Display),
-        ])
+    fn borrows() -> Vec<ComponentBorrow> {
+        let mut output = Vec::new();
+        output.push(ComponentBorrow::auto::<A>());
+        borrow_dyn_any!(A => output);
+        borrow_dyn_trait!(A as Display => output);
+        output
     }
 }
 
@@ -37,15 +34,12 @@ impl Display for B {
 }
 
 impl Component for B {
-    fn borrows<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[ComponentBorrow]) -> R,
-    {
-        f(&[
-            ComponentBorrow::auto::<B>(),
-            borrow_dyn_any!(B),
-            borrow_dyn_trait!(B as Display),
-        ])
+    fn borrows() -> Vec<ComponentBorrow> {
+        let mut output = Vec::new();
+        output.push(ComponentBorrow::auto::<B>());
+        borrow_dyn_any!(B => output);
+        borrow_dyn_trait!(B as Display => output);
+        output
     }
 }
 
@@ -63,7 +57,10 @@ fn main() {
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
-    for (_, display) in world.build_query().borrow_any::<&mut dyn Display>() {
+    for (_, display) in world
+        .build_query()
+        .borrow_any::<&mut (dyn Display + Send)>()
+    {
         println!("{}", display);
     }
 
@@ -72,15 +69,15 @@ fn main() {
     // and it doesn't exposes `Any` trait.
     for (_, a) in world
         .build_query()
-        .borrow_one::<&dyn Any>(TypeId::of::<A>())
+        .borrow_one::<&(dyn Any + Sync)>(TypeId::of::<A>())
     {
-        println!("{}", a.downcast_ref::<A>().unwrap());
+        println!("{}", (a as &dyn Any).downcast_ref::<A>().unwrap());
     }
 
     // Borrow all components that expose `Display` trait.
     // This query yields vector of `&dyn Display` trait objects for each entity.
     // Current behavior is to skip entities with no such components.
-    for (e, a) in world.build_query().borrow_all::<&dyn Display>() {
+    for (e, a) in world.build_query().borrow_all::<&(dyn Display + Sync)>() {
         print!("{}", e);
         for a in a {
             print!(" {}", a);

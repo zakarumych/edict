@@ -4,56 +4,57 @@
 //! written in Rust by your fellow 🦀
 //!
 //! ### Features
-//! Counting references to individual entities adds few desirable properties.
 //!
-//! For one, strong entity reference guarantees that enitity it referes to is alive.
-//! This allows providing non-fallible API to fetch data attached to entities.
+//! * General purpose archetype ECS with fast iteration.
 //!
-//! Another one is automatic entity despawn when no one references the entity.
-//! This may seem as a step backward, as most ECS tend to require manual entity despawn,
-//! allowing entities to just sit in the [`World`] and be queried by systems.
-//! This may lead to problems when encoding ownership of an entity by another.
-//! If references to owned entities are stored in owner's component,
-//! then despawning the owner will break the relationship,
-//! code that despawns the owner may be unaware about component that holds refrences to owned entitites.
-//! This will leave previously owned entities orphaned. Hence owned entity must store a reference to its owner
-//! and check periodically if owner was despawned.
+//! * Runtime checks for query validity and mutable aliasing avoidance.
+//!   This requires atomic operations at the beginning iteration on next archetype.
 //!
-//! With Edict owner stores strong references ([`Entity`]) to owned entities.
-//! When strong reference is dropped - possibly together with the component on despawn -
-//! the entity will be despawned if no other strong references left.
+//! * Support for [`!Send`] and [`!Sync`] components.
+//!   [`!Send`] components cannot be fetched mutably from outside "main" thread.
+//!   [`!Sync`] components cannot be fetched immutably from outside "main" thread.
+//!   [`World`] has to be [`!Send`] but implements [`Sync`].
 //!
-//! Edict provides [`EntityId`] reference type which works as entity references in traditional ECS.
+//! * [`ActionEncoder`] allows recording actions and later run them on [`World`].
+//!   Actions get mutable access to [`World`].
 //!
-//! Another feature of Edict is integrated change detection.
-//! It tracks when components are accessed mutably and may efficiently iterate through modified components.
-//! "Modified when?" Careful reader may inquire.
-//! Imagine a game loop, where a set of systems run on each cycle.
-//! If system has a query over modified components, it probably wants to see all modifications
-//! since it ran this query last time.
-//! Edict offeers [`Tracks`] type. Created simply with [`World::tracks()`],
-//! this type is used in all queries that checks for components modification.
-//! [`Tracks`] instance inform the query, that that modifications occured
-//! since the last use of this [`Tracks`] instance should be returned by query.
-//! On the first use of [`Tracks`] returnd from [`World::tracks()`] all components are considered to be modified.
-//! [`World::tracks_now()`] returns [`Tracks`] instance
-//! for which all modifications happened prior [`World::tracks_now()`] call to be obsolete.
+//! * Component replace/drop hooks.
+//!   Components can define hooks that will be executed on value drop and on value replace.
+//!   Hooks can read old and new values, [`EntityId`] and can record actions into [`ActionEncoder`].
 //!
-//! ### no_std support
+//! * Component type may define a set of types that can be borrowed from it.
+//!   Borrowed type may be not sized, allowing slices, dyn traits and any other [`!Sized`] types.
+//!   There's macro to define dyn trait borrows.
+//!   Special kind of queries look into possible borrows to fetch.
+//!   
+//! * [`Component`] trait is only used on [`World`] methods where value can be inserted,
+//!   possibly generating new archetype.
+//!   Separate methods with matching API with [`Component`] trait bound lifted can be used.
+//!   It requires manual registration of the component type. If type not registered method panics.
 //!
-//! Edict supports `no_std` environment, but requires `alloc`.
-//! With `"std"` feature error types implement `Error` trait,
-//! apart from that only few internal pieces depend on `"std"` feature.
-//! `"std"` feature is enabled by default and must be turned off for `no_std` environemnt.
-//! Dependent crates that also support `no_std` should use `default-features = false` for `edict` dependency,
-//! and optionally enable `"std"` if needed.
+//! * Built-in type-map for singleton values called "resources".
+//!   Resources can be inserted into/fetched from [`World`].
+//!   Resources live separately from entities and their components.
 //!
-//! [`World`]: `edict::world::World`
-//! [`Entity`]: `edict::entity::Entity`
-//! [`EntityId`]: `edict::entity::EntityId`
-//! [`Tracks`]: `edict::tracks::Tracks`
-//! [`World::tracks()`]: `edict::world::World::tracks`
-//! [`World::tracks_now()`]: `edict::world::World::tracks_now`
+//! * Each component is equipped with epoch counter that tracks last potential mutation of the component.
+//!   Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
+//!   Last epoch can be obtained with [`World::epoch`].
+//!
+//! * Relations can be added to pair of entities, binding them together.
+//!   When either of the two entities is despawned, relation is dropped.
+//!   [`Relation`] type may further configure behavior of the bonds.
+//!
+//! [`Send`]: core::marker::Send
+//! [`!Send`]: core::marker::Send
+//! [`Sync`]: core::marker::Sync
+//! [`!Sync`]: core::marker::Sync
+//! [`World`]: edict::world::World
+//! [`ActionEncoder`]: edict::action::ActionEncoder
+//! [`EntityId`]: edict::entity::EntityId
+//! [`!Sized`]: core::marker::Sized
+//! [`Component`]: edict::component::Component
+//! [`World::epoch`]: edict::world::World::epoch
+//! [`Relation`]: edict::relation::Relation
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_copy_implementations)]
 #![deny(missing_debug_implementations)]
@@ -125,19 +126,18 @@ macro_rules! phantom_newtype {
 }
 
 pub mod action;
+pub mod archetype;
 pub mod bundle;
 pub mod component;
 pub mod entity;
 pub mod prelude;
-pub mod proof;
 pub mod query;
 pub mod relation;
-pub mod res;
 pub mod world;
 
-mod archetype;
 mod hash;
 mod idx;
+mod res;
 mod typeidset;
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ pub use self::query::{
 mod query;
 
 /// Trait that must be implemented for relations.
-pub trait Relation: Copy + Send + Sync + 'static {
+pub trait Relation: Send + Sync + Copy + 'static {
     /// If `true` then relation can be added only once to an entity.
     const EXCLUSIVE: bool = false;
 
@@ -288,25 +288,22 @@ where
     }
 
     #[inline]
-    fn borrows<F, T>(f: F) -> T
-    where
-        F: FnOnce(&[ComponentBorrow]) -> T,
-    {
+    fn borrows() -> Vec<ComponentBorrow> {
+        let mut output = Vec::new();
         if R::SYMMETRIC {
-            f(&[
-                borrow_dyn_trait!(Self as RelationOrigin),
-                borrow_dyn_trait!(Self as RelationTarget),
-            ])
+            borrow_dyn_trait!(Self as RelationOrigin => output);
+            borrow_dyn_trait!(Self as RelationTarget => output);
         } else {
-            f(&[borrow_dyn_trait!(Self as RelationOrigin)])
+            borrow_dyn_trait!(Self as RelationOrigin => output);
         }
+        output
     }
 }
 
 /// Component that is added to target entity of the non-symmetric relation.
 pub(crate) struct TargetComponent<R> {
     origins: Vec<EntityId>,
-    relation: PhantomData<R>,
+    relation: PhantomData<fn() -> R>,
 }
 
 impl<R> TargetComponent<R>
@@ -370,11 +367,10 @@ where
     }
 
     #[inline]
-    fn borrows<F, T>(f: F) -> T
-    where
-        F: FnOnce(&[ComponentBorrow]) -> T,
-    {
-        f(&[borrow_dyn_trait!(Self as RelationTarget)])
+    fn borrows() -> Vec<ComponentBorrow> {
+        let mut output = Vec::new();
+        borrow_dyn_trait!(Self as RelationTarget => output);
+        output
     }
 }
 

@@ -19,7 +19,7 @@ pub struct FetchRead<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchRead<'a, T>
 where
-    T: 'static,
+    T: Sync + 'a,
 {
     type Item = &'a T;
 
@@ -53,7 +53,7 @@ where
 
 impl<'a, T> PhantomQueryFetch<'a> for &T
 where
-    T: 'static,
+    T: Sync + 'static,
 {
     type Item = &'a T;
     type Fetch = FetchRead<'a, T>;
@@ -61,7 +61,7 @@ where
 
 unsafe impl<T> PhantomQuery for &T
 where
-    T: 'static,
+    T: Sync + 'static,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -91,7 +91,7 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
+    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
@@ -111,15 +111,15 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for &T where T: 'static {}
+unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
 
 /// Returns query that yields reference to specified component
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn read<'a, T>() -> PhantomData<&'a T>
+pub fn read<T>() -> PhantomData<&'static T>
 where
-    T: 'static,
+    T: Sync,
 {
     PhantomData
 }

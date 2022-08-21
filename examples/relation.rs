@@ -103,7 +103,8 @@ fn main() {
 
     world.add_relation(a, Enemy, b).unwrap();
 
-    for (e, enemies) in world.build_query().relation::<&Enemy>() {
+    let q = world.build_query().relation::<&Enemy>();
+    for (e, enemies) in q {
         println!(
             "{} is enemy of {:?}",
             e,

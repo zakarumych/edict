@@ -40,14 +40,10 @@ mod write;
 /// Specifies kind of access query performs for particular component.
 #[derive(Clone, Copy, Debug)]
 pub enum Access {
-    /// Read-only access to component versions.
-    /// Can be aliased with [`Access::Write`] in single query.
-    Track,
-
-    /// Shared access to component. Can be aliased with other [`Access::Read`] and [`Access::Track`] accesses.
+    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
     Read,
 
-    /// Cannot be aliased with other [`Access::Read`] access and [`Access::Track`] access in other queries.
+    /// Cannot be aliased with any other access.
     Write,
 }
 
@@ -109,7 +105,14 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> {
     fn is_valid(&self) -> bool;
 
     /// Checks if archetype must be skipped.
-    fn skip_archetype(&self, archetype: &Archetype) -> bool;
+    /// Without taking into account modifiable state of the archetype.
+    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool;
+
+    /// Checks if archetype must be skipped.
+    #[inline]
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+        self.skip_archetype_unconditionally(archetype)
+    }
 
     /// Fetches data from one archetype.
     ///
@@ -193,7 +196,7 @@ pub(crate) fn assert_immutable_query(query: &impl ImmutableQuery) {
             true
         }
 
-        fn skip_archetype(&self, _: &Archetype) -> bool {
+        fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
             unimplemented!()
         }
 
@@ -218,7 +221,8 @@ pub(crate) fn debug_assert_immutable_query(query: &impl ImmutableQuery) {
 /// Type alias for items returned by the query type.
 pub type QueryItem<'a, Q> = <Q as QueryFetch<'a>>::Item;
 
-const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+/// Merge two optional access values.
+pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
     match (lhs, rhs) {
         (None, rhs) => rhs,
         (lhs, None) => lhs,

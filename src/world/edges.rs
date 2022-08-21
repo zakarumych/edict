@@ -12,8 +12,9 @@ use crate::{
     bundle::{Bundle, BundleDesc},
     component::{ComponentInfo, ComponentRegistry},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
-    idx::MAX_IDX_USIZE,
 };
+
+use super::ArchetypeSet;
 
 pub(super) struct Edges {
     /// Maps static key of the bundle to archetype index.
@@ -60,7 +61,7 @@ impl Edges {
     pub fn spawn<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
-        archetypes: &mut Vec<Archetype>,
+        archetypes: &mut ArchetypeSet,
         bundle: &B,
         register_components: F,
     ) -> u32
@@ -76,20 +77,17 @@ impl Edges {
             {
                 None => {
                     coldest();
-                    assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
 
-                    register_components(registry);
+                    archetypes.add_with(|_| {
+                        register_components(registry);
 
-                    let archetype = bundle.with_ids(|ids| {
-                        Archetype::new(ids.iter().map(|id| match registry.get_info(*id) {
-                            None => panic!("Component {:?} is not registered", id),
-                            Some(info) => info,
-                        }))
-                    });
-
-                    archetypes.push(archetype);
-
-                    archetypes.len() as u32 - 1
+                        bundle.with_ids(|ids| {
+                            Archetype::new(ids.iter().map(|id| match registry.get_info(*id) {
+                                None => panic!("Component {:?} is not registered", id),
+                                Some(info) => info,
+                            }))
+                        })
+                    })
                 }
                 Some(idx) => idx as u32,
             }
@@ -135,7 +133,7 @@ impl Edges {
         &mut self,
         id: TypeId,
         registry: &mut ComponentRegistry,
-        archetypes: &mut Vec<Archetype>,
+        archetypes: &mut ArchetypeSet,
         src: u32,
         register_component: F,
     ) -> u32
@@ -150,15 +148,10 @@ impl Edges {
             }) {
                 None => {
                     colder();
-                    assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
-
-                    let info = register_component(registry);
-
-                    let archetype =
-                        Archetype::new(archetypes[src as usize].infos().chain(Some(info)));
-
-                    archetypes.push(archetype);
-                    archetypes.len() as u32 - 1
+                    archetypes.add_with(|archetypes| {
+                        let info = register_component(registry);
+                        Archetype::new(archetypes[src as usize].infos().chain(Some(info)))
+                    })
                 }
                 Some(idx) => idx as u32,
             }
@@ -177,7 +170,7 @@ impl Edges {
     pub fn insert_bundle<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
-        archetypes: &mut Vec<Archetype>,
+        archetypes: &mut ArchetypeSet,
         src: u32,
         bundle: &B,
         register_components: F,
@@ -196,26 +189,22 @@ impl Edges {
             }) {
                 None => {
                     coldest();
-                    assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
+                    archetypes.add_with(|archetypes| {
+                        register_components(registry);
 
-                    register_components(registry);
-
-                    let archetype = bundle.with_ids(|ids| {
-                        Archetype::new(
-                            archetypes[src as usize]
-                                .ids()
-                                .filter(|aid| ids.iter().all(|id| *id != *aid))
-                                .chain(ids.iter().copied())
-                                .map(|id| match registry.get_info(id) {
-                                    None => panic!("Component {:?} is not registered", id),
-                                    Some(info) => info,
-                                }),
-                        )
-                    });
-
-                    archetypes.push(archetype);
-
-                    archetypes.len() as u32 - 1
+                        bundle.with_ids(|ids| {
+                            Archetype::new(
+                                archetypes[src as usize]
+                                    .ids()
+                                    .filter(|aid| ids.iter().all(|id| *id != *aid))
+                                    .chain(ids.iter().copied())
+                                    .map(|id| match registry.get_info(id) {
+                                        None => panic!("Component {:?} is not registered", id),
+                                        Some(info) => info,
+                                    }),
+                            )
+                        })
+                    })
                 }
                 Some(idx) => idx as u32,
             }
@@ -257,7 +246,7 @@ impl Edges {
         }
     }
 
-    pub fn remove(&mut self, archetypes: &mut Vec<Archetype>, src: u32, id: TypeId) -> u32 {
+    pub fn remove(&mut self, archetypes: &mut ArchetypeSet, src: u32, id: TypeId) -> u32 {
         let mut slow = || {
             cold();
             match archetypes.iter().position(|a| {
@@ -266,19 +255,13 @@ impl Edges {
             }) {
                 None => {
                     colder();
-                    assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
-
-                    let archetype = Archetype::new(
-                        archetypes[src as usize]
-                            .infos()
-                            .filter(|info| info.id() != id),
-                    );
-
-                    // let meta = RemoveMeta::new::<T>(&archetypes[src as usize], &archetype);
-
-                    archetypes.push(archetype);
-
-                    archetypes.len() as u32 - 1
+                    archetypes.add_with(|archetypes| {
+                        Archetype::new(
+                            archetypes[src as usize]
+                                .infos()
+                                .filter(|info| info.id() != id),
+                        )
+                    })
                 }
                 Some(idx) => idx as u32,
             }
@@ -294,7 +277,7 @@ impl Edges {
         }
     }
 
-    pub fn remove_bundle<B>(&mut self, archetypes: &mut Vec<Archetype>, src: u32) -> u32
+    pub fn remove_bundle<B>(&mut self, archetypes: &mut ArchetypeSet, src: u32) -> u32
     where
         B: Bundle,
     {
@@ -309,17 +292,13 @@ impl Edges {
                     coldest();
                     drop(ids);
 
-                    assert!(archetypes.len() < MAX_IDX_USIZE, "Too many archetypes");
-
-                    let archetype = Archetype::new(
-                        archetypes[src as usize]
-                            .infos()
-                            .filter(|info| !B::static_contains_id(info.id())),
-                    );
-
-                    archetypes.push(archetype);
-
-                    archetypes.len() as u32 - 1
+                    archetypes.add_with(|archetypes| {
+                        Archetype::new(
+                            archetypes[src as usize]
+                                .infos()
+                                .filter(|info| !B::static_contains_id(info.id())),
+                        )
+                    })
                 }
                 Some(idx) => idx as u32,
             }

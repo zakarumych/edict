@@ -24,12 +24,13 @@ use crate::typeidset::TypeIdSet;
 struct Resource {
     // Box<AtomicCell> instead of AtomicCell<Box> to avoid false sharing
     data: Box<AtomicCell<dyn Any>>,
-    type_name: &'static str,
+    id: TypeId,
+    name: &'static str,
 }
 
 impl Debug for Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.type_name)
+        f.write_str(self.name)
     }
 }
 
@@ -71,21 +72,16 @@ impl Res {
     ///
     /// `Res<NoSend>` accepts any `'static` resource type.
     pub fn insert<T: 'static>(&mut self, resource: T) {
-        let id = resource.type_id();
+        let id = TypeId::of::<T>();
 
         match self.ids.get(id) {
             None => {
-                self.ids = TypeIdSet::new(
-                    self.resources
-                        .iter()
-                        .map(|r| r.data.type_id())
-                        .chain(core::iter::once(id)),
-                );
-
                 self.resources.push(Resource {
                     data: Box::new(AtomicCell::new(resource)),
-                    type_name: type_name::<T>(),
+                    id,
+                    name: type_name::<T>(),
                 });
+                self.recalculate_indices();
             }
             Some(idx) => {
                 let data = unsafe {
@@ -96,9 +92,29 @@ impl Res {
                 .data
                 .get_mut();
 
-                *data.downcast_mut::<T>().unwrap() = resource;
+                unsafe {
+                    // # Safety
+                    // Manually casting is is safe, type behind `dyn Any` is `T`.
+                    debug_assert!(data.is::<T>());
+                    *(data as *mut dyn Any as *mut T) = resource;
+                }
             }
         }
+    }
+
+    /// Removes resource from container.
+    /// Returns `None` if resource is not found.
+    pub fn remove<T: 'static>(&mut self) -> Option<T> {
+        let idx = self.ids.get(TypeId::of::<T>())?;
+        let resource = self.resources.swap_remove(idx);
+        self.recalculate_indices();
+        let value = AtomicCell::into_inner(*unsafe {
+            // # Safety
+            // Manually casting is is safe, type behind `dyn Any` is `T`.
+            debug_assert_eq!(resource.id, TypeId::of::<T>());
+            Box::from_raw(Box::into_raw(resource.data) as *mut AtomicCell<T>)
+        });
+        Some(value)
     }
 
     /// Returns some reference to potentially `!Sync` resource.
@@ -161,7 +177,12 @@ impl Res {
         }
         .borrow();
 
-        let r = Ref::map(r, |r| r.downcast_ref::<T>().unwrap());
+        let r = Ref::map(r, |r| unsafe {
+            // # Safety
+            // Manually casting is is safe, type behind `dyn Any` is `T`.
+            debug_assert!(r.is::<T>());
+            &*(r as *const dyn Any as *const T)
+        });
         Some(r)
     }
 
@@ -176,7 +197,24 @@ impl Res {
             &*self.resources.get_unchecked(idx).data
         }
         .borrow_mut();
-        let r = RefMut::map(r, |r| r.downcast_mut::<T>().unwrap());
+        let r = RefMut::map(r, |r: &mut dyn Any| unsafe {
+            // # Safety
+            // Manually casting is is safe, type behind `dyn Any` is `T`.
+            debug_assert!(r.is::<T>());
+            &mut *(r as *mut dyn Any as *mut T)
+        });
         Some(r)
+    }
+
+    /// Reset all possible leaks on resources.
+    /// Mutable reference guarantees that no borrows are active.
+    pub fn undo_leak(&mut self) {
+        for r in self.resources.iter_mut() {
+            r.data.undo_leak();
+        }
+    }
+
+    fn recalculate_indices(&mut self) {
+        self.ids = TypeIdSet::new(self.resources.iter().map(|r| r.id));
     }
 }

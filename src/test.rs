@@ -1,5 +1,6 @@
 use crate::{
     component::Component,
+    query::{Filter, With},
     relation::{Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
@@ -642,4 +643,14 @@ fn test_symmetric_exclusive_relation() {
     {
         panic!()
     }
+}
+
+#[test]
+fn test_filters() {
+    fn is_filter<F: Filter>() {}
+    is_filter::<()>();
+    is_filter::<((), ())>();
+
+    struct A;
+    is_filter::<With<A>>();
 }

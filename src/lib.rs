@@ -1,11 +1,24 @@
 //!
 //! ## Edict
-//! is experimental ECS with ref-counted entities and built-in change detection
-//! written in Rust by your fellow 🦀
+//!
+//! Edict is a fast and powerful ECS crate that expands traditional ECS feature set.
+//! Written in Rust by your fellow 🦀
 //!
 //! ### Features
 //!
-//! * General purpose archetype ECS with fast iteration.
+//! * General purpose archetype based ECS with fast iteration.
+//!
+//! * Relations can be added to pair of entities, binding them together.
+//!   When either of the two entities is despawned, relation is dropped.
+//!   [`Relation`] type may further configure behavior of the bonds.
+//!
+//! * Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
+//!   Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
+//!   Last epoch can be obtained with [`World::epoch`].
+//!
+//! * Built-in type-map for singleton values called "resources".
+//!   Resources can be inserted into/fetched from [`World`].
+//!   Resources live separately from entities and their components.
 //!
 //! * Runtime checks for query validity and mutable aliasing avoidance.
 //!   This requires atomic operations at the beginning iteration on next archetype.
@@ -32,18 +45,6 @@
 //!   Separate methods with matching API with [`Component`] trait bound lifted can be used.
 //!   It requires manual registration of the component type. If type not registered method panics.
 //!
-//! * Built-in type-map for singleton values called "resources".
-//!   Resources can be inserted into/fetched from [`World`].
-//!   Resources live separately from entities and their components.
-//!
-//! * Each component is equipped with epoch counter that tracks last potential mutation of the component.
-//!   Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
-//!   Last epoch can be obtained with [`World::epoch`].
-//!
-//! * Relations can be added to pair of entities, binding them together.
-//!   When either of the two entities is despawned, relation is dropped.
-//!   [`Relation`] type may further configure behavior of the bonds.
-//!
 //! [`Send`]: core::marker::Send
 //! [`!Send`]: core::marker::Send
 //! [`Sync`]: core::marker::Sync
@@ -62,6 +63,8 @@
 
 extern crate alloc;
 extern crate self as edict;
+
+pub use atomicell;
 
 macro_rules! phantom_copy {
     ($type:ident < $( $a:ident ),+ >) => {

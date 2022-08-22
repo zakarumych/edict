@@ -46,7 +46,7 @@ where
         }
     }
 
-    /// Returns fetched item at specifeid index.
+    /// Returns fetched item at specified index.
     unsafe fn get_item(&mut self, idx: usize) -> Option<T::Item> {
         match self {
             None => None,

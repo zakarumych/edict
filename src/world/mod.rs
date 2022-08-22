@@ -282,7 +282,7 @@ impl World {
     }
 
     /// Returns an iterator which spawns and yield entities
-    /// using bundles returnd from provided iterator.
+    /// using bundles returned from provided iterator.
     ///
     /// When bundles iterator returns `None`, returned iterator returns `None` too.
     ///
@@ -961,7 +961,7 @@ impl World {
         self.epoch.load(Ordering::Relaxed)
     }
 
-    /// Attemtps to check if specified entity has componet of specified type.
+    /// Attempts to check if specified entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
@@ -1016,19 +1016,59 @@ impl World {
         &self.archetypes
     }
 
-    /// Inserts resource into container.
+    /// Inserts resource instance.
     /// Old value is replaced.
     ///
-    /// For `Res<Send>` resource type have to implement `Send`.
-    /// Allowing `Res<Send>` to be moved into another thread and drop resources there.
+    /// To access resource, use [`World::get_resource`] and [`World::get_resource_mut`] methods.
     ///
-    /// `Res<NoSend>` accepts any `'static` resource type.
+    /// [`World::get_resource`]: struct.World.html#method.get_resource
+    /// [`World::get_resource_mut`]: struct.World.html#method.get_resource_mut
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// *world.get_resource_mut::<i32>().unwrap() = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
     pub fn insert_resource<T: 'static>(&mut self, resource: T) {
         self.res.insert(resource)
     }
 
+    /// Remove resource instance.
+    /// Returns `None` if resource was not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// world.remove_resource::<i32>();
+    /// assert!(world.get_resource::<i32>().is_none());
+    /// ```
+    pub fn remove_resource<T: 'static>(&mut self) -> Option<T> {
+        self.res.remove()
+    }
+
     /// Returns some reference to potentially `!Sync` resource.
     /// Returns none if resource is not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    /// # use core::cell::Cell;
+    /// let mut world = World::new();
+    /// world.insert_resource(Cell::new(42i32));
+    /// unsafe {
+    ///     assert_eq!(42, world.get_local_resource::<Cell<i32>>().unwrap().get());
+    /// }
+    /// ```
     ///
     /// # Safety
     ///
@@ -1037,12 +1077,36 @@ impl World {
     ///
     /// If `T` is `Sync` then this method is also safe.
     /// In this case prefer to use [`get`] method instead.
+    ///
+    /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
+    /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// let local = world.local();
+    /// assert_eq!(42, *local.get_resource::<i32>().unwrap());
+    /// ```
     pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Ref<T>> {
         self.res.get_local()
     }
 
     /// Returns some mutable reference to potentially `!Send` resource.
     /// Returns none if resource is not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    /// # use core::cell::Cell;
+    /// let mut world = World::new();
+    /// world.insert_resource(Cell::new(42i32));
+    /// unsafe {
+    ///     *world.get_local_resource_mut::<Cell<i32>>().unwrap().get_mut() = 11;
+    ///     assert_eq!(11, world.get_local_resource::<Cell<i32>>().unwrap().get());
+    /// }
+    /// ```
     ///
     /// # Safety
     ///
@@ -1051,29 +1115,95 @@ impl World {
     ///
     /// If `T` is `Send` then this method is also safe.
     /// In this case prefer to use [`get_mut`] method instead.
+    ///
+    /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
+    /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// let local = world.local();
+    /// *local.get_resource_mut::<i32>().unwrap() = 11;
+    /// ```
     pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
         self.res.get_local_mut()
     }
 
     /// Returns some reference to `Sync` resource.
     /// Returns none if resource is not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// ```
     pub fn get_resource<T: Sync + 'static>(&self) -> Option<Ref<T>> {
         self.res.get()
     }
 
     /// Returns some mutable reference to `Send` resource.
     /// Returns none if resource is not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// *world.get_resource_mut::<i32>().unwrap() = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
     pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
         self.res.get_mut()
     }
 
-    /// Returns [`WorldLocal`] referencing this `Res`.
-    /// [`WorldLocal`] provides same API but allows to fetch local resources safely.
+    /// Returns [`WorldLocal`] referencing this [`World`].
+    /// [`WorldLocal`] dereferences to [`World`]
+    /// And defines overlapping methods `get_resource` and `get_resource_mut` without `Sync` and `Send` bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    /// # use core::cell::Cell;
+    /// let mut world = World::new();
+    /// world.insert_resource(Cell::new(42i32));
+    /// let local = world.local();
+    /// assert_eq!(42, local.get_resource::<Cell<i32>>().unwrap().get());
+    /// ```
     pub fn local(&mut self) -> WorldLocal<'_> {
         WorldLocal {
             world: self,
             marker: PhantomData,
         }
+    }
+
+    /// Reset all possible leaks on resources.
+    /// Mutable reference guarantees that no borrows are active.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, atomicell::RefMut};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    ///
+    /// // Leaking reference to resource causes it to stay borrowed.
+    /// let value: &mut i32 = RefMut::leak(world.get_resource_mut().unwrap());
+    /// *value = 11;
+    ///
+    /// // Reset all borrows including leaked ones.
+    /// world.undo_resource_leak();
+    ///
+    /// // Borrow succeeds.
+    /// assert_eq!(world.get_resource::<i32>().unwrap(), 11);
+    /// ```
+    pub fn undo_resource_leak(&mut self) {
+        self.res.undo_leak()
     }
 }
 
@@ -1133,8 +1263,7 @@ where
     }
 
     fn nth(&mut self, n: usize) -> Option<EntityId> {
-        // No reason to create entities
-        // for which the only reference is immediatelly dropped
+        // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
 
         let entity = self.entities.spawn();
@@ -1212,7 +1341,7 @@ where
 
     fn nth_back(&mut self, n: usize) -> Option<EntityId> {
         // No reason to create entities
-        // for which the only reference is immediatelly dropped
+        // for which the only reference is immediately dropped
         let bundle = self.bundles.nth_back(n)?;
 
         let entity = self.entities.spawn();
@@ -1259,7 +1388,7 @@ pub struct NoSuchEntity;
 
 impl fmt::Display for NoSuchEntity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Speicified entity is not found")
+        f.write_str("Specified entity is not found")
     }
 }
 
@@ -1273,7 +1402,7 @@ pub struct MissingComponents;
 
 impl fmt::Display for MissingComponents {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Speicified component is not found in entity")
+        f.write_str("Specified component is not found in entity")
     }
 }
 
@@ -1522,6 +1651,12 @@ impl Debug for WorldLocal<'_> {
 impl WorldLocal<'_> {
     /// Returns some reference to a resource.
     /// Returns none if resource is not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::{World, WorldLocal};
+    ///
     pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
         unsafe {
             // # Safety
@@ -1532,7 +1667,7 @@ impl WorldLocal<'_> {
 
     /// Returns some mutable reference to a resource.
     /// Returns none if resource is not found.
-    pub fn get_mut<T: 'static>(&self) -> Option<RefMut<T>> {
+    pub fn get_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
         unsafe {
             // # Safety
             // Mutable reference to `Res` ensures this is the "main" thread.

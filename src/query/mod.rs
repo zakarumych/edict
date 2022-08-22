@@ -230,13 +230,3 @@ pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Ac
         _ => Some(Access::Write),
     }
 }
-
-#[test]
-fn test_filters() {
-    fn is_filter<F: Filter>() {}
-    is_filter::<()>();
-    is_filter::<((), ())>();
-
-    struct A;
-    is_filter::<With<A>>();
-}

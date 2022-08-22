@@ -1,5 +1,4 @@
 
-
 [![crates](https://img.shields.io/crates/v/edict.svg?style=for-the-badge&label=edict)](https://crates.io/crates/edict)
 [![docs](https://img.shields.io/badge/docs.rs-edict-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/edict)
 [![actions](https://img.shields.io/github/workflow/status/zakarumych/edict/badge/master?style=for-the-badge)](https://github.com/zakarumych/edict/actions?query=workflow%3ARust)
@@ -8,12 +7,24 @@
 
 ## Edict
 
-is experimental ECS with ref-counted entities and built-in change detection
-written in Rust by your fellow 🦀
+Edict is a fast and powerful ECS crate that expands traditional ECS feature set.
+Written in Rust by your fellow 🦀
 
 ### Features
 
-* General purpose archetype ECS with fast iteration.
+* General purpose archetype based ECS with fast iteration.
+
+* Relations can be added to pair of entities, binding them together.
+  When either of the two entities is despawned, relation is dropped.
+  [`Relation`] type may further configure behavior of the bonds.
+
+* Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
+  Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
+  Last epoch can be obtained with [`World::epoch`].
+
+* Built-in type-map for singleton values called "resources".
+  Resources can be inserted into/fetched from [`World`].
+  Resources live separately from entities and their components.
 
 * Runtime checks for query validity and mutable aliasing avoidance.
   This requires atomic operations at the beginning iteration on next archetype.
@@ -40,24 +51,11 @@ written in Rust by your fellow 🦀
   Separate methods with matching API with [`Component`] trait bound lifted can be used.
   It requires manual registration of the component type. If type not registered method panics.
 
-* Built-in type-map for singleton values called "resources".
-  Resources can be inserted into/fetched from [`World`].
-  Resources live separately from entities and their components.
-
-* Each component is equipped with epoch counter that tracks last potential mutation of the component.
-  Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
-  Last epoch can be obtained with [`World::epoch`].
-
-* Relations can be added to pair of entities, binding them together.
-  When either of the two entities is despawned, relation is dropped.
-  [`Relation`] type may further configure behavior of the bonds.
-
-
 ### no_std support
 
-`edict` supports `no_std` environment, but requires `alloc`.
-With `"std"` feature error types implement `Error` trait.
-`"std"` feature is enabled by default and must be turned off for `no_std` environemnt.
+`edict` can be used in `no_std` environment but requires `alloc`.
+With `"std"` feature enabled error types implement `Error` trait.
+`"std"` feature is enabled by default and must be turned off for `no_std` environment.
 Dependent crates that also support `no_std` should use `default-features = false` for `edict` dependency,
 and optionally enable `"std"` if needed.
 

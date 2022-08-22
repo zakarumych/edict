@@ -7,7 +7,6 @@ use crate::archetype::Archetype;
 use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
 
 /// `Fetch` type for the `&mut T` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchWrite<'a, T> {
     ptr: NonNull<T>,
     entity_versions: NonNull<u64>,

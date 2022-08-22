@@ -133,7 +133,6 @@ impl ArchetypeComponent {
 /// Archetypes are typically managed by the `World` instance.
 ///
 /// This type is exposed for `Query` implementations.
-#[allow(missing_debug_implementations)]
 pub struct Archetype {
     set: TypeIdSet,
     indices: Box<[usize]>,

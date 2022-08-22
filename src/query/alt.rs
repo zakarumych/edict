@@ -44,7 +44,6 @@ impl<T> DerefMut for RefMut<'_, T> {
 }
 
 /// `Fetch` type for the `Alt` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchAlt<'a, T> {
     epoch: u64,
     ptr: NonNull<T>,

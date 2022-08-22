@@ -8,13 +8,11 @@ use crate::{
 };
 
 /// Query that borrows from components.
-#[allow(missing_debug_implementations)]
 pub struct QueryBorrowAny<T> {
     marker: PhantomData<fn() -> T>,
 }
 
 /// Fetch for [`QueryBorrowAny<&T>`].
-#[allow(missing_debug_implementations)]
 pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -124,7 +122,6 @@ where
 unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: Sync + ?Sized + 'static {}
 
 /// Fetch for [`QueryBorrowAny<&mut T>`].
-#[allow(missing_debug_implementations)]
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,

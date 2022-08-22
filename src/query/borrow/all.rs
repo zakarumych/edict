@@ -9,7 +9,6 @@ use crate::{
 };
 
 /// Query that borrows from components.
-#[allow(missing_debug_implementations)]
 pub struct QueryBorrowAll<T> {
     marker: PhantomData<fn() -> T>,
 }
@@ -22,7 +21,6 @@ struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
 }
 
 /// Fetch for [`QueryBorrowAll<&T>`].
-#[allow(missing_debug_implementations)]
 pub struct FetchBorrowAllRead<'a, T: ?Sized> {
     components: Vec<FetchBorrowAllReadComponent<'a, T>>,
     marker: PhantomData<fn() -> T>,

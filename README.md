@@ -18,7 +18,8 @@ Written in Rust by your fellow 🦀
   When either of the two entities is despawned, relation is dropped.
   [`Relation`] type may further configure behavior of the bonds.
 
-* Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
+* Change tracking.
+  Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
   Special query type uses epoch counter to skip entities where component wasn't changed since specified epoch.
   Last epoch can be obtained with [`World::epoch`].
 
@@ -38,18 +39,21 @@ Written in Rust by your fellow 🦀
   Actions get mutable access to [`World`].
 
 * Component replace/drop hooks.
-  Components can define hooks that will be executed on value drop and on value replace.
+  Components can define hooks that will be executed on value drop and replace.
   Hooks can read old and new values, [`EntityId`] and can record actions into [`ActionEncoder`].
 
 * Component type may define a set of types that can be borrowed from it.
   Borrowed type may be not sized, allowing slices, dyn traits and any other [`!Sized`] types.
   There's macro to define dyn trait borrows.
   Special kind of queries look into possible borrows to fetch.
-  
-* [`Component`] trait is only used on [`World`] methods where value can be inserted,
-  possibly generating new archetype.
-  Separate methods with matching API with [`Component`] trait bound lifted can be used.
-  It requires manual registration of the component type. If type not registered method panics.
+
+* [`WorldBuilder`] can be used to manually register component types and override default behavior.
+
+* Optional [`Component`] trait to allow implicit component type registration by insertion methods.
+  Implicit registration uses behavior defined by [`Component`] implementation as-is.
+  Separate insertions methods with [`Component`] trait bound lifted can be used where trait is not implemented or implementation is not visible for generic type.
+  Those methods require pre-registration of the component type. If type was not registered - method panics.
+  Both explicit registration with [`WorldBuilder`] and implicit registration via insertion method with [`Component`] type bound is enough.
 
 ### no_std support
 
@@ -70,6 +74,7 @@ and optionally enable `"std"` if needed.
 [`Component`]: https://docs.rs/edict/latest/edict/component/struct.Component.html
 [`World::epoch`]: https://docs.rs/edict/latest/edict/world/struct.World.html#method.epoch
 [`Relation`]: https://docs.rs/edict/latest/edict/relation/trait.Relation.html
+[`WorldBuilder`]: https://docs.rs/edict/latest/edict/world/struct.WorldBuilder.html
 
 ## License
 

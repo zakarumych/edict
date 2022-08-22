@@ -3,7 +3,6 @@ use crate::archetype::chunk_idx;
 /// This type can be used in `Fetch` implementation
 /// to assert that `Fetch` API is used correctly.
 /// Should be used only in debug mode.
-#[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
 pub struct VerifyFetch {
     /// panics on any call if true
@@ -245,7 +244,6 @@ pub unsafe trait Fetch<'a> {
 /// Fetch type for `Query` implementations
 /// where nothing needs to be fetched.
 #[repr(transparent)]
-#[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
 pub struct UnitFetch {
     #[cfg(debug_assertions)]

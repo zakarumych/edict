@@ -1208,7 +1208,6 @@ impl World {
 }
 
 /// Spawning iterator. Produced by [`World::spawn_batch`].
-#[allow(missing_debug_implementations)]
 pub struct SpawnBatch<'a, I> {
     bundles: I,
     epoch: u64,

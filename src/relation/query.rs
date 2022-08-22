@@ -20,7 +20,6 @@ phantom_newtype! {
 }
 
 /// Iterator over relations of a given type on one entity.
-#[allow(missing_debug_implementations)]
 pub struct RelationReadIter<'a, R> {
     iter: core::slice::Iter<'a, Origin<R>>,
 }
@@ -90,7 +89,6 @@ impl<'a, R> ExactSizeIterator for RelationReadIter<'a, R> {
 }
 
 /// Fetch for the `Related<R>` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchRelationRead<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
     _borrow: AtomicBorrow<'a>,
@@ -203,7 +201,6 @@ where
 unsafe impl<R> ImmutablePhantomQuery for QueryRelation<&R> where R: Relation + Sync {}
 
 /// Iterator over relations of a given type on one entity.
-#[allow(missing_debug_implementations)]
 pub struct RelationWriteIter<'a, R> {
     iter: core::slice::IterMut<'a, Origin<R>>,
 }
@@ -273,7 +270,6 @@ impl<'a, R> ExactSizeIterator for RelationWriteIter<'a, R> {
 }
 
 /// Fetch for the `Related<R>` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchRelationWrite<'a, R: Relation> {
     epoch: u64,
     ptr: NonNull<OriginComponent<R>>,
@@ -428,7 +424,6 @@ impl<R> QueryRelationTo<R> {
 }
 
 /// Fetch for the `Related<R>` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchRelationToRead<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
@@ -559,7 +554,6 @@ where
 unsafe impl<R> ImmutableQuery for QueryRelationTo<&R> where R: Relation + Sync {}
 
 /// Fetch for the `Related<R>` query.
-#[allow(missing_debug_implementations)]
 pub struct FetchRelationToWrite<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
@@ -714,7 +708,6 @@ where
 }
 
 /// Fetch for the `Related<R>` query.
-#[allow(missing_debug_implementations)]
 pub struct FilterFetchRelationTo<'a, R: Relation> {
     target: EntityId,
     ptr: NonNull<OriginComponent<R>>,
@@ -855,7 +848,6 @@ phantom_newtype! {
 }
 
 /// Fetch type for [`Related<R>`]
-#[allow(missing_debug_implementations)]
 pub struct FetchRelated<'a, R> {
     ptr: NonNull<TargetComponent<R>>,
     _borrow: AtomicBorrow<'a>,

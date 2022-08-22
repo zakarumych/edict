@@ -9,7 +9,6 @@ use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
 
 /// Iterator over entities with a query `Q`.
 /// Yields `EntityId` and query items for every matching entity.
-#[allow(missing_debug_implementations)]
 pub struct QueryIter<'a, Q: Query> {
     query: Q,
     epoch: u64,

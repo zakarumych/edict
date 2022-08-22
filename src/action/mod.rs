@@ -38,7 +38,6 @@ enum Action {
 /// Encoder provided to the drop-glue.
 /// Custom drop-glue may record drop-actions to it.
 #[repr(transparent)]
-#[allow(missing_debug_implementations)]
 pub struct ActionEncoder {
     actions: VecDeque<Action>,
 }

@@ -20,10 +20,8 @@ pub type BorrowFn<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r ()>) -> &'
 #[doc(hidden)]
 pub type BorrowFnMut<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r mut ()>) -> &'r mut T;
 
-/// Allows borrows from component by queries.
+/// Defines conversion of reference to component into reference to target type.
 #[derive(Clone, Copy)]
-#[allow(missing_debug_implementations)]
-#[allow(missing_docs)]
 pub struct ComponentBorrow {
     target: TypeId,
 
@@ -300,7 +298,6 @@ pub trait Component: Sized + 'static {
 
 /// Type information required for components.
 #[derive(Clone)]
-#[allow(missing_debug_implementations)]
 pub struct ComponentInfo {
     /// [`TypeId`] of the component.
     id: TypeId,
@@ -519,7 +516,6 @@ impl<T> SetHook<T> for ExternalSetHook {
 
 /// Reference to [`ComponentInfo`] registered to [`ComponentRegistry`].
 /// Allows user to setup custom drop and set hooks.
-#[allow(missing_debug_implementations)]
 pub struct ComponentInfoRef<
     'a,
     T: 'static,

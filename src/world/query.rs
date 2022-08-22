@@ -54,7 +54,6 @@ macro_rules! for_tuple {
 for_tuple!();
 
 /// Mutable query builder.
-#[allow(missing_debug_implementations)]
 pub struct QueryRef<'a, Q, F = ()> {
     archetypes: &'a [Archetype],
     epoch: &'a AtomicU64,

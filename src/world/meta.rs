@@ -8,7 +8,6 @@ use crate::{
 use super::NoSuchEntity;
 
 /// Meta-information about entities.
-#[allow(missing_debug_implementations)]
 pub struct EntityMeta<'a> {
     pub(super) entities: &'a Entities,
     pub(super) archetypes: &'a [Archetype],

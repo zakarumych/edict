@@ -9,7 +9,6 @@ use super::{
 };
 
 /// `Fetch` type for the `&T` query.
-#[allow(missing_debug_implementations)]
 
 pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,

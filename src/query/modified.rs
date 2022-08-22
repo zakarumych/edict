@@ -37,7 +37,6 @@ impl<T> Modified<T> {
 }
 
 /// `Fetch` type for the `Modified<&T>` query.
-#[allow(missing_debug_implementations)]
 pub struct ModifiedFetchRead<'a, T> {
     epoch: u64,
     ptr: NonNull<T>,
@@ -170,7 +169,6 @@ where
 unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
-#[allow(missing_debug_implementations)]
 pub struct ModifiedFetchWrite<'a, T> {
     epoch: u64,
     new_epoch: u64,
@@ -318,7 +316,6 @@ where
     }
 }
 
-#[allow(missing_debug_implementations)]
 /// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<'a, T> {
     track_epoch: u64,

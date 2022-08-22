@@ -17,7 +17,6 @@ use super::{ArchetypeSet, Edges, World};
 /// [`WorldBuilder`] allows to perform setup before building [`World`] value.
 /// That otherwise would be impossible.
 /// For example [`WorldBuilder::register_component`] allows customization of registered components.
-#[allow(missing_debug_implementations)]
 pub struct WorldBuilder {
     registry: ComponentRegistry,
 }

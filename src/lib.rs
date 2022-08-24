@@ -137,10 +137,11 @@ pub mod archetype;
 pub mod bundle;
 pub mod component;
 pub mod entity;
-pub mod prelude;
+pub mod executor;
+// pub mod prelude;
 pub mod query;
 pub mod relation;
-// pub mod scheduler;
+pub mod scheduler;
 pub mod system;
 pub mod world;
 

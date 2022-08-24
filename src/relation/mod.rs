@@ -52,7 +52,7 @@ pub trait Relation: Send + Sync + Copy + 'static {
     /// Method that is called when relation is re-inserted.
     /// Does nothing by default and returns `true`, causing `on_origin_drop` to be called.
     #[inline]
-    fn on_set(
+    fn on_replace(
         &mut self,
         value: &Self,
         entity: EntityId,
@@ -226,14 +226,14 @@ where
         entity: EntityId,
         encoder: &mut ActionEncoder,
     ) {
-        let on_set = origin.relation.on_set(
+        let on_replace = origin.relation.on_replace(
             &new_origin.relation,
             entity,
             origin.target,
             new_origin.target,
             encoder,
         );
-        if on_set {
+        if on_replace {
             origin.relation.on_drop(entity, origin.target, encoder);
         }
         if R::SYMMETRIC {
@@ -283,7 +283,12 @@ where
     }
 
     #[inline]
-    fn on_set(&mut self, _value: &Self, _entity: EntityId, _encoder: &mut ActionEncoder) -> bool {
+    fn on_replace(
+        &mut self,
+        _value: &Self,
+        _entity: EntityId,
+        _encoder: &mut ActionEncoder,
+    ) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 
@@ -362,7 +367,12 @@ where
     }
 
     #[inline]
-    fn on_set(&mut self, _value: &Self, _entity: EntityId, _encoder: &mut ActionEncoder) -> bool {
+    fn on_replace(
+        &mut self,
+        _value: &Self,
+        _entity: EntityId,
+        _encoder: &mut ActionEncoder,
+    ) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 

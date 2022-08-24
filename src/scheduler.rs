@@ -21,12 +21,14 @@
 
 use core::{
     cell::UnsafeCell,
+    ops::{Deref, DerefMut},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use hashbrown::HashSet;
 
 use crate::{
+    executor::ScopedExecutor,
     query::Access,
     system::{IntoSystem, System},
     world::World,
@@ -39,47 +41,100 @@ pub struct Scheduler {
     schedule_cache_id: Option<u64>,
 }
 
+pub struct SyncUnsafeCell<T: ?Sized> {
+    inner: UnsafeCell<T>,
+}
+
+impl<T> SyncUnsafeCell<T> {
+    pub fn new(value: T) -> Self {
+        SyncUnsafeCell {
+            inner: UnsafeCell::new(value),
+        }
+    }
+}
+
+unsafe impl<T: ?Sized> Sync for SyncUnsafeCell<T> {}
+
+impl<T: ?Sized> Deref for SyncUnsafeCell<T> {
+    type Target = UnsafeCell<T>;
+
+    fn deref(&self) -> &UnsafeCell<T> {
+        &self.inner
+    }
+}
+
+impl<T: ?Sized> DerefMut for SyncUnsafeCell<T> {
+    fn deref_mut(&mut self) -> &mut UnsafeCell<T> {
+        &mut self.inner
+    }
+}
+
 struct ScheduledSystem {
-    system: UnsafeCell<Box<dyn System>>,
+    system: SyncUnsafeCell<Box<dyn System + Send>>,
+    wait: AtomicUsize,
     dependents: Vec<usize>,
     dependencies: usize,
-    wait: AtomicUsize,
+    is_local: bool,
 }
 
-pub struct Task<'a> {
-    system: &'a mut dyn System,
-    world: &'a World,
-    dependents: &'a [usize],
-    systems: &'a [ScheduledSystem],
-    spawn: &'a dyn Fn(Self),
+struct Task<'scope> {
+    system_idx: usize,
+    systems: &'scope [ScheduledSystem],
+    world: &'scope World,
+    tx: flume::Sender<Task<'scope>>,
 }
 
-impl<'a> Task<'a> {
-    fn run(self) {
-        let mut unroll = Some(self.system);
+impl<'scope> Task<'scope> {
+    fn run(self, executor: &impl ScopedExecutor<'scope>) {
+        let Task {
+            system_idx,
+            systems,
+            world,
+            tx,
+        } = self;
+
+        let mut dependents = &systems[system_idx].dependents[..];
+        let mut unroll = Some(unsafe {
+            // # Safety
+            //
+            // Only spawned task gets to run this system.
+            &mut **systems[system_idx].system.get()
+        });
 
         while let Some(system) = unroll.take() {
-            system.run(self.world);
+            unsafe {
+                debug_assert!(
+                    !system.is_local(),
+                    "Only non-local systems are sent to tasks"
+                );
+                system.run_unchecked(world);
+            }
 
-            for &d in self.dependents {
-                let old = self.systems[d].wait.fetch_sub(1, Ordering::AcqRel);
+            for &dependent_idx in dependents {
+                let old = systems[dependent_idx].wait.fetch_sub(1, Ordering::AcqRel);
                 if old == 0 {
-                    let system = unsafe {
-                        // # Safety
-                        //
-                        // Only task that decrements zeroed wait counter gets to run the system.
-                        &mut **self.systems[d].system.get()
-                    };
-                    if unroll.is_none() {
-                        unroll = Some(system);
-                    } else {
-                        (self.spawn)(Task {
-                            system,
-                            world: self.world,
-                            dependents: &self.systems[d].dependents,
-                            systems: self.systems,
-                            spawn: self.spawn,
+                    let is_local = systems[dependent_idx].is_local;
+
+                    if !is_local && unroll.is_none() {
+                        unroll = Some(unsafe {
+                            // # Safety
+                            //
+                            // Only task that decrements zeroed wait counter gets to run this system.
+                            &mut **systems[dependent_idx].system.inner.get()
                         });
+                        dependents = &systems[dependent_idx].dependents[..];
+                    } else {
+                        let task = Task {
+                            system_idx: dependent_idx,
+                            systems: systems,
+                            world: world,
+                            tx: tx.clone(),
+                        };
+                        if is_local {
+                            tx.send(task).unwrap();
+                        } else {
+                            executor.spawn(move |executor| task.run(executor));
+                        }
                     }
                 }
             }
@@ -102,26 +157,13 @@ impl Scheduler {
     }
 
     /// Adds system to the scheduler.
-    ///
-    /// ```
-    /// use edict::scheduler::{Scheduler, System};
-    ///
-    /// struct MySystem;
-    ///
-    /// impl System<()> for MySystem {
-    ///     fn run(&mut self, cx: ()) {}
-    /// }
-    ///
-    /// let mut scheduler = Scheduler::new();
-    /// let system: Box<dyn System<()>> = Box::new(MySystem);
-    /// scheduler.add_boxed_system(system);
-    /// ```
-    pub fn add_boxed_system(&mut self, system: Box<dyn System>) {
+    pub fn add_boxed_system(&mut self, system: Box<dyn System + Send>) {
         self.systems.push(ScheduledSystem {
-            system: UnsafeCell::new(system),
+            is_local: system.is_local(),
+            system: SyncUnsafeCell::new(system),
+            wait: AtomicUsize::new(0),
             dependents: Vec::new(),
             dependencies: 0,
-            wait: AtomicUsize::new(0),
         });
         self.schedule_cache_id = None;
     }
@@ -130,38 +172,50 @@ impl Scheduler {
     /// Provided closure should spawn system execution task.
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
-    pub fn run(&mut self, world: &World, spawn: impl Fn(Task<'_>)) {
+    pub fn run<'scope>(
+        &'scope mut self,
+        world: &'scope mut World,
+        executor: &impl ScopedExecutor<'scope>,
+    ) {
         if self.schedule_cache_id != Some(world.archetype_set_id()) {
             // Re-schedule systems for new archetypes set.
             self.reschedule(world);
         }
 
         for system in &mut self.systems {
-            system.wait.store(system.dependencies, Ordering::Relaxed);
+            *system.wait.get_mut() = system.dependencies;
         }
+
+        let world: &'scope World = &*world;
+
+        let (tx, rx) = flume::bounded(self.systems.len());
 
         let mut unroll = None;
 
-        for system in &self.systems {
+        for (idx, system) in self.systems.iter().enumerate() {
             let old = system.wait.fetch_sub(1, Ordering::Acquire);
             if old == 0 {
+                let is_local = system.is_local;
                 let task = Task {
-                    system: unsafe { &mut **system.system.get() },
+                    system_idx: idx,
                     world,
-                    dependents: &system.dependents,
                     systems: &self.systems,
-                    spawn: &spawn,
+                    tx: tx.clone(),
                 };
-                if unroll.is_none() {
+                if is_local && unroll.is_none() {
                     unroll = Some(task);
                 } else {
-                    (spawn)(task);
+                    executor.spawn(move |executor| task.run(executor));
                 }
             }
         }
 
         if let Some(task) = unroll {
-            task.run();
+            task.run(executor);
+        }
+
+        while let Ok(task) = rx.recv() {
+            task.run(executor);
         }
     }
 
@@ -231,7 +285,7 @@ mod test {
 
     use super::*;
 
-    use crate::{component::Component, system::State};
+    use crate::{component::Component, executor::MockExecutor, system::State};
     struct Foo;
 
     impl Component for Foo {}
@@ -241,8 +295,11 @@ mod test {
         let mut world = World::new();
 
         let mut scheduler = Scheduler::new();
-        scheduler.add_system(|q: &mut State<i32>| {
-            **q = 11;
+        scheduler.add_system(|mut q: State<i32>| {
+            *q = 11;
+            println!("{}", *q);
         });
+
+        scheduler.run(&mut world, &MockExecutor);
     }
 }

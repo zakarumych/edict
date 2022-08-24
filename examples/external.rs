@@ -1,5 +1,6 @@
 //! This example contains usage of the main features of Edict ECS.
-use edict::prelude::*;
+
+use edict::world::World;
 
 /// Just a type.
 /// Being `'static` makes it a proper component type.

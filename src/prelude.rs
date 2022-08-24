@@ -4,7 +4,7 @@ pub use crate::{
     bundle::{Bundle, DynamicBundle, EntityBuilder},
     component::Component,
     entity::EntityId,
-    query::{ImmutableQuery, Query, QueryItem, QueryIter},
+    query::{PhantomQuery, Query, QueryIter},
     relation::Relation,
-    world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, World},
+    world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, QueryRef, World},
 };

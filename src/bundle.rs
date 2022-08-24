@@ -276,7 +276,7 @@ impl fmt::Debug for EntityBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ds = f.debug_struct("EntityBuilder");
         for info in &self.infos {
-            ds.field("component", &info.debug_name());
+            ds.field("component", &info.name());
         }
         ds.finish()
     }

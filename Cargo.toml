@@ -14,10 +14,10 @@ categories = ["no-std", "game-development", "data-structures"]
 
 [features]
 std = []
-
 default = ["std"]
 
 [dependencies]
+edict-proc = { version = "=0.2.0", path = "proc" }
 hashbrown = { version = "0.12", features = ["ahash"], default-features = false }
 smallvec = { version ="1.8", features = ["union"], default-features = false }
 tiny-fn = "0.1.3"

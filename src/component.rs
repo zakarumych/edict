@@ -14,6 +14,8 @@ use hashbrown::hash_map::{Entry, HashMap};
 
 use crate::{action::ActionEncoder, entity::EntityId, hash::NoOpHasherBuilder};
 
+pub use edict_proc::Component;
+
 #[doc(hidden)]
 pub type BorrowFn<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r ()>) -> &'r T;
 
@@ -30,6 +32,59 @@ pub struct ComponentBorrow {
 
     // Actually is `BorrowFnMut<T>` where `TypeId::of::<T>() == target`.
     borrow_mut: Option<BorrowFnMut<()>>,
+}
+
+// Types used by proc-macros
+#[doc(hidden)]
+pub mod private {
+    use core::borrow::{Borrow, BorrowMut};
+
+    use super::ComponentBorrow;
+
+    pub struct DispatchBorrowMut<T, U>(pub DispatchBorrow<T, U>);
+    pub struct DispatchBorrow<T, U>(pub core::marker::PhantomData<(T, U)>);
+
+    impl<T, U> core::ops::Deref for DispatchBorrowMut<T, U> {
+        type Target = DispatchBorrow<T, U>;
+
+        fn deref(&self) -> &DispatchBorrow<T, U> {
+            &self.0
+        }
+    }
+
+    impl<T, U> DispatchBorrowMut<T, U>
+    where
+        T: BorrowMut<U> + Send + Sync + 'static,
+        U: 'static,
+    {
+        pub fn insert(&self, extend: &mut impl core::iter::Extend<ComponentBorrow>) {
+            extend.extend(Some(ComponentBorrow::make(
+                |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &U {
+                    unsafe { ptr.cast::<T>().as_ref().borrow() }
+                },
+                core::option::Option::Some(
+                    |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &mut U {
+                        unsafe { ptr.cast::<T>().as_mut().borrow_mut() }
+                    },
+                ),
+            )));
+        }
+    }
+
+    impl<T, U> DispatchBorrow<T, U>
+    where
+        T: Borrow<U> + Sync + 'static,
+        U: 'static,
+    {
+        pub fn insert(&self, extend: &mut impl core::iter::Extend<ComponentBorrow>) {
+            extend.extend(Some(ComponentBorrow::make(
+                |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &U {
+                    unsafe { ptr.cast::<T>().as_ref().borrow() }
+                },
+                core::option::Option::None,
+            )));
+        }
+    }
 }
 
 /// Extends output with `ComponentBorrow` to borrow dyn trait object.
@@ -69,17 +124,17 @@ macro_rules! borrow_dyn_trait {
         }
 
         impl<T: $trait + Send + Sync + 'static> DispatchBorrowSendSync<T> {
-            fn insert_all(
+            fn insert(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
-                self.insert(extend);
-                self.0.insert(extend);
-                self.0 .0.insert(extend);
-                self.0 .0 .0.insert(extend);
+                self.insert_one(extend);
+                self.0.insert_one(extend);
+                self.0 .0.insert_one(extend);
+                self.0 .0 .0.insert_one(extend);
             }
 
-            fn insert(
+            fn insert_one(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
@@ -101,15 +156,15 @@ macro_rules! borrow_dyn_trait {
         }
 
         impl<T: $trait + Send + 'static> DispatchBorrowSend<T> {
-            fn insert_all(
+            fn insert(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
-                self.insert(extend);
-                self.0 .0.insert(extend);
+                self.insert_one(extend);
+                self.0 .0.insert_one(extend);
             }
 
-            fn insert(
+            fn insert_one(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
@@ -131,15 +186,15 @@ macro_rules! borrow_dyn_trait {
         }
 
         impl<T: $trait + Sync + 'static> DispatchBorrowSync<T> {
-            fn insert_all(
+            fn insert(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
-                self.insert(extend);
-                self.0.insert(extend);
+                self.insert_one(extend);
+                self.0.insert_one(extend);
             }
 
-            fn insert(
+            fn insert_one(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
@@ -161,14 +216,14 @@ macro_rules! borrow_dyn_trait {
         }
 
         impl<T: $trait + 'static> DispatchBorrow<T> {
-            fn insert_all(
+            fn insert(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
-                self.insert(extend);
+                self.insert_one(extend);
             }
 
-            fn insert(
+            fn insert_one(
                 &self,
                 extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
             ) {
@@ -190,7 +245,7 @@ macro_rules! borrow_dyn_trait {
         let dispatch = DispatchBorrowSendSync(DispatchBorrowSend(DispatchBorrowSync(
             DispatchBorrow(core::marker::PhantomData::<$self>),
         )));
-        dispatch.insert_all(&mut $extend);
+        dispatch.insert(&mut $extend);
     }};
 }
 
@@ -272,6 +327,12 @@ impl ComponentBorrow {
 
 /// Trait that is implemented for all types that can act as a component.
 pub trait Component: Sized + 'static {
+    /// Returns name of the component type.
+    #[inline]
+    fn name() -> &'static str {
+        core::any::type_name::<Self>()
+    }
+
     /// Hook that is executed when entity with component is dropped.
     #[inline]
     fn on_drop(&mut self, entity: EntityId, encoder: &mut ActionEncoder) {
@@ -282,7 +343,7 @@ pub trait Component: Sized + 'static {
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
     #[inline]
-    fn on_set(&mut self, value: &Self, entity: EntityId, encoder: &mut ActionEncoder) -> bool {
+    fn on_replace(&mut self, value: &Self, entity: EntityId, encoder: &mut ActionEncoder) -> bool {
         drop(value);
         drop(entity);
         drop(encoder);
@@ -305,8 +366,8 @@ pub struct ComponentInfo {
     /// [`Layout`] of the component.
     layout: Layout,
 
-    /// [`type_name`] of the component.
-    debug_name: &'static str,
+    /// Name of the component.
+    name: &'static str,
 
     /// Function that calls drop glue for a component.
     /// Supports custom hooks.
@@ -320,7 +381,7 @@ pub struct ComponentInfo {
     set_one: SetOneFn,
 
     /// Context for `set_one` command.
-    on_set: Arc<dyn Any + Send + Sync>,
+    on_replace: Arc<dyn Any + Send + Sync>,
 
     /// Function that calls drop glue for a component.
     /// Does not support custom hooks.
@@ -340,11 +401,11 @@ impl ComponentInfo {
         ComponentInfo {
             id: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
-            debug_name: type_name::<T>(),
+            name: T::name(),
             drop_one: drop_one::<T, DefaultDropHook>,
             on_drop: Arc::new(DefaultDropHook),
             set_one: set_one::<T, DefaultSetHook, DefaultDropHook>,
-            on_set: Arc::new(DefaultSetHook),
+            on_replace: Arc::new(DefaultSetHook),
             final_drop: final_drop::<T>,
             borrows: Arc::from(T::borrows()),
         }
@@ -359,11 +420,11 @@ impl ComponentInfo {
         ComponentInfo {
             id: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
-            debug_name: type_name::<T>(),
+            name: type_name::<T>(),
             drop_one: drop_one::<T, ExternalDropHook>,
             on_drop: Arc::new(ExternalDropHook),
             set_one: set_one::<T, ExternalSetHook, ExternalDropHook>,
-            on_set: Arc::new(ExternalSetHook),
+            on_replace: Arc::new(ExternalSetHook),
             final_drop: final_drop::<T>,
             borrows: Arc::new([]),
         }
@@ -395,7 +456,7 @@ impl ComponentInfo {
         encoder: &mut ActionEncoder,
     ) {
         unsafe {
-            (self.set_one)(&self.on_set, &self.on_drop, dst, src, entity, encoder);
+            (self.set_one)(&self.on_replace, &self.on_drop, dst, src, entity, encoder);
         }
     }
 
@@ -407,8 +468,8 @@ impl ComponentInfo {
     }
 
     #[inline(always)]
-    pub(crate) fn debug_name(&self) -> &'static str {
-        self.debug_name
+    pub(crate) fn name(&self) -> &'static str {
+        self.name
     }
 
     #[inline]
@@ -439,7 +500,7 @@ where
 pub trait SetHook<T: ?Sized>: Send + Sync + 'static {
     /// Called when new value is assigned to component instance.
     /// By default fallbacks to drop hook.
-    fn on_set(
+    fn on_replace(
         &self,
         component: &mut T,
         value: &T,
@@ -453,7 +514,7 @@ where
     T: ?Sized,
     F: Fn(&mut T, &T, EntityId, &mut ActionEncoder) -> bool + Send + Sync + 'static,
 {
-    fn on_set(
+    fn on_replace(
         &self,
         component: &mut T,
         value: &T,
@@ -485,8 +546,14 @@ impl<T> SetHook<T> for DefaultSetHook
 where
     T: Component,
 {
-    fn on_set(&self, dst: &mut T, src: &T, entity: EntityId, encoder: &mut ActionEncoder) -> bool {
-        T::on_set(dst, src, entity, encoder)
+    fn on_replace(
+        &self,
+        dst: &mut T,
+        src: &T,
+        entity: EntityId,
+        encoder: &mut ActionEncoder,
+    ) -> bool {
+        T::on_replace(dst, src, entity, encoder)
     }
 }
 
@@ -503,7 +570,7 @@ impl<T> DropHook<T> for ExternalDropHook {
 pub struct ExternalSetHook;
 
 impl<T> SetHook<T> for ExternalSetHook {
-    fn on_set(
+    fn on_replace(
         &self,
         _dst: &mut T,
         _src: &T,
@@ -526,6 +593,7 @@ pub struct ComponentInfoRef<
     phantom: PhantomData<T>,
     drop: ManuallyDrop<D>,
     set: ManuallyDrop<S>,
+    name: Option<&'static str>,
 }
 
 impl<T, D, S> Drop for ComponentInfoRef<'_, T, D, S>
@@ -548,11 +616,14 @@ where
 {
     #[inline]
     fn drop_impl(&mut self) {
-        self.info.as_mut().unwrap().drop_one = drop_one::<T, D>;
-        self.info.as_mut().unwrap().on_drop =
-            Arc::new(unsafe { ManuallyDrop::take(&mut self.drop) });
-        self.info.as_mut().unwrap().set_one = set_one::<T, S, D>;
-        self.info.as_mut().unwrap().on_set = Arc::new(unsafe { ManuallyDrop::take(&mut self.set) });
+        let info = self.info.as_mut().unwrap();
+        info.drop_one = drop_one::<T, D>;
+        info.on_drop = Arc::new(unsafe { ManuallyDrop::take(&mut self.drop) });
+        info.set_one = set_one::<T, S, D>;
+        info.on_replace = Arc::new(unsafe { ManuallyDrop::take(&mut self.set) });
+        if let Some(name) = self.name {
+            info.name = name;
+        }
     }
 
     /// Finishes component registration.
@@ -578,6 +649,7 @@ where
             phantom: me.phantom,
             drop: ManuallyDrop::new(hook),
             set: unsafe { ptr::read(&me.set) },
+            name: me.name,
         }
     }
 
@@ -596,7 +668,7 @@ where
     /// Set hook is executed when component is assigned a new value.
     ///
     /// By default, set hook is calling `on_drop`.
-    pub fn on_set<F>(self, hook: F) -> ComponentInfoRef<'a, T, D, F>
+    pub fn on_replace<F>(self, hook: F) -> ComponentInfoRef<'a, T, D, F>
     where
         F: SetHook<T>,
     {
@@ -607,6 +679,7 @@ where
             phantom: me.phantom,
             drop: unsafe { ptr::read(&me.drop) },
             set: ManuallyDrop::new(hook),
+            name: me.name,
         }
     }
 
@@ -614,11 +687,17 @@ where
     /// Set hook is executed when component is assigned a new value.
     ///
     /// By default, set hook is calling `on_drop`.
-    pub fn on_set_fn<F>(self, hook: F) -> ComponentInfoRef<'a, T, D, F>
+    pub fn on_replace_fn<F>(self, hook: F) -> ComponentInfoRef<'a, T, D, F>
     where
         F: Fn(&mut T, &T, EntityId, &mut ActionEncoder) -> bool + Send + Sync + 'static,
     {
-        self.on_set(hook)
+        self.on_replace(hook)
+    }
+
+    /// Overrides default component type name.
+    pub fn name(mut self, name: &'static str) -> Self {
+        self.name = Some(name);
+        self
     }
 }
 
@@ -670,6 +749,7 @@ impl ComponentRegistry {
             phantom: PhantomData,
             drop: ManuallyDrop::new(DefaultDropHook),
             set: ManuallyDrop::new(DefaultSetHook),
+            name: None,
         }
     }
 
@@ -689,6 +769,7 @@ impl ComponentRegistry {
             phantom: PhantomData,
             drop: ManuallyDrop::new(ExternalDropHook),
             set: ManuallyDrop::new(ExternalSetHook),
+            name: None,
         }
     }
 
@@ -722,7 +803,7 @@ unsafe fn drop_one<T, D>(
 }
 
 unsafe fn set_one<T, S, D>(
-    on_set: &dyn Any,
+    on_replace: &dyn Any,
     on_drop: &dyn Any,
     dst: NonNull<u8>,
     src: NonNull<u8>,
@@ -735,8 +816,8 @@ unsafe fn set_one<T, S, D>(
 {
     let src = src.cast::<T>();
     let mut dst = dst.cast::<T>();
-    let on_set = &*(on_set as *const _ as *const S);
-    if on_set.on_set(dst.as_mut(), src.as_ref(), entity, encoder) {
+    let on_replace = &*(on_replace as *const _ as *const S);
+    if on_replace.on_replace(dst.as_mut(), src.as_ref(), entity, encoder) {
         let on_drop = &*(on_drop as *const _ as *const D);
         on_drop.on_drop(dst.as_mut(), entity, encoder);
     }

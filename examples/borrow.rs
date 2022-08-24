@@ -4,7 +4,9 @@ use std::{
 };
 
 use edict::{
-    borrow_dyn_any, borrow_dyn_trait, component::ComponentBorrow, prelude::Component, world::World,
+    borrow_dyn_any, borrow_dyn_trait,
+    component::{Component, ComponentBorrow},
+    world::World,
 };
 
 struct A;

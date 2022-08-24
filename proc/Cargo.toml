@@ -1,6 +1,6 @@
 [package]
 name = "edict-proc"
-version = "0.0.0"
+version = "0.2.0"
 edition = "2018"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -12,3 +12,9 @@ description = "placeholder"
 
 [lib]
 crate-type = ["proc-macro"]
+
+[dependencies]
+proc-macro2 = "1.0"
+syn = "1.0"
+quote = "1.0"
+proc-easy = "0.2.0"

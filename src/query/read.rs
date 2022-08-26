@@ -2,16 +2,11 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use atomicell::{borrow::AtomicBorrow, Ref};
 
-use crate::{
-    archetype::Archetype,
-    epoch::EpochId,
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
-};
+use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
-    phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQueryFetch,
-    Query,
+    phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery,
+    PhantomQueryFetch, Query,
 };
 
 /// `Fetch` type for the `&T` query.
@@ -127,41 +122,7 @@ unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
 pub fn read<T>() -> PhantomData<&'static T>
 where
     T: Sync,
+    for<'a> PhantomData<&'a T>: ImmutableQuery,
 {
     PhantomData
 }
-
-// impl<'a, T> QueryArg for &'a T
-// where
-//     T: Sync + 'static,
-// {
-//     type Cache = PhantomData<&'static T>;
-// }
-
-// impl<T> QueryArgCache for PhantomData<&'static T>
-// where
-//     T: Sync + 'static,
-// {
-//     fn access_component(&self, id: TypeId) -> Option<Access> {
-//         if id == TypeId::of::<T>() {
-//             Some(Access::Read)
-//         } else {
-//             None
-//         }
-//     }
-
-//     fn skips_archetype(&self, archetype: &Archetype) -> bool {
-//         !archetype.contains_id(TypeId::of::<T>())
-//     }
-// }
-// impl<'a, T> QueryArgGet<'a> for PhantomData<&'static T>
-// where
-//     T: Sync + 'static,
-// {
-//     type Arg = &'a T;
-//     type Query = PhantomData<&'a T>;
-
-//     fn get(&mut self, _world: &World) -> PhantomData<&'a T> {
-//         PhantomData
-//     }
-// }

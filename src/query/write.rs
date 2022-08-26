@@ -2,12 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use atomicell::{borrow::AtomicBorrowMut, RefMut};
 
-use crate::{
-    archetype::Archetype,
-    epoch::EpochId,
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
-};
+use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
 
@@ -142,41 +137,7 @@ where
 pub fn write<T>() -> PhantomData<&'static mut T>
 where
     T: Send,
+    for<'a> PhantomData<&'a mut T>: Query,
 {
     PhantomData
 }
-
-// impl<'a, T> QueryArg for &'a mut T
-// where
-//     T: Send + 'static,
-// {
-//     type Cache = PhantomData<&'static mut T>;
-// }
-
-// impl<T> QueryArgCache for PhantomData<&'static mut T>
-// where
-//     T: Send + 'static,
-// {
-//     fn access_component(&self, id: TypeId) -> Option<Access> {
-//         if id == TypeId::of::<T>() {
-//             Some(Access::Read)
-//         } else {
-//             None
-//         }
-//     }
-
-//     fn skips_archetype(&self, archetype: &Archetype) -> bool {
-//         !archetype.contains_id(TypeId::of::<T>())
-//     }
-// }
-// impl<'a, T> QueryArgGet<'a> for PhantomData<&'static mut T>
-// where
-//     T: Send + 'static,
-// {
-//     type Arg = &'a mut T;
-//     type Query = PhantomData<&'a mut T>;
-
-//     fn get(&mut self, _world: &World) -> PhantomData<&'a mut T> {
-//         PhantomData
-//     }
-// }

@@ -17,7 +17,7 @@ pub trait QueryArgGet<'a> {
     type Query: Query;
 
     /// Returns query for an argument.
-    fn get(&mut self, world: &World) -> Self::Query;
+    fn get(&'a mut self, world: &'a World) -> Self::Query;
 }
 
 /// Cache for an argument that is stored between calls to function-system.
@@ -144,7 +144,7 @@ macro_rules! for_tuple {
             type Query = ($($a::Query,)+);
 
             #[inline]
-            fn get(&mut self, world: &World) -> Self::Query {
+            fn get(&'a mut self, world: &'a World) -> Self::Query {
                 let ($($a,)+) = self;
                 ($($a::get($a, world),)+)
             }

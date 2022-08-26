@@ -2,7 +2,7 @@ use core::fmt::Debug;
 
 use edict::{
     executor::MockExecutor,
-    query::QueryBorrowAll,
+    query::{Modified, QueryBorrowAll},
     scheduler::Scheduler,
     system::State,
     world::{QueryRef, World},
@@ -22,11 +22,13 @@ fn main() {
 
     world.spawn((A,));
     world.spawn((A, B));
-    world.spawn((B,));
+    let c = world.spawn((B,));
 
     schedule.add_system(system_a);
+    schedule.add_system(system_b);
 
     for _ in 0..10 {
+        world.query_one::<&mut B>(c).unwrap();
         schedule.run(&mut world, &MockExecutor);
     }
 }
@@ -43,5 +45,11 @@ fn system_a(
     println!("{}", *counter);
     for (_, (&A, b, dbg)) in q {
         println!("A + {:?} + {:?}", b, dbg);
+    }
+}
+
+fn system_b(q: QueryRef<Modified<&B>>) {
+    for (_, &B) in q {
+        println!("Modified B");
     }
 }

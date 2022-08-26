@@ -150,7 +150,7 @@ where
 
     /// Adds query to fetch modified components.
     #[inline]
-    pub fn modified<T>(self, epoch: EpochId) -> QueryRef<'a, TuplePlus<Q, Modified<T>>, F>
+    pub fn modified<T>(self, after_epoch: EpochId) -> QueryRef<'a, TuplePlus<Q, Modified<T>>, F>
     where
         Modified<T>: Query,
         Q: ExtendTuple<Modified<T>>,
@@ -160,7 +160,7 @@ where
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(Modified::new(epoch)),
+            query: self.query.extend_tuple(Modified::new(after_epoch)),
             filter: self.filter,
         }
     }

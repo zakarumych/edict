@@ -5,7 +5,10 @@ use atomicell::borrow::AtomicBorrow;
 
 use crate::{
     archetype::Archetype,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch, Query},
+    epoch::EpochId,
+    query::{
+        Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch, Query,
+    },
 };
 
 /// Query that borrows from components.
@@ -75,6 +78,13 @@ where
     type Fetch = FetchBorrowAllRead<'a, T>;
 }
 
+impl<T> IntoQuery for QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = PhantomData<Self>;
+}
+
 unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
@@ -98,17 +108,12 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_borrow(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchBorrowAllRead<'a, T> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchBorrowAllRead<'a, T> {
         let components = archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()

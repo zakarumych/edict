@@ -1,5 +1,3 @@
-use core::sync::atomic::AtomicU64;
-
 use crate::{
     action::ActionEncoder,
     component::{
@@ -10,7 +8,7 @@ use crate::{
     res::Res,
 };
 
-use super::{ArchetypeSet, Edges, World};
+use super::{ArchetypeSet, Edges, EpochCounter, World};
 
 /// Builder for [`World`] value.
 ///
@@ -32,7 +30,7 @@ impl WorldBuilder {
     /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
     pub fn build(self) -> World {
         World {
-            epoch: AtomicU64::new(0),
+            epoch: EpochCounter::new(),
             entities: Entities::new(),
             archetypes: ArchetypeSet::new(),
             edges: Edges::new(),

@@ -1,25 +1,26 @@
-use core::{
-    any::TypeId,
-    marker::PhantomData,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use core::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     component::Component,
     entity::EntityId,
     query::{
-        debug_assert_immutable_query, Fetch, Filter, FilteredQuery, Modified, PhantomQuery, Query,
-        QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
+        debug_assert_immutable_query, Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery,
+        Modified, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem,
+        QueryIter, With, Without,
     },
     relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
 };
+
+use super::{EpochCounter, EpochId, World};
 
 pub trait ExtendTuple<E>: Sized {
     type Output;
 
     fn extend_tuple(self, element: E) -> Self::Output;
 }
+
+pub type TuplePlus<T, E> = <T as ExtendTuple<E>>::Output;
 
 macro_rules! for_tuple {
     () => {
@@ -54,33 +55,31 @@ macro_rules! for_tuple {
 for_tuple!();
 
 /// Mutable query builder.
-pub struct QueryRef<'a, Q, F = ()> {
+pub struct QueryRef<'a, Q: IntoQuery, F: IntoQuery = ()> {
     archetypes: &'a [Archetype],
-    epoch: &'a AtomicU64,
-    query: Q,
-    filter: F,
+    epoch: &'a EpochCounter,
+    query: Q::Query,
+    filter: F::Query,
 }
 
 impl<'a, Q, F> QueryRef<'a, Q, F>
 where
-    Q: Query,
-    F: Filter,
+    Q: IntoQuery,
+    F: IntoQuery,
 {
-    pub(crate) fn new(
-        archetypes: &'a [Archetype],
-        epoch: &'a AtomicU64,
-        query: Q,
-        filter: F,
-    ) -> Self {
+    /// Constructs query from query part, filter part and world.
+    #[inline]
+    pub fn new(world: &'a World, query: Q::Query, filter: F::Query) -> Self {
         QueryRef {
-            archetypes,
-            epoch,
+            archetypes: world.archetypes(),
+            epoch: world.epoch_counter(),
             query,
             filter,
         }
     }
 
     /// Creates new layer of tuples of mutable query.
+    #[inline]
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
         QueryRef {
             archetypes: self.archetypes,
@@ -91,10 +90,13 @@ where
     }
 
     /// Adds specified query.
-    pub fn extend_query<T>(self, query: T) -> QueryRef<'a, <Q as ExtendTuple<T>>::Output, F>
+    #[inline]
+    pub fn extend_query<T>(self, query: T) -> QueryRef<'a, TuplePlus<Q, T>, F>
     where
         T: Query,
         Q: ExtendTuple<T>,
+        Q::Query: ExtendTuple<T>,
+        TuplePlus<Q, T>: IntoQuery<Query = TuplePlus<Q::Query, T>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -105,6 +107,7 @@ where
     }
 
     /// Adds filter that skips entities that don't have specified component.
+    #[inline]
     pub fn with<T>(self) -> QueryRef<'a, Q, (With<T>, F)>
     where
         T: Component,
@@ -113,11 +116,12 @@ where
             archetypes: self.archetypes,
             epoch: self.epoch,
             query: self.query,
-            filter: (With::new(), self.filter),
+            filter: (PhantomData, self.filter),
         }
     }
 
     /// Adds filter that skips entities that have specified component.
+    #[inline]
     pub fn without<T>(self) -> QueryRef<'a, Q, (Without<T>, F)>
     where
         T: Component,
@@ -126,11 +130,12 @@ where
             archetypes: self.archetypes,
             epoch: self.epoch,
             query: self.query,
-            filter: (Without::new(), self.filter),
+            filter: (PhantomData, self.filter),
         }
     }
 
     /// Adds query to fetch relation.
+    #[inline]
     pub fn with_relation_to<R>(self, target: EntityId) -> QueryRef<'a, Q, (WithRelationTo<R>, F)>
     where
         R: Relation,
@@ -144,59 +149,66 @@ where
     }
 
     /// Adds query to fetch modified components.
-    pub fn modified<T>(self, epoch: u64) -> QueryRef<'a, <Q as ExtendTuple<Modified<T>>>::Output, F>
+    #[inline]
+    pub fn modified<T>(self, epoch: EpochId) -> QueryRef<'a, TuplePlus<Q, Modified<T>>, F>
     where
         Modified<T>: Query,
         Q: ExtendTuple<Modified<T>>,
+        Q::Query: ExtendTuple<Modified<T>>,
+        TuplePlus<Q, Modified<T>>: IntoQuery<Query = TuplePlus<Q::Query, Modified<T>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(Modified::<T>::new(epoch)),
+            query: self.query.extend_tuple(Modified::new(epoch)),
             filter: self.filter,
         }
     }
 
     /// Extends query to borrow from components.
-    pub fn borrow_any<T>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAny<T>>>>::Output, F>
+    #[inline]
+    pub fn borrow_any<T>(self) -> QueryRef<'a, TuplePlus<Q, QueryBorrowAny<T>>, F>
     where
         QueryBorrowAny<T>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
+        Q: ExtendTuple<QueryBorrowAny<T>>,
+        Q::Query: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
+        TuplePlus<Q, QueryBorrowAny<T>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryBorrowAny<T>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryBorrowAny<T>>),
+            query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
         }
     }
 
     /// Extends query to borrow from components.
-    pub fn borrow_one<T>(
-        self,
-        id: TypeId,
-    ) -> QueryRef<'a, <Q as ExtendTuple<QueryBorrowOne<T>>>::Output, F>
+    #[inline]
+    pub fn borrow_one<T>(self, id: TypeId) -> QueryRef<'a, TuplePlus<Q, QueryBorrowOne<T>>, F>
     where
         QueryBorrowOne<T>: Query,
         Q: ExtendTuple<QueryBorrowOne<T>>,
+        Q::Query: ExtendTuple<QueryBorrowOne<T>>,
+        TuplePlus<Q, QueryBorrowOne<T>>: IntoQuery<Query = TuplePlus<Q::Query, QueryBorrowOne<T>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(QueryBorrowOne::<T>::new(id)),
+            query: self.query.extend_tuple(QueryBorrowOne::new(id)),
             filter: self.filter,
         }
     }
 
     /// Extends query to borrow from components.
-    pub fn borrow_all<T>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryBorrowAll<T>>>>::Output, F>
+    #[inline]
+    pub fn borrow_all<T>(self) -> QueryRef<'a, TuplePlus<Q, QueryBorrowAll<T>>, F>
     where
         QueryBorrowAll<T>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
+        Q: ExtendTuple<QueryBorrowAll<T>>,
+        Q::Query: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
+        TuplePlus<Q, QueryBorrowAll<T>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryBorrowAll<T>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -207,29 +219,35 @@ where
     }
 
     /// Adds query to fetch relation.
-    pub fn relation<R>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelation<R>>>>::Output, F>
+    #[inline]
+    pub fn relation<R>(self) -> QueryRef<'a, TuplePlus<Q, QueryRelation<R>>, F>
     where
         QueryRelation<R>: PhantomQuery,
-        Q: ExtendTuple<PhantomData<QueryRelation<R>>>,
+        Q: ExtendTuple<QueryRelation<R>>,
+        Q::Query: ExtendTuple<PhantomData<QueryRelation<R>>>,
+        TuplePlus<Q, QueryRelation<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryRelation<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryRelation<R>>),
+            query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
         }
     }
 
     /// Adds query to fetch relation.
+    #[inline]
     pub fn relation_to<R>(
         self,
         entity: EntityId,
-    ) -> QueryRef<'a, <Q as ExtendTuple<QueryRelationTo<R>>>::Output, F>
+    ) -> QueryRef<'a, TuplePlus<Q, QueryRelationTo<R>>, F>
     where
         QueryRelationTo<R>: Query,
         Q: ExtendTuple<QueryRelationTo<R>>,
+        Q::Query: ExtendTuple<QueryRelationTo<R>>,
+        TuplePlus<Q, QueryRelationTo<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, QueryRelationTo<R>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -240,46 +258,57 @@ where
     }
 
     /// Adds query to fetch relation.
-    pub fn related<R>(
-        self,
-    ) -> QueryRef<'a, <Q as ExtendTuple<PhantomData<QueryRelated<R>>>>::Output, F>
+    #[inline]
+    pub fn related<R>(self) -> QueryRef<'a, TuplePlus<Q, QueryRelated<R>>, F>
     where
-        QueryRelationTo<R>: Query,
-        Q: ExtendTuple<PhantomData<QueryRelated<R>>>,
+        QueryRelated<R>: PhantomQuery,
+        Q: ExtendTuple<QueryRelated<R>>,
+        Q::Query: ExtendTuple<PhantomData<QueryRelated<R>>>,
+        TuplePlus<Q, QueryRelated<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryRelated<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData::<QueryRelated<R>>),
+            query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
         }
     }
+}
 
+impl<'a, Q, F> QueryRef<'a, Q, F>
+where
+    Q: IntoQuery,
+    F: IntoFilter,
+{
     /// Returns iterator over immutable query results.
     /// This method is only available with non-tracking queries.
-    pub fn iter<'b>(&self) -> QueryIter<'a, FilteredQuery<F, Q>>
+    #[inline]
+    pub fn iter<'b>(&self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>
     where
-        Q: Query + Clone,
-        F: Clone,
+        Q::Query: Clone,
+        F::Filter: Clone,
     {
         debug_assert_immutable_query(&self.filter);
+        let epoch = self.epoch.next();
 
         QueryIter::new(
             FilteredQuery {
                 filter: self.filter.clone(),
                 query: self.query.clone(),
             },
-            self.epoch.load(Ordering::Relaxed),
+            epoch,
             self.archetypes,
         )
     }
 
     /// Returns iterator over query results.
     /// This method is only available with non-tracking queries.
-    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+    #[inline]
+    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
         debug_assert_immutable_query(&self.filter);
+        let epoch = self.epoch.next();
 
-        let epoch = 1 + self.epoch.fetch_add(1, Ordering::Relaxed);
         QueryIter::new(
             FilteredQuery {
                 filter: self.filter,
@@ -297,7 +326,6 @@ where
     #[inline]
     pub fn for_each<Fun>(self, f: Fun)
     where
-        Q: Query,
         Fun: FnMut(QueryItem<'_, Q>),
     {
         assert!(self.filter.is_valid(), "Invalid query specified");
@@ -305,26 +333,31 @@ where
 
         debug_assert_immutable_query(&self.filter);
 
-        let epoch = 1 + self.epoch.fetch_add(1, Ordering::Relaxed);
+        let epoch = self.epoch.next();
         for_each_impl(self.filter, self.query, self.archetypes, epoch, f)
     }
 }
 
 impl<'a, Q, F> IntoIterator for QueryRef<'a, Q, F>
 where
-    Q: Query,
-    F: Filter,
+    Q: IntoQuery,
+    F: IntoFilter,
 {
     type Item = (EntityId, QueryItem<'a, Q>);
-    type IntoIter = QueryIter<'a, FilteredQuery<F, Q>>;
+    type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
 
-    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F, Q>> {
+    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
         self.into_iter()
     }
 }
 
-fn for_each_impl<Q, F, Fun>(filter: F, query: Q, archetypes: &[Archetype], epoch: u64, mut f: Fun)
-where
+pub(crate) fn for_each_impl<Q, F, Fun>(
+    filter: F,
+    query: Q,
+    archetypes: &[Archetype],
+    epoch: EpochId,
+    mut f: Fun,
+) where
     Q: Query,
     F: Filter,
     Fun: FnMut(QueryItem<'_, Q>),
@@ -339,7 +372,7 @@ where
             continue;
         }
 
-        if query.skip_archetype_unconditionally(archetype) {
+        if query.skip_archetype(archetype) {
             continue;
         }
 

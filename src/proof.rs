@@ -72,12 +72,12 @@ unsafe impl Query for Skip {
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
+    fn skip_archetype(_: &Archetype) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, _: &Archetype, _epoch: u64) -> Skip {
+    unsafe fn fetch(&mut self, _: &Archetype, _epoch: EpochId) -> Skip {
         Skip
     }
 }
@@ -112,12 +112,12 @@ unsafe impl PhantomQuery for Skip {
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(_: &Archetype) -> bool {
+    fn skip_archetype(_: &Archetype) -> bool {
         false
     }
 
     #[inline]
-    unsafe fn fetch(_: &Archetype, _epoch: u64) -> Skip {
+    unsafe fn fetch(_: &Archetype, _epoch: EpochId) -> Skip {
         Skip
     }
 }

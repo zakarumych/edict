@@ -4,7 +4,10 @@ use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
 
 use crate::{
     archetype::Archetype,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch, Query},
+    epoch::EpochId,
+    query::{
+        Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch, Query,
+    },
 };
 
 /// Query that borrows from components.
@@ -66,6 +69,13 @@ where
     type Fetch = FetchBorrowAnyRead<'a, T>;
 }
 
+impl<T> IntoQuery for QueryBorrowAny<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = PhantomData<Self>;
+}
+
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
 where
     T: Sync + ?Sized + 'static,
@@ -89,17 +99,12 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_borrow(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _epoch: u64) -> FetchBorrowAnyRead<T> {
+    unsafe fn fetch(archetype: &Archetype, _epoch: EpochId) -> FetchBorrowAnyRead<T> {
         let (cidx, bidx) = *archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -127,9 +132,9 @@ pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     size: usize,
     borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a mut ()>) -> &'a mut T,
     marker: PhantomData<fn() -> T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
-    epoch: u64,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
+    epoch: EpochId,
     _borrow: AtomicBorrowMut<'a>,
 }
 
@@ -146,9 +151,9 @@ where
             size: 0,
             borrow_fn: |_, _| unreachable!(),
             marker: PhantomData,
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
-            epoch: 0,
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
+            epoch: EpochId::start(),
             _borrow: AtomicBorrowMut::dummy(),
         }
     }
@@ -165,18 +170,14 @@ where
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-
-        debug_assert!(*chunk_version < self.epoch);
-        *chunk_version = self.epoch;
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
-
-        debug_assert!(*entity_version < self.epoch);
-        *entity_version = self.epoch;
+        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx);
+        entity_version.bump(self.epoch);
 
         (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
@@ -191,6 +192,13 @@ where
 {
     type Item = &'a mut T;
     type Fetch = FetchBorrowAnyWrite<'a, T>;
+}
+
+impl<T> IntoQuery for QueryBorrowAny<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
+    type Query = PhantomData<Self>;
 }
 
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
@@ -216,17 +224,12 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_borrow_mut(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: u64) -> FetchBorrowAnyWrite<T> {
+    unsafe fn fetch(archetype: &Archetype, epoch: EpochId) -> FetchBorrowAnyWrite<T> {
         let (cidx, bidx) = *archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -237,8 +240,7 @@ where
 
         let mut data = component.data.borrow_mut();
 
-        debug_assert!(data.version < epoch);
-        data.version = epoch;
+        data.epoch.bump(epoch);
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
@@ -247,8 +249,8 @@ where
             size: component.layout().size(),
             borrow_fn: component.borrows()[bidx].borrow_mut().unwrap_unchecked(),
             marker: PhantomData,
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             epoch,
             _borrow: borrow,
         }

@@ -1,8 +1,13 @@
 use core::{any::TypeId, marker::PhantomData};
 
-use crate::archetype::Archetype;
+use crate::{
+    archetype::Archetype,
+    epoch::EpochId,
+    system::{QueryArg, QueryArgCache, QueryArgGet},
+    world::World,
+};
 
-use super::{fetch::Fetch, Access, ImmutableQuery, Query, QueryFetch};
+use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query, QueryFetch};
 
 /// HRTB for `PhantomQuery` trait.
 pub trait PhantomQueryFetch<'a> {
@@ -18,7 +23,9 @@ pub trait PhantomQueryFetch<'a> {
 /// This trait has all the same methods without `self` argument.
 ///
 /// [`PhantomData<Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
-pub unsafe trait PhantomQuery: for<'a> PhantomQueryFetch<'a> {
+pub unsafe trait PhantomQuery:
+    for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<Self>>
+{
     /// Returns what kind of access the query performs on the component type.
     ///
     /// # Safety
@@ -44,33 +51,8 @@ pub unsafe trait PhantomQuery: for<'a> PhantomQueryFetch<'a> {
     where
         Q: Query;
 
-    /// Function to validate that query does not cause mutable reference aliasing.
-    /// e.g. `(&mut T, &mut T)` is not valid query, but `(&T, &T)` is.
-    ///
-    /// Attempt to run invalid query will result in panic.
-    /// It is always user's responsibility to ensure that query is valid.
-    ///
-    /// Typical query validity does not depend on the runtime values.
-    /// So it should be possible to ensure that query is valid by looking at its type.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    ///
-    /// This method is called before running the query.
-    /// It must return `true` only if it is sound to call `fetch` for any archetype
-    /// that won't be skipped and get items from it.
-    fn is_valid() -> bool;
-
     /// Checks if archetype must be skipped.
-    /// Without taking into account modifiable state of the archetype.
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool;
-
-    /// Checks if archetype must be skipped.
-    #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        Self::skip_archetype_unconditionally(archetype)
-    }
+    fn skip_archetype(archetype: &Archetype) -> bool;
 
     /// Fetches data from one archetype.
     ///
@@ -79,20 +61,22 @@ pub unsafe trait PhantomQuery: for<'a> PhantomQueryFetch<'a> {
     /// Must not be called if `skip_archetype` returned `true`.
     unsafe fn fetch<'a>(
         archetype: &'a Archetype,
-        epoch: u64,
+        epoch: EpochId,
     ) -> <Self as PhantomQueryFetch<'a>>::Fetch;
 }
 
-/// Phantom counterpart of [`QueryItem`] type alias.
-///
-/// [`QueryItem`]: trait.Query.html#associatedtype.QueryItem
-pub type PhantomQueryItem<'a, Q> = <Q as PhantomQueryFetch<'a>>::Item;
+impl<Q> IntoQuery for PhantomData<Q>
+where
+    Q: PhantomQuery,
+{
+    type Query = PhantomData<Q>;
+}
 
 impl<'a, Q> QueryFetch<'a> for PhantomData<Q>
 where
     Q: PhantomQuery,
 {
-    type Item = PhantomQueryItem<'a, Q>;
+    type Item = <Q as PhantomQueryFetch<'a>>::Item;
     type Fetch = <Q as PhantomQueryFetch<'a>>::Fetch;
 }
 
@@ -120,19 +104,19 @@ where
 
     #[inline]
     fn is_valid(&self) -> bool {
-        <Q as PhantomQuery>::is_valid()
+        true
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
-        <Q as PhantomQuery>::skip_archetype_unconditionally(archetype)
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+        <Q as PhantomQuery>::skip_archetype(archetype)
     }
 
     #[inline]
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        epoch: u64,
+        epoch: EpochId,
     ) -> <Self as QueryFetch<'a>>::Fetch {
         <Q as PhantomQuery>::fetch(archetype, epoch)
     }
@@ -142,3 +126,35 @@ where
 pub unsafe trait ImmutablePhantomQuery: PhantomQuery {}
 
 unsafe impl<Q> ImmutableQuery for PhantomData<Q> where Q: ImmutablePhantomQuery {}
+
+impl<'a, T> QueryArgGet<'a> for PhantomData<T>
+where
+    T: PhantomQuery + 'static,
+{
+    type Arg = T;
+    type Query = PhantomData<T>;
+
+    fn get(&mut self, _world: &World) -> Self::Query {
+        PhantomData
+    }
+}
+
+impl<T> QueryArgCache for PhantomData<T>
+where
+    T: PhantomQuery + 'static,
+{
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        <T as PhantomQuery>::skip_archetype(archetype)
+    }
+
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        <T as PhantomQuery>::access(id)
+    }
+}
+
+impl<T> QueryArg for T
+where
+    T: PhantomQuery + 'static,
+{
+    type Cache = PhantomData<T>;
+}

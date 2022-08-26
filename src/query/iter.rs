@@ -3,6 +3,7 @@ use core::{ops::Range, ptr::NonNull, slice};
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     entity::EntityId,
+    epoch::EpochId,
 };
 
 use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
@@ -11,7 +12,7 @@ use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
 /// Yields `EntityId` and query items for every matching entity.
 pub struct QueryIter<'a, Q: Query> {
     query: Q,
-    epoch: u64,
+    epoch: EpochId,
     archetypes: slice::Iter<'a, Archetype>,
     fetch: <Q as QueryFetch<'a>>::Fetch,
     entities: NonNull<EntityId>,
@@ -23,7 +24,7 @@ impl<'a, Q> QueryIter<'a, Q>
 where
     Q: Query,
 {
-    pub(crate) fn new(query: Q, epoch: u64, archetypes: &'a [Archetype]) -> Self {
+    pub(crate) fn new(query: Q, epoch: EpochId, archetypes: &'a [Archetype]) -> Self {
         QueryIter {
             query,
             epoch,
@@ -48,7 +49,7 @@ where
             .archetypes
             .clone()
             .fold(self.indices.len(), |acc, archetype| {
-                if self.query.skip_archetype_unconditionally(archetype) {
+                if self.query.skip_archetype(archetype) {
                     return acc;
                 }
                 acc + archetype.len()
@@ -70,7 +71,7 @@ where
                             continue;
                         }
 
-                        if self.query.skip_archetype_unconditionally(archetype) {
+                        if self.query.skip_archetype(archetype) {
                             continue;
                         }
 
@@ -136,7 +137,7 @@ where
             if archetype.is_empty() {
                 continue;
             }
-            if self.query.skip_archetype_unconditionally(archetype) {
+            if self.query.skip_archetype(archetype) {
                 continue;
             }
             let mut fetch = unsafe { self.query.fetch(archetype, self.epoch) };

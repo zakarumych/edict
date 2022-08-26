@@ -5,7 +5,7 @@ use core::{
 
 use crate::{archetype::Archetype, query::Access, world::World};
 
-use super::{FnArgCache, FnArgExtract, FnSystemArg, FromWorld};
+use super::{FnArg, FnArgCache, FnArgGet, FromWorld};
 
 /// Bare state for function systems.
 ///
@@ -44,20 +44,20 @@ impl<T> DerefMut for State<'_, T> {
     }
 }
 
-impl<T> FnSystemArg for State<'_, T>
+impl<T> FnArg for State<'_, T>
 where
     T: FromWorld + 'static,
 {
-    type Arg = StateCache<T>;
+    type Cache = StateCache<T>;
 }
 
-unsafe impl<'a, T> FnArgExtract<'a> for StateCache<T>
+unsafe impl<'a, T> FnArgGet<'a> for StateCache<T>
 where
-    T: FromWorld + 'a,
+    T: FromWorld + 'static,
 {
     type Arg = State<'a, T>;
 
-    unsafe fn extract_unchecked(&'a mut self, world: &'_ World) -> State<'a, T> {
+    unsafe fn get_unchecked(&'a mut self, world: &'_ World) -> State<'a, T> {
         let value = self.value.get_or_insert_with(|| T::from_world(world));
         State { value }
     }

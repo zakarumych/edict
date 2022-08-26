@@ -14,7 +14,5 @@ description = "placeholder"
 crate-type = ["proc-macro"]
 
 [dependencies]
-proc-macro2 = "1.0"
 syn = "1.0"
-quote = "1.0"
-proc-easy = "0.2.0"
+edict-proc-lib = { version = "=0.2.0", path = "../proc-lib" }

@@ -6,7 +6,10 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, query::Access, world::World};
 
-pub use self::func::{FnArgExtract, FnSystemArg, FromWorld, State, StateCache};
+pub use self::func::{
+    FnArg, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache, State,
+    StateCache,
+};
 
 /// System that can run using reference to [`World`].
 ///

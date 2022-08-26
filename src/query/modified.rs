@@ -2,11 +2,14 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
 
-use crate::archetype::{chunk_idx, Archetype};
+use crate::{
+    archetype::{chunk_idx, Archetype},
+    epoch::EpochId,
+};
 
 use super::{
     alt::{Alt, RefMut},
-    Access, Fetch, ImmutableQuery, PhantomQuery, Query, QueryFetch,
+    Access, Fetch, ImmutableQuery, IntoQuery, PhantomQuery, Query, QueryFetch,
 };
 
 /// Query over modified component.
@@ -14,23 +17,21 @@ use super::{
 /// Should be used as either `Modified<&T>`, `Modified<&mut T>`
 /// or `Modified<Alt<T>>`.
 ///
-/// This is tracking query that requires providing subscriber's
-/// `Tracks` to skip components that are not modified since the last time
-/// that `Tracks` instance was used.
+/// This is tracking query that uses epoch lower bound to filter out entities with unmodified components.
 pub struct Modified<T> {
-    epoch: u64,
+    after_epoch: EpochId,
     marker: PhantomData<fn() -> T>,
 }
 
 phantom_copy!(Modified<T>);
-phantom_debug!(Modified<T> { epoch });
+phantom_debug!(Modified<T> { after_epoch });
 
 impl<T> Modified<T> {
     /// Creates new `Modified` query.
-    /// Provide `epoch` id is used to skip components that are not modified since the epoch id.
-    pub fn new(epoch: u64) -> Self {
+    /// Provide `after_epoch` id is used to skip components that are last modified not after this epoch.
+    pub fn new(after_epoch: EpochId) -> Self {
         Modified {
-            epoch,
+            after_epoch,
             marker: PhantomData,
         }
     }
@@ -38,10 +39,10 @@ impl<T> Modified<T> {
 
 /// `Fetch` type for the `Modified<&T>` query.
 pub struct ModifiedFetchRead<'a, T> {
-    epoch: u64,
+    after_epoch: EpochId,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
     _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a [T]>,
 }
@@ -55,10 +56,10 @@ where
     #[inline]
     fn dangling() -> Self {
         ModifiedFetchRead {
-            epoch: 0,
+            after_epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
             _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
@@ -66,14 +67,14 @@ where
 
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
-        let version = *self.chunk_versions.as_ptr().add(chunk_idx);
-        version <= self.epoch
+        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
+        !chunk_epoch.after(self.after_epoch)
     }
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
-        let version = *self.entity_versions.as_ptr().add(idx);
-        version <= self.epoch
+        let epoch = *self.entity_epochs.as_ptr().add(idx);
+        !epoch.after(self.after_epoch)
     }
 
     #[inline]
@@ -91,6 +92,13 @@ where
 {
     type Item = &'a T;
     type Fetch = ModifiedFetchRead<'a, T>;
+}
+
+impl<T> IntoQuery for Modified<&T>
+where
+    T: Sync + 'static,
+{
+    type Query = Self;
 }
 
 unsafe impl<T> Query for Modified<&T>
@@ -117,12 +125,7 @@ where
 
     #[inline]
     fn is_valid(&self) -> bool {
-        <&T as PhantomQuery>::is_valid()
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
+        true
     }
 
     #[inline]
@@ -130,15 +133,12 @@ where
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(
-                    <&T as PhantomQuery>::skip_archetype_unconditionally(archetype),
-                    false
-                );
+                debug_assert_eq!(<&T as PhantomQuery>::skip_archetype(archetype), false);
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                data.version < self.epoch
+                self.after_epoch.before(data.epoch)
             },
         }
     }
@@ -147,7 +147,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        _epoch: u64,
+        _epoch: EpochId,
     ) -> ModifiedFetchRead<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
@@ -155,11 +155,13 @@ where
         let component = archetype.component(idx);
         let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
 
+        debug_assert!(data.epoch.after(self.after_epoch));
+
         ModifiedFetchRead {
-            epoch: self.epoch,
+            after_epoch: self.after_epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_ptr() as *mut u64),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_ptr() as *mut u64),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId),
             _borrow: borrow,
             marker: PhantomData,
         }
@@ -170,11 +172,11 @@ unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
 
 /// `Fetch` type for the `Modified<&mut T>` query.
 pub struct ModifiedFetchWrite<'a, T> {
-    epoch: u64,
-    new_epoch: u64,
+    after_epoch: EpochId,
+    epoch: EpochId,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
     _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
@@ -188,11 +190,11 @@ where
     #[inline]
     fn dangling() -> Self {
         ModifiedFetchWrite {
-            epoch: 0,
-            new_epoch: 0,
+            after_epoch: EpochId::start(),
+            epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
             _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
@@ -200,30 +202,26 @@ where
 
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
-        let version = *self.chunk_versions.as_ptr().add(chunk_idx);
-        version <= self.epoch
+        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
+        self.after_epoch.before(chunk_epoch)
     }
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
-        let version = *self.entity_versions.as_ptr().add(idx);
-        version <= self.epoch
+        let epoch = *self.entity_epochs.as_ptr().add(idx);
+        self.after_epoch.before(epoch)
     }
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-
-        debug_assert!(*chunk_version < self.new_epoch);
-        *chunk_version = self.new_epoch;
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
-
-        debug_assert!(*entity_version < self.new_epoch);
-        *entity_version = self.new_epoch;
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        entity_epoch.bump(self.epoch);
 
         &mut *self.ptr.as_ptr().add(idx)
     }
@@ -235,6 +233,13 @@ where
 {
     type Item = &'a mut T;
     type Fetch = ModifiedFetchWrite<'a, T>;
+}
+
+impl<T> IntoQuery for Modified<&mut T>
+where
+    T: Send + 'static,
+{
+    type Query = Self;
 }
 
 unsafe impl<T> Query for Modified<&mut T>
@@ -265,24 +270,16 @@ where
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
-    }
-
-    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(
-                    <&mut T as PhantomQuery>::skip_archetype_unconditionally(archetype),
-                    false
-                );
+                debug_assert_eq!(<&mut T as PhantomQuery>::skip_archetype(archetype), false);
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                data.version < self.epoch
+                self.after_epoch.before(data.epoch)
             },
         }
     }
@@ -291,7 +288,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        new_epoch: u64,
+        epoch: EpochId,
     ) -> ModifiedFetchWrite<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
@@ -299,17 +296,17 @@ where
         let component = archetype.component(idx);
         let mut data = component.data.borrow_mut();
 
-        debug_assert!(data.version < new_epoch);
-        data.version = new_epoch;
+        debug_assert!(data.epoch.after(self.after_epoch));
+        data.epoch.bump(epoch);
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
         ModifiedFetchWrite {
-            epoch: self.epoch,
-            new_epoch,
+            after_epoch: self.after_epoch,
+            epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             _borrow: borrow,
             marker: PhantomData,
         }
@@ -318,12 +315,12 @@ where
 
 /// `Fetch` type for the `Modified<Alt<T>>` query.
 pub struct ModifiedFetchAlt<'a, T> {
-    track_epoch: u64,
-    epoch: u64,
+    after_epoch: EpochId,
+    epoch: EpochId,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<Cell<u64>>,
-    archetype_version: NonNull<Cell<u64>>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<Cell<EpochId>>,
+    archetype_epoch: NonNull<Cell<EpochId>>,
     _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
@@ -337,12 +334,12 @@ where
     #[inline]
     fn dangling() -> Self {
         ModifiedFetchAlt {
-            track_epoch: 0,
-            epoch: 0,
+            after_epoch: EpochId::start(),
+            epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
-            archetype_version: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
+            archetype_epoch: NonNull::dangling(),
             _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
@@ -350,35 +347,35 @@ where
 
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
-        let version = &*self.chunk_versions.as_ptr().add(chunk_idx);
-        version.get() <= self.track_epoch
+        let epoch = &*self.chunk_epochs.as_ptr().add(chunk_idx);
+        self.after_epoch.before(epoch.get())
     }
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-        debug_assert!(chunk_version.get() < self.epoch);
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.get().before(self.epoch);
     }
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
-        let version = *self.entity_versions.as_ptr().add(idx);
-        version <= self.track_epoch
+        let epoch = *self.entity_epochs.as_ptr().add(idx);
+        self.after_epoch.before(epoch)
     }
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
-        let archetype_version = &mut *self.archetype_version.as_ptr();
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx(idx));
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
+        let archetype_epoch = &mut *self.archetype_epoch.as_ptr();
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx));
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
 
-        debug_assert!(*entity_version < self.epoch);
+        debug_assert!(entity_epoch.before(self.epoch));
 
         RefMut {
             component: &mut *self.ptr.as_ptr().add(idx),
-            entity_version,
-            chunk_version,
-            archetype_version,
+            entity_epoch,
+            chunk_epoch,
+            archetype_epoch,
             epoch: self.epoch,
         }
     }
@@ -390,6 +387,13 @@ where
 {
     type Item = RefMut<'a, T>;
     type Fetch = ModifiedFetchAlt<'a, T>;
+}
+
+impl<T> IntoQuery for Modified<Alt<T>>
+where
+    T: Send + 'static,
+{
+    type Query = Self;
 }
 
 unsafe impl<T> Query for Modified<Alt<T>>
@@ -420,24 +424,16 @@ where
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
-    }
-
-    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.id_index(TypeId::of::<T>()) {
             None => true,
             Some(idx) => unsafe {
-                debug_assert_eq!(
-                    <Alt<T> as PhantomQuery>::skip_archetype_unconditionally(archetype),
-                    false
-                );
+                debug_assert_eq!(<Alt<T> as PhantomQuery>::skip_archetype(archetype), false);
 
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                data.version < self.epoch
+                self.after_epoch.after(data.epoch)
             },
         }
     }
@@ -446,7 +442,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        new_epoch: u64,
+        epoch: EpochId,
     ) -> ModifiedFetchAlt<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
@@ -456,18 +452,18 @@ where
 
         let data = component.data.borrow_mut();
 
-        debug_assert!(data.version >= self.epoch);
-        debug_assert!(data.version < new_epoch);
+        debug_assert!(data.epoch.after(self.after_epoch));
+        debug_assert!(data.epoch.before(epoch));
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
         ModifiedFetchAlt {
-            track_epoch: self.epoch,
-            epoch: new_epoch,
+            after_epoch: self.after_epoch,
+            epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()).cast(),
-            archetype_version: NonNull::from(&mut data.version).cast(),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast(),
+            archetype_epoch: NonNull::from(&mut data.epoch).cast(),
             _borrow: borrow,
             marker: PhantomData,
         }

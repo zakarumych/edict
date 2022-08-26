@@ -2,6 +2,7 @@ use edict::{
     action::ActionEncoder,
     component::Component,
     entity::EntityId,
+    epoch::EpochId,
     relation::Relation,
     relation::{QueryRelation, WithRelationTo},
     world::WorldBuilder,
@@ -122,7 +123,7 @@ fn main() {
         );
     }
 
-    let since = 0u64;
+    let since = EpochId::start();
 
     let query = world
         .query::<&A>()

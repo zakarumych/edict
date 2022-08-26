@@ -1,3 +1,4 @@
+mod query;
 mod state;
 
 use core::{any::TypeId, marker::PhantomData};
@@ -9,20 +10,23 @@ use crate::{
     world::World,
 };
 
-pub use self::state::{State, StateCache};
+pub use self::{
+    query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
+    state::{State, StateCache},
+};
 
 /// Marker for [`IntoSystem`] for functions.
 pub struct IsFunctionSystem<Args> {
     marker: PhantomData<fn(Args)>,
 }
 
-/// Fetch for an argument that is stored between calls to function-system.
-pub unsafe trait FnArgExtract<'a> {
+/// Cache for an argument that is stored between calls to function-system.
+pub unsafe trait FnArgGet<'a> {
     /// Argument supplied to function-system.
-    type Arg: 'a;
+    type Arg: FnArg<Cache = Self> + 'a;
 
     /// Extracts argument from the world.
-    unsafe fn extract_unchecked(&'a mut self, world: &'a World) -> Self::Arg;
+    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> Self::Arg;
 }
 
 /// Cache for an argument that is stored between calls to function-system.
@@ -31,7 +35,7 @@ pub unsafe trait FnArgExtract<'a> {
 ///
 /// If [`FnArgFetch::is_local`] returns false [`FnArgFetch::extract_unchecked`] must be safe to call from any thread.
 /// Otherwise [`FnArgFetch::extract_unchecked`] must be safe to call from local thread.
-pub trait FnArgCache: for<'a> FnArgExtract<'a> + Default + 'static {
+pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + 'static {
     /// Returns `true` for local arguments that can be used only for local function-systems.
     fn is_local(&self) -> bool;
 
@@ -46,9 +50,9 @@ pub trait FnArgCache: for<'a> FnArgExtract<'a> + Default + 'static {
 }
 
 /// Types that can be used as an argument for function-systems.
-pub trait FnSystemArg {
+pub trait FnArg {
     /// State for an argument that is stored between calls to function-system.
-    type Arg: FnArgCache;
+    type Cache: FnArgCache;
 }
 
 /// Wrapper for function-like values and implements [`System`].
@@ -59,8 +63,8 @@ pub struct FunctionSystem<F, Args> {
 
 macro_rules! for_tuple {
     () => {
-        // for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-        for_tuple!(for A);
+        for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
+        // for_tuple!(for A);
     };
 
     (for) => {
@@ -78,7 +82,7 @@ macro_rules! for_tuple {
         where
             $($a: FnArgCache,)*
             Func: for<'a> FnMut($(
-                <$a as FnArgExtract<'a>>::Arg,
+                <$a as FnArgGet<'a>>::Arg,
             )*),
         {
             fn is_local(&self) -> bool {
@@ -112,7 +116,7 @@ macro_rules! for_tuple {
                 let ($($a,)*) = &mut self.args;
 
                 $(
-                    let $a = $a.extract_unchecked(world);
+                    let $a = $a.get_unchecked(world);
                 )*
 
                 (self.f)($($a,)*);
@@ -121,19 +125,19 @@ macro_rules! for_tuple {
 
         impl<Func $(, $a)*> IntoSystem<IsFunctionSystem<($($a,)*)>> for Func
         where
-            $($a: FnSystemArg,)*
-            $($a::Arg: Send + Sync,)*
+            $($a: FnArg,)*
+            $($a::Cache: Send + Sync,)*
             Func: FnMut($($a,)*) + Send + Sync + 'static,
             Func: for<'a> FnMut($(
-                <$a::Arg as FnArgExtract<'a>>::Arg,
+                <$a::Cache as FnArgGet<'a>>::Arg,
             )*),
         {
-            type System = FunctionSystem<Self, ($($a::Arg,)*)>;
+            type System = FunctionSystem<Self, ($($a::Cache,)*)>;
 
             fn into_system(self) -> Self::System {
                 FunctionSystem {
                     f: self,
-                    args: ($($a::Arg::default(),)*),
+                    args: ($($a::Cache::default(),)*),
                 }
             }
         }

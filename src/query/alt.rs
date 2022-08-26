@@ -8,20 +8,23 @@ use core::{
 
 use atomicell::borrow::AtomicBorrowMut;
 
-use crate::archetype::{chunk_idx, Archetype};
+use crate::{
+    archetype::{chunk_idx, Archetype},
+    epoch::EpochId,
+};
 
-use super::{phantom::PhantomQuery, Access, Fetch, PhantomQueryFetch, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
 
 /// Item type that `Alt` yields.
 /// Wraps `&mut T` and implements `DerefMut` to `T`.
-/// Bumps component version on dereference.
+/// Bumps component epoch on dereference.
 #[derive(Debug)]
 pub struct RefMut<'a, T: ?Sized> {
     pub(super) component: &'a mut T,
-    pub(super) entity_version: &'a mut u64,
-    pub(super) chunk_version: &'a Cell<u64>,
-    pub(super) archetype_version: &'a Cell<u64>,
-    pub(super) epoch: u64,
+    pub(super) entity_epoch: &'a mut EpochId,
+    pub(super) chunk_epoch: &'a Cell<EpochId>,
+    pub(super) archetype_epoch: &'a Cell<EpochId>,
+    pub(super) epoch: EpochId,
 }
 
 impl<T> Deref for RefMut<'_, T> {
@@ -36,20 +39,20 @@ impl<T> Deref for RefMut<'_, T> {
 impl<T> DerefMut for RefMut<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        *self.entity_version = self.epoch;
-        self.chunk_version.set(self.epoch);
-        self.archetype_version.set(self.epoch);
+        self.entity_epoch.bump_again(self.epoch);
+        EpochId::bump_cell(&self.chunk_epoch, self.epoch);
+        EpochId::bump_cell(&self.archetype_epoch, self.epoch);
         self.component
     }
 }
 
 /// `Fetch` type for the `Alt` query.
 pub struct FetchAlt<'a, T> {
-    epoch: u64,
+    epoch: EpochId,
     ptr: NonNull<T>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<Cell<u64>>,
-    archetype_version: NonNull<Cell<u64>>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<Cell<EpochId>>,
+    archetype_epoch: NonNull<Cell<EpochId>>,
     _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a [T]>,
 }
@@ -63,11 +66,11 @@ where
     #[inline]
     fn dangling() -> Self {
         FetchAlt {
-            epoch: 0,
+            epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
-            archetype_version: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
+            archetype_epoch: NonNull::dangling(),
             _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
@@ -80,8 +83,8 @@ where
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-        debug_assert!((*chunk_version).get() < self.epoch);
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        debug_assert!((*chunk_epoch).get().before(self.epoch));
     }
 
     #[inline]
@@ -91,17 +94,17 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
-        let archetype_version = &mut *self.archetype_version.as_ptr();
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx(idx));
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
+        let archetype_epoch = &mut *self.archetype_epoch.as_ptr();
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx));
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
 
-        debug_assert!(*entity_version < self.epoch);
+        debug_assert!(entity_epoch.before(self.epoch));
 
         RefMut {
             component: &mut *self.ptr.as_ptr().add(idx),
-            entity_version,
-            chunk_version,
-            archetype_version,
+            entity_epoch,
+            chunk_epoch,
+            archetype_epoch,
             epoch: self.epoch,
         }
     }
@@ -114,7 +117,7 @@ phantom_newtype! {
     /// Skips entities that don't have the component.
     ///
     /// Works almost as `&mut T` does.
-    /// However, it does not updates entity version
+    /// However, it does not updates entity epoch
     /// unless returned reference wrapper is dereferenced.
     pub struct Alt<T>
 }
@@ -125,6 +128,13 @@ where
 {
     type Item = RefMut<'a, T>;
     type Fetch = FetchAlt<'a, T>;
+}
+
+impl<T> IntoQuery for Alt<T>
+where
+    T: Send + 'static,
+{
+    type Query = PhantomData<Self>;
 }
 
 unsafe impl<T> PhantomQuery for Alt<T>
@@ -157,34 +167,28 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchAlt<'a, T> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchAlt<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
         let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
         let component = archetype.component(idx);
         debug_assert_eq!(component.id(), TypeId::of::<T>());
         let data = component.data.borrow_mut();
-
-        debug_assert!(data.version < epoch);
+        debug_assert!(data.epoch.before(epoch));
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchAlt {
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()).cast(),
-            archetype_version: NonNull::from(&mut data.version).cast(),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast(),
+            archetype_epoch: NonNull::from(&mut data.epoch).cast(),
             _borrow: borrow,
             marker: PhantomData,
         }

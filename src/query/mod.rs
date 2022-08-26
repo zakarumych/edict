@@ -8,7 +8,7 @@
 
 use core::any::TypeId;
 
-use crate::archetype::Archetype;
+use crate::{archetype::Archetype, epoch::EpochId};
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -17,10 +17,10 @@ pub use self::{
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
     fetch::{Fetch, VerifyFetch},
-    filter::{Filter, FilteredFetch, FilteredQuery, With, Without},
+    filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
     iter::QueryIter,
     modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
-    phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch, PhantomQueryItem},
+    phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch},
     read::{read, FetchRead},
     write::{write, FetchWrite},
 };
@@ -47,6 +47,12 @@ pub enum Access {
     Write,
 }
 
+/// Types associated with a query type.
+pub trait IntoQuery {
+    /// Associated query type.
+    type Query: Query;
+}
+
 /// HRKT for `Query` trait.
 pub trait QueryFetch<'a> {
     /// Item type this query type yields.
@@ -60,7 +66,7 @@ pub trait QueryFetch<'a> {
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
 /// references to the components and optionally `EntityId` to address same components later.
-pub unsafe trait Query: for<'a> QueryFetch<'a> {
+pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// Returns what kind of access the query performs on the component type.
     ///
     /// # Safety
@@ -105,14 +111,7 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> {
     fn is_valid(&self) -> bool;
 
     /// Checks if archetype must be skipped.
-    /// Without taking into account modifiable state of the archetype.
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool;
-
-    /// Checks if archetype must be skipped.
-    #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        self.skip_archetype_unconditionally(archetype)
-    }
+    fn skip_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Fetches data from one archetype.
     ///
@@ -122,7 +121,7 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> {
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        epoch: u64,
+        epoch: EpochId,
     ) -> <Self as QueryFetch<'a>>::Fetch;
 }
 
@@ -175,6 +174,10 @@ pub(crate) fn assert_immutable_query(query: &impl ImmutableQuery) {
         type Fetch = QuasiFetchThatReadsEverything;
     }
 
+    impl IntoQuery for QuasiQueryThatReadsEverything {
+        type Query = Self;
+    }
+
     unsafe impl Query for QuasiQueryThatReadsEverything {
         fn access(&self, _: TypeId) -> Option<Access> {
             Some(Access::Read)
@@ -196,11 +199,11 @@ pub(crate) fn assert_immutable_query(query: &impl ImmutableQuery) {
             true
         }
 
-        fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
+        fn skip_archetype(&self, _: &Archetype) -> bool {
             unimplemented!()
         }
 
-        unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> QuasiFetchThatReadsEverything {
+        unsafe fn fetch(&mut self, _: &Archetype, _: EpochId) -> QuasiFetchThatReadsEverything {
             unimplemented!()
         }
     }
@@ -219,7 +222,7 @@ pub(crate) fn debug_assert_immutable_query(query: &impl ImmutableQuery) {
 }
 
 /// Type alias for items returned by the query type.
-pub type QueryItem<'a, Q> = <Q as QueryFetch<'a>>::Item;
+pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as QueryFetch<'a>>::Item;
 
 /// Merge two optional access values.
 pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {

@@ -20,16 +20,16 @@ use hashbrown::HashMap;
 
 use crate::{
     action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, typeidset::TypeIdSet,
+    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, typeidset::TypeIdSet,
 };
 
 struct Dummy;
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
-    pub version: u64,
-    pub entity_versions: Box<[u64]>,
-    pub chunk_versions: Box<[u64]>,
+    pub epoch: EpochId,
+    pub entity_epochs: Box<[EpochId]>,
+    pub chunk_epochs: Box<[EpochId]>,
 }
 
 pub(crate) struct ArchetypeComponent {
@@ -50,9 +50,9 @@ impl ArchetypeComponent {
         ArchetypeComponent {
             data: AtomicCell::new(ComponentData {
                 ptr: NonNull::dangling(),
-                version: 0,
-                chunk_versions: Box::new([]),
-                entity_versions: Box::new([]),
+                epoch: EpochId::start(),
+                chunk_epochs: Box::new([]),
+                entity_epochs: Box::new([]),
             }),
             info: info.clone(),
         }
@@ -117,15 +117,15 @@ impl ArchetypeComponent {
             }
         }
 
-        let mut entity_versions = core::mem::take(&mut data.entity_versions).into_vec();
-        entity_versions.reserve_exact(new_cap - old_cap);
-        entity_versions.resize(new_cap, 0);
-        data.entity_versions = entity_versions.into_boxed_slice();
+        let mut entity_epochs = core::mem::take(&mut data.entity_epochs).into_vec();
+        entity_epochs.reserve_exact(new_cap - old_cap);
+        entity_epochs.resize(new_cap, EpochId::start());
+        data.entity_epochs = entity_epochs.into_boxed_slice();
 
-        let mut chunk_versions = core::mem::take(&mut data.chunk_versions).into_vec();
-        chunk_versions.reserve_exact(chunks_count(new_cap) - chunks_count(old_cap));
-        chunk_versions.resize(chunks_count(new_cap), 0);
-        data.chunk_versions = chunk_versions.into_boxed_slice();
+        let mut chunk_epochs = core::mem::take(&mut data.chunk_epochs).into_vec();
+        chunk_epochs.reserve_exact(chunks_count(new_cap) - chunks_count(old_cap));
+        chunk_epochs.resize(chunks_count(new_cap), EpochId::start());
+        data.chunk_epochs = chunk_epochs.into_boxed_slice();
     }
 }
 
@@ -285,7 +285,7 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
-    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: u64) -> u32
+    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: EpochId) -> u32
     where
         B: DynamicBundle,
     {
@@ -351,16 +351,13 @@ impl Archetype {
             if entity_idx != last_entity_idx {
                 let chunk_idx = chunk_idx(entity_idx);
 
-                let last_epoch = *data.entity_versions.as_ptr().add(last_entity_idx);
+                let last_epoch = *data.entity_epochs.as_ptr().add(last_entity_idx);
 
-                let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
-                let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
+                let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
+                let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
 
-                if *chunk_version < last_epoch {
-                    *chunk_version = last_epoch;
-                }
-
-                *entity_version = last_epoch;
+                chunk_epoch.update(last_epoch);
+                *entity_epoch = last_epoch;
 
                 let last_ptr = data.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, ptr.as_ptr(), size);
@@ -368,7 +365,7 @@ impl Archetype {
 
             #[cfg(debug_assertions)]
             {
-                *data.entity_versions.get_unchecked_mut(last_entity_idx) = 0;
+                *data.entity_epochs.get_unchecked_mut(last_entity_idx) = EpochId::start();
             }
         }
 
@@ -390,7 +387,7 @@ impl Archetype {
         entity: EntityId,
         idx: u32,
         bundle: B,
-        epoch: u64,
+        epoch: EpochId,
         encoder: &mut ActionEncoder,
     ) where
         B: DynamicBundle,
@@ -413,7 +410,7 @@ impl Archetype {
         entity: EntityId,
         idx: u32,
         value: T,
-        epoch: u64,
+        epoch: EpochId,
         encoder: &mut ActionEncoder,
     ) where
         T: 'static,
@@ -453,13 +450,14 @@ impl Archetype {
         &*ptr
     }
 
-    /// Borrows component mutably. Updates entity version.
+    /// Borrows component mutably. Updates entity epoch.
     ///
     /// # Safety
     ///
     /// Archetype must contain that component type.
+    /// `epoch` must be advanced before this call.
     #[inline]
-    pub unsafe fn get_mut<T>(&mut self, idx: u32, epoch: u64) -> &mut T
+    pub unsafe fn get_mut<T>(&mut self, idx: u32, epoch: EpochId) -> &mut T
     where
         T: 'static,
     {
@@ -474,17 +472,13 @@ impl Archetype {
         let data = component.data.get_mut();
         let ptr = data.ptr.as_ptr().cast::<T>().add(entity_idx);
 
-        let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
-        let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
+        let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
+        let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
 
-        debug_assert!(data.version <= epoch);
-        data.version = epoch;
-
-        debug_assert!(*chunk_version <= epoch);
-        *chunk_version = epoch;
-
-        debug_assert!(*entity_version <= epoch);
-        *entity_version = epoch;
+        // `epoch` must be advanced in `World` before this call.
+        data.epoch.bump(epoch);
+        chunk_epoch.bump(epoch);
+        entity_epoch.bump(epoch);
 
         &mut *ptr
     }
@@ -502,7 +496,7 @@ impl Archetype {
         dst: &mut Archetype,
         src_idx: u32,
         bundle: B,
-        epoch: u64,
+        epoch: EpochId,
         encoder: &mut ActionEncoder,
     ) -> (u32, Option<u32>)
     where
@@ -565,7 +559,7 @@ impl Archetype {
         dst: &mut Archetype,
         src_idx: u32,
         value: T,
-        epoch: u64,
+        epoch: EpochId,
     ) -> (u32, Option<u32>)
     where
         T: 'static,
@@ -752,7 +746,7 @@ impl Archetype {
         entity: EntityId,
         entity_idx: usize,
         bundle: B,
-        epoch: u64,
+        epoch: EpochId,
         mut encoder: Option<&mut ActionEncoder>,
         occupied: F,
     ) where
@@ -764,17 +758,12 @@ impl Archetype {
         bundle.put(|src, id, size| {
             let component = &mut self.components[self.set.get(id).unwrap_unchecked()];
             let data = component.data.get_mut();
-            let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
-            let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
+            let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
+            let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
 
-            debug_assert!(data.version <= epoch);
-            data.version = epoch;
-
-            debug_assert!(*chunk_version <= epoch);
-            *chunk_version = epoch;
-
-            debug_assert!(*entity_version <= epoch);
-            *entity_version = epoch;
+            data.epoch.bump_again(epoch); // Batch spawn would happen with same epoch.
+            chunk_epoch.bump_again(epoch); // Batch spawn would happen with same epoch.
+            entity_epoch.bump(epoch);
 
             let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
             if occupied(id) {
@@ -791,7 +780,7 @@ impl Archetype {
         entity: EntityId,
         entity_idx: usize,
         value: T,
-        epoch: u64,
+        epoch: EpochId,
         occupied: Option<&mut ActionEncoder>,
     ) where
         T: 'static,
@@ -800,17 +789,12 @@ impl Archetype {
 
         let component = &mut self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()];
         let data = component.data.get_mut();
-        let chunk_version = data.chunk_versions.get_unchecked_mut(chunk_idx);
-        let entity_version = data.entity_versions.get_unchecked_mut(entity_idx);
+        let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
+        let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
 
-        debug_assert!(data.version <= epoch);
-        data.version = epoch;
-
-        debug_assert!(*chunk_version <= epoch);
-        *chunk_version = epoch;
-
-        debug_assert!(*entity_version <= epoch);
-        *entity_version = epoch;
+        data.epoch.bump(epoch);
+        chunk_epoch.bump(epoch);
+        entity_epoch.bump(epoch);
 
         let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>()));
 
@@ -846,22 +830,17 @@ impl Archetype {
                 let dst_component = &mut dst.components[dst_type_idx];
                 let dst_data = dst_component.data.get_mut();
 
-                let epoch = *src_data.entity_versions.get_unchecked(src_entity_idx);
+                let epoch = *src_data.entity_epochs.get_unchecked(src_entity_idx);
 
-                let dst_chunk_version = dst_data.chunk_versions.get_unchecked_mut(dst_chunk_idx);
+                let dst_chunk_epochs = dst_data.chunk_epochs.get_unchecked_mut(dst_chunk_idx);
 
-                let dst_entity_version = dst_data.entity_versions.get_unchecked_mut(dst_entity_idx);
+                let dst_entity_epoch = dst_data.entity_epochs.get_unchecked_mut(dst_entity_idx);
 
-                if dst_data.version < epoch {
-                    dst_data.version = epoch;
-                }
+                dst_data.epoch.update(epoch);
+                dst_chunk_epochs.update(epoch);
 
-                if *dst_chunk_version < epoch {
-                    *dst_chunk_version = epoch;
-                }
-
-                debug_assert_eq!(*dst_entity_version, 0);
-                *dst_entity_version = epoch;
+                debug_assert_eq!(*dst_entity_epoch, EpochId::start());
+                *dst_entity_epoch = epoch;
 
                 let dst_ptr = dst_data.ptr.as_ptr().add(dst_entity_idx * size);
 
@@ -874,24 +853,22 @@ impl Archetype {
             if src_entity_idx != last_entity_idx {
                 let src_chunk_idx = chunk_idx(src_entity_idx);
 
-                let last_epoch = *src_data.entity_versions.as_ptr().add(last_entity_idx);
+                let last_epoch = *src_data.entity_epochs.as_ptr().add(last_entity_idx);
 
-                let src_chunk_version = src_data.chunk_versions.get_unchecked_mut(src_chunk_idx);
+                let src_chunk_epoch = src_data.chunk_epochs.get_unchecked_mut(src_chunk_idx);
 
-                let src_entity_version = src_data.entity_versions.get_unchecked_mut(src_entity_idx);
+                let src_entity_epoch = src_data.entity_epochs.get_unchecked_mut(src_entity_idx);
 
-                if *src_chunk_version < last_epoch {
-                    *src_chunk_version = last_epoch;
-                }
-
-                *src_entity_version = last_epoch;
+                src_chunk_epoch.update(last_epoch);
+                *src_entity_epoch = last_epoch;
 
                 let last_ptr = src_data.ptr.as_ptr().add(last_entity_idx * size);
                 ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
             }
+
             #[cfg(debug_assertions)]
             {
-                *src_data.entity_versions.get_unchecked_mut(last_entity_idx) = 0;
+                *src_data.entity_epochs.get_unchecked_mut(last_entity_idx) = EpochId::start();
             }
         }
     }

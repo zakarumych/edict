@@ -1,10 +1,9 @@
-use core::any::TypeId;
+use core::{any::TypeId, marker::PhantomData};
 
-use crate::archetype::Archetype;
+use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
-    Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery, PhantomQueryFetch, Query,
-    QueryFetch,
+    Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch, Query,
 };
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
@@ -55,6 +54,13 @@ where
     }
 }
 
+impl<T> IntoQuery for Option<T>
+where
+    T: PhantomQuery,
+{
+    type Query = PhantomData<Option<T>>;
+}
+
 impl<'a, T> PhantomQueryFetch<'a> for Option<T>
 where
     T: PhantomQuery,
@@ -86,21 +92,16 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        T::is_valid()
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(_: &Archetype) -> bool {
+    fn skip_archetype(_: &Archetype) -> bool {
         false
     }
 
     #[inline]
     unsafe fn fetch<'a>(
         archetype: &'a Archetype,
-        epoch: u64,
+        epoch: EpochId,
     ) -> Option<<T as PhantomQueryFetch<'a>>::Fetch> {
-        if T::skip_archetype_unconditionally(archetype) {
+        if T::skip_archetype(archetype) {
             None
         } else {
             Some(T::fetch(archetype, epoch))
@@ -110,66 +111,40 @@ where
 
 unsafe impl<T> ImmutablePhantomQuery for Option<T> where T: ImmutablePhantomQuery {}
 
-impl<'a, T> QueryFetch<'a> for Option<T>
-where
-    T: Query,
-{
-    type Item = Option<<T as QueryFetch<'a>>::Item>;
-    type Fetch = Option<<T as QueryFetch<'a>>::Fetch>;
-}
+// impl<T> QueryArg for Option<T>
+// where
+//     T: PhantomQuery + QueryArg,
+//     for<'a> <T::Cache as QueryArgGet<'a>>::Arg: PhantomQuery,
+// {
+//     type Cache = PhantomData<Option<T::Cache>>;
+// }
 
-unsafe impl<T> Query for Option<T>
-where
-    T: Query,
-{
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        self.as_ref()?.access(ty)
-    }
+// impl<'a, T> QueryArgGet<'a> for PhantomData<Option<T>>
+// where
+//     T: QueryArgCache,
+//     for<'b> <T as QueryArgGet<'b>>::Arg: PhantomQuery,
+// {
+//     type Arg = Option<<T as QueryArgGet<'a>>::Arg>;
 
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        self.as_ref()?.access_any()
-    }
+//     /// Constructed query type.
+//     type Query = PhantomData<Option<<T as QueryArgGet<'a>>::Arg>>;
 
-    #[inline]
-    fn conflicts<Q>(&self, other: &Q) -> bool
-    where
-        Q: Query,
-    {
-        match self {
-            None => false,
-            Some(query) => query.conflicts(other),
-        }
-    }
+//     /// Returns query for an argument.
+//     fn get(&mut self, _world: &World) -> PhantomData<Option<<T as QueryArgGet<'a>>::Arg>> {
+//         PhantomData
+//     }
+// }
 
-    #[inline]
-    fn is_valid(&self) -> bool {
-        match self {
-            None => true,
-            Some(query) => query.is_valid(),
-        }
-    }
+// impl<T> QueryArgCache for PhantomData<Option<T>>
+// where
+//     T: QueryArgCache,
+//     for<'a> <T as QueryArgGet<'a>>::Arg: PhantomQuery,
+// {
+//     fn skips_archetype(&self, _archetype: &Archetype) -> bool {
+//         false
+//     }
 
-    #[inline]
-    fn skip_archetype_unconditionally(&self, _: &Archetype) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype: &'a Archetype,
-        epoch: u64,
-    ) -> Option<<T as QueryFetch<'a>>::Fetch> {
-        match self {
-            None => None,
-            Some(query) => match query.skip_archetype_unconditionally(archetype) {
-                false => Some(query.fetch(archetype, epoch)),
-                true => None,
-            },
-        }
-    }
-}
-
-unsafe impl<T> ImmutableQuery for Option<T> where T: ImmutableQuery {}
+//     fn access_component(&self, id: TypeId) -> Option<Access> {
+//         <<T as QueryArgGet<'static>>::Arg as PhantomQuery>::access(id)
+//     }
+// }

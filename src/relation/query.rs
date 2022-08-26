@@ -5,9 +5,10 @@ use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
 use crate::{
     archetype::Archetype,
     entity::EntityId,
+    epoch::EpochId,
     query::{
-        Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, PhantomQuery, PhantomQueryFetch,
-        Query, QueryFetch,
+        Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery, PhantomQuery,
+        PhantomQueryFetch, Query, QueryFetch,
     },
     relation::{Origin, OriginComponent, Relation},
 };
@@ -141,6 +142,13 @@ where
     type Fetch = FetchRelationRead<'a, R>;
 }
 
+impl<R> IntoQuery for QueryRelation<&R>
+where
+    R: Relation + Sync,
+{
+    type Query = PhantomData<Self>;
+}
+
 unsafe impl<R> PhantomQuery for QueryRelation<&R>
 where
     R: Relation + Sync,
@@ -170,17 +178,12 @@ where
         )
     }
 
-    #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchRelationRead<'a, R> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelationRead<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
@@ -271,10 +274,10 @@ impl<'a, R> ExactSizeIterator for RelationWriteIter<'a, R> {
 
 /// Fetch for the `Related<R>` query.
 pub struct FetchRelationWrite<'a, R: Relation> {
-    epoch: u64,
+    epoch: EpochId,
     ptr: NonNull<OriginComponent<R>>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
     _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut OriginComponent<R>>,
 }
@@ -288,10 +291,10 @@ where
     #[inline]
     fn dangling() -> Self {
         FetchRelationWrite {
-            epoch: 0,
+            epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
             _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
@@ -309,18 +312,14 @@ where
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-
-        debug_assert!(*chunk_version < self.epoch);
-        *chunk_version = self.epoch;
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> RelationWriteIter<'a, R> {
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
-
-        debug_assert!(*entity_version < self.epoch);
-        *entity_version = self.epoch;
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        entity_epoch.bump(self.epoch);
 
         let origin_component = &mut *self.ptr.as_ptr().add(idx);
 
@@ -336,6 +335,13 @@ where
 {
     type Item = RelationWriteIter<'a, R>;
     type Fetch = FetchRelationWrite<'a, R>;
+}
+
+impl<R> IntoQuery for QueryRelation<&mut R>
+where
+    R: Relation + 'static,
+{
+    type Query = PhantomData<Self>;
 }
 
 unsafe impl<R> PhantomQuery for QueryRelation<&mut R>
@@ -367,17 +373,12 @@ where
         )
     }
 
-    #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: u64) -> FetchRelationWrite<'a, R> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchRelationWrite<'a, R> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
         let idx = archetype
@@ -387,17 +388,15 @@ where
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
         let mut data = component.data.borrow_mut();
-
-        debug_assert!(data.version < epoch);
-        data.version = epoch;
+        data.epoch.bump(epoch);
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchRelationWrite {
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             _borrow: borrow,
             marker: PhantomData,
         }
@@ -489,6 +488,13 @@ where
     type Fetch = FetchRelationToRead<'a, R>;
 }
 
+impl<R> IntoQuery for QueryRelationTo<&R>
+where
+    R: Relation + 'static,
+{
+    type Query = Self;
+}
+
 unsafe impl<R> Query for QueryRelationTo<&R>
 where
     R: Relation + Sync,
@@ -523,7 +529,7 @@ where
         true
     }
 
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -531,7 +537,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        _epoch: u64,
+        _epoch: EpochId,
     ) -> FetchRelationToRead<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
@@ -557,10 +563,10 @@ unsafe impl<R> ImmutableQuery for QueryRelationTo<&R> where R: Relation + Sync {
 pub struct FetchRelationToWrite<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
-    epoch: u64,
+    epoch: EpochId,
     ptr: NonNull<OriginComponent<R>>,
-    entity_versions: NonNull<u64>,
-    chunk_versions: NonNull<u64>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
     _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut OriginComponent<R>>,
 }
@@ -576,10 +582,10 @@ where
         FetchRelationToWrite {
             item_idx: 0,
             target: EntityId::dangling(),
-            epoch: 0,
+            epoch: EpochId::start(),
             ptr: NonNull::dangling(),
-            entity_versions: NonNull::dangling(),
-            chunk_versions: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
             _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
@@ -592,10 +598,8 @@ where
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_versions.as_ptr().add(chunk_idx);
-
-        debug_assert!(*chunk_version < self.epoch);
-        *chunk_version = self.epoch;
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
@@ -617,10 +621,8 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a R {
-        let entity_version = &mut *self.entity_versions.as_ptr().add(idx);
-
-        debug_assert!(*entity_version < self.epoch);
-        *entity_version = self.epoch;
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        entity_epoch.bump(self.epoch);
 
         let origin_component = &*self.ptr.as_ptr().add(idx);
         &origin_component.origins()[self.item_idx].relation
@@ -633,6 +635,13 @@ where
 {
     type Item = &'a R;
     type Fetch = FetchRelationToWrite<'a, R>;
+}
+
+impl<R> IntoQuery for QueryRelationTo<&mut R>
+where
+    R: Relation + Send,
+{
+    type Query = Self;
 }
 
 unsafe impl<R> Query for QueryRelationTo<&mut R>
@@ -669,7 +678,7 @@ where
         true
     }
 
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -677,7 +686,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        epoch: u64,
+        epoch: EpochId,
     ) -> FetchRelationToWrite<'a, R> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
@@ -688,9 +697,7 @@ where
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
         let mut data = component.data.borrow_mut();
-
-        debug_assert!(data.version < epoch);
-        data.version = epoch;
+        data.epoch.bump(epoch);
 
         let (data, borrow) = atomicell::RefMut::into_split(data);
 
@@ -699,8 +706,8 @@ where
             item_idx: 0,
             epoch,
             ptr: data.ptr.cast(),
-            entity_versions: NonNull::new_unchecked(data.entity_versions.as_mut_ptr()),
-            chunk_versions: NonNull::new_unchecked(data.chunk_versions.as_mut_ptr()),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             _borrow: borrow,
             marker: PhantomData,
         }
@@ -778,6 +785,13 @@ where
     type Fetch = FilterFetchRelationTo<'a, R>;
 }
 
+impl<R> IntoQuery for WithRelationTo<R>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
 unsafe impl<R> Query for WithRelationTo<R>
 where
     R: Relation,
@@ -812,7 +826,7 @@ where
         true
     }
 
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
     }
 
@@ -820,7 +834,7 @@ where
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        _epoch: u64,
+        _epoch: EpochId,
     ) -> FilterFetchRelationTo<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<OriginComponent<R>>())
@@ -884,6 +898,13 @@ where
     type Fetch = FetchRelated<'a, R>;
 }
 
+impl<R> IntoQuery for QueryRelated<R>
+where
+    R: Relation,
+{
+    type Query = PhantomData<Self>;
+}
+
 unsafe impl<R> PhantomQuery for QueryRelated<R>
 where
     R: Relation,
@@ -914,17 +935,12 @@ where
     }
 
     #[inline]
-    fn is_valid() -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<TargetComponent<R>>())
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: u64) -> FetchRelated<'a, R> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelated<'a, R> {
         let idx = archetype
             .id_index(TypeId::of::<TargetComponent<R>>())
             .unwrap_unchecked();

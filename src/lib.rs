@@ -139,6 +139,7 @@ pub mod component;
 pub mod entity;
 pub mod executor;
 // pub mod prelude;
+pub mod epoch;
 pub mod query;
 pub mod relation;
 pub mod scheduler;

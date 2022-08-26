@@ -25,7 +25,8 @@ use crate::{
     },
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entities, EntityId},
-    query::{Fetch, PhantomQuery, PhantomQueryItem, Query, QueryItem},
+    epoch::{EpochCounter, EpochId},
+    query::{Fetch, IntoQuery, Query, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
     res::Res,
 };
@@ -132,9 +133,9 @@ fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
 /// moves components of entities between archetypes,
 /// spawns and despawns entities.
 pub struct World {
-    /// Global epoch counter of the World.
+    /// Epoch counter of the World.
     /// Incremented on each mutable query.
-    epoch: AtomicU64,
+    epoch: EpochCounter,
 
     /// Collection of entities with their locations.
     entities: Entities,
@@ -245,10 +246,8 @@ impl World {
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
-
-        let epoch = self.epoch.get_mut();
-        *epoch += 1;
-        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, *epoch);
+        let epoch = self.epoch.next_mut();
+        let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, epoch);
         self.entities.set_location(entity.idx(), archetype_idx, idx);
         entity
     }
@@ -334,15 +333,14 @@ impl World {
             register_bundle,
         );
 
-        let epoch = self.epoch.get_mut();
-        *epoch += 1;
+        let epoch = self.epoch.next_mut();
 
         let archetype = &mut self.archetypes[archetype_idx as usize];
         let entities = &mut self.entities;
 
         SpawnBatch {
             bundles: bundles.into_iter(),
-            epoch: *epoch,
+            epoch,
             archetype_idx,
             archetype,
             entities,
@@ -449,13 +447,11 @@ impl World {
     {
         let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
 
-        let epoch = self.epoch.get_mut();
-        *epoch += 1;
+        let epoch = self.epoch.next_mut();
 
         if self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
             unsafe {
-                self.archetypes[src_archetype as usize]
-                    .set(entity, idx, component, *epoch, encoder);
+                self.archetypes[src_archetype as usize].set(entity, idx, component, epoch, encoder);
             }
 
             return Ok(());
@@ -480,7 +476,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, *epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, epoch) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -682,8 +678,7 @@ impl World {
             return Ok(());
         }
 
-        let epoch = self.epoch.get_mut();
-        *epoch += 1;
+        let epoch = self.epoch.next_mut();
 
         let dst_archetype = self.edges.insert_bundle(
             &mut self.registry,
@@ -696,7 +691,7 @@ impl World {
         if dst_archetype == src_archetype {
             unsafe {
                 self.archetypes[src_archetype as usize]
-                    .set_bundle(entity, idx, bundle, *epoch, encoder)
+                    .set_bundle(entity, idx, bundle, epoch, encoder)
             };
             return Ok(());
         }
@@ -711,7 +706,7 @@ impl World {
         };
 
         let (dst_idx, opt_src_id) =
-            unsafe { src.insert_bundle(entity, dst, idx, bundle, *epoch, encoder) };
+            unsafe { src.insert_bundle(entity, dst, idx, bundle, epoch, encoder) };
 
         self.entities
             .set_location(entity.idx(), dst_archetype, dst_idx);
@@ -816,7 +811,7 @@ impl World {
         self.entities.get(entity).ok_or(NoSuchEntity)?;
         self.entities.get(target).ok_or(NoSuchEntity)?;
 
-        *self.epoch.get_mut() += 1;
+        self.epoch.next_mut();
 
         if R::SYMMETRIC {
             insert_component(
@@ -897,14 +892,12 @@ impl World {
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
-    pub fn query_one<'a, Q>(
-        &'a self,
-        entity: EntityId,
-    ) -> Result<PhantomQueryItem<'a, Q>, QueryOneError>
+    pub fn query_one<'a, Q>(&'a self, entity: EntityId) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
-        Q: PhantomQuery,
+        Q: IntoQuery,
+        Q::Query: Default,
     {
-        self.query_one_state(entity, PhantomData::<Q>)
+        self.query_one_state(entity, Q::Query::default())
     }
 
     /// Queries components from specified entity.
@@ -921,7 +914,7 @@ impl World {
     {
         assert!(query.is_valid(), "Invalid query specified");
 
-        let epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
+        let epoch = self.epoch.next();
 
         let (archetype, idx) = self
             .entities
@@ -932,7 +925,7 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if query.skip_archetype_unconditionally(archetype) {
+        if query.skip_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
@@ -952,13 +945,19 @@ impl World {
         Ok(item)
     }
 
-    /// Returns new [`Tracks`] instance to use with tracking queries.
+    /// Returns current world epoch.
     ///
-    /// Returned [`Tracks`] instance considers only modifications
-    /// that happen after this function call as "new" for the first tracking query.
+    /// This value can be modified concurrently if [`&World`] is shared.
+    /// It increases monotonically, so returned value can be safely assumed as a lower bound.
     #[inline]
-    pub fn epoch(&self) -> u64 {
-        self.epoch.load(Ordering::Relaxed)
+    pub fn epoch(&self) -> EpochId {
+        self.epoch.current()
+    }
+
+    /// Returns atomic reference to epoch counter.
+    #[inline]
+    pub fn epoch_counter(&self) -> &EpochCounter {
+        &self.epoch
     }
 
     /// Attempts to check if specified entity has component of specified type.
@@ -980,30 +979,31 @@ impl World {
     ///
     /// This method only works with immutable queries.
     #[inline]
-    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (PhantomData<Q>,), ()>
+    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
     where
-        Q: PhantomQuery,
+        Q: IntoQuery,
+        Q::Query: Default,
     {
-        self.query_state(PhantomData)
+        self.query_state(Q::Query::default())
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
     /// This method only works with immutable queries.
     #[inline]
-    pub fn query_state<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
+    pub fn query_state<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
         assert!(query.is_valid(), "Invalid query specified");
 
-        QueryRef::new(&self.archetypes, &self.epoch, (query,), ())
+        QueryRef::new(self, (query,), ())
     }
 
     /// Starts building immutable query.
     #[inline]
     pub fn build_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
-        QueryRef::new(&self.archetypes, &self.epoch, (), ())
+        QueryRef::new(self, (), ())
     }
 
     /// Iterate over component info of all registered components
@@ -1210,7 +1210,7 @@ impl World {
 /// Spawning iterator. Produced by [`World::spawn_batch`].
 pub struct SpawnBatch<'a, I> {
     bundles: I,
-    epoch: u64,
+    epoch: EpochId,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut Entities,
@@ -1524,7 +1524,7 @@ fn insert_component<T, C>(
 
     if world.archetypes[src_archetype as usize].contains_id(TypeId::of::<C>()) {
         let component = unsafe {
-            world.archetypes[src_archetype as usize].get_mut::<C>(idx, *world.epoch.get_mut())
+            world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch.current_mut())
         };
 
         set_component(component, value, encoder);
@@ -1554,7 +1554,7 @@ fn insert_component<T, C>(
     };
 
     let (dst_idx, opt_src_id) =
-        unsafe { src.insert(entity, dst, idx, component, *world.epoch.get_mut()) };
+        unsafe { src.insert(entity, dst, idx, component, world.epoch.current_mut()) };
 
     world
         .entities

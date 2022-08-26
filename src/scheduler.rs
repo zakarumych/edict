@@ -210,6 +210,8 @@ impl Scheduler {
             }
         }
 
+        drop(tx);
+
         if let Some(task) = unroll {
             task.run(executor);
         }

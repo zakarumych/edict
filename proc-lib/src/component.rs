@@ -4,13 +4,6 @@ use syn::spanned::Spanned;
 use crate::kw;
 
 proc_easy::easy_argument_value! {
-    struct Edict {
-        kw: kw::edict,
-        path: syn::Path,
-    }
-}
-
-proc_easy::easy_argument_value! {
     struct Name {
         kw: kw::name,
         literal: syn::LitStr,
@@ -41,7 +34,6 @@ proc_easy::easy_argument! {
 proc_easy::easy_attributes! {
     @(edict)
     struct ComponentAttributes {
-        edict: Option<Edict>,
         name: Option<Name>,
         borrow: Option<Borrow>,
         on_drop: Option<OnDrop>,
@@ -49,17 +41,16 @@ proc_easy::easy_attributes! {
     }
 }
 
-pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+pub fn derive(
+    input: syn::DeriveInput,
+    edict_path: &syn::Path,
+    edict_namespace: &syn::Ident,
+) -> syn::Result<proc_macro2::TokenStream> {
     let ident = &input.ident;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let attributes = ComponentAttributes::parse(&input.attrs, input.span())?;
-
-    let edict = match attributes.edict {
-        None => syn::parse_quote! { edict },
-        Some(edict) => edict.path,
-    };
+    let attributes = ComponentAttributes::parse_in(edict_namespace, &input.attrs, input.span())?;
 
     let fn_name = match attributes.name {
         None => quote::quote!(),
@@ -134,7 +125,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                                 impl<T: #bound + Send + Sync + 'static> DispatchBorrowSendSync<T> {
                                     fn insert(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
                                         self.insert_one(extend);
                                         self.0.insert_one(extend);
@@ -144,9 +135,9 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
                                     fn insert_one(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
-                                        extend.extend(Some(#edict::component::ComponentBorrow::make(
+                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
                                             |ptr: core::ptr::NonNull<u8>,
                                              core::marker::PhantomData|
                                              -> &(dyn #bound + Send + Sync) {
@@ -166,7 +157,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                                 impl<T: #bound + Send + 'static> DispatchBorrowSend<T> {
                                     fn insert(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
                                         self.insert_one(extend);
                                         self.0 .0.insert_one(extend);
@@ -174,9 +165,9 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
                                     fn insert_one(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
-                                        extend.extend(Some(#edict::component::ComponentBorrow::make(
+                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
                                             |ptr: core::ptr::NonNull<u8>,
                                              core::marker::PhantomData|
                                              -> &(dyn #bound + Send) {
@@ -196,7 +187,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                                 impl<T: #bound + Sync + 'static> DispatchBorrowSync<T> {
                                     fn insert(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
                                         self.insert_one(extend);
                                         self.0.insert_one(extend);
@@ -204,9 +195,9 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
                                     fn insert_one(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
-                                        extend.extend(Some(#edict::component::ComponentBorrow::make(
+                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
                                             |ptr: core::ptr::NonNull<u8>,
                                              core::marker::PhantomData|
                                              -> &(dyn #bound + Sync) {
@@ -226,16 +217,16 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                                 impl<T: #bound + 'static> DispatchBorrow<T> {
                                     fn insert(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
                                         self.insert_one(extend);
                                     }
 
                                     fn insert_one(
                                         &self,
-                                        extend: &mut #edict::private::Vec<#edict::component::ComponentBorrow>,
+                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
                                     ) {
-                                        extend.extend(Some(#edict::component::ComponentBorrow::make(
+                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
                                             |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn #bound {
                                                 unsafe { ptr.cast::<T>().as_ref() }
                                             },
@@ -259,7 +250,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                     }
                     _ => {
                         insert_borrows.extend(quote::quote! {
-                            let dispatch = #edict::component::private::DispatchBorrowMut(#edict::component::private::DispatchBorrow(core::marker::PhantomData::<(#ident, #target)>));
+                            let dispatch = #edict_path::component::private::DispatchBorrowMut(#edict_path::component::private::DispatchBorrow(core::marker::PhantomData::<(#ident, #target)>));
                             dispatch.insert(&mut output);
                         });
                     }
@@ -276,7 +267,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             quote::quote! {
                 #[allow(unused_variables)]
                 #[inline]
-                fn on_drop(&mut self, entity: #edict::entity::EntityId, encoder: &mut #edict::action::ActionEncoder) {
+                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) {
                     (#on_drop)(self, entity, encoder)
                 }
             }
@@ -290,7 +281,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             quote::quote! {
                 #[allow(unused_variables)]
                 #[inline]
-                fn on_replace(&mut self, value: &Self, entity: #edict::entity::EntityId, encoder: &mut #edict::action::ActionEncoder) -> bool {
+                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) -> bool {
                     (#on_replace)(self, value, entity, encoder)
                 }
             }
@@ -298,7 +289,7 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
     };
 
     let output = quote::quote! {
-        impl #impl_generics #edict::component::Component for #ident #ty_generics
+        impl #impl_generics #edict_path::component::Component for #ident #ty_generics
         #where_clause
         {
             #fn_name
@@ -307,10 +298,10 @@ pub fn derive(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
             #on_replace
 
-            fn borrows() -> #edict::private::Vec<#edict::component::ComponentBorrow> {
+            fn borrows() -> #edict_path::private::Vec<#edict_path::component::ComponentBorrow> {
                 let mut output = Vec::new();
-                output.push(#edict::component::ComponentBorrow::auto::<Self>());
-                #edict::borrow_dyn_any!(Self => output);
+                output.push(#edict_path::component::ComponentBorrow::auto::<Self>());
+                #edict_path::borrow_dyn_any!(Self => output);
                 #insert_borrows
                 output
             }

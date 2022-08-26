@@ -1,8 +1,11 @@
-use core::any::TypeId;
+use core::{any::TypeId, marker::PhantomData};
 
-use crate::archetype::Archetype;
+use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{fetch::UnitFetch, merge_access, Access, Fetch, ImmutableQuery, Query, QueryFetch};
+use super::{
+    fetch::UnitFetch, merge_access, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery,
+    IntoQuery, PhantomQuery, PhantomQueryFetch, Query, QueryFetch,
+};
 
 /// Tuple of filter items.
 pub trait FilterItem: 'static {}
@@ -27,6 +30,20 @@ pub trait Filter:
     + ImmutableQuery
     + for<'a> QueryFetch<'a, Item = <Self as FilterFetch<'a>>::FilterItem>
 {
+}
+
+/// Types associated with a filter type.
+pub trait IntoFilter: IntoQuery<Query = Self::Filter> {
+    /// Associated filter type.
+    type Filter: Filter;
+}
+
+impl<T> IntoFilter for T
+where
+    T: IntoQuery,
+    T::Query: Filter,
+{
+    type Filter = T::Query;
 }
 
 impl<'a, Q> FilterFetch<'a> for Q
@@ -107,6 +124,14 @@ where
     type Fetch = FilteredFetch<<F as QueryFetch<'a>>::Fetch, <Q as QueryFetch<'a>>::Fetch>;
 }
 
+impl<F, Q> IntoQuery for FilteredQuery<F, Q>
+where
+    F: Filter,
+    Q: Query,
+{
+    type Query = FilteredQuery<F, Q>;
+}
+
 unsafe impl<F, Q> Query for FilteredQuery<F, Q>
 where
     F: Filter,
@@ -136,16 +161,15 @@ where
     }
 
     #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
-        self.filter.skip_archetype_unconditionally(archetype)
-            || self.query.skip_archetype_unconditionally(archetype)
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+        self.filter.skip_archetype(archetype) || self.query.skip_archetype(archetype)
     }
 
     #[inline]
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
-        index: u64,
+        index: EpochId,
     ) -> FilteredFetch<<F as QueryFetch<'a>>::Fetch, <Q as QueryFetch<'a>>::Fetch> {
         FilteredFetch {
             filter: self.filter.fetch(archetype, index),
@@ -166,7 +190,7 @@ phantom_newtype! {
     pub struct With<T>
 }
 
-impl<T> QueryFetch<'_> for With<T>
+impl<T> PhantomQueryFetch<'_> for With<T>
 where
     T: 'static,
 {
@@ -174,22 +198,29 @@ where
     type Fetch = UnitFetch;
 }
 
-unsafe impl<T> Query for With<T>
+impl<T> IntoQuery for With<T>
+where
+    T: 'static,
+{
+    type Query = PhantomData<With<T>>;
+}
+
+unsafe impl<T> PhantomQuery for With<T>
 where
     T: 'static,
 {
     #[inline]
-    fn access(&self, _: TypeId) -> Option<Access> {
+    fn access(_: TypeId) -> Option<Access> {
         None
     }
 
     #[inline]
-    fn access_any(&self) -> Option<Access> {
+    fn access_any() -> Option<Access> {
         None
     }
 
     #[inline]
-    fn conflicts<U>(&self, _: &U) -> bool
+    fn conflicts<U>(_: &U) -> bool
     where
         U: Query,
     {
@@ -197,29 +228,24 @@ where
     }
 
     #[inline]
-    fn is_valid(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         !archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> UnitFetch {
+    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }
 }
 
-unsafe impl<T> ImmutableQuery for With<T> where T: 'static {}
+unsafe impl<T> ImmutablePhantomQuery for With<T> where T: 'static {}
 
 phantom_newtype! {
     /// Filter that allows only archetypes without specified component.
     pub struct Without<T>
 }
 
-impl<T> QueryFetch<'_> for Without<T>
+impl<T> PhantomQueryFetch<'_> for Without<T>
 where
     T: 'static,
 {
@@ -227,22 +253,29 @@ where
     type Fetch = UnitFetch;
 }
 
-unsafe impl<T> Query for Without<T>
+impl<T> IntoQuery for Without<T>
+where
+    T: 'static,
+{
+    type Query = PhantomData<Without<T>>;
+}
+
+unsafe impl<T> PhantomQuery for Without<T>
 where
     T: 'static,
 {
     #[inline]
-    fn access(&self, _: TypeId) -> Option<Access> {
+    fn access(_: TypeId) -> Option<Access> {
         None
     }
 
     #[inline]
-    fn access_any(&self) -> Option<Access> {
+    fn access_any() -> Option<Access> {
         None
     }
 
     #[inline]
-    fn conflicts<U>(&self, _: &U) -> bool
+    fn conflicts<U>(_: &U) -> bool
     where
         U: Query,
     {
@@ -250,19 +283,14 @@ where
     }
 
     #[inline]
-    fn is_valid(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn skip_archetype_unconditionally(&self, archetype: &Archetype) -> bool {
+    fn skip_archetype(archetype: &Archetype) -> bool {
         archetype.contains_id(TypeId::of::<T>())
     }
 
     #[inline]
-    unsafe fn fetch(&mut self, _: &Archetype, _: u64) -> UnitFetch {
+    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }
 }
 
-unsafe impl<T> ImmutableQuery for Without<T> where T: 'static {}
+unsafe impl<T> ImmutablePhantomQuery for Without<T> where T: 'static {}

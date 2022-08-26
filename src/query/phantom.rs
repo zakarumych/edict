@@ -134,6 +134,7 @@ where
     type Arg = T;
     type Query = PhantomData<T>;
 
+    #[inline]
     fn get(&mut self, _world: &World) -> Self::Query {
         PhantomData
     }
@@ -143,10 +144,12 @@ impl<T> QueryArgCache for PhantomData<T>
 where
     T: PhantomQuery + 'static,
 {
+    #[inline]
     fn skips_archetype(&self, archetype: &Archetype) -> bool {
         <T as PhantomQuery>::skip_archetype(archetype)
     }
 
+    #[inline]
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <T as PhantomQuery>::access(id)
     }

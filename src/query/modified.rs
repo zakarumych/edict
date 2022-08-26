@@ -5,6 +5,8 @@ use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
 use crate::{
     archetype::{chunk_idx, Archetype},
     epoch::EpochId,
+    system::{QueryArg, QueryArgCache, QueryArgGet},
+    world::World,
 };
 
 use super::{
@@ -138,7 +140,7 @@ where
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                self.after_epoch.before(data.epoch)
+                !data.epoch.after(self.after_epoch)
             },
         }
     }
@@ -203,13 +205,13 @@ where
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
-        self.after_epoch.before(chunk_epoch)
+        !chunk_epoch.after(self.after_epoch)
     }
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx);
-        self.after_epoch.before(epoch)
+        !epoch.after(self.after_epoch)
     }
 
     #[inline]
@@ -279,7 +281,7 @@ where
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                self.after_epoch.before(data.epoch)
+                !data.epoch.after(self.after_epoch)
             },
         }
     }
@@ -348,19 +350,16 @@ where
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
         let epoch = &*self.chunk_epochs.as_ptr().add(chunk_idx);
-        self.after_epoch.before(epoch.get())
+        !epoch.get().after(self.after_epoch)
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
-        chunk_epoch.get().before(self.epoch);
-    }
+    unsafe fn visit_chunk(&mut self, _chunk_idx: usize) {}
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx);
-        self.after_epoch.before(epoch)
+        !epoch.after(self.after_epoch)
     }
 
     #[inline]
@@ -433,7 +432,7 @@ where
                 let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data.borrow();
-                self.after_epoch.after(data.epoch)
+                !data.epoch.after(self.after_epoch)
             },
         }
     }
@@ -468,4 +467,132 @@ where
             marker: PhantomData,
         }
     }
+}
+
+pub struct ModifiedCache<T> {
+    after_epoch: EpochId,
+    marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Default for ModifiedCache<T> {
+    fn default() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> QueryArgGet<'a> for ModifiedCache<&'static T>
+where
+    T: Sync + 'static,
+{
+    type Arg = Modified<&'a T>;
+    type Query = Modified<&'a T>;
+
+    #[inline]
+    fn get(&mut self, world: &'a World) -> Modified<&'a T> {
+        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
+
+        Modified {
+            after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> QueryArgCache for ModifiedCache<&'static T>
+where
+    T: Sync + 'static,
+{
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        <&T as PhantomQuery>::access(id)
+    }
+
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        <&T as PhantomQuery>::skip_archetype(archetype)
+    }
+}
+
+impl<'a, T> QueryArg for Modified<&'a T>
+where
+    T: Sync + 'static,
+{
+    type Cache = ModifiedCache<&'static T>;
+}
+
+impl<'a, T> QueryArgGet<'a> for ModifiedCache<&'static mut T>
+where
+    T: Send + 'static,
+{
+    type Arg = Modified<&'a mut T>;
+    type Query = Modified<&'a mut T>;
+
+    #[inline]
+    fn get(&mut self, world: &'a World) -> Modified<&'a mut T> {
+        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
+
+        Modified {
+            after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> QueryArgCache for ModifiedCache<&'static mut T>
+where
+    T: Send + 'static,
+{
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        <&mut T as PhantomQuery>::access(id)
+    }
+
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        <&mut T as PhantomQuery>::skip_archetype(archetype)
+    }
+}
+
+impl<'a, T> QueryArg for Modified<&'a mut T>
+where
+    T: Send + 'static,
+{
+    type Cache = ModifiedCache<&'static mut T>;
+}
+
+impl<'a, T> QueryArgGet<'a> for ModifiedCache<Alt<T>>
+where
+    T: Send + 'static,
+{
+    type Arg = Modified<Alt<T>>;
+    type Query = Modified<Alt<T>>;
+
+    #[inline]
+    fn get(&mut self, world: &'a World) -> Modified<Alt<T>> {
+        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
+
+        Modified {
+            after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> QueryArgCache for ModifiedCache<Alt<T>>
+where
+    T: Send + 'static,
+{
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        <&mut T as PhantomQuery>::access(id)
+    }
+
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        <&mut T as PhantomQuery>::skip_archetype(archetype)
+    }
+}
+
+impl<'a, T> QueryArg for Modified<Alt<T>>
+where
+    T: Send + 'static,
+{
+    type Cache = ModifiedCache<Alt<T>>;
 }

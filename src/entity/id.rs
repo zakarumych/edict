@@ -29,7 +29,7 @@ impl EntityId {
     /// # Example
     ///
     /// ```
-    /// # use edict::prelude::{World, EntityId};
+    /// # use edict::{world::World, entity::EntityId};
     /// # let mut world = World::new();
     /// let id = EntityId::dangling();
     /// assert_eq!(world.is_alive(id), false);

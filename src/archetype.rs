@@ -792,8 +792,8 @@ impl Archetype {
         let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
         let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
 
-        data.epoch.bump(epoch);
-        chunk_epoch.bump(epoch);
+        data.epoch.bump_again(epoch);
+        chunk_epoch.bump_again(epoch);
         entity_epoch.bump(epoch);
 
         let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>()));

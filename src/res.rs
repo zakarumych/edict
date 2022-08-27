@@ -19,13 +19,23 @@ use core::{
 
 use atomicell::{AtomicCell, Ref, RefMut};
 
-use crate::typeidset::TypeIdSet;
+use crate::typeidset::{no_type_id, TypeIdSet};
 
 struct Resource {
     // Box<AtomicCell> instead of AtomicCell<Box> to avoid false sharing
     data: Box<AtomicCell<dyn Any>>,
     id: TypeId,
     name: &'static str,
+}
+
+impl Resource {
+    fn dummy() -> Self {
+        Resource {
+            data: Box::new(AtomicCell::new(())),
+            id: no_type_id(),
+            name: "",
+        }
+    }
 }
 
 impl Debug for Resource {
@@ -57,6 +67,7 @@ impl Debug for Res {
 
 impl Res {
     /// Returns a new empty resource container.
+    #[inline]
     pub fn new() -> Self {
         Res {
             ids: TypeIdSet::new(core::iter::empty()),
@@ -73,6 +84,7 @@ impl Res {
     /// `Res<NoSend>` accepts any `'static` resource type.
     pub fn insert<T: 'static>(&mut self, resource: T) {
         let id = TypeId::of::<T>();
+        debug_assert_ne!(id, no_type_id());
 
         match self.ids.get(id) {
             None => {
@@ -105,7 +117,11 @@ impl Res {
     /// Removes resource from container.
     /// Returns `None` if resource is not found.
     pub fn remove<T: 'static>(&mut self) -> Option<T> {
-        let idx = self.ids.get(TypeId::of::<T>())?;
+        let id = TypeId::of::<T>();
+        debug_assert_ne!(id, no_type_id());
+
+        let idx = self.ids.get(id)?;
+
         let resource = self.resources.swap_remove(idx);
         self.recalculate_indices();
         let value = AtomicCell::into_inner(*unsafe {
@@ -117,6 +133,30 @@ impl Res {
         Some(value)
     }
 
+    /// Returns some reference to `Sync` resource.
+    /// Returns none if resource is not found.
+    #[inline]
+    pub fn get<T: Sync + 'static>(&self) -> Option<Ref<T>> {
+        unsafe {
+            // # Safety
+            //
+            // If `T` is `Sync` then this method is always safe.
+            self.get_local()
+        }
+    }
+
+    /// Returns some mutable reference to `Send` resource.
+    /// Returns none if resource is not found.
+    #[inline]
+    pub fn get_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
+        unsafe {
+            // # Safety
+            //
+            // If `T` is `Send` then this method is always safe.
+            self.get_local_mut()
+        }
+    }
+
     /// Returns some reference to potentially `!Sync` resource.
     /// Returns none if resource is not found.
     ///
@@ -125,10 +165,14 @@ impl Res {
     /// User must ensure that obtained immutable reference is safe.
     /// For example calling this method from "main" thread is always safe.
     ///
-    /// If `T` is `Sync` then this method is also safe.
+    /// If `T` is `Sync` then this method is always safe.
     /// In this case prefer to use [`get`] method instead.
+    #[inline]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
-        let idx = self.ids.get(TypeId::of::<T>())?;
+        let id = TypeId::of::<T>();
+        debug_assert_ne!(id, no_type_id());
+
+        let idx = self.ids.get(id)?;
 
         let r = {
             // # Safety
@@ -149,10 +193,14 @@ impl Res {
     /// User must ensure that obtained mutable reference is safe.
     /// For example calling this method from "main" thread is always safe.
     ///
-    /// If `T` is `Send` then this method is also safe.
+    /// If `T` is `Send` then this method is always safe.
     /// In this case prefer to use [`get_mut`] method instead.
+    #[inline]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        let idx = self.ids.get(TypeId::of::<T>())?;
+        let id = TypeId::of::<T>();
+        debug_assert_ne!(id, no_type_id());
+
+        let idx = self.ids.get(id)?;
 
         let r = {
             // # Safety
@@ -165,47 +213,6 @@ impl Res {
         Some(r)
     }
 
-    /// Returns some reference to `Sync` resource.
-    /// Returns none if resource is not found.
-    pub fn get<T: Sync + 'static>(&self) -> Option<Ref<T>> {
-        let idx = self.ids.get(TypeId::of::<T>())?;
-
-        let r = unsafe {
-            // # Safety
-            // Index from `ids` always valid.
-            &*self.resources.get_unchecked(idx).data
-        }
-        .borrow();
-
-        let r = Ref::map(r, |r| unsafe {
-            // # Safety
-            // Manually casting is is safe, type behind `dyn Any` is `T`.
-            debug_assert!(r.is::<T>());
-            &*(r as *const dyn Any as *const T)
-        });
-        Some(r)
-    }
-
-    /// Returns some mutable reference to `Send` resource.
-    /// Returns none if resource is not found.
-    pub fn get_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
-        let idx = self.ids.get(TypeId::of::<T>())?;
-
-        let r = unsafe {
-            // # Safety
-            // Index from `ids` always valid.
-            &*self.resources.get_unchecked(idx).data
-        }
-        .borrow_mut();
-        let r = RefMut::map(r, |r: &mut dyn Any| unsafe {
-            // # Safety
-            // Manually casting is is safe, type behind `dyn Any` is `T`.
-            debug_assert!(r.is::<T>());
-            &mut *(r as *mut dyn Any as *mut T)
-        });
-        Some(r)
-    }
-
     /// Reset all possible leaks on resources.
     /// Mutable reference guarantees that no borrows are active.
     pub fn undo_leak(&mut self) {
@@ -214,7 +221,22 @@ impl Res {
         }
     }
 
+    /// Returns iterator over resource types.
+    #[inline]
+    pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.ids.ids()
+    }
+
     fn recalculate_indices(&mut self) {
-        self.ids = TypeIdSet::new(self.resources.iter().map(|r| r.id));
+        self.ids = TypeIdSet::new(self.resources.iter().filter_map(|r| {
+            if r.id == no_type_id() {
+                None
+            } else {
+                Some(r.id)
+            }
+        }));
+
+        self.resources
+            .resize_with(self.ids.upper_bound(), Resource::dummy);
     }
 }

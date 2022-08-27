@@ -92,12 +92,12 @@ impl TypeIdSet {
         }
     }
 
-    // pub fn ids(&self) -> TypeIdSetIter<'_> {
-    //     TypeIdSetIter {
-    //         count: self.count,
-    //         inner: self.entries.iter(),
-    //     }
-    // }
+    pub fn ids(&self) -> TypeIdSetIter<'_> {
+        TypeIdSetIter {
+            count: self.count,
+            inner: self.entries.iter(),
+        }
+    }
 
     #[inline]
     pub fn indexed(&self) -> TypeIdSetIndexedIter<'_> {
@@ -304,7 +304,7 @@ impl DoubleEndedIterator for TypeIdSetIndexedIter<'_> {
 
 /// This function returns opaque TypeId which is treated as none
 /// by components code.
-fn no_type_id() -> TypeId {
+pub(crate) fn no_type_id() -> TypeId {
     pub struct NoThisIsPatrik;
     TypeId::of::<NoThisIsPatrik>()
 }

@@ -1,7 +1,7 @@
 [package]
 name = "edict"
 version = "0.2.0-rc.1"
-edition = "2018"
+edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/edict"
@@ -24,3 +24,6 @@ tiny-fn = "0.1.3"
 atomicell = "0.1.4"
 flume = { version = "0.10" }
 rayon = { version = "1.5", optional = true }
+
+[workspace]
+members = ["proc-lib", "proc"]

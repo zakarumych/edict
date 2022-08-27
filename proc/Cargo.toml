@@ -1,14 +1,14 @@
 [package]
 name = "edict-proc"
 version = "0.2.0-rc.1"
-edition = "2018"
+edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/edict"
 homepage = "https://github.com/zakarumych/edict"
 repository = "https://github.com/zakarumych/edict"
-readme = "README.md"
-description = "placeholder"
+readme = "../README.md"
+description = "Procedural macros for edict"
 
 [lib]
 crate-type = ["proc-macro"]

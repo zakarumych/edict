@@ -11,7 +11,7 @@ readme = "../README.md"
 description = "Procedural macros for edict"
 
 [lib]
-crate-type = ["proc-macro"]
+proc-macro = true
 
 [dependencies]
 syn = "1.0"

@@ -42,7 +42,7 @@ fn main() {
 
 fn system_a(
     q: QueryRef<(
-        &A,
+        &mut A,
         Option<&B>,
         Option<QueryBorrowAll<&(dyn Debug + Sync + 'static)>>,
     )>,
@@ -50,7 +50,7 @@ fn system_a(
 ) {
     *counter += 1;
     println!("Counter: {}", *counter);
-    for (_, (&A, b, dbg)) in q {
+    for (_, (&mut A, b, dbg)) in q {
         println!("A + {:?} + {:?}", b, dbg);
     }
 }

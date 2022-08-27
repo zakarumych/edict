@@ -7,7 +7,8 @@ use core::any::TypeId;
 use crate::{archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
-    FnArg, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache, State,
+    FnArg, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache, Res, ResCache,
+    ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync, ResNoSyncCache, State,
     StateCache,
 };
 

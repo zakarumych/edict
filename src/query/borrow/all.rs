@@ -6,9 +6,7 @@ use atomicell::borrow::AtomicBorrow;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{
-        Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch, Query,
-    },
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
 };
 
 /// Query that borrows from components.
@@ -85,26 +83,13 @@ where
     type Query = PhantomData<Self>;
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
+impl<T> PhantomQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
 {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         Some(Access::Read)
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(query.access_any(), Some(Access::Write))
     }
 
     #[inline]

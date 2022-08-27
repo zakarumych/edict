@@ -149,7 +149,7 @@ where
     type Query = PhantomData<Self>;
 }
 
-unsafe impl<R> PhantomQuery for QueryRelation<&R>
+impl<R> PhantomQuery for QueryRelation<&R>
 where
     R: Relation + Sync,
 {
@@ -160,22 +160,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<OriginComponent<R>>()),
-            Some(Access::Write)
-        )
     }
 
     fn skip_archetype(archetype: &Archetype) -> bool {
@@ -344,7 +328,7 @@ where
     type Query = PhantomData<Self>;
 }
 
-unsafe impl<R> PhantomQuery for QueryRelation<&mut R>
+impl<R> PhantomQuery for QueryRelation<&mut R>
 where
     R: Relation + Send,
 {
@@ -355,22 +339,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Write)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<OriginComponent<R>>()),
-            Some(Access::Read | Access::Write)
-        )
     }
 
     fn skip_archetype(archetype: &Archetype) -> bool {
@@ -495,7 +463,7 @@ where
     type Query = Self;
 }
 
-unsafe impl<R> Query for QueryRelationTo<&R>
+impl<R> Query for QueryRelationTo<&R>
 where
     R: Relation + Sync,
 {
@@ -506,27 +474,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<OriginComponent<R>>()),
-            Some(Access::Write)
-        )
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
@@ -644,7 +591,7 @@ where
     type Query = Self;
 }
 
-unsafe impl<R> Query for QueryRelationTo<&mut R>
+impl<R> Query for QueryRelationTo<&mut R>
 where
     R: Relation + Send,
 {
@@ -655,27 +602,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        Some(Access::Write)
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<OriginComponent<R>>()),
-            Some(Access::Read | Access::Write)
-        )
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
@@ -792,7 +718,7 @@ where
     type Query = Self;
 }
 
-unsafe impl<R> Query for WithRelationTo<R>
+impl<R> Query for WithRelationTo<R>
 where
     R: Relation,
 {
@@ -803,27 +729,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<OriginComponent<R>>()),
-            Some(Access::Write)
-        )
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
@@ -905,7 +810,7 @@ where
     type Query = PhantomData<Self>;
 }
 
-unsafe impl<R> PhantomQuery for QueryRelated<R>
+impl<R> PhantomQuery for QueryRelated<R>
 where
     R: Relation,
 {
@@ -916,22 +821,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<TargetComponent<R>>()),
-            Some(Access::Write)
-        )
     }
 
     #[inline]

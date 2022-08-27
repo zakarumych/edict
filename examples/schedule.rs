@@ -1,8 +1,7 @@
 use core::fmt::Debug;
 
 use edict::{
-    executor::MockExecutor,
-    query::{Modified, QueryBorrowAll},
+    query::{Modified, QueryBorrowAll, With},
     scheduler::Scheduler,
     system::State,
     world::{QueryRef, World},
@@ -26,10 +25,18 @@ fn main() {
 
     schedule.add_system(system_a);
     schedule.add_system(system_b);
+    schedule.add_system(system_c);
+    schedule.add_system(system_d);
+    schedule.add_system(system_e);
 
-    for _ in 0..10 {
+    for i in 0..10 {
+        println!("Loop: {i}");
+
         world.query_one::<&mut B>(c).unwrap();
-        schedule.run(&mut world, &MockExecutor);
+
+        std::thread::scope(|scope| {
+            schedule.run(&mut world, &scope);
+        });
     }
 }
 
@@ -42,7 +49,7 @@ fn system_a(
     mut counter: State<u32>,
 ) {
     *counter += 1;
-    println!("{}", *counter);
+    println!("Counter: {}", *counter);
     for (_, (&A, b, dbg)) in q {
         println!("A + {:?} + {:?}", b, dbg);
     }
@@ -52,4 +59,14 @@ fn system_b(q: QueryRef<Modified<&B>>) {
     for (_, &B) in q {
         println!("Modified B");
     }
+}
+
+fn system_c(q: QueryRef<&mut A>) {
+    q.for_each(|_| {});
+}
+fn system_d(q: QueryRef<&mut A, With<B>>) {
+    q.for_each(|_| {});
+}
+fn system_e(q: QueryRef<&A, With<B>>) {
+    q.for_each(|_| {});
 }

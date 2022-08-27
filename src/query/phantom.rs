@@ -23,33 +23,11 @@ pub trait PhantomQueryFetch<'a> {
 /// This trait has all the same methods without `self` argument.
 ///
 /// [`PhantomData<Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
-pub unsafe trait PhantomQuery:
+pub trait PhantomQuery:
     for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<Self>>
 {
     /// Returns what kind of access the query performs on the component type.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
     fn access(ty: TypeId) -> Option<Access>;
-
-    /// Returns access that requires strongest guarantees among all accesses the query performs.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    fn access_any() -> Option<Access>;
-
-    /// Returns `true` if query execution conflicts with another query.
-    /// This method can be used by complex queries to implement `is_valid`.
-    /// Another use case is within multithreaded scheduler to run non-conflicting queries in parallel.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    fn conflicts<Q>(other: &Q) -> bool
-    where
-        Q: Query;
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(archetype: &Archetype) -> bool;
@@ -80,31 +58,13 @@ where
     type Fetch = <Q as PhantomQueryFetch<'a>>::Fetch;
 }
 
-unsafe impl<Q> Query for PhantomData<Q>
+impl<Q> Query for PhantomData<Q>
 where
     Q: PhantomQuery,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Q as PhantomQuery>::access(ty)
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        <Q as PhantomQuery>::access_any()
-    }
-
-    #[inline]
-    fn conflicts<U>(&self, other: &U) -> bool
-    where
-        U: Query,
-    {
-        <Q as PhantomQuery>::conflicts(other)
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]

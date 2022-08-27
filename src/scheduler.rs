@@ -242,15 +242,44 @@ impl Scheduler {
                     }
                 }
 
+                let system_a = unsafe {
+                    // # Safety
+                    //
+                    // Unique access to systems.
+                    &*a.system.get()
+                };
+
+                let system_b = unsafe {
+                    // # Safety
+                    //
+                    // Unique access to systems.
+                    // j is always less than i
+                    &*b.system.get()
+                };
+
+                for id in world.resource_types() {
+                    match (system_a.access_resource(id), system_b.access_resource(id)) {
+                        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
+                            // Conflicts on this resource.
+                            // Add a dependency.
+                            self.systems[j].dependents.push(i);
+                            self.systems[i].dependencies += 1;
+                            deps.insert(j);
+                            continue 'j;
+                        }
+                        _ => {}
+                    }
+                }
+
                 for archetype in world.archetypes() {
-                    let a = unsafe {
+                    let system_a = unsafe {
                         // # Safety
                         //
                         // Unique access to systems.
                         &*a.system.get()
                     };
 
-                    let b = unsafe {
+                    let system_b = unsafe {
                         // # Safety
                         //
                         // Unique access to systems.
@@ -258,13 +287,16 @@ impl Scheduler {
                         &*b.system.get()
                     };
 
-                    if a.skips_archetype(archetype) || b.skips_archetype(archetype) {
+                    if system_a.skips_archetype(archetype) || system_b.skips_archetype(archetype) {
                         // Ignore skipped archetypes.
                         continue;
                     }
 
                     for info in archetype.infos() {
-                        match (a.access_component(info.id()), b.access_component(info.id())) {
+                        match (
+                            system_a.access_component(info.id()),
+                            system_b.access_component(info.id()),
+                        ) {
                             (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
                                 // Conflicts on this archetype.
                                 // Add a dependency.

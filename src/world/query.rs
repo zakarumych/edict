@@ -5,9 +5,8 @@ use crate::{
     component::Component,
     entity::EntityId,
     query::{
-        debug_assert_immutable_query, Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery,
-        Modified, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem,
-        QueryIter, With, Without,
+        Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery, Modified, PhantomQuery, Query,
+        QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
     relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
 };
@@ -289,7 +288,6 @@ where
         Q::Query: Clone,
         F::Filter: Clone,
     {
-        debug_assert_immutable_query(&self.filter);
         let epoch = self.epoch.next();
 
         QueryIter::new(
@@ -306,7 +304,6 @@ where
     /// This method is only available with non-tracking queries.
     #[inline]
     pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
-        debug_assert_immutable_query(&self.filter);
         let epoch = self.epoch.next();
 
         QueryIter::new(
@@ -328,11 +325,6 @@ where
     where
         Fun: FnMut(QueryItem<'_, Q>),
     {
-        assert!(self.filter.is_valid(), "Invalid query specified");
-        assert!(self.query.is_valid(), "Invalid query specified");
-
-        debug_assert_immutable_query(&self.filter);
-
         let epoch = self.epoch.next();
         for_each_impl(self.filter, self.query, self.archetypes, epoch, f)
     }

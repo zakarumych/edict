@@ -103,31 +103,13 @@ where
     type Query = Self;
 }
 
-unsafe impl<T> Query for Modified<&T>
+impl<T> Query for Modified<&T>
 where
     T: Sync + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <&T as PhantomQuery>::access(ty)
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        <&T as PhantomQuery>::access_any()
-    }
-
-    #[inline]
-    fn conflicts<U>(&self, other: &U) -> bool
-    where
-        U: Query,
-    {
-        <&T as PhantomQuery>::conflicts(other)
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]
@@ -244,31 +226,13 @@ where
     type Query = Self;
 }
 
-unsafe impl<T> Query for Modified<&mut T>
+impl<T> Query for Modified<&mut T>
 where
     T: Send + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <&mut T as PhantomQuery>::access(ty)
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        <&mut T as PhantomQuery>::access_any()
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, other: &Q) -> bool
-    where
-        Q: Query,
-    {
-        <&mut T as PhantomQuery>::conflicts::<Q>(other)
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]
@@ -395,31 +359,13 @@ where
     type Query = Self;
 }
 
-unsafe impl<T> Query for Modified<Alt<T>>
+impl<T> Query for Modified<Alt<T>>
 where
     T: Send + 'static,
 {
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(ty)
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        <Alt<T> as PhantomQuery>::access_any()
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, other: &Q) -> bool
-    where
-        Q: Query,
-    {
-        <Alt<T> as PhantomQuery>::conflicts::<Q>(other)
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]

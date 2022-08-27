@@ -74,16 +74,14 @@ impl VerifyFetch {
             None => {
                 panic!("FetchVerify: visit_chunk called without skip_chunk");
             }
-            Some((valid_chunk_idx, skipping)) => {
-                if chunk_idx != valid_chunk_idx {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but last call to `skip_chunk` was with chunk_idx {}", chunk_idx, valid_chunk_idx);
+            Some((skip_chunk_idx, skipping)) => {
+                if chunk_idx != skip_chunk_idx {
+                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but last call to `skip_chunk` was with chunk_idx {}", chunk_idx, skip_chunk_idx);
                 }
                 if skipping {
                     panic!("FetchVerify: visit_chunk called with chunk_idx {}, but `skip_chunk` returned true for this chunk index", chunk_idx);
                 }
-                self.visit_chunk = Some(valid_chunk_idx);
-                self.skip_chunk = None;
-                self.skip_item = None;
+                self.visit_chunk = Some(skip_chunk_idx);
             }
         }
     }
@@ -99,13 +97,16 @@ impl VerifyFetch {
         if self.dangling {
             panic!("FetchVerify: skip_item called for dangling fetch");
         }
-        match self.visit_chunk {
+        match self.skip_chunk {
             None => {
-                panic!("FetchVerify: get_item called without visit_chunk");
+                panic!("FetchVerify: skip_item called without skip_chunk");
             }
-            Some(visiting_chunk_idx) => {
-                if chunk_idx(idx) != visiting_chunk_idx {
-                    panic!("FetchVerify: get_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visiting_chunk_idx);
+            Some((skip_chunk_idx, chunk_skipping)) => {
+                if chunk_idx(idx) != skip_chunk_idx {
+                    panic!("FetchVerify: skip_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` was with chunk_idx {}", idx, chunk_idx(idx), skip_chunk_idx);
+                }
+                if chunk_skipping {
+                    panic!("FetchVerify: skip_item called with idx {} that correspond to chunk {}, but last call to `skip_chunk` for this chunk id returned true", idx, chunk_idx(idx));
                 }
                 self.skip_item = Some((idx, skipping));
             }

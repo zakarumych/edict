@@ -2,9 +2,7 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{
-    Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch, Query,
-};
+use super::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -69,26 +67,13 @@ where
     type Fetch = Option<<T as PhantomQueryFetch<'a>>::Fetch>;
 }
 
-unsafe impl<T> PhantomQuery for Option<T>
+impl<T> PhantomQuery for Option<T>
 where
     T: PhantomQuery,
 {
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         T::access(ty)
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        T::access_any()
-    }
-
-    #[inline]
-    fn conflicts<Q>(other: &Q) -> bool
-    where
-        Q: Query,
-    {
-        T::conflicts(other)
     }
 
     #[inline]

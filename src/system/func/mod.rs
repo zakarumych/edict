@@ -1,4 +1,5 @@
 mod query;
+mod res;
 mod state;
 
 use core::{any::TypeId, marker::PhantomData};
@@ -13,6 +14,7 @@ use crate::{
 pub use self::{
     query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
     state::{State, StateCache},
+    res::{Res, ResMut, ResMutCache, ResCache, ResNoSync, ResNoSyncCache, ResMutNoSend, ResMutNoSendCache},
 };
 
 /// Marker for [`IntoSystem`] for functions.

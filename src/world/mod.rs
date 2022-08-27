@@ -912,8 +912,6 @@ impl World {
     where
         Q: Query,
     {
-        assert!(query.is_valid(), "Invalid query specified");
-
         let epoch = self.epoch.next();
 
         let (archetype, idx) = self
@@ -995,8 +993,6 @@ impl World {
     where
         Q: IntoQuery,
     {
-        assert!(query.is_valid(), "Invalid query specified");
-
         QueryRef::new(self, (query,), ())
     }
 
@@ -1204,6 +1200,25 @@ impl World {
     /// ```
     pub fn undo_resource_leak(&mut self) {
         self.res.undo_leak()
+    }
+
+    /// Returns iterator over resource types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::{any::TypeId, collections::HashSet};
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// world.insert_resource(1.5f32);
+    /// assert_eq!(
+    ///     world.resource_types().collect::<HashSet<_>>(),
+    ///     HashSet::from([TypeId::of::<i32>(), TypeId::of::<f32>()]),
+    /// );
+    /// ```
+    pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.res.resource_types()
     }
 }
 

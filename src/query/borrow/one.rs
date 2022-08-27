@@ -86,7 +86,7 @@ where
     type Query = Self;
 }
 
-unsafe impl<T> Query for QueryBorrowOne<&T>
+impl<T> Query for QueryBorrowOne<&T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -97,24 +97,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(query.access(self.id), Some(Access::Write))
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]
@@ -225,7 +207,7 @@ where
     type Query = Self;
 }
 
-unsafe impl<T> Query for QueryBorrowOne<&mut T>
+impl<T> Query for QueryBorrowOne<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
@@ -236,24 +218,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        Some(Access::Write)
-    }
-
-    #[inline]
-    fn conflicts<Q>(&self, query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(query.access(self.id), Some(Access::Read | Access::Write))
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        true
     }
 
     #[inline]

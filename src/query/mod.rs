@@ -66,49 +66,9 @@ pub trait QueryFetch<'a> {
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
 /// references to the components and optionally `EntityId` to address same components later.
-pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
+pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// Returns what kind of access the query performs on the component type.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
     fn access(&self, ty: TypeId) -> Option<Access>;
-
-    /// Returns access that requires strongest guarantees among all accesses the query performs.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    fn access_any(&self) -> Option<Access>;
-
-    /// Returns `true` if query execution conflicts with another query.
-    /// This method can be used by complex queries to implement `is_valid`.
-    /// Another use case is within multithreaded scheduler to run non-conflicting queries in parallel.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    fn conflicts<Q>(&self, other: &Q) -> bool
-    where
-        Q: Query;
-
-    /// Function to validate that query does not cause mutable reference aliasing.
-    /// e.g. `(&mut T, &mut T)` is not valid query, but `(&T, &T)` is.
-    ///
-    /// Attempt to run invalid query will result in panic.
-    /// It is always user's responsibility to ensure that query is valid.
-    ///
-    /// Typical query validity does not depend on the runtime values.
-    /// So it should be possible to ensure that query is valid by looking at its type.
-    ///
-    /// # Safety
-    ///
-    /// Soundness relies on the correctness of this method.
-    ///
-    /// This method is called before running the query.
-    /// It must return `true` only if it is sound to call `fetch` for any archetype
-    /// that won't be skipped and get items from it.
-    fn is_valid(&self) -> bool;
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(&self, archetype: &Archetype) -> bool;
@@ -133,93 +93,6 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
 /// `Query` must not borrow components mutably.
 /// `Query` must not modify entities versions.
 pub unsafe trait ImmutableQuery: Query {}
-
-/// Asserts that query is indeed immutable
-/// by checking that it doesn't conflict with query that reads everything.
-pub(crate) fn assert_immutable_query(query: &impl ImmutableQuery) {
-    struct QuasiQueryThatReadsEverything;
-    enum QuasiFetchThatReadsEverything {}
-
-    unsafe impl<'a> Fetch<'a> for QuasiFetchThatReadsEverything {
-        type Item = ();
-
-        #[inline]
-        fn dangling() -> Self {
-            unimplemented!()
-        }
-
-        #[inline]
-        unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-            match *self {}
-        }
-
-        #[inline]
-        unsafe fn visit_chunk(&mut self, _: usize) {
-            match *self {}
-        }
-
-        #[inline]
-        unsafe fn skip_item(&mut self, _: usize) -> bool {
-            match *self {}
-        }
-
-        #[inline]
-        unsafe fn get_item(&mut self, _: usize) {
-            match *self {}
-        }
-    }
-
-    impl QueryFetch<'_> for QuasiQueryThatReadsEverything {
-        type Item = ();
-        type Fetch = QuasiFetchThatReadsEverything;
-    }
-
-    impl IntoQuery for QuasiQueryThatReadsEverything {
-        type Query = Self;
-    }
-
-    unsafe impl Query for QuasiQueryThatReadsEverything {
-        fn access(&self, _: TypeId) -> Option<Access> {
-            Some(Access::Read)
-        }
-
-        fn access_any(&self) -> Option<Access> {
-            Some(Access::Read)
-        }
-
-        fn conflicts<Q>(&self, _: &Q) -> bool
-        where
-            Q: Query,
-        {
-            unimplemented!()
-        }
-
-        #[inline]
-        fn is_valid(&self) -> bool {
-            true
-        }
-
-        fn skip_archetype(&self, _: &Archetype) -> bool {
-            unimplemented!()
-        }
-
-        unsafe fn fetch(&mut self, _: &Archetype, _: EpochId) -> QuasiFetchThatReadsEverything {
-            unimplemented!()
-        }
-    }
-
-    assert_eq!(
-        query.conflicts(&QuasiQueryThatReadsEverything),
-        false,
-        "Immutable query must not conflict with query that reads everything"
-    );
-}
-
-#[inline]
-pub(crate) fn debug_assert_immutable_query(query: &impl ImmutableQuery) {
-    #[cfg(debug_assertions)]
-    assert_immutable_query(query);
-}
 
 /// Type alias for items returned by the query type.
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as QueryFetch<'a>>::Item;

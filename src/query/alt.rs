@@ -13,7 +13,7 @@ use crate::{
     epoch::EpochId,
 };
 
-use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch};
 
 /// Item type that `Alt` yields.
 /// Wraps `&mut T` and implements `DerefMut` to `T`.
@@ -137,7 +137,7 @@ where
     type Query = PhantomData<Self>;
 }
 
-unsafe impl<T> PhantomQuery for Alt<T>
+impl<T> PhantomQuery for Alt<T>
 where
     T: Send + 'static,
 {
@@ -148,22 +148,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Write)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<T>()),
-            Some(Access::Read | Access::Write)
-        )
     }
 
     #[inline]

@@ -132,32 +132,14 @@ where
     type Query = FilteredQuery<F, Q>;
 }
 
-unsafe impl<F, Q> Query for FilteredQuery<F, Q>
+impl<F, Q> Query for FilteredQuery<F, Q>
 where
     F: Filter,
     Q: Query,
 {
     #[inline]
-    fn is_valid(&self) -> bool {
-        self.query.is_valid()
-    }
-
-    #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         merge_access(self.filter.access(ty), self.query.access(ty))
-    }
-
-    #[inline]
-    fn access_any(&self) -> Option<Access> {
-        merge_access(self.filter.access_any(), self.query.access_any())
-    }
-
-    #[inline]
-    fn conflicts<U>(&self, query: &U) -> bool
-    where
-        U: Query,
-    {
-        self.filter.conflicts(query) || self.query.conflicts(query)
     }
 
     #[inline]
@@ -190,6 +172,13 @@ phantom_newtype! {
     pub struct With<T>
 }
 
+impl<T> IntoQuery for With<T>
+where
+    T: 'static,
+{
+    type Query = PhantomData<With<T>>;
+}
+
 impl<T> PhantomQueryFetch<'_> for With<T>
 where
     T: 'static,
@@ -198,33 +187,13 @@ where
     type Fetch = UnitFetch;
 }
 
-impl<T> IntoQuery for With<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<With<T>>;
-}
-
-unsafe impl<T> PhantomQuery for With<T>
+impl<T> PhantomQuery for With<T>
 where
     T: 'static,
 {
     #[inline]
     fn access(_: TypeId) -> Option<Access> {
         None
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        None
-    }
-
-    #[inline]
-    fn conflicts<U>(_: &U) -> bool
-    where
-        U: Query,
-    {
-        false
     }
 
     #[inline]
@@ -245,6 +214,13 @@ phantom_newtype! {
     pub struct Without<T>
 }
 
+impl<T> IntoQuery for Without<T>
+where
+    T: 'static,
+{
+    type Query = PhantomData<Without<T>>;
+}
+
 impl<T> PhantomQueryFetch<'_> for Without<T>
 where
     T: 'static,
@@ -253,33 +229,13 @@ where
     type Fetch = UnitFetch;
 }
 
-impl<T> IntoQuery for Without<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<Without<T>>;
-}
-
-unsafe impl<T> PhantomQuery for Without<T>
+impl<T> PhantomQuery for Without<T>
 where
     T: 'static,
 {
     #[inline]
     fn access(_: TypeId) -> Option<Access> {
         None
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        None
-    }
-
-    #[inline]
-    fn conflicts<U>(_: &U) -> bool
-    where
-        U: Query,
-    {
-        false
     }
 
     #[inline]

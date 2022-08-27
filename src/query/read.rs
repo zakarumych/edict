@@ -6,7 +6,7 @@ use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
     phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery,
-    PhantomQueryFetch, Query,
+    PhantomQueryFetch,
 };
 
 /// `Fetch` type for the `&T` query.
@@ -66,7 +66,7 @@ where
     type Fetch = FetchRead<'a, T>;
 }
 
-unsafe impl<T> PhantomQuery for &T
+impl<T> PhantomQuery for &T
 where
     T: Sync + 'static,
 {
@@ -77,19 +77,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Read)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(query.access(TypeId::of::<T>()), Some(Access::Write))
     }
 
     #[inline]

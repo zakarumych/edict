@@ -74,7 +74,7 @@ where
     type Fetch = FetchWrite<'a, T>;
 }
 
-unsafe impl<T> PhantomQuery for &mut T
+impl<T> PhantomQuery for &mut T
 where
     T: Send + 'static,
 {
@@ -85,22 +85,6 @@ where
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn access_any() -> Option<Access> {
-        Some(Access::Write)
-    }
-
-    #[inline]
-    fn conflicts<Q>(query: &Q) -> bool
-    where
-        Q: Query,
-    {
-        matches!(
-            query.access(TypeId::of::<T>()),
-            Some(Access::Read | Access::Write)
-        )
     }
 
     #[inline]

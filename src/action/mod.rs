@@ -17,7 +17,7 @@ use crate::{
 };
 
 tiny_fn::tiny_fn! {
-    struct ActionFn = FnOnce(world: &mut World, encoder: &mut ActionEncoder);
+    struct ActionFn = FnOnce(world: &mut World, encoder: &mut ActionEncoder) | + Send;
 }
 
 /// An action that can be recorded by custom drop-glue.
@@ -105,7 +105,7 @@ impl ActionEncoder {
     #[inline]
     pub fn custom(
         &mut self,
-        fun: impl FnOnce(&mut World, &mut ActionEncoder) + 'static,
+        fun: impl FnOnce(&mut World, &mut ActionEncoder) + Send + 'static,
     ) -> &mut Self {
         self.actions.push_back(Action::Fun(ActionFn::new(fun)));
         self

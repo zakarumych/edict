@@ -1,10 +1,11 @@
+mod action;
 mod query;
 mod res;
 mod state;
 
 use core::{any::TypeId, marker::PhantomData};
 
-use super::{IntoSystem, System};
+use super::{ActionQueue, IntoSystem, System};
 use crate::{
     archetype::Archetype,
     query::{merge_access, Access},
@@ -13,8 +14,11 @@ use crate::{
 
 pub use self::{
     query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
+    res::{
+        Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync,
+        ResNoSyncCache,
+    },
     state::{State, StateCache},
-    res::{Res, ResMut, ResMutCache, ResCache, ResNoSync, ResNoSyncCache, ResMutNoSend, ResMutNoSendCache},
 };
 
 /// Marker for [`IntoSystem`] for functions.
@@ -28,7 +32,18 @@ pub unsafe trait FnArgGet<'a> {
     type Arg: FnArg<Cache = Self> + 'a;
 
     /// Extracts argument from the world.
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> Self::Arg;
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        encoder: &mut dyn ActionQueue,
+    ) -> Self::Arg;
+
+    /// Flushes cache to the world.
+    /// This method provides an opportunity for argument cache to do a cleanup of flushing.
+    ///
+    /// For instance `ActionEncoderCache` - a cache type for `&mut ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
+    #[inline]
+    unsafe fn flush_unchecked(&'a mut self, _world: &'a World, _encoder: &mut dyn ActionQueue) {}
 }
 
 /// Cache for an argument that is stored between calls to function-system.
@@ -114,11 +129,11 @@ macro_rules! for_tuple {
                 access
             }
 
-            unsafe fn run_unchecked(&mut self, world: &World) {
+            unsafe fn run_unchecked(&mut self, world: &World, queue: &mut dyn ActionQueue) {
                 let ($($a,)*) = &mut self.args;
 
                 $(
-                    let $a = $a.get_unchecked(world);
+                    let $a = $a.get_unchecked(world, queue);
                 )*
 
                 (self.f)($($a,)*);

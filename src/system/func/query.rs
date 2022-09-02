@@ -3,6 +3,7 @@ use core::any::TypeId;
 use crate::{
     archetype::Archetype,
     query::{merge_access, Access, IntoQuery, Query},
+    system::ActionQueue,
     world::{QueryRef, World},
 };
 
@@ -50,7 +51,11 @@ where
     type Arg = QueryRef<'a, <Q as QueryArgGet<'a>>::Arg, <F as QueryArgGet<'a>>::Arg>;
 
     #[inline]
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> Self::Arg {
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        _queue: &mut dyn ActionQueue,
+    ) -> Self::Arg {
         QueryRef::new(world, self.query.get(world), self.filter.get(world))
     }
 }

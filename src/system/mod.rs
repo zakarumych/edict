@@ -4,13 +4,34 @@ mod func;
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, query::Access, world::World};
+use crate::{action::ActionEncoder, archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
-    FnArg, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache, Res, ResCache,
-    ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync, ResNoSyncCache, State,
-    StateCache,
+    FnArg, FnArgCache, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache,
+    Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync, ResNoSyncCache,
+    State, StateCache,
 };
+
+/// A queue of `ActionEncoder` instances.
+/// The nature of queue depends on scheduler implementation.
+/// Systems must work with any action queue type - the API uses `dyn ActionQueue`.
+pub trait ActionQueue {
+    /// Returns action encoder from the queue.
+    fn get_action_encoder(&self) -> ActionEncoder;
+
+    /// Flushes action encoder back to the queue.
+    fn flush_action_encoder(&mut self, encoder: ActionEncoder);
+}
+
+impl ActionQueue for Vec<ActionEncoder> {
+    fn get_action_encoder(&self) -> ActionEncoder {
+        ActionEncoder::new()
+    }
+
+    fn flush_action_encoder(&mut self, encoder: ActionEncoder) {
+        self.push(encoder);
+    }
+}
 
 /// System that can run using reference to [`World`].
 ///
@@ -38,7 +59,7 @@ pub unsafe trait System {
     /// Runs the system with given context instance.
     ///
     /// If `is_local()` returns `true` then running it outside local thread is unsound.
-    unsafe fn run_unchecked(&mut self, world: &World);
+    unsafe fn run_unchecked(&mut self, world: &World, queue: &mut dyn ActionQueue);
 }
 
 /// Trait for types that can be converted into systems.
@@ -48,4 +69,18 @@ pub trait IntoSystem<Marker> {
 
     /// Converts value into system.
     fn into_system(self) -> Self::System;
+}
+
+/// Identity marker for [`IntoSystem`] trait.
+pub struct IsSystem;
+
+impl<T> IntoSystem<IsSystem> for T
+where
+    T: System + Send + Sync + 'static,
+{
+    type System = T;
+
+    fn into_system(self) -> T {
+        self
+    }
 }

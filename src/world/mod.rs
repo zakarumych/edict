@@ -1238,8 +1238,8 @@ impl World {
     /// *world.expect_resource_mut::<i32>() = 11;
     /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
     /// ```
-    pub fn expect_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
-        self.res.get_mut()
+    pub fn expect_resource_mut<T: Send + 'static>(&self) -> RefMut<T> {
+        self.res.get_mut().unwrap()
     }
 
     /// Returns [`WorldLocal`] referencing this [`World`].

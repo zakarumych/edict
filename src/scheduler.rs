@@ -28,9 +28,10 @@ use core::{
 use hashbrown::HashSet;
 
 use crate::{
+    action::ActionEncoder,
     executor::ScopedExecutor,
     query::Access,
-    system::{IntoSystem, System},
+    system::{ActionQueue, IntoSystem, System},
     world::World,
 };
 
@@ -39,6 +40,7 @@ use crate::{
 pub struct Scheduler {
     systems: Vec<ScheduledSystem>,
     schedule_cache_id: Option<u64>,
+    encoders: Vec<ActionEncoder>,
 }
 
 pub struct SyncUnsafeCell<T: ?Sized> {
@@ -77,11 +79,33 @@ struct ScheduledSystem {
     is_local: bool,
 }
 
+#[derive(Clone)]
+struct MyActionQueue {
+    encoder_rx: flume::Receiver<ActionEncoder>,
+    encoder_tx: flume::Sender<ActionEncoder>,
+}
+
+impl ActionQueue for MyActionQueue {
+    #[inline]
+    fn get_action_encoder(&self) -> ActionEncoder {
+        match self.encoder_rx.try_recv() {
+            Err(_) => ActionEncoder::new(),
+            Ok(encoder) => encoder,
+        }
+    }
+
+    #[inline]
+    fn flush_action_encoder(&mut self, encoder: ActionEncoder) {
+        self.encoder_tx.send(encoder).unwrap();
+    }
+}
+
 struct Task<'scope> {
     system_idx: usize,
     systems: &'scope [ScheduledSystem],
     world: &'scope World,
-    tx: flume::Sender<Task<'scope>>,
+    task_tx: flume::Sender<Task<'scope>>,
+    action_queue: MyActionQueue,
 }
 
 impl<'scope> Task<'scope> {
@@ -90,7 +114,8 @@ impl<'scope> Task<'scope> {
             system_idx,
             systems,
             world,
-            tx,
+            task_tx,
+            mut action_queue,
         } = self;
 
         let mut dependents = &systems[system_idx].dependents[..];
@@ -107,7 +132,7 @@ impl<'scope> Task<'scope> {
                     !system.is_local(),
                     "Only non-local systems are sent to tasks"
                 );
-                system.run_unchecked(world);
+                system.run_unchecked(world, &mut action_queue);
             }
 
             for &dependent_idx in dependents {
@@ -128,10 +153,11 @@ impl<'scope> Task<'scope> {
                             system_idx: dependent_idx,
                             systems: systems,
                             world: world,
-                            tx: tx.clone(),
+                            task_tx: task_tx.clone(),
+                            action_queue: action_queue.clone(),
                         };
                         if is_local {
-                            tx.send(task).unwrap();
+                            task_tx.send(task).unwrap();
                         } else {
                             executor.spawn(move |executor| task.run(executor));
                         }
@@ -148,6 +174,7 @@ impl Scheduler {
         Scheduler {
             systems: Vec::new(),
             schedule_cache_id: None,
+            encoders: Vec::new(),
         }
     }
 
@@ -176,7 +203,9 @@ impl Scheduler {
         &'scope mut self,
         world: &'scope mut World,
         executor: &impl ScopedExecutor<'scope>,
-    ) {
+    ) -> &mut [ActionEncoder] {
+        let world: &'scope World = &*world;
+
         if self.schedule_cache_id != Some(world.archetype_set_id()) {
             // Re-schedule systems for new archetypes set.
             self.reschedule(world);
@@ -186,9 +215,17 @@ impl Scheduler {
             *system.wait.get_mut() = system.dependencies;
         }
 
-        let world: &'scope World = &*world;
+        let (task_tx, task_rx) = flume::bounded(self.systems.len());
+        let (encoder_tx, encoder_rx) = flume::unbounded();
 
-        let (tx, rx) = flume::bounded(self.systems.len());
+        for encoder in self.encoders.drain(..) {
+            encoder_tx.send(encoder).unwrap();
+        }
+
+        let action_queue = MyActionQueue {
+            encoder_rx,
+            encoder_tx,
+        };
 
         let mut unroll = None;
 
@@ -200,7 +237,8 @@ impl Scheduler {
                     system_idx: idx,
                     world,
                     systems: &self.systems,
-                    tx: tx.clone(),
+                    task_tx: task_tx.clone(),
+                    action_queue: action_queue.clone(),
                 };
                 if is_local && unroll.is_none() {
                     unroll = Some(task);
@@ -210,15 +248,28 @@ impl Scheduler {
             }
         }
 
-        drop(tx);
+        drop(task_tx);
 
         if let Some(task) = unroll {
             task.run(executor);
         }
 
-        while let Ok(task) = rx.recv() {
+        while let Ok(task) = task_rx.recv() {
             task.run(executor);
         }
+
+        let MyActionQueue {
+            encoder_rx,
+            encoder_tx,
+        } = action_queue;
+
+        drop(encoder_tx);
+
+        while let Ok(encoder) = encoder_rx.recv() {
+            self.encoders.push(encoder);
+        }
+
+        &mut self.encoders[..]
     }
 
     fn reschedule(&mut self, world: &World) {

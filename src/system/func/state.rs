@@ -3,7 +3,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{archetype::Archetype, query::Access, world::World};
+use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::World};
 
 use super::{FnArg, FnArgCache, FnArgGet, FromWorld};
 
@@ -57,7 +57,11 @@ where
 {
     type Arg = State<'a, T>;
 
-    unsafe fn get_unchecked(&'a mut self, world: &'_ World) -> State<'a, T> {
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'_ World,
+        _queue: &mut dyn ActionQueue,
+    ) -> State<'a, T> {
         let value = self.value.get_or_insert_with(|| T::from_world(world));
         State { value }
     }
@@ -94,10 +98,12 @@ fn test_state_system() {
     let mut system = bar.into_system();
 
     let world = World::new();
+    let mut encoders = Vec::new();
+
     unsafe {
-        system.run_unchecked(&world);
-        system.run_unchecked(&world);
-        system.run_unchecked(&world);
-        system.run_unchecked(&world);
+        system.run_unchecked(&world, &mut encoders);
+        system.run_unchecked(&world, &mut encoders);
+        system.run_unchecked(&world, &mut encoders);
+        system.run_unchecked(&world, &mut encoders);
     }
 }

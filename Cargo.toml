@@ -20,7 +20,7 @@ default = ["std"]
 edict-proc = { version = "=0.2.0-rc.1", path = "proc" }
 hashbrown = { version = "0.12", features = ["ahash"], default-features = false }
 smallvec = { version ="1.8", features = ["union"], default-features = false }
-tiny-fn = "0.1.3"
+tiny-fn = "0.1.5"
 atomicell = "0.1.4"
 flume = { version = "0.10" }
 rayon = { version = "1.5", optional = true }

@@ -6,7 +6,7 @@ use core::{
 
 use atomicell::{Ref, RefMut};
 
-use crate::{archetype::Archetype, query::Access, world::World};
+use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::World};
 
 use super::{FnArg, FnArgCache, FnArgGet};
 
@@ -33,6 +33,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
+    #[inline]
     pub fn inner(self) -> Ref<'a, T> {
         self.inner
     }
@@ -44,6 +45,7 @@ pub struct ResCache<T> {
 }
 
 impl<T> Default for ResCache<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -64,7 +66,12 @@ where
 {
     type Arg = Res<'a, T>;
 
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> Res<'a, T> {
+    #[inline]
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        _queue: &mut dyn ActionQueue,
+    ) -> Res<'a, T> {
         Res {
             inner: world.get_resource().expect("Missing resource"),
         }
@@ -75,20 +82,24 @@ impl<T> FnArgCache for ResCache<T>
 where
     T: Sync + 'static,
 {
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
+    #[inline]
     fn skips_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
     /// Returns access type to the specified component type this argument may perform.
+    #[inline]
     fn access_component(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
+    #[inline]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         if id == TypeId::of::<T>() {
             Some(Access::Read)
@@ -130,6 +141,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
+    #[inline]
     pub fn inner(self) -> RefMut<'a, T> {
         self.inner
     }
@@ -141,6 +153,7 @@ pub struct ResMutCache<T> {
 }
 
 impl<T> Default for ResMutCache<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -161,7 +174,12 @@ where
 {
     type Arg = ResMut<'a, T>;
 
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> ResMut<'a, T> {
+    #[inline]
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        _queue: &mut dyn ActionQueue,
+    ) -> ResMut<'a, T> {
         ResMut {
             inner: world.get_resource_mut().expect("Missing resource"),
         }
@@ -172,20 +190,24 @@ impl<T> FnArgCache for ResMutCache<T>
 where
     T: Send + 'static,
 {
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
+    #[inline]
     fn skips_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
     /// Returns access type to the specified component type this argument may perform.
+    #[inline]
     fn access_component(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
+    #[inline]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         if id == TypeId::of::<T>() {
             Some(Access::Read)
@@ -229,6 +251,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
+    #[inline]
     pub fn inner(self) -> RefMut<'a, T> {
         self.inner
     }
@@ -240,6 +263,7 @@ pub struct ResNoSyncCache<T> {
 }
 
 impl<T> Default for ResNoSyncCache<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -260,7 +284,12 @@ where
 {
     type Arg = ResNoSync<'a, T>;
 
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> ResNoSync<'a, T> {
+    #[inline]
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        _queue: &mut dyn ActionQueue,
+    ) -> ResNoSync<'a, T> {
         ResNoSync {
             inner: world.get_local_resource_mut().expect("Missing resource"),
         }
@@ -271,20 +300,24 @@ impl<T> FnArgCache for ResNoSyncCache<T>
 where
     T: 'static,
 {
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
 
+    #[inline]
     fn skips_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
     /// Returns access type to the specified component type this argument may perform.
+    #[inline]
     fn access_component(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
+    #[inline]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         if id == TypeId::of::<T>() {
             Some(Access::Read)
@@ -328,6 +361,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
+    #[inline]
     pub fn inner(self) -> RefMut<'a, T> {
         self.inner
     }
@@ -339,6 +373,7 @@ pub struct ResMutNoSendCache<T> {
 }
 
 impl<T> Default for ResMutNoSendCache<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -359,7 +394,12 @@ where
 {
     type Arg = ResMutNoSend<'a, T>;
 
-    unsafe fn get_unchecked(&'a mut self, world: &'a World) -> ResMutNoSend<'a, T> {
+    #[inline]
+    unsafe fn get_unchecked(
+        &'a mut self,
+        world: &'a World,
+        _queue: &mut dyn ActionQueue,
+    ) -> ResMutNoSend<'a, T> {
         ResMutNoSend {
             inner: world.get_local_resource_mut().expect("Missing resource"),
         }
@@ -370,20 +410,24 @@ impl<T> FnArgCache for ResMutNoSendCache<T>
 where
     T: 'static,
 {
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
 
+    #[inline]
     fn skips_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
     /// Returns access type to the specified component type this argument may perform.
+    #[inline]
     fn access_component(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
+    #[inline]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         if id == TypeId::of::<T>() {
             Some(Access::Read)

@@ -17,6 +17,236 @@ use super::TargetComponent;
 
 phantom_newtype! {
     /// Query to select entities with specified relation.
+    pub struct QueryExclusiveRelation<R>
+}
+
+/// Fetch for the `Related<R>` query.
+pub struct FetchExclusiveRelationRead<'a, R: Relation> {
+    ptr: NonNull<OriginComponent<R>>,
+    _borrow: AtomicBorrow<'a>,
+    marker: PhantomData<&'a OriginComponent<R>>,
+}
+
+unsafe impl<'a, R> Fetch<'a> for FetchExclusiveRelationRead<'a, R>
+where
+    R: Relation + Sync,
+{
+    type Item = (&'a R, EntityId);
+
+    #[inline]
+    fn dangling() -> Self {
+        FetchExclusiveRelationRead {
+            ptr: NonNull::dangling(),
+            _borrow: AtomicBorrow::dummy(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, _: usize) {}
+
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> (&'a R, EntityId) {
+        let origin_component = &*self.ptr.as_ptr().add(idx);
+        let origin = &origin_component.origins()[0];
+        (&origin.relation, origin.target)
+    }
+}
+
+impl<'a, R> PhantomQueryFetch<'a> for QueryExclusiveRelation<&R>
+where
+    R: Relation + Sync,
+{
+    type Item = (&'a R, EntityId);
+    type Fetch = FetchExclusiveRelationRead<'a, R>;
+}
+
+impl<R> IntoQuery for QueryExclusiveRelation<&R>
+where
+    R: Relation + Sync,
+{
+    type Query = PhantomData<Self>;
+}
+
+impl<R> PhantomQuery for QueryExclusiveRelation<&R>
+where
+    R: Relation + Sync,
+{
+    #[inline]
+    fn access(ty: TypeId) -> Option<Access> {
+        if ty == TypeId::of::<OriginComponent<R>>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn fetch<'a>(
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchExclusiveRelationRead<'a, R> {
+        assert!(
+            R::EXCLUSIVE,
+            "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
+        );
+
+        let idx = archetype
+            .id_index(TypeId::of::<OriginComponent<R>>())
+            .unwrap_unchecked();
+        let component = archetype.component(idx);
+
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+
+        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+
+        FetchExclusiveRelationRead {
+            ptr: data.ptr.cast(),
+            _borrow: borrow,
+            marker: PhantomData,
+        }
+    }
+}
+
+unsafe impl<R> ImmutablePhantomQuery for QueryExclusiveRelation<&R> where R: Relation + Sync {}
+
+/// Fetch for the `Related<R>` query.
+pub struct FetchExclusiveRelationWrite<'a, R: Relation> {
+    epoch: EpochId,
+    ptr: NonNull<OriginComponent<R>>,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
+    _borrow: AtomicBorrowMut<'a>,
+    marker: PhantomData<&'a mut OriginComponent<R>>,
+}
+
+unsafe impl<'a, R> Fetch<'a> for FetchExclusiveRelationWrite<'a, R>
+where
+    R: Relation + Send,
+{
+    type Item = (&'a mut R, EntityId);
+
+    #[inline]
+    fn dangling() -> Self {
+        FetchExclusiveRelationWrite {
+            epoch: EpochId::start(),
+            ptr: NonNull::dangling(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
+            _borrow: AtomicBorrowMut::dummy(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn skip_item(&mut self, _: usize) -> bool {
+        false
+    }
+
+    #[inline]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        chunk_epoch.bump(self.epoch);
+    }
+
+    #[inline]
+    unsafe fn get_item(&mut self, idx: usize) -> (&'a mut R, EntityId) {
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        entity_epoch.bump(self.epoch);
+
+        let origin_component = &mut *self.ptr.as_ptr().add(idx);
+        let origin = &mut origin_component.origins_mut()[0];
+        (&mut origin.relation, origin.target)
+    }
+}
+
+impl<'a, R> PhantomQueryFetch<'a> for QueryExclusiveRelation<&mut R>
+where
+    R: Relation + Send,
+{
+    type Item = (&'a mut R, EntityId);
+    type Fetch = FetchExclusiveRelationWrite<'a, R>;
+}
+
+impl<R> IntoQuery for QueryExclusiveRelation<&mut R>
+where
+    R: Relation + 'static,
+{
+    type Query = PhantomData<Self>;
+}
+
+impl<R> PhantomQuery for QueryExclusiveRelation<&mut R>
+where
+    R: Relation + Send,
+{
+    #[inline]
+    fn access(ty: TypeId) -> Option<Access> {
+        if ty == TypeId::of::<OriginComponent<R>>() {
+            Some(Access::Write)
+        } else {
+            None
+        }
+    }
+
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn fetch<'a>(
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchExclusiveRelationWrite<'a, R> {
+        assert!(
+            R::EXCLUSIVE,
+            "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
+        );
+
+        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+
+        let idx = archetype
+            .id_index(TypeId::of::<OriginComponent<R>>())
+            .unwrap_unchecked();
+        let component = archetype.component(idx);
+        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+
+        let mut data = component.data.borrow_mut();
+        data.epoch.bump(epoch);
+
+        let (data, borrow) = atomicell::RefMut::into_split(data);
+
+        FetchExclusiveRelationWrite {
+            epoch,
+            ptr: data.ptr.cast(),
+            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
+            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+            _borrow: borrow,
+            marker: PhantomData,
+        }
+    }
+}
+
+phantom_newtype! {
+    /// Query to select entities with specified relation.
     pub struct QueryRelation<R>
 }
 

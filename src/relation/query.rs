@@ -8,7 +8,7 @@ use crate::{
     epoch::EpochId,
     query::{
         Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery, PhantomQuery,
-        PhantomQueryFetch, Query, QueryFetch,
+        PhantomQueryFetch, Query, QueryFetch, UnitFetch,
     },
     relation::{Origin, OriginComponent, Relation},
 };
@@ -1118,3 +1118,87 @@ where
 {
     QueryRelated::new()
 }
+
+phantom_newtype! {
+    /// Filter that allows only archetypes without specified component.
+    pub struct WithRelation<R>
+}
+
+impl<R> IntoQuery for WithRelation<R>
+where
+    R: Relation,
+{
+    type Query = PhantomData<WithRelation<R>>;
+}
+
+impl<R> PhantomQueryFetch<'_> for WithRelation<R>
+where
+    R: Relation,
+{
+    type Item = ();
+    type Fetch = UnitFetch;
+}
+
+impl<R> PhantomQuery for WithRelation<R>
+where
+    R: Relation,
+{
+    #[inline]
+    fn access(_: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
+        UnitFetch::new()
+    }
+}
+
+unsafe impl<R> ImmutablePhantomQuery for WithRelation<R> where R: Relation {}
+
+phantom_newtype! {
+    /// Filter that allows only archetypes without specified component.
+    pub struct WithoutRelation<R>
+}
+
+impl<R> IntoQuery for WithoutRelation<R>
+where
+    R: Relation,
+{
+    type Query = PhantomData<WithoutRelation<R>>;
+}
+
+impl<R> PhantomQueryFetch<'_> for WithoutRelation<R>
+where
+    R: Relation,
+{
+    type Item = ();
+    type Fetch = UnitFetch;
+}
+
+impl<R> PhantomQuery for WithoutRelation<R>
+where
+    R: Relation,
+{
+    #[inline]
+    fn access(_: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn skip_archetype(archetype: &Archetype) -> bool {
+        archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
+        UnitFetch::new()
+    }
+}
+
+unsafe impl<R> ImmutablePhantomQuery for WithoutRelation<R> where R: Relation {}

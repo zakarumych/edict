@@ -16,7 +16,7 @@ pub use self::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
-    fetch::{Fetch, VerifyFetch},
+    fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
     iter::QueryIter,
     modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},

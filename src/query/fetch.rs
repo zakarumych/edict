@@ -252,6 +252,7 @@ pub struct UnitFetch {
 }
 
 impl UnitFetch {
+    /// Returns new [`UnitFetch`] instance.
     pub fn new() -> Self {
         UnitFetch {
             #[cfg(debug_assertions)]

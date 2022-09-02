@@ -263,6 +263,10 @@ pub struct EntityBuilder {
     offsets: SmallVec<[usize; 8]>,
 }
 
+// # Safety
+// Stores only `Send` values.
+unsafe impl Send for EntityBuilder {}
+
 impl Drop for EntityBuilder {
     fn drop(&mut self) {
         for (info, &offset) in self.infos.iter().zip(&self.offsets) {
@@ -300,7 +304,7 @@ impl EntityBuilder {
     /// If builder already had this component, old value is replaced.
     pub fn add<T>(&mut self, value: T)
     where
-        T: Component,
+        T: Component + Send,
     {
         if let Some(existing) = self.get_mut::<T>() {
             // Replace existing value.

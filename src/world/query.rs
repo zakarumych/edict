@@ -3,12 +3,13 @@ use core::{any::TypeId, marker::PhantomData};
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     component::Component,
-    entity::EntityId,
+    entity::{Entities, EntityId},
     query::{
         Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery, Modified, PhantomQuery, Query,
         QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
     relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
+    world::QueryOneError,
 };
 
 use super::{EpochCounter, EpochId, World};
@@ -56,6 +57,7 @@ for_tuple!();
 /// Mutable query builder.
 pub struct QueryRef<'a, Q: IntoQuery, F: IntoQuery = ()> {
     archetypes: &'a [Archetype],
+    entities: &'a Entities,
     epoch: &'a EpochCounter,
     query: Q::Query,
     filter: F::Query,
@@ -71,6 +73,7 @@ where
     pub fn new(world: &'a World, query: Q::Query, filter: F::Query) -> Self {
         QueryRef {
             archetypes: world.archetypes(),
+            entities: &world.entities,
             epoch: world.epoch_counter(),
             query,
             filter,
@@ -82,6 +85,7 @@ where
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: (self.query,),
             filter: self.filter,
@@ -99,6 +103,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(query),
             filter: self.filter,
@@ -113,6 +118,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query,
             filter: (PhantomData, self.filter),
@@ -127,6 +133,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query,
             filter: (PhantomData, self.filter),
@@ -141,6 +148,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query,
             filter: (WithRelationTo::new(target), self.filter),
@@ -158,6 +166,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(Modified::new(after_epoch)),
             filter: self.filter,
@@ -176,6 +185,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
@@ -193,6 +203,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(QueryBorrowOne::new(id)),
             filter: self.filter,
@@ -211,6 +222,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
@@ -229,6 +241,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
@@ -250,6 +263,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(QueryRelationTo::new(entity)),
             filter: self.filter,
@@ -268,6 +282,7 @@ where
     {
         QueryRef {
             archetypes: self.archetypes,
+            entities: self.entities,
             epoch: self.epoch,
             query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
@@ -280,6 +295,54 @@ where
     Q: IntoQuery,
     F: IntoFilter,
 {
+    /// Performs query from single entity.
+    pub fn one(&mut self, entity: EntityId) -> Result<QueryItem<'_, Q>, QueryOneError> {
+        let epoch = self.epoch.next();
+
+        let (archetype, idx) = self
+            .entities
+            .get(entity)
+            .ok_or(QueryOneError::NoSuchEntity)?;
+
+        let archetype = &self.archetypes[archetype as usize];
+
+        debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
+
+        if self.filter.skip_archetype(archetype) {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        if self.query.skip_archetype(archetype) {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        let mut filter_fetch = unsafe { self.filter.fetch(archetype, epoch) };
+        let mut query_fetch = unsafe { self.query.fetch(archetype, epoch) };
+
+        if unsafe { filter_fetch.skip_chunk(chunk_idx(idx as usize)) } {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        if unsafe { query_fetch.skip_chunk(chunk_idx(idx as usize)) } {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        unsafe { filter_fetch.visit_chunk(chunk_idx(idx as usize)) }
+        unsafe { query_fetch.visit_chunk(chunk_idx(idx as usize)) }
+
+        if unsafe { filter_fetch.skip_item(idx as usize) } {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        if unsafe { query_fetch.skip_item(idx as usize) } {
+            return Err(QueryOneError::NotSatisfied);
+        }
+
+        unsafe { filter_fetch.get_item(idx as usize) };
+        let item = unsafe { query_fetch.get_item(idx as usize) };
+        Ok(item)
+    }
+
     /// Returns iterator over immutable query results.
     /// This method is only available with non-tracking queries.
     #[inline]

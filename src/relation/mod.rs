@@ -424,3 +424,16 @@ where
         self.origins.clone()
     }
 }
+
+/// One of the basic relations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChildOf;
+
+impl Relation for ChildOf {
+    const SYMMETRIC: bool = false;
+    const EXCLUSIVE: bool = true;
+
+    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
+        encoder.despawn(entity);
+    }
+}

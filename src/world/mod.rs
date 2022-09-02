@@ -1134,11 +1134,65 @@ impl World {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
+    /// assert!(world.get_resource::<i32>().is_none());
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
     /// world.insert_resource(42i32);
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
     /// ```
     pub fn get_resource<T: Sync + 'static>(&self) -> Option<Ref<T>> {
         self.res.get()
+    }
+
+    /// Returns reference to `Sync` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.expect_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.expect_resource::<i32>(), 42);
+    /// ```
+    pub fn expect_resource<T: Sync + 'static>(&self) -> Ref<T> {
+        self.res.get().unwrap()
+    }
+
+    /// Returns a copy for the `Sync` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.copy_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(world.copy_resource::<i32>(), 42);
+    /// ```
+    pub fn copy_resource<T: Copy + Sync + 'static>(&self) -> T {
+        *self.res.get().unwrap()
     }
 
     /// Returns some mutable reference to `Send` resource.
@@ -1149,11 +1203,42 @@ impl World {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
+    /// assert!(world.get_resource_mut::<i32>().is_none());
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
     /// world.insert_resource(42i32);
     /// *world.get_resource_mut::<i32>().unwrap() = 11;
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
     /// ```
     pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
+        self.res.get_mut()
+    }
+
+    /// Returns mutable reference to `Send` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.expect_resource_mut::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// *world.expect_resource_mut::<i32>() = 11;
+    /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
+    /// ```
+    pub fn expect_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
         self.res.get_mut()
     }
 

@@ -13,6 +13,7 @@ use crate::{
 };
 
 pub use self::{
+    action::ActionEncoderCache,
     query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
     res::{
         Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync,

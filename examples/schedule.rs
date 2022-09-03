@@ -1,6 +1,7 @@
 use core::fmt::Debug;
 
 use edict::{
+    prelude::ActionEncoderSliceExt,
     query::{Modified, QueryBorrowAll, With},
     scheduler::Scheduler,
     system::State,
@@ -34,9 +35,7 @@ fn main() {
 
         world.query_one::<&mut B>(c).unwrap();
 
-        std::thread::scope(|scope| {
-            schedule.run(&mut world, &scope);
-        });
+        std::thread::scope(|scope| schedule.run(&mut world, &scope)).execute_all(&mut world);
     }
 }
 

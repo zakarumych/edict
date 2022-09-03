@@ -98,6 +98,7 @@ pub unsafe trait ImmutableQuery: Query {}
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as QueryFetch<'a>>::Item;
 
 /// Merge two optional access values.
+#[inline]
 pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
     match (lhs, rhs) {
         (None, rhs) => rhs,

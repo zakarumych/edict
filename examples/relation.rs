@@ -4,7 +4,7 @@ use edict::{
     entity::EntityId,
     epoch::EpochId,
     relation::Relation,
-    relation::{QueryRelation, WithRelationTo},
+    relation::{relates_to, Relates},
     world::WorldBuilder,
 };
 
@@ -59,7 +59,7 @@ fn main() {
 
     world.add_relation(a, ChildOf, b).unwrap();
 
-    for (e, ChildOf) in world.build_query().relation_to::<&ChildOf>(b) {
+    for (e, ChildOf) in world.build_query().relates_to::<&ChildOf>(b) {
         println!("{} is child of {}", e, b);
     }
 
@@ -74,17 +74,11 @@ fn main() {
     world.add_relation(a, Likes, b).unwrap();
     world.add_relation(a, Likes, c).unwrap();
 
-    assert_eq!(
-        world.query_one_state(a, WithRelationTo::<Likes>::new(b)),
-        Ok(())
-    );
-    assert_eq!(
-        world.query_one_state(a, WithRelationTo::<Likes>::new(c)),
-        Ok(())
-    );
+    assert_eq!(world.query_one_state(a, relates_to::<Likes>(b)), Ok(()));
+    assert_eq!(world.query_one_state(a, relates_to::<Likes>(c)), Ok(()));
     assert_eq!(
         world
-            .query_one::<QueryRelation<&Likes>>(a)
+            .query_one::<Relates<&Likes>>(a)
             .unwrap()
             .collect::<Vec<_>>(),
         vec![(&Likes, b), (&Likes, c)]
@@ -94,7 +88,7 @@ fn main() {
 
     assert_eq!(
         world
-            .query_one::<QueryRelation<&Likes>>(a)
+            .query_one::<Relates<&Likes>>(a)
             .unwrap()
             .collect::<Vec<_>>(),
         vec![(&Likes, c)]
@@ -104,7 +98,7 @@ fn main() {
 
     world.add_relation(a, Enemy, b).unwrap();
 
-    let q = world.build_query().relation::<&Enemy>();
+    let q = world.build_query().relates::<&Enemy>();
     for (e, enemies) in q {
         println!(
             "{} is enemy of {:?}",
@@ -115,7 +109,7 @@ fn main() {
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.build_query().relation::<&Enemy>() {
+    for (e, enemies) in world.build_query().relates::<&Enemy>() {
         println!(
             "{} is enemy of {:?}",
             e,
@@ -129,8 +123,8 @@ fn main() {
         .query::<&A>()
         .with::<B>()
         .modified::<&C>(since)
-        .relation_to::<&ChildOf>(b)
-        .with_relation_to::<Likes>(c);
+        .relates_to::<&ChildOf>(b)
+        .filter(relates_to::<Likes>(c));
 
     for (e, (a, c, child_of)) in query {
         drop((e, a, c, child_of));

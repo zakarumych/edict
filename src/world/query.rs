@@ -8,7 +8,7 @@ use crate::{
         Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery, Modified, PhantomQuery, Query,
         QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
-    relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
+    relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
 };
 
@@ -140,18 +140,18 @@ where
         }
     }
 
-    /// Adds query to fetch relation.
+    /// Adds filter to the query.
     #[inline]
-    pub fn with_relation_to<R>(self, target: EntityId) -> QueryRef<'a, Q, (WithRelationTo<R>, F)>
+    pub fn filter<T>(self, filter: T) -> QueryRef<'a, Q, (T, F)>
     where
-        R: Relation,
+        T: Filter,
     {
         QueryRef {
             archetypes: self.archetypes,
             entities: self.entities,
             epoch: self.epoch,
             query: self.query,
-            filter: (WithRelationTo::new(target), self.filter),
+            filter: (filter, self.filter),
         }
     }
 
@@ -231,13 +231,12 @@ where
 
     /// Adds query to fetch relation.
     #[inline]
-    pub fn relation<R>(self) -> QueryRef<'a, TuplePlus<Q, QueryRelation<R>>, F>
+    pub fn relates<R>(self) -> QueryRef<'a, TuplePlus<Q, Relates<R>>, F>
     where
-        QueryRelation<R>: PhantomQuery,
-        Q: ExtendTuple<QueryRelation<R>>,
-        Q::Query: ExtendTuple<PhantomData<QueryRelation<R>>>,
-        TuplePlus<Q, QueryRelation<R>>:
-            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryRelation<R>>>>,
+        Relates<R>: PhantomQuery,
+        Q: ExtendTuple<Relates<R>>,
+        Q::Query: ExtendTuple<PhantomData<Relates<R>>>,
+        TuplePlus<Q, Relates<R>>: IntoQuery<Query = TuplePlus<Q::Query, PhantomData<Relates<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -250,35 +249,49 @@ where
 
     /// Adds query to fetch relation.
     #[inline]
-    pub fn relation_to<R>(
-        self,
-        entity: EntityId,
-    ) -> QueryRef<'a, TuplePlus<Q, QueryRelationTo<R>>, F>
+    pub fn relates_exclusive<R>(self) -> QueryRef<'a, TuplePlus<Q, RelatesExclusive<R>>, F>
     where
-        QueryRelationTo<R>: Query,
-        Q: ExtendTuple<QueryRelationTo<R>>,
-        Q::Query: ExtendTuple<QueryRelationTo<R>>,
-        TuplePlus<Q, QueryRelationTo<R>>:
-            IntoQuery<Query = TuplePlus<Q::Query, QueryRelationTo<R>>>,
+        RelatesExclusive<R>: PhantomQuery,
+        Q: ExtendTuple<RelatesExclusive<R>>,
+        Q::Query: ExtendTuple<PhantomData<RelatesExclusive<R>>>,
+        TuplePlus<Q, RelatesExclusive<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<RelatesExclusive<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
             entities: self.entities,
             epoch: self.epoch,
-            query: self.query.extend_tuple(QueryRelationTo::new(entity)),
+            query: self.query.extend_tuple(PhantomData),
             filter: self.filter,
         }
     }
 
     /// Adds query to fetch relation.
     #[inline]
-    pub fn related<R>(self) -> QueryRef<'a, TuplePlus<Q, QueryRelated<R>>, F>
+    pub fn relates_to<R>(self, entity: EntityId) -> QueryRef<'a, TuplePlus<Q, RelatesTo<R>>, F>
     where
-        QueryRelated<R>: PhantomQuery,
-        Q: ExtendTuple<QueryRelated<R>>,
-        Q::Query: ExtendTuple<PhantomData<QueryRelated<R>>>,
-        TuplePlus<Q, QueryRelated<R>>:
-            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryRelated<R>>>>,
+        RelatesTo<R>: Query,
+        Q: ExtendTuple<RelatesTo<R>>,
+        Q::Query: ExtendTuple<RelatesTo<R>>,
+        TuplePlus<Q, RelatesTo<R>>: IntoQuery<Query = TuplePlus<Q::Query, RelatesTo<R>>>,
+    {
+        QueryRef {
+            archetypes: self.archetypes,
+            entities: self.entities,
+            epoch: self.epoch,
+            query: self.query.extend_tuple(RelatesTo::new(entity)),
+            filter: self.filter,
+        }
+    }
+
+    /// Adds query to fetch relation.
+    #[inline]
+    pub fn related<R>(self) -> QueryRef<'a, TuplePlus<Q, Related<R>>, F>
+    where
+        Related<R>: PhantomQuery,
+        Q: ExtendTuple<Related<R>>,
+        Q::Query: ExtendTuple<PhantomData<Related<R>>>,
+        TuplePlus<Q, Related<R>>: IntoQuery<Query = TuplePlus<Q::Query, PhantomData<Related<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,

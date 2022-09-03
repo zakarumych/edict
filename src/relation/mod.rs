@@ -18,9 +18,13 @@ use crate::{
 };
 
 pub use self::query::{
-    related, relation, relation_to, with_relation_to, FetchRelated, FetchRelationRead,
-    FetchRelationToRead, FetchRelationToWrite, FetchRelationWrite, FilterFetchRelationTo,
-    QueryRelated, QueryRelation, QueryRelationTo, RelationReadIter, WithRelationTo,
+    not_related, not_related_by, not_relates, not_relates_to, related, related_by, relates,
+    relates_to, FetchFilterNotRelatedBy, FetchFilterNotRelatesTo, FetchFilterRelatedBy,
+    FetchRelated, FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
+    FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite, FilterFetchRelationTo,
+    FilterNotRelated, FilterNotRelatedBy, FilterNotRelates, FilterNotRelatesTo, FilterRelated,
+    FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates, RelatesExclusive,
+    RelatesReadIter, RelatesTo, RelatesWriteIter,
 };
 
 mod query;

@@ -6,7 +6,7 @@ pub use crate::{
     component::Component,
     entity::EntityId,
     query::{Alt, Modified, PhantomQuery, Query, QueryIter},
-    relation::{QueryRelated, QueryRelation, QueryRelationTo, Relation, WithRelationTo},
+    relation::{Related, Relates, RelatesExclusive, RelatesTo},
     system::{IntoSystem, Res, ResMut, ResMutNoSend, ResNoSync, State, System},
     world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, QueryRef, World},
 };

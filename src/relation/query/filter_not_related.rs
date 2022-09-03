@@ -16,7 +16,7 @@ impl<R> IntoQuery for FilterNotRelated<R>
 where
     R: Relation,
 {
-    type Query = PhantomData<FilterNotRelated<R>>;
+    type Query = PhantomData<fn() -> FilterNotRelated<R>>;
 }
 
 impl<R> PhantomQueryFetch<'_> for FilterNotRelated<R>

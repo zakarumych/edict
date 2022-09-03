@@ -10,7 +10,7 @@ use core::any::TypeId;
 use alloc::collections::VecDeque;
 
 use crate::{
-    bundle::{Bundle, EntityBuilder},
+    bundle::{Bundle, DynamicComponentBundle},
     component::Component,
     entity::EntityId,
     world::World,
@@ -27,9 +27,6 @@ enum Action {
 
     /// Despawns specified entity.
     Despawn(EntityId),
-
-    /// Insert components from entity builder to the specified entity.
-    Insert(EntityId, EntityBuilder),
 
     /// Runs a function with the specified entity.
     Fun(ActionFn<'static>),
@@ -60,8 +57,24 @@ impl ActionEncoder {
 
     /// Encodes an action to insert components from entity builder to the specified entity.
     #[inline]
-    pub fn insert(&mut self, entity: EntityId, builder: EntityBuilder) {
-        self.actions.push_back(Action::Insert(entity, builder));
+    pub fn insert<T>(&mut self, entity: EntityId, component: T)
+    where
+        T: Component + Send,
+    {
+        self.custom(move |world, _| {
+            let _ = world.insert(entity, component);
+        });
+    }
+
+    /// Encodes an action to insert components from entity builder to the specified entity.
+    #[inline]
+    pub fn insert_bundle<B>(&mut self, entity: EntityId, bundle: B)
+    where
+        B: DynamicComponentBundle + Send + 'static,
+    {
+        self.custom(move |world, _| {
+            let _ = world.insert_bundle(entity, bundle);
+        });
     }
 
     /// Encodes an action to remove component from specified entity.
@@ -130,9 +143,6 @@ impl ActionEncoder {
                 Action::Despawn(entity) => {
                     let _ = world.despawn_with_encoder(entity, self);
                 }
-                Action::Insert(entity, bundle) => {
-                    let _ = world.insert_bundle_with_encoder(entity, bundle, self);
-                }
                 Action::Fun(fun) => {
                     fun.call(world, self);
                 }
@@ -140,5 +150,18 @@ impl ActionEncoder {
         }
 
         true
+    }
+}
+
+/// Extension trait for slice of [`ActionEncoder`]s.
+pub trait ActionEncoderSliceExt {
+    /// Execute all action encoders from the slice.
+    /// Returns `true` if at least one action was executed.
+    fn execute_all(&mut self, world: &mut World) -> bool;
+}
+
+impl ActionEncoderSliceExt for [ActionEncoder] {
+    fn execute_all(&mut self, world: &mut World) -> bool {
+        self.iter_mut().any(|encoder| encoder.execute(world))
     }
 }

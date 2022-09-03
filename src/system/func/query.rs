@@ -22,7 +22,7 @@ pub trait QueryArgGet<'a> {
 }
 
 /// Cache for an argument that is stored between calls to function-system.
-pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Default + 'static {
+pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + Default + 'static {
     /// Returns true if the query skips component unconditionally.
     fn skips_archetype(&self, archetype: &Archetype) -> bool;
 

@@ -7,9 +7,9 @@ use core::any::TypeId;
 use crate::{action::ActionEncoder, archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
-    FnArg, FnArgCache, FnArgGet, FromWorld, QueryArg, QueryArgCache, QueryArgGet, QueryRefCache,
-    Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync, ResNoSyncCache,
-    State, StateCache,
+    FnArg, FnArgCache, FnArgGet, FromWorld, IsFunctionSystem, QueryArg, QueryArgCache, QueryArgGet,
+    QueryRefCache, Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync,
+    ResNoSyncCache, State, StateCache,
 };
 
 /// A queue of `ActionEncoder` instances.
@@ -65,7 +65,7 @@ pub unsafe trait System {
 /// Trait for types that can be converted into systems.
 pub trait IntoSystem<Marker> {
     /// Type of the system a value of this type can be converted into.
-    type System: System + Send + Sync + 'static;
+    type System: System + Send + 'static;
 
     /// Converts value into system.
     fn into_system(self) -> Self::System;
@@ -76,7 +76,7 @@ pub struct IsSystem;
 
 impl<T> IntoSystem<IsSystem> for T
 where
-    T: System + Send + Sync + 'static,
+    T: System + Send + 'static,
 {
     type System = T;
 

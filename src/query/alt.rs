@@ -134,7 +134,7 @@ impl<T> IntoQuery for Alt<T>
 where
     T: Send + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<T> PhantomQuery for Alt<T>

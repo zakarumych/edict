@@ -206,6 +206,15 @@ impl World {
         self.archetypes.id()
     }
 
+    /// Reserves new entity id.
+    ///
+    /// The entity will be spawned before first mutation on the entity happens.
+    /// Until then entity belongs to empty archetype.
+    #[inline]
+    pub fn reserve(&self) -> EntityId {
+        self.entities.reserve()
+    }
+
     /// Spawns new entity in this world with provided bundle of components.
     /// World keeps ownership of the spawned entity and entity id is returned.
     #[inline]
@@ -238,6 +247,8 @@ impl World {
             );
         }
 
+        self.spawn_reserved();
+
         let entity = self.entities.spawn();
 
         let archetype_idx = self.edges.spawn(
@@ -248,7 +259,7 @@ impl World {
         );
         let epoch = self.epoch.next_mut();
         let idx = self.archetypes[archetype_idx as usize].spawn(entity, bundle, epoch);
-        self.entities.set_location(entity.idx(), archetype_idx, idx);
+        self.entities.set_location(entity.id(), archetype_idx, idx);
         entity
     }
 
@@ -325,6 +336,8 @@ impl World {
             );
         }
 
+        self.spawn_reserved();
+
         let archetype_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
@@ -358,6 +371,8 @@ impl World {
         entity: EntityId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), NoSuchEntity> {
+        self.spawn_reserved();
+
         let (archetype, idx) = self.entities.despawn(entity)?;
 
         let opt_id =
@@ -445,7 +460,9 @@ impl World {
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
-        let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        self.spawn_reserved();
+
+        let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
         let epoch = self.epoch.next_mut();
 
@@ -479,7 +496,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, idx, component, epoch) };
 
         self.entities
-            .set_location(entity.idx(), dst_archetype, dst_idx);
+            .set_location(entity.id(), dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_archetype, idx);
@@ -497,7 +514,12 @@ impl World {
     where
         T: 'static,
     {
-        let (src_archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
+        self.spawn_reserved();
+
+        let (src_archetype, idx) = self
+            .entities
+            .get_location(entity)
+            .ok_or(EntityError::NoSuchEntity)?;
 
         if !self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
             return Err(EntityError::MissingComponents);
@@ -521,7 +543,7 @@ impl World {
         let (dst_idx, opt_src_id, component) = unsafe { src.remove(entity, dst, idx) };
 
         self.entities
-            .set_location(entity.idx(), dst_archetype, dst_idx);
+            .set_location(entity.id(), dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_archetype, idx);
@@ -557,7 +579,12 @@ impl World {
         id: TypeId,
         encoder: &mut ActionEncoder,
     ) -> Result<(), EntityError> {
-        let (src_archetype, idx) = self.entities.get(entity).ok_or(EntityError::NoSuchEntity)?;
+        self.spawn_reserved();
+
+        let (src_archetype, idx) = self
+            .entities
+            .get_location(entity)
+            .ok_or(EntityError::NoSuchEntity)?;
 
         if !self.archetypes[src_archetype as usize].contains_id(id) {
             return Err(EntityError::MissingComponents);
@@ -579,7 +606,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
 
         self.entities
-            .set_location(entity.idx(), dst_archetype, dst_idx);
+            .set_location(entity.id(), dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_archetype, idx);
@@ -672,7 +699,9 @@ impl World {
             );
         }
 
-        let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        self.spawn_reserved();
+
+        let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
         if bundle.with_ids(|ids| ids.is_empty()) {
             return Ok(());
@@ -709,7 +738,7 @@ impl World {
             unsafe { src.insert_bundle(entity, dst, idx, bundle, epoch, encoder) };
 
         self.entities
-            .set_location(entity.idx(), dst_archetype, dst_idx);
+            .set_location(entity.id(), dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_archetype, idx);
@@ -746,7 +775,9 @@ impl World {
             );
         }
 
-        let (src_archetype, idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        self.spawn_reserved();
+
+        let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
         if B::static_with_ids(|ids| {
             ids.iter()
@@ -774,7 +805,7 @@ impl World {
         let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
 
         self.entities
-            .set_location(entity.idx(), dst_archetype, dst_idx);
+            .set_location(entity.id(), dst_archetype, dst_idx);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_archetype, idx);
@@ -808,8 +839,10 @@ impl World {
     where
         R: Relation,
     {
-        self.entities.get(entity).ok_or(NoSuchEntity)?;
-        self.entities.get(target).ok_or(NoSuchEntity)?;
+        self.spawn_reserved();
+
+        self.entities.get_location(entity).ok_or(NoSuchEntity)?;
+        self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
         self.epoch.next_mut();
 
@@ -878,8 +911,10 @@ impl World {
     where
         R: Relation,
     {
-        self.entities.get(entity).ok_or(NoSuchEntity)?;
-        self.entities.get(target).ok_or(NoSuchEntity)?;
+        self.spawn_reserved();
+
+        self.entities.get_location(entity).ok_or(NoSuchEntity)?;
+        self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
         if let Ok(c) = self.query_one::<&mut OriginComponent<R>>(entity) {
             c.remove(entity, target, encoder);
@@ -897,14 +932,14 @@ impl World {
         Q: IntoQuery,
         Q::Query: Default,
     {
-        self.query_one_state(entity, Q::Query::default())
+        self.query_one_with(entity, Q::Query::default())
     }
 
     /// Queries components from specified entity.
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
-    pub fn query_one_state<'a, Q>(
+    pub fn query_one_with<'a, Q>(
         &'a self,
         entity: EntityId,
         mut query: Q,
@@ -916,7 +951,7 @@ impl World {
 
         let (archetype, idx) = self
             .entities
-            .get(entity)
+            .get_location(entity)
             .ok_or(QueryOneError::NoSuchEntity)?;
 
         let archetype = &self.archetypes[archetype as usize];
@@ -943,6 +978,35 @@ impl World {
         Ok(item)
     }
 
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method only works with immutable queries.
+    #[inline]
+    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+    {
+        self.query_with(Q::Query::default())
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method only works with immutable queries.
+    #[inline]
+    pub fn query_with<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+    {
+        QueryRef::new(self, (query,), ())
+    }
+
+    /// Starts building immutable query.
+    #[inline]
+    pub fn new_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
+        QueryRef::new(self, (), ())
+    }
+
     /// Returns current world epoch.
     ///
     /// This value can be modified concurrently if [`&World`] is shared.
@@ -963,43 +1027,14 @@ impl World {
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn has_component<T: 'static>(&self, entity: EntityId) -> Result<bool, NoSuchEntity> {
-        let (archetype, _idx) = self.entities.get(entity).ok_or(NoSuchEntity)?;
+        let (archetype, _idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
         Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
     }
 
     /// Checks if specified entity is still alive.
     #[inline]
     pub fn is_alive(&self, entity: EntityId) -> bool {
-        self.entities.get(entity).is_some()
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
-    #[inline]
-    pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
-    where
-        Q: IntoQuery,
-        Q::Query: Default,
-    {
-        self.query_state(Q::Query::default())
-    }
-
-    /// Queries the world to iterate over entities and components specified by the query type.
-    ///
-    /// This method only works with immutable queries.
-    #[inline]
-    pub fn query_state<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
-    where
-        Q: IntoQuery,
-    {
-        QueryRef::new(self, (query,), ())
-    }
-
-    /// Starts building immutable query.
-    #[inline]
-    pub fn build_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
-        QueryRef::new(self, (), ())
+        self.entities.get_location(entity).is_some()
     }
 
     /// Iterate over component info of all registered components
@@ -1305,6 +1340,14 @@ impl World {
     pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
         self.res.resource_types()
     }
+
+    #[inline]
+    fn spawn_reserved(&mut self) {
+        let epoch = self.epoch.current_mut();
+        let archetype = &mut self.archetypes[0];
+        self.entities
+            .spawn_reserved(|id| archetype.spawn(id, (), epoch));
+    }
 }
 
 /// Spawning iterator. Produced by [`World::spawn_batch`].
@@ -1322,10 +1365,6 @@ where
     B: Bundle,
 {
     /// Spawns the rest of the entities, dropping their ids.
-    ///
-    /// Note that `SpawnBatchOwned` does not have this methods
-    /// as dropped `Entity` references would cause spawned entities
-    /// to be despawned, and that's probably not what user wants.
     pub fn spawn_all(mut self) {
         spawn_reserve(&self.bundles, self.archetype);
 
@@ -1337,7 +1376,7 @@ where
         self.bundles.for_each(|bundle| {
             let entity = entities.spawn();
             let idx = archetype.spawn(entity, bundle, epoch);
-            entities.set_location(entity.idx(), archetype_idx, idx);
+            entities.set_location(entity.id(), archetype_idx, idx);
         })
     }
 }
@@ -1356,7 +1395,7 @@ where
         let idx = self.archetype.spawn(entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
+            .set_location(entity.id(), self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1369,7 +1408,7 @@ where
         let idx = self.archetype.spawn(entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
+            .set_location(entity.id(), self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1392,7 +1431,7 @@ where
         self.bundles.fold(init, |acc, bundle| {
             let entity = entities.spawn();
             let idx = archetype.spawn(entity, bundle, epoch);
-            entities.set_location(entity.idx(), archetype_idx, idx);
+            entities.set_location(entity.id(), archetype_idx, idx);
             f(acc, entity)
         })
     }
@@ -1433,7 +1472,7 @@ where
         let idx = self.archetype.spawn(entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
+            .set_location(entity.id(), self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1447,7 +1486,7 @@ where
         let idx = self.archetype.spawn(entity, bundle, self.epoch);
 
         self.entities
-            .set_location(entity.idx(), self.archetype_idx, idx);
+            .set_location(entity.id(), self.archetype_idx, idx);
 
         Some(entity)
     }
@@ -1467,7 +1506,7 @@ where
         self.bundles.rfold(init, |acc, bundle| {
             let entity = entities.spawn();
             let idx = archetype.spawn(entity, bundle, epoch);
-            entities.set_location(entity.idx(), archetype_idx, idx);
+            entities.set_location(entity.id(), archetype_idx, idx);
             f(acc, entity)
         })
     }
@@ -1620,7 +1659,7 @@ fn insert_component<T, C>(
 ) where
     C: Component,
 {
-    let (src_archetype, idx) = world.entities.get(entity).unwrap();
+    let (src_archetype, idx) = world.entities.get_location(entity).unwrap();
 
     if world.archetypes[src_archetype as usize].contains_id(TypeId::of::<C>()) {
         let component = unsafe {
@@ -1658,7 +1697,7 @@ fn insert_component<T, C>(
 
     world
         .entities
-        .set_location(entity.idx(), dst_archetype, dst_idx);
+        .set_location(entity.id(), dst_archetype, dst_idx);
 
     if let Some(src_id) = opt_src_id {
         world.entities.set_location(src_id, src_archetype, idx);

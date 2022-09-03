@@ -56,7 +56,7 @@ impl<T> IntoQuery for Option<T>
 where
     T: PhantomQuery,
 {
-    type Query = PhantomData<Option<T>>;
+    type Query = PhantomData<fn() -> Option<T>>;
 }
 
 impl<'a, T> PhantomQueryFetch<'a> for Option<T>

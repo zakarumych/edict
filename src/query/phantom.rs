@@ -22,9 +22,9 @@ pub trait PhantomQueryFetch<'a> {
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
 ///
-/// [`PhantomData<Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
+/// [`PhantomData<fn() -> Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
 pub trait PhantomQuery:
-    for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<Self>>
+    for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<fn() -> Self>>
 {
     /// Returns what kind of access the query performs on the component type.
     fn access(ty: TypeId) -> Option<Access>;
@@ -43,14 +43,14 @@ pub trait PhantomQuery:
     ) -> <Self as PhantomQueryFetch<'a>>::Fetch;
 }
 
-impl<Q> IntoQuery for PhantomData<Q>
+impl<Q> IntoQuery for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
-    type Query = PhantomData<Q>;
+    type Query = PhantomData<fn() -> Q>;
 }
 
-impl<'a, Q> QueryFetch<'a> for PhantomData<Q>
+impl<'a, Q> QueryFetch<'a> for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
@@ -58,7 +58,7 @@ where
     type Fetch = <Q as PhantomQueryFetch<'a>>::Fetch;
 }
 
-impl<Q> Query for PhantomData<Q>
+impl<Q> Query for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
@@ -85,14 +85,14 @@ where
 /// Phantom counterpart of [`ImmutableQuery`] type alias.
 pub unsafe trait ImmutablePhantomQuery: PhantomQuery {}
 
-unsafe impl<Q> ImmutableQuery for PhantomData<Q> where Q: ImmutablePhantomQuery {}
+unsafe impl<Q> ImmutableQuery for PhantomData<fn() -> Q> where Q: ImmutablePhantomQuery {}
 
-impl<'a, T> QueryArgGet<'a> for PhantomData<T>
+impl<'a, T> QueryArgGet<'a> for PhantomData<fn() -> T>
 where
     T: PhantomQuery + 'static,
 {
     type Arg = T;
-    type Query = PhantomData<T>;
+    type Query = PhantomData<fn() -> T>;
 
     #[inline]
     fn get(&mut self, _world: &World) -> Self::Query {
@@ -100,7 +100,7 @@ where
     }
 }
 
-impl<T> QueryArgCache for PhantomData<T>
+impl<T> QueryArgCache for PhantomData<fn() -> T>
 where
     T: PhantomQuery + 'static,
 {
@@ -119,5 +119,5 @@ impl<T> QueryArg for T
 where
     T: PhantomQuery + 'static,
 {
-    type Cache = PhantomData<T>;
+    type Cache = PhantomData<fn() -> T>;
 }

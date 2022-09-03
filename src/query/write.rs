@@ -63,7 +63,7 @@ impl<T> IntoQuery for &mut T
 where
     T: Send + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<'a, T> PhantomQueryFetch<'a> for &mut T

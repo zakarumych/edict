@@ -43,7 +43,7 @@ pub struct Scheduler {
     encoders: Vec<ActionEncoder>,
 }
 
-pub struct SyncUnsafeCell<T: ?Sized> {
+struct SyncUnsafeCell<T: ?Sized> {
     inner: UnsafeCell<T>,
 }
 
@@ -128,10 +128,6 @@ impl<'scope> Task<'scope> {
 
         while let Some(system) = unroll.take() {
             unsafe {
-                debug_assert!(
-                    !system.is_local(),
-                    "Only non-local systems are sent to tasks"
-                );
                 system.run_unchecked(world, &mut action_queue);
             }
 
@@ -199,11 +195,12 @@ impl Scheduler {
     /// Provided closure should spawn system execution task.
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
-    pub fn run<'scope>(
-        &'scope mut self,
+    #[must_use]
+    pub fn run<'scope, 'later: 'scope>(
+        &'later mut self,
         world: &'scope mut World,
         executor: &impl ScopedExecutor<'scope>,
-    ) -> &mut [ActionEncoder] {
+    ) -> &'later mut [ActionEncoder] {
         let world: &'scope World = &*world;
 
         if self.schedule_cache_id != Some(world.archetype_set_id()) {
@@ -370,7 +367,9 @@ mod test {
 
     use super::*;
 
-    use crate::{component::Component, executor::MockExecutor, system::State};
+    use crate::{
+        action::ActionEncoderSliceExt, component::Component, executor::MockExecutor, system::State,
+    };
     struct Foo;
 
     impl Component for Foo {}
@@ -385,6 +384,8 @@ mod test {
             println!("{}", *q);
         });
 
-        scheduler.run(&mut world, &MockExecutor);
+        scheduler
+            .run(&mut world, &MockExecutor)
+            .execute_all(&mut world);
     }
 }

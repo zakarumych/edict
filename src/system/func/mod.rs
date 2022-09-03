@@ -2,6 +2,7 @@ mod action;
 mod query;
 mod res;
 mod state;
+mod world;
 
 use core::{any::TypeId, marker::PhantomData};
 
@@ -20,6 +21,7 @@ pub use self::{
         ResNoSyncCache,
     },
     state::{State, StateCache},
+    world::WorldCache,
 };
 
 /// Marker for [`IntoSystem`] for functions.
@@ -36,7 +38,7 @@ pub unsafe trait FnArgGet<'a> {
     unsafe fn get_unchecked(
         &'a mut self,
         world: &'a World,
-        encoder: &mut dyn ActionQueue,
+        queue: &mut dyn ActionQueue,
     ) -> Self::Arg;
 
     /// Flushes cache to the world.
@@ -44,7 +46,7 @@ pub unsafe trait FnArgGet<'a> {
     ///
     /// For instance `ActionEncoderCache` - a cache type for `&mut ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
     #[inline]
-    unsafe fn flush_unchecked(&'a mut self, _world: &'a World, _encoder: &mut dyn ActionQueue) {}
+    unsafe fn flush_unchecked(&'a mut self, _world: &'a World, _queue: &mut dyn ActionQueue) {}
 }
 
 /// Cache for an argument that is stored between calls to function-system.
@@ -53,7 +55,7 @@ pub unsafe trait FnArgGet<'a> {
 ///
 /// If [`FnArgFetch::is_local`] returns false [`FnArgFetch::extract_unchecked`] must be safe to call from any thread.
 /// Otherwise [`FnArgFetch::extract_unchecked`] must be safe to call from local thread.
-pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + 'static {
+pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + Send + 'static {
     /// Returns `true` for local arguments that can be used only for local function-systems.
     fn is_local(&self) -> bool;
 
@@ -133,19 +135,25 @@ macro_rules! for_tuple {
             unsafe fn run_unchecked(&mut self, world: &World, queue: &mut dyn ActionQueue) {
                 let ($($a,)*) = &mut self.args;
 
-                $(
-                    let $a = $a.get_unchecked(world, queue);
-                )*
+                {
+                    $(
+                        let $a = $a.get_unchecked(world, queue);
+                    )*
 
-                (self.f)($($a,)*);
+                    (self.f)($($a,)*);
+                }
+
+
+                $(
+                    $a.flush_unchecked(world, queue);
+                )*
             }
         }
 
         impl<Func $(, $a)*> IntoSystem<IsFunctionSystem<($($a,)*)>> for Func
         where
             $($a: FnArg,)*
-            $($a::Cache: Send + Sync,)*
-            Func: FnMut($($a,)*) + Send + Sync + 'static,
+            Func: FnMut($($a,)*) + Send + 'static,
             Func: for<'a> FnMut($(
                 <$a::Cache as FnArgGet<'a>>::Arg,
             )*),

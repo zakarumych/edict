@@ -176,7 +176,7 @@ impl<T> IntoQuery for With<T>
 where
     T: 'static,
 {
-    type Query = PhantomData<With<T>>;
+    type Query = PhantomData<fn() -> With<T>>;
 }
 
 impl<T> PhantomQueryFetch<'_> for With<T>
@@ -218,7 +218,7 @@ impl<T> IntoQuery for Without<T>
 where
     T: 'static,
 {
-    type Query = PhantomData<Without<T>>;
+    type Query = PhantomData<fn() -> Without<T>>;
 }
 
 impl<T> PhantomQueryFetch<'_> for Without<T>

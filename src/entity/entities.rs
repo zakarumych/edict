@@ -1,4 +1,7 @@
-use core::num::NonZeroU32;
+use core::{
+    num::NonZeroU32,
+    sync::atomic::{AtomicI32, Ordering},
+};
 
 use alloc::{fmt, vec::Vec};
 
@@ -18,6 +21,22 @@ struct EntityData {
     idx: u32,
 }
 
+impl EntityData {
+    pub fn new(archetype: u32, idx: u32, id: u32, gen: NonZeroU32) -> (Self, EntityId) {
+        let id = EntityId::new(id, gen);
+        let data = EntityData {
+            archetype,
+            gen: gen.get(),
+            idx,
+        };
+        (data, id)
+    }
+
+    pub fn entity(&self, id: u32) -> Option<EntityId> {
+        Some(EntityId::new(id, NonZeroU32::new(self.gen)?))
+    }
+}
+
 impl fmt::Debug for EntityData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityData")
@@ -31,6 +50,7 @@ impl fmt::Debug for EntityData {
 pub(crate) struct Entities {
     array: Vec<EntityData>,
     free_entity_ids: Vec<u32>,
+    reserve_counter: AtomicI32,
 }
 
 impl fmt::Debug for Entities {
@@ -46,44 +66,96 @@ impl Entities {
         Entities {
             array: Vec::new(),
             free_entity_ids: Vec::new(),
+            reserve_counter: AtomicI32::new(0),
         }
     }
 
     pub fn spawn(&mut self) -> EntityId {
         match self.free_entity_ids.pop() {
             None => {
-                let id = self.array.len() as u32;
-                let gen = first_gen();
-
-                self.array.push(EntityData {
-                    gen: gen.get(),
-                    idx: 0,
-                    archetype: 0,
-                });
-
-                EntityId::new(id, gen)
+                let (data, id) = EntityData::new(0, u32::MAX, self.array.len() as u32, first_gen());
+                self.array.push(data);
+                id
             }
             Some(id) => {
                 let data = &self.array[id as usize];
-                let gen = NonZeroU32::new(data.gen).expect("Exhausted slot");
-
-                EntityId::new(id, gen)
+                unsafe {
+                    // # Safety
+                    // Exhausted slots are not placed into free list
+                    data.entity(id).unwrap_unchecked()
+                }
             }
         }
     }
 
+    pub fn reserve(&self) -> EntityId {
+        let counter = self.reserve_counter.fetch_sub(1, Ordering::Release);
+
+        if counter > 0 {
+            let index = counter as usize - 1;
+            let id = self.free_entity_ids[index];
+
+            let data = &self.array[id as usize];
+            unsafe {
+                // # Safety
+                // Exhausted slots are not placed into free list
+                data.entity(id).unwrap_unchecked()
+            }
+        } else {
+            let id = self.array.len() as u32 + (-counter) as u32;
+            EntityId::new(id, first_gen())
+        }
+    }
+
+    pub fn spawn_reserved(&mut self, mut f: impl FnMut(EntityId) -> u32) {
+        let reserve_counter = self.reserve_counter.get_mut();
+
+        // A tail of free_entity_ids was consumed by `reserve` method.
+        for id in self
+            .free_entity_ids
+            .drain(0.max(*reserve_counter) as usize..)
+        {
+            let entity = unsafe {
+                // # Safety
+                // Exhausted slots are not placed into free list
+                self.array[id as usize].entity(id).unwrap_unchecked()
+            };
+            let idx = f(entity);
+            self.array[id as usize].idx = idx;
+        }
+
+        if *reserve_counter < 0 {
+            // Spawn reserved entities.
+            let reserved_count = (-*reserve_counter) as usize;
+            self.array.reserve(reserved_count);
+
+            for _ in 0..reserved_count {
+                let (data, id) = EntityData::new(0, u32::MAX, self.array.len() as u32, first_gen());
+                self.array.push(data);
+                let idx = f(id);
+                let last = self.array.last_mut().unwrap();
+                last.idx = idx;
+            }
+        }
+
+        *reserve_counter = 0;
+    }
+
     pub fn despawn(&mut self, id: EntityId) -> Result<(u32, u32), NoSuchEntity> {
-        if self.array.len() as u32 <= id.idx() {
+        if self.array.len() as u32 <= id.id() {
             return Err(NoSuchEntity);
         }
-        let data = &mut self.array[id.idx() as usize];
+        let data = &mut self.array[id.id() as usize];
         if id.gen().get() != data.gen {
             return Err(NoSuchEntity);
         }
 
         if data.gen != u32::MAX {
             data.gen += 1;
-            self.free_entity_ids.push(id.idx());
+            data.archetype = 0;
+            data.idx = u32::MAX;
+            self.free_entity_ids.push(id.id());
+            *self.reserve_counter.get_mut() = self.free_entity_ids.len() as i32;
         } else {
             data.gen = 0;
         }
@@ -98,20 +170,33 @@ impl Entities {
 
     pub fn find_entity(&self, id: u32) -> Option<EntityId> {
         if self.array.len() as u32 <= id {
-            return None;
+            let reserved = (-self.reserve_counter.load(Ordering::Acquire)) as u32;
+            if self.array.len() as u32 + reserved > id {
+                Some(EntityId::new(id, first_gen()))
+            } else {
+                None
+            }
+        } else {
+            let data = &self.array[id as usize];
+            Some(EntityId::new(id, NonZeroU32::new(data.gen)?))
         }
-        let data = &self.array[id as usize];
-        Some(EntityId::new(id, NonZeroU32::new(data.gen)?))
     }
 
-    pub fn get(&self, id: EntityId) -> Option<(u32, u32)> {
-        if self.array.len() as u32 <= id.idx() {
+    pub fn get_location(&self, id: EntityId) -> Option<(u32, u32)> {
+        if self.array.len() as u32 <= id.id() {
+            if id.gen() != first_gen() {
+                return None;
+            }
+            let reserved = (-self.reserve_counter.load(Ordering::Acquire)) as u32;
+            if self.array.len() as u32 + reserved > id.id() {
+                return Some((0, u32::MAX));
+            }
             return None;
         }
-        if id.gen().get() != self.array[id.idx() as usize].gen {
+        if id.gen().get() != self.array[id.id() as usize].gen {
             return None;
         }
-        let data = &self.array[id.idx() as usize];
+        let data = &self.array[id.id() as usize];
         Some((data.archetype, data.idx))
     }
 }

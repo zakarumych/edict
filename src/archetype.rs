@@ -371,7 +371,7 @@ impl Archetype {
 
         self.entities.swap_remove(entity_idx);
         if entity_idx != last_entity_idx {
-            Some(self.entities[entity_idx].idx())
+            Some(self.entities[entity_idx].id())
         } else {
             None
         }
@@ -539,7 +539,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].idx()),
+                Some(self.entities[src_entity_idx].id()),
             )
         } else {
             (dst_entity_idx as u32, None)
@@ -590,7 +590,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].idx()),
+                Some(self.entities[src_entity_idx].id()),
             )
         } else {
             (dst_entity_idx as u32, None)
@@ -644,7 +644,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].idx()),
+                Some(self.entities[src_entity_idx].id()),
                 value.assume_init(),
             )
         } else {
@@ -689,7 +689,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].idx()),
+                Some(self.entities[src_entity_idx].id()),
             )
         } else {
             (dst_entity_idx as u32, None)

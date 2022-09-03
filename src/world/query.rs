@@ -179,9 +179,9 @@ where
     where
         QueryBorrowAny<T>: PhantomQuery,
         Q: ExtendTuple<QueryBorrowAny<T>>,
-        Q::Query: ExtendTuple<PhantomData<QueryBorrowAny<T>>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> QueryBorrowAny<T>>>,
         TuplePlus<Q, QueryBorrowAny<T>>:
-            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryBorrowAny<T>>>>,
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> QueryBorrowAny<T>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -216,9 +216,9 @@ where
     where
         QueryBorrowAll<T>: PhantomQuery,
         Q: ExtendTuple<QueryBorrowAll<T>>,
-        Q::Query: ExtendTuple<PhantomData<QueryBorrowAll<T>>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> QueryBorrowAll<T>>>,
         TuplePlus<Q, QueryBorrowAll<T>>:
-            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<QueryBorrowAll<T>>>>,
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> QueryBorrowAll<T>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -235,8 +235,9 @@ where
     where
         Relates<R>: PhantomQuery,
         Q: ExtendTuple<Relates<R>>,
-        Q::Query: ExtendTuple<PhantomData<Relates<R>>>,
-        TuplePlus<Q, Relates<R>>: IntoQuery<Query = TuplePlus<Q::Query, PhantomData<Relates<R>>>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> Relates<R>>>,
+        TuplePlus<Q, Relates<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> Relates<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -253,9 +254,9 @@ where
     where
         RelatesExclusive<R>: PhantomQuery,
         Q: ExtendTuple<RelatesExclusive<R>>,
-        Q::Query: ExtendTuple<PhantomData<RelatesExclusive<R>>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> RelatesExclusive<R>>>,
         TuplePlus<Q, RelatesExclusive<R>>:
-            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<RelatesExclusive<R>>>>,
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> RelatesExclusive<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -290,8 +291,9 @@ where
     where
         Related<R>: PhantomQuery,
         Q: ExtendTuple<Related<R>>,
-        Q::Query: ExtendTuple<PhantomData<Related<R>>>,
-        TuplePlus<Q, Related<R>>: IntoQuery<Query = TuplePlus<Q::Query, PhantomData<Related<R>>>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> Related<R>>>,
+        TuplePlus<Q, Related<R>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> Related<R>>>>,
     {
         QueryRef {
             archetypes: self.archetypes,
@@ -314,7 +316,7 @@ where
 
         let (archetype, idx) = self
             .entities
-            .get(entity)
+            .get_location(entity)
             .ok_or(QueryOneError::NoSuchEntity)?;
 
         let archetype = &self.archetypes[archetype as usize];

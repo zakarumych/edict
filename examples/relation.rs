@@ -59,7 +59,7 @@ fn main() {
 
     world.add_relation(a, ChildOf, b).unwrap();
 
-    for (e, ChildOf) in world.build_query().relates_to::<&ChildOf>(b) {
+    for (e, ChildOf) in world.new_query().relates_to::<&ChildOf>(b) {
         println!("{} is child of {}", e, b);
     }
 
@@ -74,8 +74,8 @@ fn main() {
     world.add_relation(a, Likes, b).unwrap();
     world.add_relation(a, Likes, c).unwrap();
 
-    assert_eq!(world.query_one_state(a, relates_to::<Likes>(b)), Ok(()));
-    assert_eq!(world.query_one_state(a, relates_to::<Likes>(c)), Ok(()));
+    assert_eq!(world.query_one_with(a, relates_to::<Likes>(b)), Ok(()));
+    assert_eq!(world.query_one_with(a, relates_to::<Likes>(c)), Ok(()));
     assert_eq!(
         world
             .query_one::<Relates<&Likes>>(a)
@@ -98,7 +98,7 @@ fn main() {
 
     world.add_relation(a, Enemy, b).unwrap();
 
-    let q = world.build_query().relates::<&Enemy>();
+    let q = world.new_query().relates::<&Enemy>();
     for (e, enemies) in q {
         println!(
             "{} is enemy of {:?}",
@@ -109,7 +109,7 @@ fn main() {
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.build_query().relates::<&Enemy>() {
+    for (e, enemies) in world.new_query().relates::<&Enemy>() {
         println!(
             "{} is enemy of {:?}",
             e,

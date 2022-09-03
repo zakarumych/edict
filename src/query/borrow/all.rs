@@ -80,7 +80,7 @@ impl<T> IntoQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<T> PhantomQuery for QueryBorrowAll<&T>

@@ -57,8 +57,8 @@ impl EntityId {
         unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
     }
 
-    /// Returns index part of the entity id.
-    pub(crate) fn idx(&self) -> u32 {
+    /// Returns id part of the entity id.
+    pub(crate) fn id(&self) -> u32 {
         self.value.get() as u32
     }
 }
@@ -67,13 +67,13 @@ impl fmt::Debug for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityId")
             .field("gen", &self.gen().get())
-            .field("id", &self.idx())
+            .field("id", &self.id())
             .finish()
     }
 }
 
 impl fmt::Display for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{{:0x}#{:x}}}", self.gen().get(), self.idx())
+        write!(f, "{{{:0x}#{:x}}}", self.gen().get(), self.id())
     }
 }

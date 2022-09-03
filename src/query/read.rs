@@ -55,7 +55,7 @@ impl<T> IntoQuery for &T
 where
     T: Sync + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<'a, T> PhantomQueryFetch<'a> for &T

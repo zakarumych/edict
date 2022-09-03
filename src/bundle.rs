@@ -302,14 +302,25 @@ impl EntityBuilder {
 
     /// Adds component to the builder.
     /// If builder already had this component, old value is replaced.
-    pub fn add<T>(&mut self, value: T)
+    #[inline]
+    pub fn with<T>(mut self, value: T) -> Self
+    where
+        T: Component + Send,
+    {
+        self.add(value);
+        self
+    }
+
+    /// Adds component to the builder.
+    /// If builder already had this component, old value is replaced.
+    pub fn add<T>(&mut self, value: T) -> &mut Self
     where
         T: Component + Send,
     {
         if let Some(existing) = self.get_mut::<T>() {
             // Replace existing value.
             *existing = value;
-            return;
+            return self;
         }
 
         debug_assert!(self.len <= self.layout.size());
@@ -371,6 +382,8 @@ impl EntityBuilder {
         self.ids.push(TypeId::of::<T>());
         self.infos.push(ComponentInfo::of::<T>());
         self.offsets.push(value_offset);
+
+        self
     }
 
     /// Returns reference to component from builder.

@@ -59,10 +59,7 @@ fn main() {
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
-    for (_, display) in world
-        .build_query()
-        .borrow_any::<&mut (dyn Display + Send)>()
-    {
+    for (_, display) in world.new_query().borrow_any::<&mut (dyn Display + Send)>() {
         println!("{}", display);
     }
 
@@ -70,7 +67,7 @@ fn main() {
     // Current behavior is to panic if component with that type id is found
     // and it doesn't exposes `Any` trait.
     for (_, a) in world
-        .build_query()
+        .new_query()
         .borrow_one::<&(dyn Any + Sync)>(TypeId::of::<A>())
     {
         println!("{}", (a as &dyn Any).downcast_ref::<A>().unwrap());
@@ -79,7 +76,7 @@ fn main() {
     // Borrow all components that expose `Display` trait.
     // This query yields vector of `&dyn Display` trait objects for each entity.
     // Current behavior is to skip entities with no such components.
-    for (e, a) in world.build_query().borrow_all::<&(dyn Display + Sync)>() {
+    for (e, a) in world.new_query().borrow_all::<&(dyn Display + Sync)>() {
         print!("{}", e);
         for a in a {
             print!(" {}", a);

@@ -42,7 +42,7 @@ fn main() {
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&(dyn Debug + Sync)>()
             .into_iter()
             .count(),
@@ -51,7 +51,7 @@ fn main() {
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&(dyn Debug + Send + Sync)>()
             .into_iter()
             .count(),
@@ -60,7 +60,7 @@ fn main() {
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&mut (dyn Debug + Send)>()
             .into_iter()
             .count(),
@@ -69,7 +69,7 @@ fn main() {
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&mut (dyn Debug + Send + Sync)>()
             .into_iter()
             .count(),
@@ -77,13 +77,13 @@ fn main() {
     );
 
     assert_eq!(
-        world.build_query().borrow_any::<&u32>().into_iter().count(),
+        world.new_query().borrow_any::<&u32>().into_iter().count(),
         1
     );
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&mut u32>()
             .into_iter()
             .count(),
@@ -91,13 +91,13 @@ fn main() {
     );
 
     assert_eq!(
-        world.build_query().borrow_any::<&f32>().into_iter().count(),
+        world.new_query().borrow_any::<&f32>().into_iter().count(),
         1
     );
 
     assert_eq!(
         world
-            .build_query()
+            .new_query()
             .borrow_any::<&mut f32>()
             .into_iter()
             .count(),

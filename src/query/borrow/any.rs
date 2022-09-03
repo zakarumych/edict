@@ -71,7 +71,7 @@ impl<T> IntoQuery for QueryBorrowAny<&T>
 where
     T: Sync + ?Sized + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<T> PhantomQuery for QueryBorrowAny<&T>
@@ -183,7 +183,7 @@ impl<T> IntoQuery for QueryBorrowAny<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<T> PhantomQuery for QueryBorrowAny<&mut T>

@@ -58,7 +58,7 @@ impl<R> IntoQuery for Related<R>
 where
     R: Relation,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<R> PhantomQuery for Related<R>

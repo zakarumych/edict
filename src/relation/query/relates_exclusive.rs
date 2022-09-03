@@ -72,7 +72,7 @@ impl<R> IntoQuery for RelatesExclusive<&R>
 where
     R: Relation + Sync,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<R> PhantomQuery for RelatesExclusive<&R>
@@ -188,7 +188,7 @@ impl<R> IntoQuery for RelatesExclusive<&mut R>
 where
     R: Relation + 'static,
 {
-    type Query = PhantomData<Self>;
+    type Query = PhantomData<fn() -> Self>;
 }
 
 impl<R> PhantomQuery for RelatesExclusive<&mut R>

@@ -46,14 +46,14 @@ impl<T> DerefMut for State<'_, T> {
 
 impl<T> FnArg for State<'_, T>
 where
-    T: FromWorld + 'static,
+    T: FromWorld + Send + 'static,
 {
     type Cache = StateCache<T>;
 }
 
 unsafe impl<'a, T> FnArgGet<'a> for StateCache<T>
 where
-    T: FromWorld + 'static,
+    T: FromWorld + Send + 'static,
 {
     type Arg = State<'a, T>;
 
@@ -69,7 +69,7 @@ where
 
 impl<T> FnArgCache for StateCache<T>
 where
-    T: FromWorld + 'static,
+    T: FromWorld + Send + 'static,
 {
     fn is_local(&self) -> bool {
         false

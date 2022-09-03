@@ -150,16 +150,17 @@ impl Entities {
             return Err(NoSuchEntity);
         }
 
+        let archetype = core::mem::replace(&mut data.archetype, 0);
+        let idx = core::mem::replace(&mut data.idx, u32::MAX);
+
         if data.gen != u32::MAX {
             data.gen += 1;
-            data.archetype = 0;
-            data.idx = u32::MAX;
             self.free_entity_ids.push(id.id());
             *self.reserve_counter.get_mut() = self.free_entity_ids.len() as i32;
         } else {
             data.gen = 0;
         }
-        Ok((data.archetype, data.idx))
+        Ok((archetype, idx))
     }
 
     pub fn set_location(&mut self, id: u32, archetype: u32, idx: u32) {

@@ -2,7 +2,7 @@
 
 mod func;
 
-use core::any::TypeId;
+use core::{any::TypeId, ptr::NonNull};
 
 use crate::{action::ActionEncoder, archetype::Archetype, query::Access, world::World};
 
@@ -47,6 +47,10 @@ pub unsafe trait System {
     /// Returns `true` for local systems that can be run only on thread where [`World`] lives.
     fn is_local(&self) -> bool;
 
+    /// Returns access type performed on the entire [`World`].
+    /// Most arguments will return some [`Access::Read`], and few will return none.
+    fn world_access(&self) -> Option<Access>;
+
     /// Checks if all queries from this system will skip specified archetype.
     fn skips_archetype(&self, archetype: &Archetype) -> bool;
 
@@ -59,7 +63,7 @@ pub unsafe trait System {
     /// Runs the system with given context instance.
     ///
     /// If `is_local()` returns `true` then running it outside local thread is unsound.
-    unsafe fn run_unchecked(&mut self, world: &World, queue: &mut dyn ActionQueue);
+    unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue);
 }
 
 /// Trait for types that can be converted into systems.

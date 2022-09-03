@@ -2,6 +2,7 @@ use core::{
     any::TypeId,
     marker::PhantomData,
     ops::{Deref, DerefMut},
+    ptr::NonNull,
 };
 
 use atomicell::{Ref, RefMut};
@@ -69,9 +70,10 @@ where
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> Res<'a, T> {
+        let world = world.as_ref(); // # Safety: Declares read access.
         Res {
             inner: world.get_resource().expect("Missing resource"),
         }
@@ -85,6 +87,11 @@ where
     #[inline]
     fn is_local(&self) -> bool {
         false
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -177,9 +184,10 @@ where
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResMut<'a, T> {
+        let world = world.as_ref(); // # Safety: Declares read access.
         ResMut {
             inner: world.get_resource_mut().expect("Missing resource"),
         }
@@ -193,6 +201,11 @@ where
     #[inline]
     fn is_local(&self) -> bool {
         false
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -287,9 +300,10 @@ where
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResNoSync<'a, T> {
+        let world = world.as_ref(); // # Safety: Declares read access.
         ResNoSync {
             inner: world.get_local_resource_mut().expect("Missing resource"),
         }
@@ -303,6 +317,11 @@ where
     #[inline]
     fn is_local(&self) -> bool {
         true
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -397,9 +416,10 @@ where
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResMutNoSend<'a, T> {
+        let world = world.as_ref(); // # Safety: Declares read access.
         ResMutNoSend {
             inner: world.get_local_resource_mut().expect("Missing resource"),
         }
@@ -413,6 +433,11 @@ where
     #[inline]
     fn is_local(&self) -> bool {
         true
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]

@@ -1,4 +1,4 @@
-use core::any::TypeId;
+use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
@@ -53,10 +53,13 @@ where
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> Self::Arg {
-        QueryRef::new(world, self.query.get(world), self.filter.get(world))
+        let world = world.as_ref(); // # Safety: Declares read access.
+        let query = self.query.get(world);
+        let filter = self.filter.get(world);
+        QueryRef::new(world, query, filter)
     }
 }
 
@@ -68,6 +71,11 @@ where
     #[inline]
     fn is_local(&self) -> bool {
         false
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
     }
 
     #[inline]
@@ -166,6 +174,7 @@ macro_rules! for_tuple {
                 let ($($a,)+) = self;
                 $($a.skips_archetype(archetype))||+
             }
+
             #[inline]
             fn access_component(&self, _id: TypeId) -> Option<Access> {
                 let ($($a,)+) = self;

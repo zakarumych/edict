@@ -1,4 +1,4 @@
-use core::any::TypeId;
+use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
     action::ActionEncoder, archetype::Archetype, query::Access, system::ActionQueue, world::World,
@@ -19,6 +19,11 @@ impl FnArgCache for ActionEncoderCache {
     #[inline]
     fn is_local(&self) -> bool {
         false
+    }
+
+    #[inline]
+    fn world_access(&self) -> Option<Access> {
+        None
     }
 
     #[inline]
@@ -43,7 +48,7 @@ unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        _world: &'a World,
+        _world: NonNull<World>,
         queue: &mut dyn ActionQueue,
     ) -> &'a mut ActionEncoder {
         self.encoder
@@ -51,7 +56,7 @@ unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
     }
 
     #[inline]
-    unsafe fn flush_unchecked(&'a mut self, _world: &'a World, queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
         if let Some(encoder) = self.encoder.take() {
             queue.flush_action_encoder(encoder);
         }

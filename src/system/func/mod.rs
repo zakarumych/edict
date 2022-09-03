@@ -4,7 +4,7 @@ mod res;
 mod state;
 mod world;
 
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use super::{ActionQueue, IntoSystem, System};
 use crate::{
@@ -21,7 +21,7 @@ pub use self::{
         ResNoSyncCache,
     },
     state::{State, StateCache},
-    world::WorldCache,
+    world::{WorldReadCache, WorldWriteCache},
 };
 
 /// Marker for [`IntoSystem`] for functions.
@@ -37,7 +37,7 @@ pub unsafe trait FnArgGet<'a> {
     /// Extracts argument from the world.
     unsafe fn get_unchecked(
         &'a mut self,
-        world: &'a World,
+        world: NonNull<World>,
         queue: &mut dyn ActionQueue,
     ) -> Self::Arg;
 
@@ -46,7 +46,7 @@ pub unsafe trait FnArgGet<'a> {
     ///
     /// For instance `ActionEncoderCache` - a cache type for `&mut ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
     #[inline]
-    unsafe fn flush_unchecked(&'a mut self, _world: &'a World, _queue: &mut dyn ActionQueue) {}
+    unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, _queue: &mut dyn ActionQueue) {}
 }
 
 /// Cache for an argument that is stored between calls to function-system.
@@ -58,6 +58,10 @@ pub unsafe trait FnArgGet<'a> {
 pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + Send + 'static {
     /// Returns `true` for local arguments that can be used only for local function-systems.
     fn is_local(&self) -> bool;
+
+    /// Returns access type performed on the entire [`World`].
+    /// Most arguments will return some [`Access::Read`], and few will return none.
+    fn world_access(&self) -> Option<Access>;
 
     /// Checks if this argument will skip specified archetype.
     fn skips_archetype(&self, archetype: &Archetype) -> bool;
@@ -105,16 +109,29 @@ macro_rules! for_tuple {
                 <$a as FnArgGet<'a>>::Arg,
             )*),
         {
+            #[inline]
             fn is_local(&self) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.is_local() )*
             }
 
+            #[inline]
+            fn world_access(&self) -> Option<Access> {
+                let ($($a,)*) = &self.args;
+                let mut access = None;
+                $(
+                    access = merge_world_access(access, $a.world_access());
+                )*
+                access
+            }
+
+            #[inline]
             fn skips_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.skips_archetype(archetype) )*
             }
 
+            #[inline]
             fn access_component(&self, id: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut access = None;
@@ -123,6 +140,8 @@ macro_rules! for_tuple {
                 )*
                 access
             }
+
+            #[inline]
             fn access_resource(&self, id: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut access = None;
@@ -132,7 +151,8 @@ macro_rules! for_tuple {
                 access
             }
 
-            unsafe fn run_unchecked(&mut self, world: &World, queue: &mut dyn ActionQueue) {
+            #[inline]
+            unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
                 let ($($a,)*) = &mut self.args;
 
                 {
@@ -160,6 +180,7 @@ macro_rules! for_tuple {
         {
             type System = FunctionSystem<Self, ($($a::Cache,)*)>;
 
+            #[inline]
             fn into_system(self) -> Self::System {
                 FunctionSystem {
                     f: self,
@@ -182,7 +203,21 @@ impl<T> FromWorld for T
 where
     T: Default,
 {
+    #[inline]
     fn from_world(_: &World) -> Self {
         T::default()
+    }
+}
+
+/// [`merge_access`] but panics when either argument is `Some(Access::Write)` and another is `Some(_)`.
+#[inline]
+const fn merge_world_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+    match (lhs, rhs) {
+        (None, rhs) => rhs,
+        (lhs, None) => lhs,
+        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
+            panic!("Multiple mutable access to `World` is not allowed.");
+        }
     }
 }

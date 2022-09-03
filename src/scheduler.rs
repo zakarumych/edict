@@ -22,6 +22,7 @@
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
+    ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -100,10 +101,17 @@ impl ActionQueue for MyActionQueue {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct NonNullWorld {
+    ptr: NonNull<World>,
+}
+
+unsafe impl Send for NonNullWorld {}
+
 struct Task<'scope> {
     system_idx: usize,
     systems: &'scope [ScheduledSystem],
-    world: &'scope World,
+    world: NonNullWorld,
     task_tx: flume::Sender<Task<'scope>>,
     action_queue: MyActionQueue,
 }
@@ -128,7 +136,7 @@ impl<'scope> Task<'scope> {
 
         while let Some(system) = unroll.take() {
             unsafe {
-                system.run_unchecked(world, &mut action_queue);
+                system.run_unchecked(world.ptr, &mut action_queue);
             }
 
             for &dependent_idx in dependents {
@@ -201,8 +209,6 @@ impl Scheduler {
         world: &'scope mut World,
         executor: &impl ScopedExecutor<'scope>,
     ) -> &'later mut [ActionEncoder] {
-        let world: &'scope World = &*world;
-
         if self.schedule_cache_id != Some(world.archetype_set_id()) {
             // Re-schedule systems for new archetypes set.
             self.reschedule(world);
@@ -226,13 +232,15 @@ impl Scheduler {
 
         let mut unroll = None;
 
+        let world_ptr = NonNull::from(world);
+
         for (idx, system) in self.systems.iter().enumerate() {
             let old = system.wait.fetch_sub(1, Ordering::Acquire);
             if old == 0 {
                 let is_local = system.is_local;
                 let task = Task {
                     system_idx: idx,
-                    world,
+                    world: NonNullWorld { ptr: world_ptr },
                     systems: &self.systems,
                     task_tx: task_tx.clone(),
                     action_queue: action_queue.clone(),
@@ -305,17 +313,23 @@ impl Scheduler {
                     &*b.system.get()
                 };
 
+                if conflicts(system_a.world_access(), system_b.world_access()) {
+                    // Conflicts on world access.
+                    // Add a dependency.
+                    self.systems[j].dependents.push(i);
+                    self.systems[i].dependencies += 1;
+                    deps.insert(j);
+                    continue 'j;
+                }
+
                 for id in world.resource_types() {
-                    match (system_a.access_resource(id), system_b.access_resource(id)) {
-                        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
-                            // Conflicts on this resource.
-                            // Add a dependency.
-                            self.systems[j].dependents.push(i);
-                            self.systems[i].dependencies += 1;
-                            deps.insert(j);
-                            continue 'j;
-                        }
-                        _ => {}
+                    if conflicts(system_a.access_resource(id), system_b.access_resource(id)) {
+                        // Conflicts on this resource.
+                        // Add a dependency.
+                        self.systems[j].dependents.push(i);
+                        self.systems[i].dependencies += 1;
+                        deps.insert(j);
+                        continue 'j;
                     }
                 }
 
@@ -341,19 +355,16 @@ impl Scheduler {
                     }
 
                     for info in archetype.infos() {
-                        match (
+                        if conflicts(
                             system_a.access_component(info.id()),
                             system_b.access_component(info.id()),
                         ) {
-                            (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
-                                // Conflicts on this archetype.
-                                // Add a dependency.
-                                self.systems[j].dependents.push(i);
-                                self.systems[i].dependencies += 1;
-                                deps.insert(j);
-                                continue 'j;
-                            }
-                            _ => {}
+                            // Conflicts on this archetype.
+                            // Add a dependency.
+                            self.systems[j].dependents.push(i);
+                            self.systems[i].dependencies += 1;
+                            deps.insert(j);
+                            continue 'j;
                         }
                     }
                 }
@@ -388,4 +399,11 @@ mod test {
             .run(&mut world, &MockExecutor)
             .execute_all(&mut world);
     }
+}
+
+fn conflicts(lhs: Option<Access>, rhs: Option<Access>) -> bool {
+    matches!(
+        (lhs, rhs),
+        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write))
+    )
 }

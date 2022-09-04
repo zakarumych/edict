@@ -3,12 +3,10 @@ use std::{
     fmt::Display,
 };
 
-use edict::{
-    borrow_dyn_any, borrow_dyn_trait,
-    component::{Component, ComponentBorrow},
-    world::World,
-};
+use edict::{component::Component, world::World};
 
+#[derive(Component)]
+#[edict(borrow(dyn Display))]
 struct A;
 
 impl Display for A {
@@ -17,31 +15,13 @@ impl Display for A {
     }
 }
 
-impl Component for A {
-    fn borrows() -> Vec<ComponentBorrow> {
-        let mut output = Vec::new();
-        output.push(ComponentBorrow::auto::<A>());
-        borrow_dyn_any!(A => output);
-        borrow_dyn_trait!(A as Display => output);
-        output
-    }
-}
-
+#[derive(Component)]
+#[edict(borrow(dyn Display))]
 struct B;
 
 impl Display for B {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("B")
-    }
-}
-
-impl Component for B {
-    fn borrows() -> Vec<ComponentBorrow> {
-        let mut output = Vec::new();
-        output.push(ComponentBorrow::auto::<B>());
-        borrow_dyn_any!(B => output);
-        borrow_dyn_trait!(B as Display => output);
-        output
     }
 }
 

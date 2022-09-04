@@ -1,47 +1,34 @@
 use edict::{
-    action::ActionEncoder,
     component::Component,
-    entity::EntityId,
     epoch::EpochId,
     relation::Relation,
     relation::{relates_to, Relates},
     world::WorldBuilder,
 };
 
+#[derive(Component)]
 struct A;
 
-impl Component for A {}
-
+#[derive(Component)]
 struct B;
 
-impl Component for B {}
-
+#[derive(Component)]
 struct C;
 
-impl Component for C {}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Relation)]
+#[edict(exclusive, owned)]
 struct ChildOf;
 
-impl Relation for ChildOf {
-    const EXCLUSIVE: bool = true;
-
-    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
-        encoder.despawn(entity);
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Relation)]
 struct Likes;
 
-impl Relation for Likes {}
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Relation)]
+#[edict(symmetric)]
 struct Enemy;
 
-impl Relation for Enemy {
-    const SYMMETRIC: bool = true;
-}
+#[derive(Clone, Copy, Debug, Relation)]
+#[edict(symmetric, owned)]
+struct LifeBound;
 
 fn main() {
     let mut world_builder = WorldBuilder::new();
@@ -129,4 +116,12 @@ fn main() {
     for (e, (a, c, child_of)) in query {
         drop((e, a, c, child_of));
     }
+
+    let a = world.spawn((A,));
+    let b = world.spawn((B,));
+
+    world.add_relation(a, LifeBound, b).unwrap();
+
+    world.despawn(a).unwrap();
+    assert_eq!(world.is_alive(b), false);
 }

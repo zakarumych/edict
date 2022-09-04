@@ -4,26 +4,20 @@ use edict::{component::Component, world::World};
 
 /// Just a type.
 /// Being `'static` makes it a proper component type.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Component)]
 struct Foo;
 
-impl Component for Foo {}
-
 /// Another type.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Component)]
 struct Bar;
 
-impl Component for Bar {}
 /// Another type.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Component)]
 struct Baz;
 
-impl Component for Baz {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Component)]
+#[edict(where T: 'static)]
 struct Value<T>(T);
-
-impl<T> Component for Value<T> where T: Send + Sync + 'static {}
 
 fn main() {
     // Create new World.

@@ -17,6 +17,8 @@ use crate::{
     entity::EntityId,
 };
 
+pub use edict_proc::Relation;
+
 pub use self::query::{
     not_related, not_related_by, not_relates, not_relates_to, related, related_by, relates,
     relates_to, FetchFilterNotRelatedBy, FetchFilterNotRelatesTo, FetchFilterRelatedBy,
@@ -37,6 +39,16 @@ pub trait Relation: Send + Sync + Copy + 'static {
     /// If `true` then when relation is added to an entity
     /// it is also added to the target.
     const SYMMETRIC: bool = false;
+
+    /// If `true` then entity in relation is "owned" by the target.
+    /// This means that when last target is dropped, entity is also dropped, not just relation.
+    const OWNED: bool = false;
+
+    /// Returns name of the relation type.
+    #[inline]
+    fn name() -> &'static str {
+        core::any::type_name::<Self>()
+    }
 
     // /// If `true` then when relation is added to an entity,
     // /// the same relation is checked om target and if present,
@@ -164,7 +176,7 @@ where
                         Self::drop_one(&mut origins[idx], entity, encoder);
                         origins.swap_remove(idx);
                         if origins.is_empty() {
-                            encoder.remove_component::<Self>(entity);
+                            encoder.remove::<Self>(entity);
                         }
                         return;
                     }
@@ -173,7 +185,7 @@ where
             true => {
                 let origin = unsafe { &mut *self.exclusive };
                 if origin.target == target {
-                    encoder.remove_component::<Self>(entity);
+                    encoder.remove::<Self>(entity);
                 }
             }
         }
@@ -193,8 +205,13 @@ where
         }
     }
 
-    /// Called when target relation component is removed from target entity.
-    fn on_target_drop(&mut self, entity: EntityId, target: EntityId, encoder: &mut ActionEncoder) {
+    /// Called when target relation component is removed from target entity for non-exclusive relations.
+    fn on_non_exclusive_target_drop(
+        &mut self,
+        entity: EntityId,
+        target: EntityId,
+        encoder: &mut ActionEncoder,
+    ) {
         debug_assert!(!R::EXCLUSIVE);
 
         let origins = unsafe { &mut *self.non_exclusive };
@@ -211,7 +228,11 @@ where
         }
 
         if origins.is_empty() {
-            encoder.remove_component::<Self>(entity);
+            if R::OWNED {
+                encoder.despawn(entity);
+            } else {
+                encoder.remove::<Self>(entity);
+            }
         }
     }
 
@@ -240,10 +261,6 @@ where
         if on_replace {
             origin.relation.on_drop(entity, origin.target, encoder);
         }
-        if R::SYMMETRIC {
-            // This is also a target.
-            R::on_target_drop(origin.target, entity, encoder);
-        }
         if new_origin.target != origin.target {
             Self::clear_one(origin, entity, encoder);
         }
@@ -253,13 +270,18 @@ where
     fn clear_one(origin: &mut Origin<R>, entity: EntityId, encoder: &mut ActionEncoder) {
         if R::SYMMETRIC {
             if origin.target != entity {
+                R::on_target_drop(origin.target, entity, encoder);
                 if R::EXCLUSIVE {
-                    encoder.remove_component::<Self>(origin.target);
+                    if R::OWNED {
+                        encoder.despawn(origin.target);
+                    } else {
+                        encoder.remove::<Self>(origin.target);
+                    }
                 } else {
                     let target = origin.target;
                     encoder.custom(move |world, encoder| {
                         if let Ok(target_component) = world.query_one::<&mut Self>(target) {
-                            target_component.on_target_drop(target, entity, encoder);
+                            target_component.on_non_exclusive_target_drop(target, entity, encoder);
                         }
                     });
                 }
@@ -345,7 +367,7 @@ where
         }
 
         if self.origins.is_empty() {
-            encoder.remove_component::<Self>(target);
+            encoder.remove::<Self>(target);
         }
     }
 }
@@ -359,11 +381,15 @@ where
         for &entity in &self.origins {
             R::on_target_drop(entity, target, encoder);
             if R::EXCLUSIVE {
-                encoder.remove_component::<OriginComponent<R>>(entity);
+                if R::OWNED {
+                    encoder.despawn(entity);
+                } else {
+                    encoder.remove::<OriginComponent<R>>(entity);
+                }
             } else {
                 encoder.custom(move |world, encoder| {
                     if let Ok(origin) = world.query_one::<&mut OriginComponent<R>>(entity) {
-                        origin.on_target_drop(entity, target, encoder);
+                        origin.on_non_exclusive_target_drop(entity, target, encoder);
                     }
                 });
             }
@@ -426,18 +452,5 @@ where
         debug_assert!(!R::SYMMETRIC);
 
         self.origins.clone()
-    }
-}
-
-/// One of the basic relations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChildOf;
-
-impl Relation for ChildOf {
-    const SYMMETRIC: bool = false;
-    const EXCLUSIVE: bool = true;
-
-    fn on_target_drop(entity: EntityId, _target: EntityId, encoder: &mut ActionEncoder) {
-        encoder.despawn(entity);
     }
 }

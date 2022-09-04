@@ -1,35 +1,7 @@
 use proc_easy::EasyAttributes;
 use syn::spanned::Spanned;
 
-use crate::kw;
-
-proc_easy::easy_argument_value! {
-    struct Name {
-        kw: kw::name,
-        literal: syn::LitStr,
-    }
-}
-
-proc_easy::easy_argument! {
-    struct Borrow {
-        kw: kw::borrow,
-        targets: proc_easy::EasyParenthesized<proc_easy::EasyTerminated<syn::Type>>,
-    }
-}
-
-proc_easy::easy_argument! {
-    struct OnDrop {
-        kw: kw::on_drop,
-        function: syn::Expr,
-    }
-}
-
-proc_easy::easy_argument! {
-    struct OnReplace {
-        kw: kw::on_replace,
-        function: syn::Expr,
-    }
-}
+use crate::{merge_where_clauses, Borrow, Name, OnDrop, OnReplace, WhereClause};
 
 proc_easy::easy_attributes! {
     @(edict)
@@ -38,6 +10,7 @@ proc_easy::easy_attributes! {
         borrow: Option<Borrow>,
         on_drop: Option<OnDrop>,
         on_replace: Option<OnReplace>,
+        where_clauses: Vec<WhereClause>,
     }
 }
 
@@ -49,24 +22,44 @@ pub fn derive(
     let ident = &input.ident;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
     let attributes = ComponentAttributes::parse_in(edict_namespace, &input.attrs, input.span())?;
+    let where_clause = merge_where_clauses(where_clause, &attributes.where_clauses);
 
-    let fn_name = match attributes.name {
-        None => quote::quote!(),
-        Some(name) => {
-            let name = name.literal;
+    let fn_name = attributes.name.map(|name| {
+        let name = name.literal;
+        Some(quote::quote! {
+            #[inline]
+            fn name() -> &'static str {
+                #name
+            }
+        })
+    });
+
+    let on_drop = attributes.on_drop.map(|on_drop| {
+            let on_drop = &on_drop.function;
             quote::quote! {
+                #[allow(unused_variables)]
                 #[inline]
-                fn name() -> &'static str {
-                    #name
+                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) {
+                    (#on_drop)(self, entity, encoder)
+                }
+            }
+        });
+
+    let on_replace = attributes.on_replace.map(|on_replace|{
+            let on_replace = &on_replace.function;
+            quote::quote! {
+                #[allow(unused_variables)]
+                #[inline]
+                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) -> bool {
+                    (#on_replace)(self, value, entity, encoder)
                 }
             }
         }
-    };
+    );
 
     let insert_borrows = match attributes.borrow {
-        None => quote::quote!(),
+        None => None,
         Some(borrow) => {
             let mut insert_borrows = quote::quote!();
 
@@ -256,35 +249,7 @@ pub fn derive(
                     }
                 };
             }
-            insert_borrows
-        }
-    };
-
-    let on_drop = match &attributes.on_drop {
-        None => quote::quote!(),
-        Some(on_drop) => {
-            let on_drop = &on_drop.function;
-            quote::quote! {
-                #[allow(unused_variables)]
-                #[inline]
-                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) {
-                    (#on_drop)(self, entity, encoder)
-                }
-            }
-        }
-    };
-
-    let on_replace = match &attributes.on_replace {
-        None => quote::quote!(),
-        Some(on_replace) => {
-            let on_replace = &on_replace.function;
-            quote::quote! {
-                #[allow(unused_variables)]
-                #[inline]
-                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) -> bool {
-                    (#on_replace)(self, value, entity, encoder)
-                }
-            }
+            Some(insert_borrows)
         }
     };
 

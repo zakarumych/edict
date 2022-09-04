@@ -14,5 +14,4 @@ description = "Procedural macros library for edict"
 proc-macro2 = "1.0"
 syn = "1.0"
 quote = "1.0"
-proc-easy = { version = "0.2.2" }
-
+proc-easy = { version = "0.2.3" }

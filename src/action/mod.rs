@@ -79,16 +79,16 @@ impl ActionEncoder {
 
     /// Encodes an action to remove component from specified entity.
     #[inline]
-    pub fn remove_component<T>(&mut self, entity: EntityId) -> &mut Self
+    pub fn remove<T>(&mut self, entity: EntityId) -> &mut Self
     where
         T: Component,
     {
-        self.remove_component_raw(entity, TypeId::of::<T>())
+        self.remove_raw(entity, TypeId::of::<T>())
     }
 
     /// Encodes an action to remove component from specified entity.
     #[inline]
-    pub fn remove_component_raw(&mut self, entity: EntityId, ty: TypeId) -> &mut Self {
+    pub fn remove_raw(&mut self, entity: EntityId, ty: TypeId) -> &mut Self {
         self.actions.push_back(Action::Remove(entity, ty));
         self
     }

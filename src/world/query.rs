@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData};
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     component::Component,
-    entity::{Entities, EntityId},
+    entity::{EntityId, EntitySet},
     query::{
         Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery, Modified, PhantomQuery, Query,
         QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
@@ -57,7 +57,7 @@ for_tuple!();
 /// Mutable query builder.
 pub struct QueryRef<'a, Q: IntoQuery, F: IntoQuery = ()> {
     archetypes: &'a [Archetype],
-    entities: &'a Entities,
+    entities: &'a EntitySet,
     epoch: &'a EpochCounter,
     query: Q::Query,
     filter: F::Query,
@@ -413,7 +413,7 @@ where
     Q: IntoQuery,
     F: IntoFilter,
 {
-    type Item = (EntityId, QueryItem<'a, Q>);
+    type Item = QueryItem<'a, Q>;
     type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
 
     fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {

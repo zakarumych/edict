@@ -24,7 +24,7 @@ use crate::{
         DynamicComponentBundle,
     },
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entities, EntityId},
+    entity::{EntityId, EntitySet},
     epoch::{EpochCounter, EpochId},
     query::{Fetch, IntoQuery, Query, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
@@ -138,7 +138,7 @@ pub struct World {
     epoch: EpochCounter,
 
     /// Collection of entities with their locations.
-    entities: Entities,
+    entities: EntitySet,
 
     /// Archetypes of entities in the world.
     archetypes: ArchetypeSet,
@@ -183,24 +183,53 @@ macro_rules! with_encoder {
 }
 
 impl World {
-    /// Returns new instance of [`WorldBuilder`]
-    pub const fn builder() -> WorldBuilder {
-        WorldBuilder::new()
-    }
-
     /// Returns new instance of [`World`].
-    ///
     /// Created [`World`] instance contains no entities.
-    ///
-    /// Internal caches that make operations faster are empty.
-    /// This can make a small spike in latency
-    /// as each cache entry would be calculated on first use of each key.
     #[inline]
     pub fn new() -> Self {
         Self::builder().build()
     }
 
+    /// Returns new instance of [`WorldBuilder`].
+    /// This allows pre-register component types and override their behavior.
+    #[inline]
+    pub const fn builder() -> WorldBuilder {
+        WorldBuilder::new()
+    }
+
+    /// Explicitly registers component type.
+    ///
+    /// Unlike [`WorldBuilder::register_component`] method, this method does not return reference to component configuration,
+    /// once [`World`] is created overriding component behavior is not possible.
+    ///
+    /// Component types are implicitly registered on first use by most methods.
+    /// This method is only needed if you want to use component type using
+    /// [`World::insert_external`], [`World::insert_external_bundle`] or [`World::spawn_external`].
+    pub fn ensure_component_registered<T>(&mut self)
+    where
+        T: Component,
+    {
+        self.registry.ensure_component_registered::<T>();
+    }
+
+    /// Explicitly registers external type.
+    ///
+    /// Unlike [`WorldBuilder::register_external`] method, this method does not return reference to component configuration,
+    /// once [`World`] is created overriding component behavior is not possible.
+    ///
+    /// External component types are not implicitly registered on first use.
+    /// This method is needed if you want to use component type with
+    /// [`World::insert_external`], [`World::insert_external_bundle`] or [`World::spawn_external`].
+    pub fn ensure_external_registered<T>(&mut self)
+    where
+        T: 'static,
+    {
+        self.registry.ensure_external_registered::<T>();
+    }
+
     /// Returns unique identified of archetype set.
+    /// This ID changes each time new archetype is added or removed.
+    /// IDs of different worlds are never equal within the same process.
     #[inline]
     pub fn archetype_set_id(&self) -> u64 {
         self.archetypes.id()
@@ -208,15 +237,40 @@ impl World {
 
     /// Reserves new entity id.
     ///
-    /// The entity will be spawned before first mutation on the entity happens.
-    /// Until then entity belongs to empty archetype.
+    /// The entity will be materialized before first mutation on the world happens.
+    /// Until then entity is alive and belongs to empty archetype.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.reserve();
+    /// assert_eq!(world.is_alive(entity), true);
+    /// world.despawn(entity).unwrap();
+    /// assert_eq!(world.is_alive(entity), false);
+    /// ```
     #[inline]
     pub fn reserve(&self) -> EntityId {
         self.entities.reserve()
     }
 
-    /// Spawns new entity in this world with provided bundle of components.
-    /// World keeps ownership of the spawned entity and entity id is returned.
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`Entity`] handle to the newly spawned entity.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,));
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// let ExampleComponent = world.remove(entity).unwrap();
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// ```
     #[inline]
     pub fn spawn<B>(&mut self, bundle: B) -> EntityId
     where
@@ -225,8 +279,29 @@ impl World {
         self.spawn_impl(bundle, register_bundle::<B>)
     }
 
-    /// Spawns new entity in this world with provided bundle of components.
-    /// World keeps ownership of the spawned entity and entity id is returned.
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`Entity`] handle to the newly spawned entity.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    ///
+    /// All components from the bundle must be previously registered.
+    /// If component in bundle implements [`Component`] it could be registered implicitly
+    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
+    /// assert_eq!(world.remove(entity), Ok(42u32));
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// ```
     #[inline]
     pub fn spawn_external<B>(&mut self, bundle: B) -> EntityId
     where
@@ -264,7 +339,7 @@ impl World {
     }
 
     /// Returns an iterator which spawns and yield entities
-    /// using bundles returned from provided iterator.
+    /// using bundles yielded from provided bundles iterator.
     ///
     /// When bundles iterator returns `None`, returned iterator returns `None` too.
     ///
@@ -272,8 +347,7 @@ impl World {
     /// If bundles iterator is double-ended, returned iterator is double-ended too.
     /// If bundles iterator has exact size, returned iterator has exact size too.
     ///
-    /// Skipping items on returned iterator will not cause them to be spawned
-    /// and same number of items will be skipped on bundles iterator.
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
     ///
     /// Returned iterator attempts to optimize storage allocation for entities
     /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
@@ -292,7 +366,7 @@ impl World {
     }
 
     /// Returns an iterator which spawns and yield entities
-    /// using bundles returned from provided iterator.
+    /// using bundles yielded from provided bundles iterator.
     ///
     /// When bundles iterator returns `None`, returned iterator returns `None` too.
     ///
@@ -300,14 +374,19 @@ impl World {
     /// If bundles iterator is double-ended, returned iterator is double-ended too.
     /// If bundles iterator has exact size, returned iterator has exact size too.
     ///
-    /// Skipping items on returned iterator will not cause them to be spawned
-    /// and same number of items will be skipped on bundles iterator.
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
     ///
     /// Returned iterator attempts to optimize storage allocation for entities
     /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
     ///
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
+    ///
+    /// All components from the bundle must be previously registered.
+    /// If component in bundle implements [`Component`] it could be registered implicitly
+    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
     #[inline]
     pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
@@ -361,6 +440,17 @@ impl World {
     }
 
     /// Despawns an entity with specified id.
+    /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,));
+    /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
+    /// assert!(world.despawn(entity).is_err(), "Already despawned");
+    /// ```
     #[inline]
     pub fn despawn(&mut self, entity: EntityId) -> Result<(), NoSuchEntity> {
         with_encoder!(self, encoder => self.despawn_with_encoder(entity, &mut encoder))
@@ -387,6 +477,16 @@ impl World {
     /// Searches for an entity with specified index.
     /// Returns `Ok(entity)` if entity with specified index exists.
     /// Returns `Err(NoSuchEntity)` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::{World, NoSuchEntity}, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,));
+    /// assert_eq!(world.find_entity(entity.id()), Ok(entity));
+    /// assert_eq!(world.find_entity(u32::MAX), Err(NoSuchEntity), "It would require to create u32::MAX entities to make this Ok(_)");
+    /// ```
     #[inline]
     pub fn find_entity(&self, idx: u32) -> Result<EntityId, NoSuchEntity> {
         self.entities.find_entity(idx).ok_or(NoSuchEntity)
@@ -399,6 +499,18 @@ impl World {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(());
+    ///
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert(entity, ExampleComponent).unwrap();
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
     #[inline]
     pub fn insert<T>(&mut self, entity: EntityId, component: T) -> Result<(), NoSuchEntity>
     where
@@ -414,6 +526,19 @@ impl World {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(());
+    ///
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.insert_external(entity, 42u32).unwrap();
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
+    /// ```
     #[inline]
     pub fn insert_external<T>(&mut self, entity: EntityId, component: T) -> Result<(), NoSuchEntity>
     where
@@ -625,6 +750,17 @@ impl World {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(());
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
     #[inline]
     pub fn insert_bundle<B>(&mut self, entity: EntityId, bundle: B) -> Result<(), NoSuchEntity>
     where
@@ -656,6 +792,25 @@ impl World {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(());
+    ///
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
+    /// ```
     #[inline]
     pub fn insert_external_bundle<B>(
         &mut self,
@@ -751,6 +906,27 @@ impl World {
     /// Skips any component type entity doesn't have.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// This method works for bundles of both [`Component`] implementations and external component types alike.
+    /// It doesn't care about registration of components since component type present on entity is guaranteed to be registered
+    /// and ignored otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    ///
+    /// struct OtherComponent;
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,));
+    ///
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    ///
+    /// world.drop_bundle::<(ExampleComponent, OtherComponent)>(entity);
+    ///
+    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// ```
     #[inline]
     pub fn drop_bundle<B>(&mut self, entity: EntityId) -> Result<(), NoSuchEntity>
     where
@@ -814,7 +990,19 @@ impl World {
         Ok(())
     }
 
-    /// Adds relation between two entities to the [`World`]
+    /// Adds relation between two entities to the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// When either entity is despawned, relation is removed automatically.
+    ///
+    /// Relations can be queried and filtered using queries from [`edict::relation`] module.
+    ///
+    /// Relation must implement [`Relation`] trait that defines its behavior.
+    ///
+    /// If relation already exists, then instance is replaced.
+    /// If relation is symmetric then it is added in both directions.
+    /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
+    /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
     #[inline]
     pub fn add_relation<R>(
         &mut self,
@@ -829,7 +1017,7 @@ impl World {
     }
 
     /// Adds relation between two entities to the [`World`]
-    pub fn add_relation_with_encoder<R>(
+    pub(crate) fn add_relation_with_encoder<R>(
         &mut self,
         entity: EntityId,
         relation: R,
@@ -888,7 +1076,13 @@ impl World {
         Ok(())
     }
 
-    /// Adds relation between two entities to the [`World`]
+    /// Drops relation between two entities in the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// If relation does not exist, does nothing.
+    ///
+    /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
+    /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
     #[inline]
     pub fn drop_relation<R>(
         &mut self,
@@ -901,8 +1095,8 @@ impl World {
         with_encoder!(self, encoder => self.drop_relation_with_encoder::<R>(entity, target, &mut encoder))
     }
 
-    /// Adds relation between two entities to the [`World`]
-    pub fn drop_relation_with_encoder<R>(
+    /// Drops relation between two entities in the [`World`].
+    pub(crate) fn drop_relation_with_encoder<R>(
         &mut self,
         entity: EntityId,
         target: EntityId,
@@ -917,13 +1111,15 @@ impl World {
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
         if let Ok(c) = self.query_one::<&mut OriginComponent<R>>(entity) {
-            c.remove(entity, target, encoder);
+            c.remove_relation(entity, target, encoder);
         }
 
         Ok(())
     }
 
     /// Queries components from specified entity.
+    ///
+    /// This method works only for stateless query types.
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
@@ -936,6 +1132,8 @@ impl World {
     }
 
     /// Queries components from specified entity.
+    ///
+    /// This method accepts query instance to support stateful queries.
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
@@ -980,7 +1178,11 @@ impl World {
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
-    /// This method only works with immutable queries.
+    /// This method works only for stateless query types.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::into_iter`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::for_each`].
     #[inline]
     pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
     where
@@ -992,7 +1194,11 @@ impl World {
 
     /// Queries the world to iterate over entities and components specified by the query type.
     ///
-    /// This method only works with immutable queries.
+    /// This method accepts query instance to support stateful queries.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::into_iter`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::for_each`].
     #[inline]
     pub fn query_with<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
     where
@@ -1001,7 +1207,9 @@ impl World {
         QueryRef::new(self, (query,), ())
     }
 
-    /// Starts building immutable query.
+    /// Starts building new query.
+    ///
+    /// Returned query matches all entities and yields `()` for every one of them.
     #[inline]
     pub fn new_query<'a>(&'a self) -> QueryRef<'a, (), ()> {
         QueryRef::new(self, (), ())
@@ -1010,7 +1218,7 @@ impl World {
     /// Returns current world epoch.
     ///
     /// This value can be modified concurrently if [`&World`] is shared.
-    /// It increases monotonically, so returned value can be safely assumed as a lower bound.
+    /// As it increases monotonically, returned value can be safely assumed as a lower bound.
     #[inline]
     pub fn epoch(&self) -> EpochId {
         self.epoch.current()
@@ -1022,7 +1230,7 @@ impl World {
         &self.epoch
     }
 
-    /// Attempts to check if specified entity has component of specified type.
+    /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
@@ -1031,7 +1239,7 @@ impl World {
         Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
     }
 
-    /// Checks if specified entity is still alive.
+    /// Checks if entity is alive.
     #[inline]
     pub fn is_alive(&self, entity: EntityId) -> bool {
         self.entities.get_location(entity).is_some()
@@ -1356,7 +1564,7 @@ pub struct SpawnBatch<'a, I> {
     epoch: EpochId,
     archetype_idx: u32,
     archetype: &'a mut Archetype,
-    entities: &'a mut Entities,
+    entities: &'a mut EntitySet,
 }
 
 impl<B, I> SpawnBatch<'_, I>

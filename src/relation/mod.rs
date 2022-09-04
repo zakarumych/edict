@@ -121,7 +121,7 @@ impl<R> OriginComponent<R>
 where
     R: Relation,
 {
-    pub(crate) fn new(target: EntityId, relation: R) -> Self {
+    pub fn new(target: EntityId, relation: R) -> Self {
         match R::EXCLUSIVE {
             false => OriginComponent {
                 non_exclusive: ManuallyDrop::new(vec![Origin { target, relation }]),
@@ -132,7 +132,7 @@ where
         }
     }
 
-    pub(crate) fn add(
+    pub fn add(
         &mut self,
         entity: EntityId,
         target: EntityId,
@@ -162,7 +162,7 @@ where
         }
     }
 
-    pub(crate) fn remove(
+    pub fn remove_relation(
         &mut self,
         entity: EntityId,
         target: EntityId,
@@ -173,7 +173,6 @@ where
                 let origins = unsafe { &mut *self.non_exclusive };
                 for idx in 0..origins.len() {
                     if origins[idx].target == target {
-                        Self::drop_one(&mut origins[idx], entity, encoder);
                         origins.swap_remove(idx);
                         if origins.is_empty() {
                             encoder.remove::<Self>(entity);

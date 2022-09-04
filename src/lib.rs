@@ -49,6 +49,11 @@
 //!   Those methods require pre-registration of the component type. If type was not registered - method panics.
 //!   Both explicit registration with [`WorldBuilder`] and implicit registration via insertion method with [`Component`] type bound is enough.
 //!
+//! * [`System`] trait and [`IntoSystem`] implemented for functions if argument types implement [`FnArg`].
+//!   This way practically any system can be defined as a function.
+//!
+//! * [`Scheduler`] that can run [`System`]s in parallel using provided executor.
+//!
 //! [`Send`]: core::marker::Send
 //! [`!Send`]: core::marker::Send
 //! [`Sync`]: core::marker::Sync
@@ -61,6 +66,10 @@
 //! [`Component`]: edict::component::Component
 //! [`World::epoch`]: edict::world::World::epoch
 //! [`Relation`]: edict::relation::Relation
+//! [`System`]: edict::system::System
+//! [`IntoSystem`]: edict::system::IntoSystem
+//! [`FnArg`]: edict::system::FnArg
+//! [`Scheduler`]: edict::scheduler::Scheduler
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
@@ -158,3 +167,8 @@ mod test;
 pub mod private {
     pub use alloc::vec::Vec;
 }
+
+#[doc(hidden)]
+pub struct ExampleComponent;
+
+impl component::Component for ExampleComponent {}

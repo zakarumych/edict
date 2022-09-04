@@ -35,7 +35,7 @@ impl EntityId {
     /// assert_eq!(world.is_alive(id), false);
     /// ```
     pub fn dangling() -> Self {
-        EntityId::new(0, invalid_gen())
+        EntityId::new(u32::MAX, invalid_gen())
     }
 
     /// Gets 64-bit integer that can be converted back to equal `EntityId`.
@@ -53,12 +53,12 @@ impl EntityId {
     }
 
     /// Returns generation part of the entity id.
-    pub(crate) fn gen(&self) -> NonZeroU32 {
+    pub fn gen(&self) -> NonZeroU32 {
         unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
     }
 
     /// Returns id part of the entity id.
-    pub(crate) fn id(&self) -> u32 {
+    pub fn id(&self) -> u32 {
         self.value.get() as u32
     }
 }

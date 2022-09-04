@@ -735,6 +735,20 @@ impl ComponentRegistry {
         }
     }
 
+    pub fn ensure_component_registered<T>(&mut self)
+    where
+        T: Component,
+    {
+        self.get_or_register_raw(ComponentInfo::of::<T>());
+    }
+
+    pub fn ensure_external_registered<T>(&mut self)
+    where
+        T: 'static,
+    {
+        self.get_or_register_raw(ComponentInfo::external::<T>());
+    }
+
     pub fn register_component<'a, T>(&'a mut self) -> ComponentInfoRef<'a, T>
     where
         T: Component,

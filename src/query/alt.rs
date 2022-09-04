@@ -15,8 +15,8 @@ use crate::{
 
 use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch};
 
-/// Item type that `Alt` yields.
-/// Wraps `&mut T` and implements `DerefMut` to `T`.
+/// Item type that [`Alt`] yields.
+/// Wraps `&mut T` and implements [`DerefMut`] to `T`.
 /// Bumps component epoch on dereference.
 #[derive(Debug)]
 pub struct RefMut<'a, T: ?Sized> {
@@ -46,7 +46,7 @@ impl<T> DerefMut for RefMut<'_, T> {
     }
 }
 
-/// `Fetch` type for the `Alt` query.
+/// [`Fetch`] type for the [`Alt`] query.
 pub struct FetchAlt<'a, T> {
     epoch: EpochId,
     ptr: NonNull<T>,

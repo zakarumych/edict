@@ -16,6 +16,7 @@ pub use self::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
+    entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
     iter::QueryIter,
@@ -27,6 +28,7 @@ pub use self::{
 
 mod alt;
 mod borrow;
+mod entities;
 mod fetch;
 mod filter;
 mod iter;
@@ -53,7 +55,7 @@ pub trait IntoQuery {
     type Query: Query;
 }
 
-/// HRKT for `Query` trait.
+/// HRKT for [`Query`] trait.
 pub trait QueryFetch<'a> {
     /// Item type this query type yields.
     type Item: 'a;
@@ -65,7 +67,7 @@ pub trait QueryFetch<'a> {
 
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
-/// references to the components and optionally `EntityId` to address same components later.
+/// references to the components and optionally [`EntityId`] to address same components later.
 pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// Returns what kind of access the query performs on the component type.
     fn access(&self, ty: TypeId) -> Option<Access>;
@@ -89,12 +91,11 @@ pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
 ///
 /// # Safety
 ///
-/// `Query::mutate` must return `false`.
-/// `Query` must not borrow components mutably.
-/// `Query` must not modify entities versions.
+/// [`Query`] must not borrow components mutably.
+/// [`Query`] must not modify entities versions.
 pub unsafe trait ImmutableQuery: Query {}
 
-/// Type alias for items returned by the query type.
+/// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as QueryFetch<'a>>::Item;
 
 /// Merge two optional access values.

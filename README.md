@@ -55,6 +55,11 @@ Written in Rust by your fellow 🦀
   Those methods require pre-registration of the component type. If type was not registered - method panics.
   Both explicit registration with [`WorldBuilder`] and implicit registration via insertion method with [`Component`] type bound is enough.
 
+* [`System`] trait and [`IntoSystem`] implemented for functions if argument types implement [`FnArg`].
+  This way practically any system can be defined as a function.
+
+* [`Scheduler`] that can run [`System`]s in parallel using provided executor.
+
 ### no_std support
 
 `edict` can be used in `no_std` environment but requires `alloc`.
@@ -75,6 +80,10 @@ and optionally enable `"std"` if needed.
 [`World::epoch`]: https://docs.rs/edict/latest/edict/world/struct.World.html#method.epoch
 [`Relation`]: https://docs.rs/edict/latest/edict/relation/trait.Relation.html
 [`WorldBuilder`]: https://docs.rs/edict/latest/edict/world/struct.WorldBuilder.html
+[`System`]: https://docs.rs/edict/latest/edict/system/struct.System.html
+[`IntoSystem`]: https://docs.rs/edict/latest/edict/system/struct.IntoSystem.html
+[`FnArg`]: https://docs.rs/edict/latest/edict/system/struct.FnArg.html
+[`Scheduler`]: https://docs.rs/edict/latest/edict/scheduler/struct.Scheduler.html
 
 ## License
 

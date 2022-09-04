@@ -9,7 +9,7 @@ use super::{
     PhantomQueryFetch,
 };
 
-/// `Fetch` type for the `&T` query.
+/// [`Fetch`] type for the `&T` query.
 
 pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,
@@ -106,10 +106,10 @@ unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn read<T>() -> PhantomData<&'static T>
+pub fn read<T>() -> PhantomData<fn() -> &'static T>
 where
     T: Sync,
-    for<'a> PhantomData<&'a T>: ImmutableQuery,
+    for<'a> PhantomData<fn() -> &'a T>: ImmutableQuery,
 {
     PhantomData
 }

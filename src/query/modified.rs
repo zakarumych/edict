@@ -16,8 +16,8 @@ use super::{
 
 /// Query over modified component.
 ///
-/// Should be used as either `Modified<&T>`, `Modified<&mut T>`
-/// or `Modified<Alt<T>>`.
+/// Should be used as either [`Modified<&T>`], [`Modified<&mut T>`]
+/// or [`Modified<Alt<T>>`].
 ///
 /// This is tracking query that uses epoch lower bound to filter out entities with unmodified components.
 pub struct Modified<T> {
@@ -39,7 +39,7 @@ impl<T> Modified<T> {
     }
 }
 
-/// `Fetch` type for the `Modified<&T>` query.
+/// [`Fetch`] type for the [`Modified<&T>`] query.
 pub struct ModifiedFetchRead<'a, T> {
     after_epoch: EpochId,
     ptr: NonNull<T>,
@@ -154,7 +154,7 @@ where
 
 unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
 
-/// `Fetch` type for the `Modified<&mut T>` query.
+/// [`Fetch`] type for the [`Modified<&mut T>`] query.
 pub struct ModifiedFetchWrite<'a, T> {
     after_epoch: EpochId,
     epoch: EpochId,
@@ -279,7 +279,7 @@ where
     }
 }
 
-/// `Fetch` type for the `Modified<Alt<T>>` query.
+/// [`Fetch`] type for the [`Modified<Alt<T>>`] query.
 pub struct ModifiedFetchAlt<'a, T> {
     after_epoch: EpochId,
     epoch: EpochId,

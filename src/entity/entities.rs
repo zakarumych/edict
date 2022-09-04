@@ -47,13 +47,13 @@ impl fmt::Debug for EntityData {
     }
 }
 
-pub(crate) struct Entities {
+pub(crate) struct EntitySet {
     array: Vec<EntityData>,
     free_entity_ids: Vec<u32>,
     reserve_counter: AtomicI32,
 }
 
-impl fmt::Debug for Entities {
+impl fmt::Debug for EntitySet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entities")
             .field("entities", &self.array)
@@ -61,9 +61,9 @@ impl fmt::Debug for Entities {
     }
 }
 
-impl Entities {
+impl EntitySet {
     pub fn new() -> Self {
-        Entities {
+        EntitySet {
             array: Vec::new(),
             free_entity_ids: Vec::new(),
             reserve_counter: AtomicI32::new(0),

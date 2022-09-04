@@ -4,7 +4,7 @@ use crate::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
     },
-    entity::Entities,
+    entity::EntitySet,
     res::Res,
 };
 
@@ -31,7 +31,7 @@ impl WorldBuilder {
     pub fn build(self) -> World {
         World {
             epoch: EpochCounter::new(),
-            entities: Entities::new(),
+            entities: EntitySet::new(),
             archetypes: ArchetypeSet::new(),
             edges: Edges::new(),
             res: Res::new(),

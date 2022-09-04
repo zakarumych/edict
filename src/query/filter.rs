@@ -168,7 +168,7 @@ where
 }
 
 phantom_newtype! {
-    /// Filter that allows only archetypes with specified component.
+    /// [`Filter`] that allows only archetypes with specified component.
     pub struct With<T>
 }
 
@@ -210,7 +210,7 @@ where
 unsafe impl<T> ImmutablePhantomQuery for With<T> where T: 'static {}
 
 phantom_newtype! {
-    /// Filter that allows only archetypes without specified component.
+    /// [`Filter`] that allows only archetypes without specified component.
     pub struct Without<T>
 }
 

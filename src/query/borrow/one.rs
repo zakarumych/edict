@@ -8,7 +8,7 @@ use crate::{
     query::{Access, Fetch, ImmutableQuery, IntoQuery, Query, QueryFetch},
 };
 
-/// Query that fetches components with specific `TypeId` as specified borrow.
+/// [`Query`] that fetches components with specific `TypeId` as specified borrow.
 pub struct QueryBorrowOne<T> {
     id: TypeId,
     marker: PhantomData<fn() -> T>,
@@ -25,7 +25,7 @@ impl<T> QueryBorrowOne<T> {
     }
 }
 
-/// Fetch for [`QueryBorrowOne<&T>`].
+/// [`Fetch`] for [`QueryBorrowOne<&T>`].
 pub struct FetchBorrowOneRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -132,7 +132,7 @@ where
 
 unsafe impl<T> ImmutableQuery for QueryBorrowOne<&T> where T: Sync + ?Sized + 'static {}
 
-/// Fetch for [`QueryBorrowOne<&mut T>`].
+/// [`Fetch`] for [`QueryBorrowOne<&mut T>`].
 pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,

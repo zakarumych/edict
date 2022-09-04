@@ -1,3 +1,5 @@
+//! This example shows how to use entity reserving mechanism.
+
 use edict::{
     action::ActionEncoder, executor::MockExecutor, prelude::ActionEncoderSliceExt,
     scheduler::Scheduler, world::World,

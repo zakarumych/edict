@@ -102,7 +102,7 @@ impl ActionQueue for MyActionQueue {
 }
 
 #[derive(Clone, Copy)]
-pub struct NonNullWorld {
+struct NonNullWorld {
     ptr: NonNull<World>,
 }
 
@@ -209,10 +209,7 @@ impl Scheduler {
         world: &'scope mut World,
         executor: &impl ScopedExecutor<'scope>,
     ) -> &'later mut [ActionEncoder] {
-        if self.schedule_cache_id != Some(world.archetype_set_id()) {
-            // Re-schedule systems for new archetypes set.
-            self.reschedule(world);
-        }
+        self.reschedule(world);
 
         for system in &mut self.systems {
             *system.wait.get_mut() = system.dependencies;
@@ -278,6 +275,10 @@ impl Scheduler {
     }
 
     fn reschedule(&mut self, world: &World) {
+        if self.schedule_cache_id == Some(world.archetype_set_id()) {
+            return;
+        }
+
         for i in 0..self.systems.len() {
             // Reset dependencies.
             let a = &mut self.systems[i];

@@ -6,7 +6,7 @@ use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
 
-/// `Fetch` type for the `&mut T` query.
+/// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
     ptr: NonNull<T>,
     entity_epochs: NonNull<EpochId>,
@@ -118,10 +118,10 @@ where
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn write<T>() -> PhantomData<&'static mut T>
+pub fn write<T>() -> PhantomData<fn() -> &'static mut T>
 where
     T: Send,
-    for<'a> PhantomData<&'a mut T>: Query,
+    for<'a> PhantomData<fn() -> &'a mut T>: Query,
 {
     PhantomData
 }

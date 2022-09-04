@@ -1,21 +1,19 @@
-use core::{ops::Range, ptr::NonNull, slice};
+use core::{ops::Range, slice};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
-    entity::EntityId,
     epoch::EpochId,
 };
 
 use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
 
 /// Iterator over entities with a query `Q`.
-/// Yields `EntityId` and query items for every matching entity.
+/// Yields query items for every matching entity.
 pub struct QueryIter<'a, Q: Query> {
     query: Q,
     epoch: EpochId,
     archetypes: slice::Iter<'a, Archetype>,
     fetch: <Q as QueryFetch<'a>>::Fetch,
-    entities: NonNull<EntityId>,
     indices: Range<usize>,
     visit_chunk: bool,
 }
@@ -30,7 +28,6 @@ where
             epoch,
             archetypes: archetypes.iter(),
             fetch: <Q as QueryFetch<'a>>::Fetch::dangling(),
-            entities: NonNull::dangling(),
             indices: 0..0,
             visit_chunk: false,
         }
@@ -41,7 +38,7 @@ impl<'a, Q> Iterator for QueryIter<'a, Q>
 where
     Q: Query,
 {
-    type Item = (EntityId, QueryItem<'a, Q>);
+    type Item = QueryItem<'a, Q>;
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -59,7 +56,7 @@ where
     }
 
     #[inline]
-    fn next(&mut self) -> Option<(EntityId, QueryItem<'a, Q>)> {
+    fn next(&mut self) -> Option<QueryItem<'a, Q>> {
         loop {
             match self.indices.next() {
                 None => {
@@ -76,7 +73,6 @@ where
                         }
 
                         self.fetch = unsafe { self.query.fetch(archetype, self.epoch) };
-                        self.entities = NonNull::from(archetype.entities()).cast();
                         self.indices = 0..archetype.len();
                         break;
                     }
@@ -97,9 +93,8 @@ where
                         }
 
                         let item = unsafe { self.fetch.get_item(idx) };
-                        let entity = unsafe { *self.entities.as_ptr().add(idx) };
 
-                        return Some((entity, item));
+                        return Some(item);
                     }
                 }
             }
@@ -109,7 +104,7 @@ where
     fn fold<B, Fun>(mut self, init: B, mut f: Fun) -> B
     where
         Self: Sized,
-        Fun: FnMut(B, (EntityId, QueryItem<'a, Q>)) -> B,
+        Fun: FnMut(B, QueryItem<'a, Q>) -> B,
     {
         let mut acc = init;
         while let Some(idx) = self.indices.next() {
@@ -127,9 +122,8 @@ where
                     self.visit_chunk = false;
                 }
                 let item = unsafe { self.fetch.get_item(idx) };
-                let entity = unsafe { *self.entities.as_ptr().add(idx as usize) };
 
-                acc = f(acc, (entity, item));
+                acc = f(acc, item);
             }
         }
 
@@ -142,7 +136,6 @@ where
             }
             let mut fetch = unsafe { self.query.fetch(archetype, self.epoch) };
 
-            let entities = archetype.entities().as_ptr();
             let mut indices = 0..archetype.len();
 
             while let Some(idx) = indices.next() {
@@ -160,9 +153,8 @@ where
                         self.visit_chunk = false;
                     }
                     let item = unsafe { fetch.get_item(idx) };
-                    let entity = unsafe { *entities.add(idx) };
 
-                    acc = f(acc, (entity, item));
+                    acc = f(acc, item);
                 }
             }
         }

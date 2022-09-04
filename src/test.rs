@@ -1,6 +1,6 @@
 use crate::{
     component::Component,
-    query::With,
+    query::{Entities, With},
     relation::{Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
@@ -130,7 +130,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -141,7 +141,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -152,7 +152,7 @@ fn version_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -170,7 +170,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -181,7 +181,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -193,7 +193,7 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -211,7 +211,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -222,7 +222,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -236,7 +236,7 @@ fn version_insert_test() {
 
     assert_eq!(
         world
-            .new_query()
+            .query::<Entities>()
             .modified::<&U32>(epoch)
             .into_iter()
             .collect::<Vec<_>>(),
@@ -259,14 +259,14 @@ fn test_relation() {
     let a = world.spawn(());
     let b = world.spawn(());
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -276,7 +276,7 @@ fn test_relation() {
     world.add_relation(a, A, a).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -286,7 +286,7 @@ fn test_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(a, e);
@@ -298,7 +298,7 @@ fn test_relation() {
     world.add_relation(a, A, b).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -309,7 +309,7 @@ fn test_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert!(a == e || b == e);
@@ -320,14 +320,14 @@ fn test_relation() {
 
     world.despawn(a).unwrap();
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -350,14 +350,14 @@ fn test_exclusive_relation() {
     let a = world.spawn(());
     let b = world.spawn(());
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -367,7 +367,7 @@ fn test_exclusive_relation() {
     world.add_relation(a, A, a).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -377,7 +377,7 @@ fn test_exclusive_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(a, e);
@@ -389,7 +389,7 @@ fn test_exclusive_relation() {
     world.add_relation(a, A, b).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -399,7 +399,7 @@ fn test_exclusive_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(b, e);
@@ -411,7 +411,7 @@ fn test_exclusive_relation() {
     world.add_relation(a, A, a).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -421,7 +421,7 @@ fn test_exclusive_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(a, e);
@@ -432,14 +432,14 @@ fn test_exclusive_relation() {
 
     world.despawn(a).unwrap();
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -462,14 +462,14 @@ fn test_symmetric_relation() {
     let a = world.spawn(());
     let b = world.spawn(());
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -479,7 +479,7 @@ fn test_symmetric_relation() {
     world.add_relation(a, A, a).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -489,7 +489,7 @@ fn test_symmetric_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(a, e);
@@ -500,14 +500,14 @@ fn test_symmetric_relation() {
 
     world.despawn(a).unwrap();
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -519,7 +519,7 @@ fn test_symmetric_relation() {
     world.add_relation(a, A, b).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert!(a == e || b == e);
@@ -529,7 +529,7 @@ fn test_symmetric_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert!(a == e || b == e);
@@ -540,14 +540,14 @@ fn test_symmetric_relation() {
 
     world.despawn(a).unwrap();
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -570,14 +570,14 @@ fn test_symmetric_exclusive_relation() {
     let a = world.spawn(());
     let b = world.spawn(());
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
@@ -587,7 +587,7 @@ fn test_symmetric_exclusive_relation() {
     world.add_relation(a, A, a).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert_eq!(a, e);
@@ -597,7 +597,7 @@ fn test_symmetric_exclusive_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert_eq!(a, e);
@@ -609,7 +609,7 @@ fn test_symmetric_exclusive_relation() {
     world.add_relation(a, A, b).unwrap();
 
     for (e, origins) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         assert!(a == e || b == e);
@@ -619,7 +619,7 @@ fn test_symmetric_exclusive_relation() {
     }
 
     for (e, targets) in world
-        .new_query()
+        .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {
         assert!(a == e || b == e);
@@ -630,14 +630,14 @@ fn test_symmetric_exclusive_relation() {
 
     world.despawn(a).unwrap();
 
-    for (_e, _origins) in world
+    for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
     {
         panic!()
     }
 
-    for (_e, _targets) in world
+    for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
     {

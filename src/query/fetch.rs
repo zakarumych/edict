@@ -1,7 +1,7 @@
 use crate::archetype::chunk_idx;
 
-/// This type can be used in `Fetch` implementation
-/// to assert that `Fetch` API is used correctly.
+/// This type can be used in [`Fetch`] implementation
+/// to assert that [`Fetch`] API is used correctly.
 /// Should be used only in debug mode.
 #[derive(Clone, Copy)]
 pub struct VerifyFetch {

@@ -9,7 +9,7 @@ use crate::{
     query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
 };
 
-/// Query that borrows from components.
+/// [`PhantomQuery`] that borrows from components.
 pub struct QueryBorrowAll<T> {
     marker: PhantomData<fn() -> T>,
 }
@@ -21,7 +21,7 @@ struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
     _borrow: AtomicBorrow<'a>,
 }
 
-/// Fetch for [`QueryBorrowAll<&T>`].
+/// [`Fetch`] for [`QueryBorrowAll<&T>`].
 pub struct FetchBorrowAllRead<'a, T: ?Sized> {
     components: Vec<FetchBorrowAllReadComponent<'a, T>>,
     marker: PhantomData<fn() -> T>,

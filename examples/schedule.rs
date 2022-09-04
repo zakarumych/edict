@@ -49,13 +49,13 @@ fn system_a(
 ) {
     *counter += 1;
     println!("Counter: {}", *counter);
-    for (_, (&mut A, b, dbg)) in q {
+    for (&mut A, b, dbg) in q {
         println!("A + {:?} + {:?}", b, dbg);
     }
 }
 
 fn system_b(q: QueryRef<Modified<&B>>) {
-    for (_, &B) in q {
+    for &B in q {
         println!("Modified B");
     }
 }

@@ -1,6 +1,7 @@
 use edict::{
     component::Component,
     epoch::EpochId,
+    query::Entities,
     relation::Relation,
     relation::{relates_to, Relates},
     world::WorldBuilder,
@@ -46,7 +47,7 @@ fn main() {
 
     world.add_relation(a, ChildOf, b).unwrap();
 
-    for (e, ChildOf) in world.new_query().relates_to::<&ChildOf>(b) {
+    for (e, ChildOf) in world.query::<Entities>().relates_to::<&ChildOf>(b) {
         println!("{} is child of {}", e, b);
     }
 
@@ -85,7 +86,7 @@ fn main() {
 
     world.add_relation(a, Enemy, b).unwrap();
 
-    let q = world.new_query().relates::<&Enemy>();
+    let q = world.query::<Entities>().relates::<&Enemy>();
     for (e, enemies) in q {
         println!(
             "{} is enemy of {:?}",
@@ -96,7 +97,7 @@ fn main() {
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.new_query().relates::<&Enemy>() {
+    for (e, enemies) in world.query::<Entities>().relates::<&Enemy>() {
         println!(
             "{} is enemy of {:?}",
             e,
@@ -107,13 +108,13 @@ fn main() {
     let since = EpochId::start();
 
     let query = world
-        .query::<&A>()
+        .query::<(Entities, &A)>()
         .with::<B>()
         .modified::<&C>(since)
         .relates_to::<&ChildOf>(b)
         .filter(relates_to::<Likes>(c));
 
-    for (e, (a, c, child_of)) in query {
+    for ((e, a), c, child_of) in query {
         drop((e, a, c, child_of));
     }
 

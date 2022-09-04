@@ -10,6 +10,7 @@ impl FnArg for &mut ActionEncoder {
     type Cache = ActionEncoderCache;
 }
 
+/// [`FnArgCache`] for `&mut ActionEncoder` argument.
 #[derive(Default)]
 pub struct ActionEncoderCache {
     encoder: Option<ActionEncoder>,

@@ -172,3 +172,6 @@ pub mod private {
 pub struct ExampleComponent;
 
 impl component::Component for ExampleComponent {}
+
+#[doc(inline)]
+pub use self::prelude::*;

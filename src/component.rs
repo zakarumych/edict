@@ -1,4 +1,4 @@
-//! This module implements [`Component`] trait for all suitable types.
+//! This module defines [`Component`] trait and related types.
 
 use core::{
     alloc::Layout,
@@ -325,7 +325,17 @@ impl ComponentBorrow {
     }
 }
 
-/// Trait that is implemented for all types that can act as a component.
+/// Defines component properties and behavior.
+/// Types may implement this trait to act as components and support implicit self-registration.
+///
+/// Types that do not implement this trait may still be used as components.
+/// They are called "external", must be registered manually and require usage of
+/// [`World::spawn_external`], [`World::insert_external`], and [`World::insert_external_bundle`] methods that would panic
+/// when component type is not yet registered. Even if the type happens to implement [`Component`] trait.
+///
+/// [`World::spawn_external`]: edict::world::World::spawn_external
+/// [`World::insert_external`]: edict::world::World::insert_external
+/// [`World::insert_external_bundle`]: edict::world::World::insert_external_bundle
 pub trait Component: Sized + 'static {
     /// Returns name of the component type.
     #[inline]
@@ -581,7 +591,7 @@ impl<T> SetHook<T> for ExternalSetHook {
     }
 }
 
-/// Reference to [`ComponentInfo`] registered to [`ComponentRegistry`].
+/// Reference to registered [`ComponentInfo`].
 /// Allows user to setup custom drop and set hooks.
 pub struct ComponentInfoRef<
     'a,

@@ -1,5 +1,10 @@
-//! This module implements the [`Bundle`] and [`DynanicBundle`] traits,
-//! which enables to build entities efficiently.
+//! This module defines [`Bundle`], [`ComponentBundle`], [`DynamicBundle`] and [`DynamicComponentBundle`] traits.
+//!
+//! Tuples of up to 26 elements implement [`Bundle`] and [`DynamicBundle`] if all elements are `'static`.
+//! They additionally implement [`ComponentBundle`] and [`DynamicComponentBundle`] if all elements implement [`Component`].
+//!
+//! Bundles can be used to spawn entities with a set of components or insert multiple components at once.
+//! This is more efficient than spawning an entity and then inserting components one by one.
 
 use core::{
     alloc::Layout,
@@ -20,12 +25,11 @@ use crate::component::{Component, ComponentInfo};
 ///
 /// Implementors must uphold requirements:
 /// Bundle instance must have a set components.
-/// [`valid`] must return true only if components are not repeated.
-/// [`key`] must return unique value for a set of components or `None`
-/// [`contains_id`] must return true if component type with specified id is contained in bundle.
-/// [`with_ids`] must call provided function with a list of type ids of all contained components.
-/// [`with_components`] must call provided function with a list of component infos of all contained components.
-/// [`put`] must call provided function for each component with pointer to component value, its type id and size.
+/// [`DynamicBundle::valid`] must return true only if components are not repeated.
+/// [`DynamicBundle::key`] must return unique value for a set of components or `None`
+/// [`DynamicBundle::contains_id`] must return true if component type with specified id is contained in bundle.
+/// [`DynamicBundle::with_ids`] must call provided function with a list of type ids of all contained components.
+/// [`DynamicBundle::put`] must call provided function for each component with pointer to component value, its type id and size.
 pub unsafe trait DynamicBundle {
     /// Returns `true` if given bundle is valid.
     fn valid(&self) -> bool;
@@ -35,7 +39,7 @@ pub unsafe trait DynamicBundle {
         None
     }
 
-    /// Returns true if bundle has speicifed type id.
+    /// Returns true if bundle has specified type id.
     fn contains_id(&self, id: TypeId) -> bool;
 
     /// Calls provided closure with slice of ids of types that this bundle contains.
@@ -48,6 +52,10 @@ pub unsafe trait DynamicBundle {
 
 /// Possibly dynamic collection of components that may be inserted into the `World`.
 /// Where all elements implement `Component` and so support auto-registration.
+///
+/// # Safety
+///
+/// [`DynamicComponentBundle::with_components`] must call provided function with a list of component infos of all contained components.
 pub unsafe trait DynamicComponentBundle: DynamicBundle {
     /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
@@ -59,11 +67,11 @@ pub unsafe trait DynamicComponentBundle: DynamicBundle {
 ///
 /// Implementors must uphold requirements:
 /// Bundle instance must have a set components.
-/// [`valid`] must return true only if components are not repeated.
-/// [`static_key`] must return unique value for a set of components.
-/// [`static_contains_id`] must return true if component type with specified id is contained in bundle.
-/// [`static_with_ids`] must call provided function with a list of type ids of all contained components.
-/// [`static_with_components`] must call provided function with a list of component infos of all contained components.
+/// [`Bundle::static_valid`] must return true only if components are not repeated.
+/// [`Bundle::static_key`] must return unique value for a set of components.
+/// [`Bundle::static_contains_id`] must return true if component type with specified id is contained in bundle.
+/// [`Bundle::static_with_ids`] must call provided function with a list of type ids of all contained components.
+
 pub unsafe trait Bundle: DynamicBundle {
     /// Returns `true` if given bundle is valid.
     fn static_valid() -> bool;
@@ -80,6 +88,10 @@ pub unsafe trait Bundle: DynamicBundle {
 
 /// Static collection of components that may be inserted into the `World`.
 /// Where all elements implement `Component` and so support auto-registration.
+///
+/// # Safety
+///
+/// [`ComponentBundle::static_with_components`] must call provided function with a list of component infos of all contained components.
 pub unsafe trait ComponentBundle: Bundle + DynamicComponentBundle {
     /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
@@ -250,9 +262,10 @@ macro_rules! for_tuple {
 
 for_tuple!();
 
-/// Builder for an entity.
-/// Entity can be spawned with entity builder.
-/// See [`World::spawn`] and [`World::spawn_owning`].
+/// Build entities when exact set of components is not known at compile time.
+///
+/// Components can be added to [`EntityBuilder`] at runtime using [`EntityBuilder::add`] or [`EntityBuilder::with`].
+/// [`EntityBuilder`] then can be used to insert components into entity or spawn a new entity.
 pub struct EntityBuilder {
     ptr: NonNull<u8>,
     layout: Layout,

@@ -113,22 +113,22 @@ fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
 
 /// Container for entities with any sets of components.
 ///
-/// Entities can be spawned in the `World` with handle `Entity` returned,
+/// Entities can be spawned in the [`World`] with handle [`EntityId`] returned,
 /// that can be used later to access that entity.
 ///
-/// `Entity` handle can be downgraded to `EntityId`.
+/// [`EntityId`] handle can be downgraded to [`EntityId`].
 ///
-/// Entity would be despawned after last `Entity` is dropped.
+/// Entity would be despawned after last [`EntityId`] is dropped.
 ///
 /// Entity's set of components may be modified in any way.
 ///
-/// Entities can be fetched directly, using `Entity` or `EntityId`
+/// Entities can be fetched directly, using [`EntityId`] or [`EntityId`]
 /// with different guarantees and requirements.
 ///
 /// Entities can be efficiently queried from `World` to iterate over all entities
 /// that match query requirements.
 ///
-/// Internally `World` manages entities generations,
+/// Internally [`World`] manages entities generations,
 /// maps entity to location of components in archetypes,
 /// moves components of entities between archetypes,
 /// spawns and despawns entities.
@@ -239,7 +239,7 @@ impl World {
     ///
     /// The entity will be materialized before first mutation on the world happens.
     /// Until then entity is alive and belongs to empty archetype.
-    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`EntityId`] handle.
     ///
     /// # Example
     ///
@@ -257,9 +257,9 @@ impl World {
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`Entity`] handle to the newly spawned entity.
+    /// Returns [`EntityId`] handle to the newly spawned entity.
     /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`EntityId`] handle.
     ///
     /// # Example
     ///
@@ -280,9 +280,9 @@ impl World {
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`Entity`] handle to the newly spawned entity.
+    /// Returns [`EntityId`] handle to the newly spawned entity.
     /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with returned [`Entity`] handle.
+    /// Entity will be alive until [`World::despawn`] is called with returned [`EntityId`] handle.
     ///
     /// All components from the bundle must be previously registered.
     /// If component in bundle implements [`Component`] it could be registered implicitly
@@ -1219,6 +1219,8 @@ impl World {
     ///
     /// This value can be modified concurrently if [`&World`] is shared.
     /// As it increases monotonically, returned value can be safely assumed as a lower bound.
+    ///
+    /// [`&World`]: World
     #[inline]
     pub fn epoch(&self) -> EpochId {
         self.epoch.current()
@@ -1315,7 +1317,7 @@ impl World {
     /// For example calling this method from "main" thread is always safe.
     ///
     /// If `T` is `Sync` then this method is also safe.
-    /// In this case prefer to use [`get`] method instead.
+    /// In this case prefer to use [`World::get_resource`] method instead.
     ///
     /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
     /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
@@ -1353,7 +1355,7 @@ impl World {
     /// For example calling this method from "main" thread is always safe.
     ///
     /// If `T` is `Send` then this method is also safe.
-    /// In this case prefer to use [`get_mut`] method instead.
+    /// In this case prefer to use [`World::get_resource_mut`] method instead.
     ///
     /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
     /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
@@ -1811,7 +1813,7 @@ impl PartialEq<MissingComponents> for EntityError {
     }
 }
 
-/// Error returned by [`query_one_*`] method family
+/// Error returned by [`World::query_one`] method family
 /// when query is not satisfied by the entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QueryOneError {

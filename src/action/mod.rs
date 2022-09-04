@@ -1,9 +1,10 @@
 //! This module contains definitions for action recording.
 //! Actions can be recorded into [`ActionEncoder`] and executed later onto the [`World`].
 //! Two primary use cases for actions are:
-//! * Deferring [`World`] mutations when [`World`] is borrowed immutably.
+//! * Deferring [`World`] mutations when [`World`] is borrowed immutably, like in most [`Systems`]
 //! * Generating commands in custom component drop-glue.
 //!
+//! [`Systems`]: edict::system::System
 
 use core::any::TypeId;
 
@@ -32,8 +33,14 @@ enum Action {
     Fun(ActionFn<'static>),
 }
 
-/// Encoder provided to the drop-glue.
-/// Custom drop-glue may record drop-actions to it.
+/// Encoder for actions that require mutable access to [`World`],
+/// like spawning/despawning entities and inserting/removing/dropping components and relations.
+///
+/// Systems may declare `&mut ActionEncoder` argument to record actions that will be executed later.
+/// Each system will get its own `ActionEncoder` instance, so no conflicts will be caused by this argument.
+/// In contract `&mut World` argument will cause system to conflict with all other systems, reducing parallelism.
+///
+/// Provided to component and relation hooks.
 #[repr(transparent)]
 pub struct ActionEncoder {
     actions: VecDeque<Action>,

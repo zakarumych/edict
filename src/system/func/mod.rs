@@ -53,8 +53,8 @@ pub unsafe trait FnArgGet<'a> {
 ///
 /// # Safety
 ///
-/// If [`FnArgFetch::is_local`] returns false [`FnArgFetch::extract_unchecked`] must be safe to call from any thread.
-/// Otherwise [`FnArgFetch::extract_unchecked`] must be safe to call from local thread.
+/// If [`FnArgCache::is_local`] returns false [`FnArgGet::get_unchecked`] must be safe to call from any thread.
+/// Otherwise [`FnArgGet::get_unchecked`] must be safe to call from local thread.
 pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + Send + 'static {
     /// Returns `true` for local arguments that can be used only for local function-systems.
     fn is_local(&self) -> bool;

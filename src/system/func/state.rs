@@ -8,20 +8,24 @@ use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::Wor
 
 use super::{FnArg, FnArgCache, FnArgGet};
 
-/// Bare state for function systems.
+/// State for function systems.
+/// Value inside [`State`] is preserved between system runs.
 ///
 /// The difference between [`ResMut`] and [`State`]
 /// is that [`State`] is not stored in the [`World`]
 /// and is not shared between [`System`]s.
-/// Instead, each [`System`] has its own cached [`State`]
+/// Instead each [`System`] gets its own cached instance of [`State`]
 /// which is automatically initialized with [`Default`]
 /// on first access.
+///
+/// [`ResMut`]: super::res::ResMut
+/// [`System`]: edict::system::System
 #[repr(transparent)]
 pub struct State<'a, T> {
     value: &'a mut T,
 }
 
-/// [`FnArgFetch`] for [`State`] argument.
+/// [`FnArgCache`] for [`State`] argument.
 #[derive(Default)]
 pub struct StateCache<T> {
     value: T,

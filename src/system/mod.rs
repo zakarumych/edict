@@ -7,9 +7,9 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{action::ActionEncoder, archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
-    FnArg, FnArgCache, FnArgGet, FromWorld, IsFunctionSystem, QueryArg, QueryArgCache, QueryArgGet,
-    QueryRefCache, Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync,
-    ResNoSyncCache, State, StateCache,
+    ActionEncoderCache, FnArg, FnArgCache, FnArgGet, FromWorld, IsFunctionSystem, QueryArg,
+    QueryArgCache, QueryArgGet, QueryRefCache, Res, ResCache, ResMut, ResMutCache, ResMutNoSend,
+    ResMutNoSendCache, ResNoSync, ResNoSyncCache, State, StateCache,
 };
 
 /// A queue of `ActionEncoder` instances.
@@ -37,12 +37,18 @@ impl ActionQueue for Vec<ActionEncoder> {
 ///
 /// [`System::is_local`] method returns `true` for local systems.
 /// Such system may be run only on thread where [`World`] lives.
-/// [`System::run`] call is unsafe, as running it outside local thread is unsound for local systems.
+///
+/// [`System::run_unchecked`] call is unsafe:
+/// * running local system outside local thread may cause undefined behavior.
+/// * running system for which [`System::world_access`] returns [`Some(Access::Write)`]
+///   in parallel with system for which [`System::world_access`] returns [`Some(_)`] may cause undefined behavior.
 ///
 /// # Safety
 ///
 /// If [`System::is_local()`] returns false [`System::run_unchecked`] must be safe to call from any thread.
 /// Otherwise [`System::run_unchecked`] must be safe to call from local thread.
+/// [`System::run_unchecked`] must be safe to call in parallel with any system if [`System::world_access`] returns [`None`].
+/// [`System::run_unchecked`] must be safe to call in parallel with other systems if for all of them [`System::world_access`] returns [`Some(Access::Read)`].
 pub unsafe trait System {
     /// Returns `true` for local systems that can be run only on thread where [`World`] lives.
     fn is_local(&self) -> bool;

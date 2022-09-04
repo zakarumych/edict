@@ -68,6 +68,8 @@ pub trait QueryFetch<'a> {
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
 /// references to the components and optionally [`EntityId`] to address same components later.
+///
+/// [`EntityId`]: edict::entity::EntityId
 pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// Returns what kind of access the query performs on the component type.
     fn access(&self, ty: TypeId) -> Option<Access>;

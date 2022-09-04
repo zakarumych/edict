@@ -151,7 +151,7 @@ impl VerifyFetch {
 ///
 /// 1:
 /// ```ignore
-/// `Fetch::dangling()`;
+/// Fetch::dangling();
 /// ```
 ///
 /// 2:

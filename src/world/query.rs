@@ -1,4 +1,4 @@
-use core::{any::TypeId, cell::Cell, marker::PhantomData, mem::ManuallyDrop};
+use core::{any::TypeId, cell::Cell, convert::Infallible, marker::PhantomData, mem::ManuallyDrop};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
@@ -6,8 +6,8 @@ use crate::{
     entity::{EntityId, EntitySet},
     query::{
         Fetch, Filter, FilteredQuery, ImmutableQuery, IntoFilter, IntoQuery, Modified, MutQuery,
-        PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter,
-        With, Without,
+        PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryFetch, QueryItem,
+        QueryIter, With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -540,7 +540,7 @@ where
     /// Calls provided closure with query item and its result or error.
     ///
     /// This method does not allow references from item to escape the closure.
-    /// This allows it to lock only archetype to which entity belongs for the duration of the closure call.
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
     pub fn for_one<Fun, R>(&mut self, entity: EntityId, f: Fun) -> Result<R, QueryOneError>
     where
         for<'b> Fun: FnOnce(QueryItem<'b, FilteredQuery<F::Filter, Q::Query>>) -> R,
@@ -548,7 +548,7 @@ where
         let epoch = self.epoch.next();
 
         if self.borrowed.get() {
-            for_one_pre_borrowed_impl(
+            for_one_pre_borrowed(
                 MutQuery::new(&mut self.filtered_query),
                 self.entities,
                 self.archetypes,
@@ -557,7 +557,7 @@ where
                 f,
             )
         } else {
-            for_one_impl(
+            for_one(
                 MutQuery::new(&mut self.filtered_query),
                 self.entities,
                 self.archetypes,
@@ -566,6 +566,45 @@ where
                 f,
             )
         }
+    }
+
+    /// Performs query from single entity.
+    /// Where query item is a reference to value the implements [`ToOwned`].
+    /// Returns item converted to owned value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_owned<T>(&mut self, entity: EntityId) -> Result<T::Owned, QueryOneError>
+    where
+        T: ToOwned + 'static,
+        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one(entity, |item| T::to_owned(item))
+    }
+
+    /// Performs query from single entity.
+    /// Where query item is a reference to value the implements [`Clone`].
+    /// Returns cloned item value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_cloned<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    where
+        T: Clone + 'static,
+        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one(entity, |item| T::clone(item))
+    }
+
+    /// Performs query from single entity.
+    /// Where query item is a reference to value the implements [`Copy`].
+    /// Returns copied item value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_copied<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    where
+        T: Copy + 'static,
+        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one(entity, |item| *item)
     }
 
     /// Returns iterator over query results.
@@ -618,6 +657,25 @@ where
         self.fold((), move |(), item| f(item));
     }
 
+    /// Calls a closure on each query item.
+    /// Breaks when closure returns `Err` and returns that value.
+    ///
+    /// This method does not allow references from items to escape the closure.
+    /// This allows it to lock only archetype which is currently iterated.
+    /// Yet this method won't release borrow locks if they are already acquired.
+    ///
+    /// For example if `Option<Component>` is used in query,
+    /// and closure receives `None` for some entity,
+    /// A query with `&mut Component` can be used inside the closure.
+    /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
+    #[inline]
+    pub fn try_for_each<E, Fun>(&mut self, mut f: Fun) -> Result<(), E>
+    where
+        Fun: for<'b> FnMut(QueryItem<'b, Q>) -> Result<(), E>,
+    {
+        self.try_fold((), move |(), item| f(item))
+    }
+
     /// Folds every query item into an accumulator by applying an operation, returning the final result.
     ///
     /// This method does not allow references from items to escape the closure.
@@ -629,29 +687,44 @@ where
     /// A query with `&mut Component` can be used inside the closure.
     /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
     #[inline]
-    pub fn fold<T, Fun>(&mut self, acc: T, f: Fun) -> T
+    pub fn fold<T, Fun>(&mut self, acc: T, mut f: Fun) -> T
     where
         Fun: for<'b> FnMut(T, QueryItem<'b, Q>) -> T,
     {
+        let res = self.try_fold(acc, |acc, item| Ok::<_, Infallible>(f(acc, item)));
+
+        match res {
+            Ok(acc) => acc,
+            Err(infallible) => match infallible {},
+        }
+    }
+
+    /// Folds every query item into an accumulator by applying an operation, returning the final result.
+    /// Breaks when closure returns `Err` and returns that value.
+    ///
+    /// This method does not allow references from items to escape the closure.
+    /// This allows it to lock only archetype which is currently iterated for the duration of the closure call.
+    /// Yet this method won't release borrow locks if they are already acquired.
+    ///
+    /// For example if `Option<Component>` is used in query,
+    /// and closure receives `None` for some entity,
+    /// A query with `&mut Component` can be used inside the closure.
+    /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
+    #[inline]
+    pub fn try_fold<T, E, Fun>(&mut self, acc: T, f: Fun) -> Result<T, E>
+    where
+        Fun: for<'b> FnMut(T, QueryItem<'b, Q>) -> Result<T, E>,
+    {
         let epoch = self.epoch.next();
 
-        if self.borrowed.get() {
-            fold_pre_borrowed_impl(
-                MutQuery::new(&mut self.filtered_query),
-                self.archetypes,
-                epoch,
-                acc,
-                f,
-            )
-        } else {
-            fold_impl(
-                MutQuery::new(&mut self.filtered_query),
-                self.archetypes,
-                epoch,
-                acc,
-                f,
-            )
-        }
+        try_fold(
+            MutQuery::new(&mut self.filtered_query),
+            self.archetypes,
+            epoch,
+            self.borrowed.get(),
+            acc,
+            f,
+        )
     }
 }
 
@@ -663,6 +736,7 @@ where
     type Item = QueryItem<'a, Q>;
     type IntoIter = QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>>;
 
+    #[inline]
     fn into_iter(self) -> QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>> {
         self.iter_mut()
     }
@@ -678,6 +752,7 @@ where
     type Item = QueryItem<'a, Q>;
     type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
 
+    #[inline]
     fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
         self.iter()
     }
@@ -692,12 +767,14 @@ impl<Q> QueryRelease<'_, Q>
 where
     Q: Query,
 {
+    #[inline]
     fn release(mut self) -> Q {
         self.do_release();
         let mut me = ManuallyDrop::new(self);
         unsafe { core::ptr::read(&mut me.query) }
     }
 
+    #[inline]
     fn do_release(&mut self) {
         unsafe {
             self.query.access_archetype(self.archetype, &|id, access| {
@@ -714,12 +791,13 @@ impl<Q> Drop for QueryRelease<'_, Q>
 where
     Q: Query,
 {
+    #[inline]
     fn drop(&mut self) {
         self.do_release();
     }
 }
 
-fn for_one_impl<Q, R, Fun>(
+fn for_one<Q, R, Fun>(
     query: Q,
     entities: &EntitySet,
     archetypes: &[Archetype],
@@ -769,7 +847,7 @@ where
     Ok(f(item))
 }
 
-fn for_one_pre_borrowed_impl<Q, R, Fun>(
+fn for_one_pre_borrowed<Q, R, Fun>(
     mut query: Q,
     entities: &EntitySet,
     archetypes: &[Archetype],
@@ -810,16 +888,35 @@ where
     Ok(f(item))
 }
 
-fn fold_impl<Q, T, Fun>(
+fn try_fold<Q, T, E, Fun>(
+    query: Q,
+    archetypes: &[Archetype],
+    epoch: EpochId,
+    borrowed: bool,
+    acc: T,
+    f: Fun,
+) -> Result<T, E>
+where
+    Q: Query,
+    Fun: FnMut(T, QueryItem<'_, Q>) -> Result<T, E>,
+{
+    if borrowed {
+        try_fold_pre_borrowed_impl(query, archetypes, epoch, acc, f)
+    } else {
+        try_fold_impl(query, archetypes, epoch, acc, f)
+    }
+}
+
+fn try_fold_impl<Q, T, E, Fun>(
     mut query: Q,
     archetypes: &[Archetype],
     epoch: EpochId,
     mut acc: T,
     mut f: Fun,
-) -> T
+) -> Result<T, E>
 where
     Q: Query,
-    Fun: FnMut(T, QueryItem<'_, Q>) -> T,
+    Fun: FnMut(T, QueryItem<'_, Q>) -> Result<T, E>,
 {
     for archetype in archetypes {
         if archetype.is_empty() {
@@ -859,25 +956,25 @@ where
                     visit_chunk = false;
                 }
                 let item = unsafe { fetch.get_item(idx) };
-                acc = f(acc, item);
+                acc = f(acc, item)?;
             }
         }
 
         query = guard.release();
     }
-    acc
+    Ok(acc)
 }
 
-fn fold_pre_borrowed_impl<Q, T, Fun>(
+fn try_fold_pre_borrowed_impl<Q, T, E, Fun>(
     mut query: Q,
     archetypes: &[Archetype],
     epoch: EpochId,
     mut acc: T,
     mut f: Fun,
-) -> T
+) -> Result<T, E>
 where
     Q: Query,
-    Fun: FnMut(T, QueryItem<'_, Q>) -> T,
+    Fun: FnMut(T, QueryItem<'_, Q>) -> Result<T, E>,
 {
     for archetype in archetypes {
         if archetype.is_empty() {
@@ -908,9 +1005,9 @@ where
                     visit_chunk = false;
                 }
                 let item = unsafe { fetch.get_item(idx) };
-                acc = f(acc, item);
+                acc = f(acc, item)?;
             }
         }
     }
-    acc
+    Ok(acc)
 }

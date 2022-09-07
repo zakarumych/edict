@@ -117,7 +117,7 @@ pub struct FilteredQuery<F, Q> {
 
 impl<'a, F, Q> QueryFetch<'a> for FilteredQuery<F, Q>
 where
-    F: Filter,
+    F: Query,
     Q: Query,
 {
     type Item = <Q as QueryFetch<'a>>::Item;
@@ -126,15 +126,15 @@ where
 
 impl<F, Q> IntoQuery for FilteredQuery<F, Q>
 where
-    F: Filter,
+    F: Query,
     Q: Query,
 {
     type Query = FilteredQuery<F, Q>;
 }
 
-impl<F, Q> Query for FilteredQuery<F, Q>
+unsafe impl<F, Q> Query for FilteredQuery<F, Q>
 where
-    F: Filter,
+    F: Query,
     Q: Query,
 {
     #[inline]
@@ -146,6 +146,9 @@ where
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         self.filter.skip_archetype(archetype) || self.query.skip_archetype(archetype)
     }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch<'a>(
@@ -187,7 +190,7 @@ where
     type Fetch = UnitFetch;
 }
 
-impl<T> PhantomQuery for With<T>
+unsafe impl<T> PhantomQuery for With<T>
 where
     T: 'static,
 {
@@ -198,8 +201,11 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
+        !archetype.has_component(TypeId::of::<T>())
     }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
@@ -229,7 +235,7 @@ where
     type Fetch = UnitFetch;
 }
 
-impl<T> PhantomQuery for Without<T>
+unsafe impl<T> PhantomQuery for Without<T>
 where
     T: 'static,
 {
@@ -240,8 +246,11 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        archetype.contains_id(TypeId::of::<T>())
+        archetype.has_component(TypeId::of::<T>())
     }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {

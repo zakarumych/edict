@@ -12,7 +12,7 @@ use super::{fetch::Fetch, Query, QueryFetch, QueryItem};
 pub struct QueryIter<'a, Q: Query> {
     query: Q,
     epoch: EpochId,
-    archetypes: slice::Iter<'a, Archetype>,
+    archetypes_iter: slice::Iter<'a, Archetype>,
     fetch: <Q as QueryFetch<'a>>::Fetch,
     indices: Range<usize>,
     visit_chunk: bool,
@@ -26,7 +26,7 @@ where
         QueryIter {
             query,
             epoch,
-            archetypes: archetypes.iter(),
+            archetypes_iter: archetypes.iter(),
             fetch: <Q as QueryFetch<'a>>::Fetch::dangling(),
             indices: 0..0,
             visit_chunk: false,
@@ -43,7 +43,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let upper = self
-            .archetypes
+            .archetypes_iter
             .clone()
             .fold(self.indices.len(), |acc, archetype| {
                 if self.query.skip_archetype(archetype) {
@@ -62,7 +62,7 @@ where
                 None => {
                     // move to the next archetype.
                     loop {
-                        let archetype = self.archetypes.next()?;
+                        let archetype = self.archetypes_iter.next()?;
 
                         if archetype.is_empty() {
                             continue;
@@ -127,7 +127,7 @@ where
             }
         }
 
-        for archetype in self.archetypes {
+        for archetype in self.archetypes_iter.by_ref() {
             if archetype.is_empty() {
                 continue;
             }

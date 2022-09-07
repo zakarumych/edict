@@ -34,8 +34,6 @@ fn main() {
     let mut world = World::new();
     let a = world.spawn((A { a: 1.0 },));
 
-    let () = world.query_one::<()>(a).unwrap();
-
     assert_eq!(
         world
             .new_query()

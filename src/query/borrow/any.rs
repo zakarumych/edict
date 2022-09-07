@@ -1,16 +1,14 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
-
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
 };
 
-/// [`PhantomQuery`] that borrows from components.
-pub struct QueryBorrowAny<T> {
-    marker: PhantomData<fn() -> T>,
+phantom_newtype! {
+    /// [`PhantomQuery`] that borrows from components.
+    pub struct QueryBorrowAny<T>
 }
 
 /// [`Fetch`] for [`QueryBorrowAny<&T>`].
@@ -18,7 +16,6 @@ pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
     borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
-    _borrow: AtomicBorrow<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyRead<'a, T>
@@ -33,7 +30,6 @@ where
             ptr: NonNull::dangling(),
             size: 0,
             borrow_fn: |_, _| unreachable!(),
-            _borrow: AtomicBorrow::dummy(),
         }
     }
 
@@ -74,7 +70,7 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<T> PhantomQuery for QueryBorrowAny<&T>
+unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -89,22 +85,31 @@ where
     }
 
     #[inline]
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        for (id, _) in archetype
+            .borrow_indices(TypeId::of::<T>())
+            .unwrap_unchecked()
+        {
+            f(*id, Access::Read);
+        }
+    }
+
+    #[inline]
     unsafe fn fetch(archetype: &Archetype, _epoch: EpochId) -> FetchBorrowAnyRead<T> {
-        let (cidx, bidx) = *archetype
+        let (id, idx) = *archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
             .get_unchecked(0);
 
-        let component = archetype.component(cidx);
-        debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
+        let component = archetype.component(id).unwrap_unchecked();
+        debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
 
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FetchBorrowAnyRead {
             ptr: data.ptr,
             size: component.layout().size(),
-            borrow_fn: component.borrows()[bidx].borrow(),
-            _borrow: borrow,
+            borrow_fn: component.borrows()[idx].borrow(),
         }
     }
 }
@@ -116,11 +121,9 @@ pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
     borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a mut ()>) -> &'a mut T,
-    marker: PhantomData<fn() -> T>,
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
     epoch: EpochId,
-    _borrow: AtomicBorrowMut<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyWrite<'a, T>
@@ -135,11 +138,9 @@ where
             ptr: NonNull::dangling(),
             size: 0,
             borrow_fn: |_, _| unreachable!(),
-            marker: PhantomData,
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
             epoch: EpochId::start(),
-            _borrow: AtomicBorrowMut::dummy(),
         }
     }
 
@@ -186,13 +187,13 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<T> PhantomQuery for QueryBorrowAny<&mut T>
+unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
-        Some(Access::Read)
+        Some(Access::Write)
     }
 
     #[inline]
@@ -201,30 +202,34 @@ where
     }
 
     #[inline]
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        for (id, _) in archetype
+            .borrow_mut_indices(TypeId::of::<T>())
+            .unwrap_unchecked()
+        {
+            f(*id, Access::Write);
+        }
+    }
+
+    #[inline]
     unsafe fn fetch(archetype: &Archetype, epoch: EpochId) -> FetchBorrowAnyWrite<T> {
-        let (cidx, bidx) = *archetype
+        let (id, idx) = *archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()
             .get_unchecked(0);
 
-        let component = archetype.component(cidx);
-        debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
+        let component = archetype.component(id).unwrap_unchecked();
+        debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
 
-        let mut data = component.data.borrow_mut();
-
-        data.epoch.bump(epoch);
-
-        let (data, borrow) = atomicell::RefMut::into_split(data);
+        let data = component.data_mut();
 
         FetchBorrowAnyWrite {
             ptr: data.ptr,
             size: component.layout().size(),
-            borrow_fn: component.borrows()[bidx].borrow_mut().unwrap_unchecked(),
-            marker: PhantomData,
+            borrow_fn: component.borrows()[idx].borrow_mut().unwrap_unchecked(),
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             epoch,
-            _borrow: borrow,
         }
     }
 }

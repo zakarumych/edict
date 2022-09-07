@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::AtomicBorrow;
-
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -20,7 +18,6 @@ phantom_newtype! {
 /// Fetch type for [`Related<R>`]
 pub struct FetchRelated<'a, R> {
     ptr: NonNull<TargetComponent<R>>,
-    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a TargetComponent<R>>,
 }
 
@@ -34,7 +31,6 @@ where
     fn dangling() -> Self {
         FetchRelated {
             ptr: NonNull::dangling(),
-            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -61,7 +57,7 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<R> PhantomQuery for Related<R>
+unsafe impl<R> PhantomQuery for Related<R>
 where
     R: Relation,
 {
@@ -76,22 +72,25 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<TargetComponent<R>>())
+        !archetype.has_component(TypeId::of::<TargetComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<TargetComponent<R>>(), Access::Read)
     }
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelated<'a, R> {
-        let idx = archetype
-            .id_index(TypeId::of::<TargetComponent<R>>())
+        let component = archetype
+            .component(TypeId::of::<TargetComponent<R>>())
             .unwrap_unchecked();
-        let component = archetype.component(idx);
         debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
 
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FetchRelated {
             ptr: data.ptr.cast(),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

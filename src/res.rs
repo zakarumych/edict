@@ -18,24 +18,12 @@ use core::{
 };
 
 use atomicell::{AtomicCell, Ref, RefMut};
-
-use crate::typeidset::{no_type_id, TypeIdSet};
+use hashbrown::HashMap;
 
 struct Resource {
     // Box<AtomicCell> instead of AtomicCell<Box> to avoid false sharing
     data: Box<AtomicCell<dyn Any>>,
-    id: TypeId,
     name: &'static str,
-}
-
-impl Resource {
-    fn dummy() -> Self {
-        Resource {
-            data: Box::new(AtomicCell::new(())),
-            id: no_type_id(),
-            name: "",
-        }
-    }
 }
 
 impl Debug for Resource {
@@ -55,8 +43,7 @@ unsafe impl Sync for Resource {}
 
 /// Type-erased container for singleton resources.
 pub struct Res {
-    ids: TypeIdSet,
-    resources: Vec<Resource>,
+    resources: HashMap<TypeId, Resource>,
 }
 
 impl Debug for Res {
@@ -70,8 +57,7 @@ impl Res {
     #[inline]
     pub fn new() -> Self {
         Res {
-            ids: TypeIdSet::new(core::iter::empty()),
-            resources: Vec::new(),
+            resources: HashMap::new(),
         }
     }
 
@@ -84,50 +70,22 @@ impl Res {
     /// `Res<NoSend>` accepts any `'static` resource type.
     pub fn insert<T: 'static>(&mut self, resource: T) {
         let id = TypeId::of::<T>();
-        debug_assert_ne!(id, no_type_id());
-
-        match self.ids.get(id) {
-            None => {
-                self.resources.push(Resource {
-                    data: Box::new(AtomicCell::new(resource)),
-                    id,
-                    name: type_name::<T>(),
-                });
-                self.recalculate_indices();
-            }
-            Some(idx) => {
-                let data = unsafe {
-                    // # Safety
-                    // Index from `ids` always valid.
-                    self.resources.get_unchecked_mut(idx)
-                }
-                .data
-                .get_mut();
-
-                unsafe {
-                    // # Safety
-                    // Manually casting is is safe, type behind `dyn Any` is `T`.
-                    debug_assert!(data.is::<T>());
-                    *(data as *mut dyn Any as *mut T) = resource;
-                }
-            }
-        }
+        self.resources.insert(
+            id,
+            Resource {
+                data: Box::new(AtomicCell::new(resource)),
+                name: type_name::<T>(),
+            },
+        );
     }
 
     /// Removes resource from container.
     /// Returns `None` if resource is not found.
     pub fn remove<T: 'static>(&mut self) -> Option<T> {
-        let id = TypeId::of::<T>();
-        debug_assert_ne!(id, no_type_id());
-
-        let idx = self.ids.get(id)?;
-
-        let resource = self.resources.swap_remove(idx);
-        self.recalculate_indices();
+        let resource = self.resources.remove(&TypeId::of::<T>())?;
         let value = AtomicCell::into_inner(*unsafe {
             // # Safety
             // Manually casting is is safe, type behind `dyn Any` is `T`.
-            debug_assert_eq!(resource.id, TypeId::of::<T>());
             Box::from_raw(Box::into_raw(resource.data) as *mut AtomicCell<T>)
         });
         Some(value)
@@ -170,14 +128,11 @@ impl Res {
     #[inline]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
         let id = TypeId::of::<T>();
-        debug_assert_ne!(id, no_type_id());
-
-        let idx = self.ids.get(id)?;
 
         let r = {
             // # Safety
             // Index from `ids` always valid.
-            &*self.resources.get_unchecked(idx).data
+            &*self.resources.get(&id)?.data
         }
         .borrow();
 
@@ -198,14 +153,11 @@ impl Res {
     #[inline]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
         let id = TypeId::of::<T>();
-        debug_assert_ne!(id, no_type_id());
-
-        let idx = self.ids.get(id)?;
 
         let r = {
             // # Safety
             // Index from `ids` always valid.
-            &*self.resources.get_unchecked(idx).data
+            &*self.resources.get(&id)?.data
         }
         .borrow_mut();
 
@@ -216,7 +168,7 @@ impl Res {
     /// Reset all possible leaks on resources.
     /// Mutable reference guarantees that no borrows are active.
     pub fn undo_leak(&mut self) {
-        for r in self.resources.iter_mut() {
+        for (_, r) in self.resources.iter_mut() {
             r.data.undo_leak();
         }
     }
@@ -224,19 +176,6 @@ impl Res {
     /// Returns iterator over resource types.
     #[inline]
     pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
-        self.ids.ids()
-    }
-
-    fn recalculate_indices(&mut self) {
-        self.ids = TypeIdSet::new(self.resources.iter().filter_map(|r| {
-            if r.id == no_type_id() {
-                None
-            } else {
-                Some(r.id)
-            }
-        }));
-
-        self.resources
-            .resize_with(self.ids.upper_bound(), Resource::dummy);
+        self.resources.keys().copied()
     }
 }

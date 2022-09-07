@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::{borrow::AtomicBorrowMut, RefMut};
-
 use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
@@ -12,7 +10,6 @@ pub struct FetchWrite<'a, T> {
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
     epoch: EpochId,
-    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
 
@@ -29,7 +26,6 @@ where
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
             epoch: EpochId::start(),
-            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -74,7 +70,7 @@ where
     type Fetch = FetchWrite<'a, T>;
 }
 
-impl<T> PhantomQuery for &mut T
+unsafe impl<T> PhantomQuery for &mut T
 where
     T: Send + 'static,
 {
@@ -89,18 +85,22 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
+        !archetype.has_component(TypeId::of::<T>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<T>(), Access::Write)
     }
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchWrite<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let component = archetype.component(idx);
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
-        let (data, borrow) = RefMut::into_split(component.data.borrow_mut());
+        let data = component.data_mut();
         data.epoch.bump(epoch);
 
         FetchWrite {
@@ -108,7 +108,6 @@ where
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             epoch,
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

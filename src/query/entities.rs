@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{archetype::Archetype, entity::EntityId};
 
-use super::{Access, Fetch, IntoQuery, PhantomQuery, PhantomQueryFetch};
+use super::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch};
 
 /// [`Fetch`] type for the [`Entities`] query.
 pub struct EntitiesFetch<'a> {
@@ -37,7 +37,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
 }
 
 /// Queries entity ids.
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Entities;
 
 impl<'a> PhantomQueryFetch<'a> for Entities {
@@ -49,7 +49,7 @@ impl IntoQuery for Entities {
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl PhantomQuery for Entities {
+unsafe impl PhantomQuery for Entities {
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         None
@@ -61,6 +61,9 @@ impl PhantomQuery for Entities {
     }
 
     #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+
+    #[inline]
     unsafe fn fetch<'a>(
         archetype: &'a Archetype,
         _epoch: crate::epoch::EpochId,
@@ -70,3 +73,5 @@ impl PhantomQuery for Entities {
         }
     }
 }
+
+unsafe impl ImmutablePhantomQuery for Entities {}

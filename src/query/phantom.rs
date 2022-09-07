@@ -23,7 +23,7 @@ pub trait PhantomQueryFetch<'a> {
 /// This trait has all the same methods without `self` argument.
 ///
 /// [`PhantomData<fn() -> Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
-pub trait PhantomQuery:
+pub unsafe trait PhantomQuery:
     for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<fn() -> Self>>
 {
     /// Returns what kind of access the query performs on the component type.
@@ -31,6 +31,12 @@ pub trait PhantomQuery:
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(archetype: &Archetype) -> bool;
+
+    /// Asks query to provide types and access for the specific archetype.
+    /// Must call provided closure with type id and access pairs.
+    /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
+    /// Only types from archetype must be used to call closure.
+    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -58,7 +64,7 @@ where
     type Fetch = <Q as PhantomQueryFetch<'a>>::Fetch;
 }
 
-impl<Q> Query for PhantomData<fn() -> Q>
+unsafe impl<Q> Query for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
@@ -70,6 +76,11 @@ where
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
         <Q as PhantomQuery>::skip_archetype(archetype)
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        <Q as PhantomQuery>::access_archetype(archetype, f)
     }
 
     #[inline]

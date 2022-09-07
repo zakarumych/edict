@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::{borrow::AtomicBorrow, Ref};
-
 use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
@@ -13,7 +11,6 @@ use super::{
 
 pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,
-    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a [T]>,
 }
 
@@ -27,7 +24,6 @@ where
     fn dangling() -> Self {
         FetchRead {
             ptr: NonNull::dangling(),
-            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -66,7 +62,7 @@ where
     type Fetch = FetchRead<'a, T>;
 }
 
-impl<T> PhantomQuery for &T
+unsafe impl<T> PhantomQuery for &T
 where
     T: Sync + 'static,
 {
@@ -81,20 +77,23 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<T>())
+        !archetype.has_component(TypeId::of::<T>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<T>(), Access::Read)
     }
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRead<'a, T> {
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let component = archetype.component(idx);
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
-        let (data, borrow) = Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FetchRead {
             ptr: data.ptr.cast(),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
-
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
@@ -12,6 +10,18 @@ use crate::{
 pub struct QueryBorrowOne<T> {
     id: TypeId,
     marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Copy for QueryBorrowOne<T> {}
+
+impl<T> Clone for QueryBorrowOne<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.id = source.id;
+    }
 }
 
 impl<T> QueryBorrowOne<T> {
@@ -30,7 +40,6 @@ pub struct FetchBorrowOneRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
     borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
-    _borrow: AtomicBorrow<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneRead<'a, T>
@@ -45,7 +54,6 @@ where
             ptr: NonNull::dangling(),
             size: 0,
             borrow_fn: |_, _| unreachable!(),
-            _borrow: AtomicBorrow::dummy(),
         }
     }
 
@@ -86,7 +94,7 @@ where
     type Query = Self;
 }
 
-impl<T> Query for QueryBorrowOne<&T>
+unsafe impl<T> Query for QueryBorrowOne<&T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -101,7 +109,12 @@ where
 
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(self.id)
+        !archetype.has_component(self.id)
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(self.id, Access::Read)
     }
 
     #[inline]
@@ -110,8 +123,7 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchBorrowOneRead<'a, T> {
-        let idx = archetype.id_index(self.id).unwrap_unchecked();
-        let component = archetype.component(idx);
+        let component = archetype.component(self.id).unwrap_unchecked();
 
         let cb = component
             .borrows()
@@ -119,13 +131,12 @@ where
             .find(|&cb| cb.target() == TypeId::of::<T>())
             .unwrap();
 
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FetchBorrowOneRead {
             ptr: data.ptr,
             size: component.layout().size(),
             borrow_fn: cb.borrow(),
-            _borrow: borrow,
         }
     }
 }
@@ -141,7 +152,6 @@ pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
     epoch: EpochId,
-    _borrow: AtomicBorrowMut<'a>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneWrite<'a, T>
@@ -160,7 +170,6 @@ where
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
             epoch: EpochId::start(),
-            _borrow: AtomicBorrowMut::dummy(),
         }
     }
 
@@ -207,7 +216,7 @@ where
     type Query = Self;
 }
 
-impl<T> Query for QueryBorrowOne<&mut T>
+unsafe impl<T> Query for QueryBorrowOne<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
@@ -222,7 +231,12 @@ where
 
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(self.id)
+        !archetype.has_component(self.id)
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(self.id, Access::Read)
     }
 
     #[inline]
@@ -233,8 +247,7 @@ where
     ) -> FetchBorrowOneWrite<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype.id_index(self.id).unwrap_unchecked();
-        let component = archetype.component(idx);
+        let component = archetype.component(self.id).unwrap_unchecked();
 
         let cb = component
             .borrows()
@@ -244,11 +257,9 @@ where
 
         assert!(cb.borrow_mut::<T>().is_some());
 
-        let mut data = component.data.borrow_mut();
+        let data = component.data_mut();
 
         data.epoch.bump(epoch);
-
-        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchBorrowOneWrite {
             ptr: data.ptr,
@@ -258,7 +269,6 @@ where
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             epoch,
-            _borrow: borrow,
         }
     }
 }

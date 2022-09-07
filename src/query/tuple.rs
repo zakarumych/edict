@@ -52,7 +52,7 @@ macro_rules! for_tuple {
             type Query = ();
         }
 
-        impl Query for () {
+        unsafe impl Query for () {
             #[inline]
             fn access(&self, _ty: TypeId) -> Option<Access> {
                 None
@@ -62,6 +62,9 @@ macro_rules! for_tuple {
             fn skip_archetype(&self, _: &Archetype) -> bool {
                 false
             }
+
+            #[inline]
+            unsafe fn access_archetype(&self, _: &Archetype, _: &dyn Fn(TypeId, Access)) {}
 
             #[inline]
             unsafe fn fetch(&mut self, _: &Archetype, _: EpochId) -> () {
@@ -120,7 +123,7 @@ macro_rules! for_tuple {
 
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
-        impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
+        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
             #[inline]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)+) = self;
@@ -133,6 +136,12 @@ macro_rules! for_tuple {
             fn skip_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
                 $( <$a as Query>::skip_archetype($a, archetype) )||+
+            }
+
+            #[inline]
+            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+                let ($($a,)+) = self;
+                $( <$a as Query>::access_archetype($a, archetype, f); )+
             }
 
             #[inline]

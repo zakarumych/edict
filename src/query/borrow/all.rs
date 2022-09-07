@@ -1,7 +1,6 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use alloc::vec::Vec;
-use atomicell::borrow::AtomicBorrow;
 
 use crate::{
     archetype::Archetype,
@@ -9,16 +8,15 @@ use crate::{
     query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
 };
 
-/// [`PhantomQuery`] that borrows from components.
-pub struct QueryBorrowAll<T> {
-    marker: PhantomData<fn() -> T>,
+phantom_newtype! {
+    /// [`PhantomQuery`] that borrows from components.
+    pub struct QueryBorrowAll<T>
 }
 
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
     borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
-    _borrow: AtomicBorrow<'a>,
 }
 
 /// [`Fetch`] for [`QueryBorrowAll<&T>`].
@@ -83,7 +81,7 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<T> PhantomQuery for QueryBorrowAll<&T>
+unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -98,22 +96,31 @@ where
     }
 
     #[inline]
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        for (id, _) in archetype
+            .borrow_indices(TypeId::of::<T>())
+            .unwrap_unchecked()
+        {
+            f(*id, Access::Read);
+        }
+    }
+
+    #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchBorrowAllRead<'a, T> {
         let components = archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
             .iter()
-            .map(|&(cidx, bidx)| {
-                let component = archetype.component(cidx);
-                debug_assert_eq!(component.borrows()[bidx].target(), TypeId::of::<T>());
+            .map(|&(id, idx)| {
+                let component = archetype.component(id).unwrap_unchecked();
+                debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
 
-                let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+                let data = component.data();
 
                 FetchBorrowAllReadComponent {
                     ptr: data.ptr,
                     size: component.layout().size(),
-                    borrow_fn: component.borrows()[bidx].borrow(),
-                    _borrow: borrow,
+                    borrow_fn: component.borrows()[idx].borrow(),
                 }
             })
             .collect();

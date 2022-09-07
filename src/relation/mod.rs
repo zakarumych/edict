@@ -19,16 +19,20 @@ use crate::{
 
 pub use edict_proc::Relation;
 
-pub use self::query::{
-    not_related, not_related_by, not_relates, not_relates_to, related, related_by, relates,
-    relates_to, FetchFilterNotRelatedBy, FetchFilterNotRelatesTo, FetchFilterRelatedBy,
-    FetchRelated, FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
-    FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite, FilterFetchRelationTo,
-    FilterNotRelated, FilterNotRelatedBy, FilterNotRelates, FilterNotRelatesTo, FilterRelated,
-    FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates, RelatesExclusive,
-    RelatesReadIter, RelatesTo, RelatesWriteIter,
+pub use self::{
+    child_of::ChildOf,
+    query::{
+        not_related, not_related_by, not_relates, not_relates_to, related, related_by, relates,
+        relates_to, FetchFilterNotRelatedBy, FetchFilterNotRelatesTo, FetchFilterRelatedBy,
+        FetchRelated, FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
+        FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite, FilterFetchRelationTo,
+        FilterNotRelated, FilterNotRelatedBy, FilterNotRelates, FilterNotRelatesTo, FilterRelated,
+        FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates, RelatesExclusive,
+        RelatesReadIter, RelatesTo, RelatesWriteIter,
+    },
 };
 
+mod child_of;
 mod query;
 
 /// Trait that must be implemented for relations.
@@ -279,7 +283,7 @@ where
                 } else {
                     let target = origin.target;
                     encoder.custom(move |world, encoder| {
-                        if let Ok(target_component) = world.query_one::<&mut Self>(target) {
+                        if let Ok(mut target_component) = world.query_one::<&mut Self>(target) {
                             target_component.on_non_exclusive_target_drop(target, entity, encoder);
                         }
                     });
@@ -288,7 +292,8 @@ where
         } else {
             let target = origin.target;
             encoder.custom(move |world, encoder| {
-                if let Ok(target_component) = world.query_one::<&mut TargetComponent<R>>(target) {
+                if let Ok(mut target_component) = world.query_one::<&mut TargetComponent<R>>(target)
+                {
                     target_component.on_origin_drop(entity, target, encoder);
                 }
             });
@@ -387,7 +392,7 @@ where
                 }
             } else {
                 encoder.custom(move |world, encoder| {
-                    if let Ok(origin) = world.query_one::<&mut OriginComponent<R>>(entity) {
+                    if let Ok(mut origin) = world.query_one::<&mut OriginComponent<R>>(entity) {
                         origin.on_non_exclusive_target_drop(entity, target, encoder);
                     }
                 });

@@ -39,7 +39,11 @@ fn main() {
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
-    for display in world.new_query().borrow_any::<&mut (dyn Display + Send)>() {
+    for display in world
+        .new_query()
+        .borrow_any::<&mut (dyn Display + Send)>()
+        .iter_mut()
+    {
         println!("{}", display);
     }
 
@@ -49,6 +53,7 @@ fn main() {
     for a in world
         .new_query()
         .borrow_one::<&(dyn Any + Sync)>(TypeId::of::<A>())
+        .iter()
     {
         println!("{}", (a as &dyn Any).downcast_ref::<A>().unwrap());
     }
@@ -59,6 +64,7 @@ fn main() {
     for (e, a) in world
         .query::<Entities>()
         .borrow_all::<&(dyn Display + Sync)>()
+        .iter()
     {
         print!("{}", e);
         for a in a {

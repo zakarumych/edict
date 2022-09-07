@@ -3,8 +3,10 @@
 use core::{
     alloc::Layout,
     any::TypeId,
+    cell::UnsafeCell,
     hint::unreachable_unchecked,
     intrinsics::copy_nonoverlapping,
+    iter::FromIterator,
     mem::{self, size_of, MaybeUninit},
     ops::Deref,
     ptr::{self, NonNull},
@@ -15,15 +17,13 @@ use alloc::{
     boxed::Box,
     vec::Vec,
 };
-use atomicell::AtomicCell;
 use hashbrown::HashMap;
 
 use crate::{
-    action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, typeidset::TypeIdSet,
+    action::ActionEncoder, borrow::AtomicBorrowLock, bundle::DynamicBundle,
+    component::ComponentInfo, entity::EntityId, epoch::EpochId, hash::NoOpHasherBuilder,
+    idx::MAX_IDX_USIZE, query::Access,
 };
-
-struct Dummy;
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
@@ -33,8 +33,9 @@ pub(crate) struct ComponentData {
 }
 
 pub(crate) struct ArchetypeComponent {
-    pub info: ComponentInfo,
-    pub data: AtomicCell<ComponentData>,
+    info: ComponentInfo,
+    lock: AtomicBorrowLock,
+    data: UnsafeCell<ComponentData>,
 }
 
 impl Deref for ArchetypeComponent {
@@ -46,36 +47,47 @@ impl Deref for ArchetypeComponent {
 }
 
 impl ArchetypeComponent {
-    pub fn new(info: &ComponentInfo) -> Self {
+    #[inline]
+    pub unsafe fn borrow(&self, access: Access) -> bool {
+        self.lock.borrow_access(access)
+    }
+
+    #[inline]
+    pub unsafe fn release(&self, access: Access) {
+        self.lock.release_access(access)
+    }
+
+    #[inline]
+    pub unsafe fn data(&self) -> &ComponentData {
+        &*self.data.get()
+    }
+
+    #[inline]
+    pub unsafe fn data_mut(&self) -> &mut ComponentData {
+        &mut *self.data.get()
+    }
+}
+
+impl ArchetypeComponent {
+    fn new(info: &ComponentInfo) -> Self {
         ArchetypeComponent {
-            data: AtomicCell::new(ComponentData {
+            data: UnsafeCell::new(ComponentData {
                 ptr: NonNull::dangling(),
                 epoch: EpochId::start(),
                 chunk_epochs: Box::new([]),
                 entity_epochs: Box::new([]),
             }),
+            lock: AtomicBorrowLock::new(),
             info: info.clone(),
         }
     }
 
-    pub fn dummy() -> Self {
-        Self::new(&ComponentInfo::external::<Dummy>())
-    }
-
-    pub fn is_dummy(&self) -> bool {
-        self.info.id() == TypeId::of::<Dummy>()
-    }
-
-    pub unsafe fn drop(&mut self, cap: usize, len: usize) {
-        if self.is_dummy() {
-            return;
-        }
-
+    unsafe fn drop(&mut self, cap: usize, len: usize) {
         let data = self.data.get_mut();
 
         self.info.final_drop(data.ptr, len);
 
-        if self.info.layout().size() != 0 {
+        if self.info.layout().size() != 0 && cap != 0 {
             let layout = Layout::from_size_align_unchecked(
                 self.info.layout().size() * cap,
                 self.info.layout().align(),
@@ -85,7 +97,7 @@ impl ArchetypeComponent {
         }
     }
 
-    pub unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
+    unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
         let data = self.data.get_mut();
 
         if self.info.layout().size() != 0 {
@@ -134,17 +146,15 @@ impl ArchetypeComponent {
 ///
 /// This type is exposed for `Query` implementations.
 pub struct Archetype {
-    set: TypeIdSet,
-    indices: Box<[usize]>,
     entities: Vec<EntityId>,
-    components: Box<[ArchetypeComponent]>,
-    borrows: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
-    borrows_mut: HashMap<TypeId, Vec<(usize, usize)>, NoOpHasherBuilder>,
+    components: HashMap<TypeId, ArchetypeComponent, NoOpHasherBuilder>,
+    borrows: HashMap<TypeId, Vec<(TypeId, usize)>, NoOpHasherBuilder>,
+    borrows_mut: HashMap<TypeId, Vec<(TypeId, usize)>, NoOpHasherBuilder>,
 }
 
 impl Drop for Archetype {
     fn drop(&mut self) {
-        for c in &mut *self.components {
+        for (_, c) in &mut self.components {
             unsafe {
                 c.drop(self.entities.capacity(), self.entities.len());
             }
@@ -155,47 +165,33 @@ impl Drop for Archetype {
 impl Archetype {
     /// Creates new archetype with the given set of components.
     pub fn new<'a>(components: impl Iterator<Item = &'a ComponentInfo> + Clone) -> Self {
-        let set = TypeIdSet::new(components.clone().map(|c| c.id()));
-
-        let mut component_data: Box<[_]> = (0..set.upper_bound())
-            .map(|_| ArchetypeComponent::dummy())
-            .collect();
-
-        let indices = set.indexed().map(|(idx, _)| idx).collect();
-
-        for c in components.clone() {
-            debug_assert_eq!(c.layout().pad_to_align(), c.layout());
-
-            let idx = unsafe { set.get(c.id()).unwrap_unchecked() };
-            component_data[idx] = ArchetypeComponent::new(c);
-        }
+        let components = HashMap::from_iter(components.map(|c| {
+            let c = ArchetypeComponent::new(c);
+            (c.id(), c)
+        }));
 
         let mut borrows = HashMap::with_hasher(NoOpHasherBuilder);
         let mut borrows_mut = HashMap::with_hasher(NoOpHasherBuilder);
 
-        for c in components {
-            let cidx = unsafe { set.get(c.id()).unwrap_unchecked() };
-
-            for (bidx, cb) in c.borrows().iter().enumerate() {
+        for (&id, c) in &components {
+            for (idx, cb) in c.borrows().iter().enumerate() {
                 borrows
                     .entry(cb.target())
                     .or_insert_with(Vec::new)
-                    .push((cidx, bidx));
+                    .push((id, idx));
 
                 if cb.has_borrow_mut() {
                     borrows_mut
                         .entry(cb.target())
                         .or_insert_with(Vec::new)
-                        .push((cidx, bidx));
+                        .push((id, idx));
                 }
             }
         }
 
         Archetype {
-            set,
-            indices,
             entities: Vec::new(),
-            components: component_data,
+            components,
             borrows,
             borrows_mut,
         }
@@ -203,8 +199,8 @@ impl Archetype {
 
     /// Returns `true` if archetype contains compoment with specified id.
     #[inline]
-    pub fn contains_id(&self, type_id: TypeId) -> bool {
-        self.set.contains_id(type_id)
+    pub fn has_component(&self, type_id: TypeId) -> bool {
+        self.components.contains_key(&type_id)
     }
 
     /// Returns `true` if archetype contains compoment with specified id.
@@ -222,45 +218,30 @@ impl Archetype {
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
     #[inline]
-    pub(crate) fn id_index(&self, type_id: TypeId) -> Option<usize> {
-        self.set.get(type_id)
-    }
-
-    /// Returns index of the component type with specified id.
-    /// This index may be used then to index into lists of ids and infos.
-    #[inline]
-    pub(crate) fn borrow_indices(&self, type_id: TypeId) -> Option<&[(usize, usize)]> {
+    pub(crate) fn borrow_indices(&self, type_id: TypeId) -> Option<&[(TypeId, usize)]> {
         self.borrows.get(&type_id).map(|v| &v[..])
     }
 
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
     #[inline]
-    pub(crate) fn borrow_mut_indices(&self, type_id: TypeId) -> Option<&[(usize, usize)]> {
+    pub(crate) fn borrow_mut_indices(&self, type_id: TypeId) -> Option<&[(TypeId, usize)]> {
         self.borrows_mut.get(&type_id).map(|v| &v[..])
     }
 
     /// Returns `true` if archetype matches components set specified.
     #[inline]
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
+        let len = self.components.len();
         match type_ids.size_hint() {
-            (l, None) if l <= self.set.len() => {
+            (l, u) if l <= len && u.map_or(true, |u| u >= len) => {
                 type_ids.try_fold(0usize, |count, type_id| {
-                    if self.set.contains_id(type_id) {
+                    if self.components.contains_key(&type_id) {
                         Some(count + 1)
                     } else {
                         None
                     }
-                }) == Some(self.set.len())
-            }
-            (l, Some(u)) if l <= self.set.len() && u >= self.set.len() => {
-                type_ids.try_fold(0usize, |count, type_id| {
-                    if self.set.contains_id(type_id) {
-                        Some(count + 1)
-                    } else {
-                        None
-                    }
-                }) == Some(self.set.len())
+                }) == Some(len)
             }
             _ => false,
         }
@@ -269,17 +250,13 @@ impl Archetype {
     /// Returns iterator over component type ids.
     #[inline]
     pub fn ids(&self) -> impl ExactSizeIterator<Item = TypeId> + Clone + '_ {
-        self.indices
-            .iter()
-            .map(move |&idx| self.components[idx].id())
+        self.components.keys().copied()
     }
 
     /// Returns iterator over component type infos.
     #[inline]
     pub fn infos(&self) -> impl ExactSizeIterator<Item = &'_ ComponentInfo> + Clone + '_ {
-        self.indices
-            .iter()
-            .map(move |&idx| &self.components[idx].info)
+        self.components.iter().map(|(_, c)| &c.info)
     }
 
     /// Spawns new entity in the archetype.
@@ -339,8 +316,7 @@ impl Archetype {
 
         let last_entity_idx = self.entities.len() - 1;
 
-        for &type_idx in self.indices.iter() {
-            let component = &mut self.components[type_idx];
+        for component in self.components.values_mut() {
             let data = component.data.get_mut();
             let size = component.info.layout().size();
 
@@ -393,7 +369,9 @@ impl Archetype {
         B: DynamicBundle,
     {
         let entity_idx = idx as usize;
-        debug_assert!(bundle.with_ids(|ids| ids.iter().all(|&id| self.set.get(id).is_some())));
+        debug_assert!(
+            bundle.with_ids(|ids| ids.iter().all(|&id| self.components.contains_key(&id)))
+        );
         debug_assert!(entity_idx < self.entities.len());
 
         self.write_bundle(entity, entity_idx, bundle, epoch, Some(encoder), |_| true);
@@ -417,7 +395,7 @@ impl Archetype {
     {
         let entity_idx = idx as usize;
 
-        debug_assert!(self.set.get(TypeId::of::<T>()).is_some());
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
         self.write_one(entity, entity_idx, value, epoch, Some(encoder));
@@ -435,11 +413,13 @@ impl Archetype {
     {
         let entity_idx = idx as usize;
 
-        debug_assert!(self.set.get(TypeId::of::<T>()).is_some());
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        let id = self.set.get_unchecked(TypeId::of::<T>());
-        let component = &mut self.components[id];
+        let component = self
+            .components
+            .get_mut(&TypeId::of::<T>())
+            .unwrap_unchecked();
         let ptr = component
             .data
             .get_mut()
@@ -464,11 +444,13 @@ impl Archetype {
         let entity_idx = idx as usize;
         let chunk_idx = chunk_idx(entity_idx);
 
-        debug_assert!(self.set.get(TypeId::of::<T>()).is_some());
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        let id = self.set.get_unchecked(TypeId::of::<T>());
-        let component = &mut self.components[id];
+        let component = self
+            .components
+            .get_mut(&TypeId::of::<T>())
+            .unwrap_unchecked();
         let data = component.data.get_mut();
         let ptr = data.ptr.as_ptr().cast::<T>().add(entity_idx);
 
@@ -502,13 +484,16 @@ impl Archetype {
     where
         B: DynamicBundle,
     {
-        debug_assert!(self.ids().all(|id| dst.set.get(id).is_some()));
-        debug_assert!(bundle.with_ids(|ids| ids.iter().all(|&id| dst.set.get(id).is_some())));
+        debug_assert!(self.ids().all(|id| dst.components.contains_key(&id)));
+        debug_assert!(bundle.with_ids(|ids| ids.iter().all(|&id| dst.components.contains_key(&id))));
 
         debug_assert_eq!(
-            bundle.with_ids(|ids| { ids.iter().filter(|&id| self.set.get(*id).is_none()).count() })
-                + self.set.len(),
-            dst.set.len()
+            bundle.with_ids(|ids| {
+                ids.iter()
+                    .filter(|&id| !self.components.contains_key(id))
+                    .count()
+            }) + self.components.len(),
+            dst.components.len()
         );
 
         let src_entity_idx = src_idx as usize;
@@ -526,7 +511,7 @@ impl Archetype {
         });
 
         dst.write_bundle(entity, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
-            if self.set.get(id).is_some() {
+            if self.components.contains_key(&id) {
                 true
             } else {
                 false
@@ -564,10 +549,10 @@ impl Archetype {
     where
         T: 'static,
     {
-        debug_assert!(self.ids().all(|id| dst.set.get(id).is_some()));
-        debug_assert!(self.set.get(TypeId::of::<T>()).is_none());
-        debug_assert!(dst.set.get(TypeId::of::<T>()).is_some());
-        debug_assert_eq!(self.set.len() + 1, dst.set.len());
+        debug_assert!(self.ids().all(|id| dst.components.contains_key(&id)));
+        debug_assert!(!self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(dst.components.contains_key(&TypeId::of::<T>()));
+        debug_assert_eq!(self.components.len() + 1, dst.components.len());
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
@@ -613,10 +598,10 @@ impl Archetype {
     where
         T: 'static,
     {
-        debug_assert!(dst.ids().all(|id| self.set.get(id).is_some()));
-        debug_assert!(dst.set.get(TypeId::of::<T>()).is_none());
-        debug_assert!(self.set.get(TypeId::of::<T>()).is_some());
-        debug_assert_eq!(dst.set.len() + 1, self.set.len());
+        debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
+        debug_assert!(!dst.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert_eq!(dst.components.len() + 1, self.components.len());
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
@@ -667,7 +652,7 @@ impl Archetype {
         src_idx: u32,
         encoder: &mut ActionEncoder,
     ) -> (u32, Option<u32>) {
-        debug_assert!(dst.ids().all(|id| self.set.get(id).is_some()));
+        debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
@@ -703,9 +688,8 @@ impl Archetype {
 
     /// Returns archetype component
     #[inline]
-    pub(crate) unsafe fn component(&self, idx: usize) -> &ArchetypeComponent {
-        debug_assert!(idx < self.components.len());
-        &self.components.get_unchecked(idx)
+    pub(crate) fn component(&self, id: TypeId) -> Option<&ArchetypeComponent> {
+        self.components.get(&id)
     }
 
     #[inline]
@@ -732,8 +716,7 @@ impl Archetype {
         self.entities.reserve(additional);
         debug_assert_ne!(old_cap, self.entities.capacity(),);
 
-        for &idx in &*self.indices {
-            let component = &mut self.components[idx];
+        for component in self.components.values_mut() {
             unsafe {
                 component.grow(len, old_cap, self.entities.capacity());
             }
@@ -756,7 +739,7 @@ impl Archetype {
         let chunk_idx = chunk_idx(entity_idx);
 
         bundle.put(|src, id, size| {
-            let component = &mut self.components[self.set.get(id).unwrap_unchecked()];
+            let component = self.components.get_mut(&id).unwrap_unchecked();
             let data = component.data.get_mut();
             let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
             let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
@@ -787,7 +770,10 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component = &mut self.components[self.set.get(TypeId::of::<T>()).unwrap_unchecked()];
+        let component = self
+            .components
+            .get_mut(&TypeId::of::<T>())
+            .unwrap_unchecked();
         let data = component.data.get_mut();
         let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
         let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
@@ -819,15 +805,12 @@ impl Archetype {
 
         let last_entity_idx = self.entities.len() - 1;
 
-        for &src_type_idx in self.indices.iter() {
-            let src_component = &mut self.components[src_type_idx];
+        for (type_id, src_component) in &mut self.components {
             let src_data = src_component.data.get_mut();
             let size = src_component.info.layout().size();
-            let type_id = src_component.info.id();
             let src_ptr = src_data.ptr.as_ptr().add(src_entity_idx * size);
 
-            if let Some(dst_type_idx) = dst.set.get(type_id) {
-                let dst_component = &mut dst.components[dst_type_idx];
+            if let Some(dst_component) = dst.components.get_mut(type_id) {
                 let dst_data = dst_component.data.get_mut();
 
                 let epoch = *src_data.entity_epochs.get_unchecked(src_entity_idx);

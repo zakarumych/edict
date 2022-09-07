@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::AtomicBorrow;
-
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -20,7 +18,6 @@ enum FetchKind<'a, R: Relation> {
     Related {
         origin: EntityId,
         ptr: NonNull<TargetComponent<R>>,
-        _borrow: AtomicBorrow<'a>,
         marker: PhantomData<&'a TargetComponent<R>>,
     },
 }
@@ -68,7 +65,7 @@ pub struct FilterNotRelatedBy<R> {
     phantom: PhantomData<R>,
 }
 
-phantom_debug!(FilterNotRelatedBy<R> { origin });
+impl_debug!(FilterNotRelatedBy<R> { origin });
 
 impl<R> FilterNotRelatedBy<R> {
     /// Returns relation filter bound to one specific origin.
@@ -95,7 +92,7 @@ where
     type Query = Self;
 }
 
-impl<R> Query for FilterNotRelatedBy<R>
+unsafe impl<R> Query for FilterNotRelatedBy<R>
 where
     R: Relation,
 {
@@ -108,8 +105,15 @@ where
         }
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<TargetComponent<R>>())
+    #[inline]
+    fn skip_archetype(&self, _archetype: &Archetype) -> bool {
+        false
+    }
+
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        if archetype.has_component(TypeId::of::<TargetComponent<R>>()) {
+            f(TypeId::of::<TargetComponent<R>>(), Access::Read)
+        }
     }
 
     #[inline]
@@ -118,19 +122,17 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchFilterNotRelatedBy<'a, R> {
-        match archetype.id_index(TypeId::of::<TargetComponent<R>>()) {
+        match archetype.component(TypeId::of::<TargetComponent<R>>()) {
             None => FetchFilterNotRelatedBy { kind: NotRelated },
-            Some(idx) => {
-                let component = archetype.component(idx);
+            Some(component) => {
                 debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
 
-                let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+                let data = component.data();
 
                 FetchFilterNotRelatedBy {
                     kind: Related {
                         origin: self.origin,
                         ptr: data.ptr.cast(),
-                        _borrow: borrow,
                         marker: PhantomData,
                     },
                 }

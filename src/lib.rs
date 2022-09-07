@@ -79,7 +79,7 @@ extern crate self as edict;
 
 pub use atomicell;
 
-macro_rules! phantom_copy {
+macro_rules! impl_copy {
     ($type:ident < $( $a:ident ),+ >) => {
         impl< $( $a ),+ > Copy for $type < $( $a ),+ > {}
         impl< $( $a ),+ > Clone for $type < $( $a ),+ > {
@@ -90,7 +90,7 @@ macro_rules! phantom_copy {
     };
 }
 
-macro_rules! phantom_debug {
+macro_rules! impl_debug {
     ($type:ident < $( $a:ident ),+ > { $($fname:ident)* }) => {
         impl< $( $a ),+ > core::fmt::Debug for $type < $( $a ),+ > {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -122,7 +122,7 @@ macro_rules! phantom_newtype {
             }
         }
 
-        phantom_copy!($type < $a >);
+        impl_copy!($type < $a >);
 
         impl< $a > core::fmt::Debug for $type < $a >
         where
@@ -155,10 +155,11 @@ pub mod scheduler;
 pub mod system;
 pub mod world;
 
+mod borrow;
 mod hash;
 mod idx;
 mod res;
-mod typeidset;
+// mod typeidset;
 
 #[cfg(test)]
 mod test;

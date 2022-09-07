@@ -28,8 +28,8 @@ fn world_spawn() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
+        world.query_one::<(&U32, &Str)>(e).as_deref(),
+        Ok(&(&U32(42), &Str("qwe")))
     );
 }
 
@@ -43,15 +43,15 @@ fn world_insert() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
+        world.query_one::<(&U32, &Str)>(e).err(),
+        Some(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(world.insert(e, Str("qwe")), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
+        world.query_one::<(&U32, &Str)>(e).as_deref(),
+        Ok(&(&U32(42), &Str("qwe")))
     );
 }
 
@@ -64,15 +64,15 @@ fn world_remove() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
+        world.query_one::<(&U32, &Str)>(e).as_deref(),
+        Ok(&(&U32(42), &Str("qwe")))
     );
 
     assert_eq!(world.remove::<Str>(e), Ok(Str("qwe")));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
+        world.query_one::<(&U32, &Str)>(e).err(),
+        Some(QueryOneError::NotSatisfied)
     );
 }
 
@@ -85,16 +85,16 @@ fn world_insert_bundle() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
+        world.query_one::<(&U32, &Str)>(e).err(),
+        Some(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(world.insert_bundle(e, (Str("qwe"), Bool(true))), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(world.has_component::<Bool>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str, &Bool)>(e),
-        Ok((&U32(42), &Str("qwe"), &Bool(true)))
+        world.query_one::<(&U32, &Str, &Bool)>(e).as_deref(),
+        Ok(&(&U32(42), &Str("qwe"), &Bool(true)))
     );
 }
 
@@ -107,16 +107,16 @@ fn world_remove_bundle() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
+        world.query_one::<(&U32, &Str)>(e).as_deref(),
+        Ok(&(&U32(42), &Str("qwe")))
     );
 
     // When removing a bundle, any missing component is simply ignored.
     assert_eq!(world.drop_bundle::<(Str, Bool)>(e), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
+        world.query_one::<(&U32, &Str)>(e).err(),
+        Some(QueryOneError::NotSatisfied)
     );
 }
 
@@ -132,7 +132,7 @@ fn version_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
     );
@@ -143,18 +143,18 @@ fn version_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![]
     );
 
-    *world.query_one::<&mut U32>(e).unwrap() = U32(42);
+    **world.query_one::<&mut U32>(e).unwrap() = U32(42);
 
     assert_eq!(
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
     );
@@ -172,7 +172,7 @@ fn version_despawn_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e1, &U32(42)), (e2, &U32(23))]
     );
@@ -183,19 +183,19 @@ fn version_despawn_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![]
     );
 
-    *world.query_one::<&mut U32>(e2).unwrap() = U32(50);
+    **world.query_one::<&mut U32>(e2).unwrap() = U32(50);
     assert_eq!(world.despawn(e1), Ok(()));
 
     assert_eq!(
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e2, &U32(50))]
     );
@@ -213,7 +213,7 @@ fn version_insert_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e1, &U32(42)), (e2, &U32(23))]
     );
@@ -224,13 +224,13 @@ fn version_insert_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![]
     );
 
-    *world.query_one::<&mut U32>(e1).unwrap() = U32(50);
-    *world.query_one::<&mut U32>(e2).unwrap() = U32(100);
+    **world.query_one::<&mut U32>(e1).unwrap() = U32(50);
+    **world.query_one::<&mut U32>(e2).unwrap() = U32(100);
 
     assert_eq!(world.insert(e1, Bool(true)), Ok(()));
 
@@ -238,7 +238,7 @@ fn version_insert_test() {
         world
             .query::<Entities>()
             .modified::<&U32>(epoch)
-            .into_iter()
+            .iter()
             .collect::<Vec<_>>(),
         vec![(e2, &U32(100)), (e1, &U32(50))]
     );
@@ -262,6 +262,7 @@ fn test_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -269,6 +270,7 @@ fn test_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -278,6 +280,7 @@ fn test_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -288,6 +291,7 @@ fn test_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(targets.len(), 1);
@@ -300,6 +304,7 @@ fn test_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -311,6 +316,7 @@ fn test_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert!(a == e || b == e);
         assert_eq!(targets.len(), 1);
@@ -323,6 +329,7 @@ fn test_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -330,6 +337,7 @@ fn test_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -353,6 +361,7 @@ fn test_exclusive_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -360,6 +369,7 @@ fn test_exclusive_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -369,6 +379,7 @@ fn test_exclusive_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -379,6 +390,7 @@ fn test_exclusive_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(targets.len(), 1);
@@ -391,6 +403,7 @@ fn test_exclusive_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -401,6 +414,7 @@ fn test_exclusive_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(b, e);
         assert_eq!(targets.len(), 1);
@@ -413,6 +427,7 @@ fn test_exclusive_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -423,6 +438,7 @@ fn test_exclusive_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(targets.len(), 1);
@@ -435,6 +451,7 @@ fn test_exclusive_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -442,6 +459,7 @@ fn test_exclusive_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -465,6 +483,7 @@ fn test_symmetric_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -472,6 +491,7 @@ fn test_symmetric_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -481,6 +501,7 @@ fn test_symmetric_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -491,6 +512,7 @@ fn test_symmetric_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(targets.len(), 1);
@@ -503,6 +525,7 @@ fn test_symmetric_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -510,6 +533,7 @@ fn test_symmetric_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -521,6 +545,7 @@ fn test_symmetric_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert!(a == e || b == e);
         assert_eq!(origins.len(), 1);
@@ -531,6 +556,7 @@ fn test_symmetric_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert!(a == e || b == e);
         assert_eq!(targets.len(), 1);
@@ -543,6 +569,7 @@ fn test_symmetric_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -550,6 +577,7 @@ fn test_symmetric_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -573,6 +601,7 @@ fn test_symmetric_exclusive_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -580,6 +609,7 @@ fn test_symmetric_exclusive_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -589,6 +619,7 @@ fn test_symmetric_exclusive_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(origins.len(), 1);
@@ -599,6 +630,7 @@ fn test_symmetric_exclusive_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert_eq!(a, e);
         assert_eq!(targets.len(), 1);
@@ -611,6 +643,7 @@ fn test_symmetric_exclusive_relation() {
     for (e, origins) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         assert!(a == e || b == e);
         assert_eq!(origins.len(), 1);
@@ -621,6 +654,7 @@ fn test_symmetric_exclusive_relation() {
     for (e, targets) in world
         .query::<Entities>()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         assert!(a == e || b == e);
         assert_eq!(targets.len(), 1);
@@ -633,6 +667,7 @@ fn test_symmetric_exclusive_relation() {
     for _origins in world
         .new_query()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
+        .iter()
     {
         panic!()
     }
@@ -640,6 +675,7 @@ fn test_symmetric_exclusive_relation() {
     for _targets in world
         .new_query()
         .borrow_all::<&(dyn RelationTarget + Sync)>()
+        .iter()
     {
         panic!()
     }

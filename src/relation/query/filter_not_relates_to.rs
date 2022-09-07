@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::AtomicBorrow;
-
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -23,7 +21,6 @@ enum FetchKind<'a, R: Relation> {
     Relates {
         target: EntityId,
         ptr: NonNull<OriginComponent<R>>,
-        _borrow: AtomicBorrow<'a>,
         marker: PhantomData<&'a OriginComponent<R>>,
     },
 }
@@ -74,7 +71,7 @@ pub struct FilterNotRelatesTo<R> {
     phantom: PhantomData<R>,
 }
 
-phantom_debug!(FilterNotRelatesTo<R> { target });
+impl_debug!(FilterNotRelatesTo<R> { target });
 
 impl<R> FilterNotRelatesTo<R> {
     /// Returns relation filter bound to one specific target entity.
@@ -101,7 +98,7 @@ where
     type Query = Self;
 }
 
-impl<R> Query for FilterNotRelatesTo<R>
+unsafe impl<R> Query for FilterNotRelatesTo<R>
 where
     R: Relation,
 {
@@ -114,8 +111,14 @@ where
         }
     }
 
+    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
     #[inline]
@@ -124,19 +127,17 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchFilterNotRelatesTo<'a, R> {
-        match archetype.id_index(TypeId::of::<OriginComponent<R>>()) {
+        match archetype.component(TypeId::of::<OriginComponent<R>>()) {
             None => FetchFilterNotRelatesTo { kind: NotRelates },
-            Some(idx) => {
-                let component = archetype.component(idx);
+            Some(component) => {
                 debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-                let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+                let data = component.data();
 
                 FetchFilterNotRelatesTo {
                     kind: Relates {
                         target: self.target,
                         ptr: data.ptr.cast(),
-                        _borrow: borrow,
                         marker: PhantomData,
                     },
                 }

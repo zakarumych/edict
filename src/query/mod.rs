@@ -52,7 +52,7 @@ pub enum Access {
 /// Types associated with a query type.
 pub trait IntoQuery {
     /// Associated query type.
-    type Query: Query;
+    type Query: Query + IntoQuery<Query = Self::Query>;
 }
 
 /// HRKT for [`Query`] trait.
@@ -70,12 +70,18 @@ pub trait QueryFetch<'a> {
 /// references to the components and optionally [`EntityId`] to address same components later.
 ///
 /// [`EntityId`]: edict::entity::EntityId
-pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
+pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// Returns what kind of access the query performs on the component type.
     fn access(&self, ty: TypeId) -> Option<Access>;
 
     /// Checks if archetype must be skipped.
     fn skip_archetype(&self, archetype: &Archetype) -> bool;
+
+    /// Asks query to provide types and access for the specific archetype.
+    /// Must call provided closure with type id and access pairs.
+    /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
+    /// Only types from archetype must be used to call closure.
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -88,6 +94,71 @@ pub trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
         epoch: EpochId,
     ) -> <Self as QueryFetch<'a>>::Fetch;
 }
+
+/// Wraps mutable reference to query and implement query.
+pub struct MutQuery<'a, T: 'a> {
+    query: &'a mut T,
+}
+
+impl<'a, T> From<&'a mut T> for MutQuery<'a, T> {
+    fn from(query: &'a mut T) -> Self {
+        MutQuery { query }
+    }
+}
+
+impl<'a, T> MutQuery<'a, T> {
+    /// Wraps mutable reference to query.
+    pub fn new(query: &'a mut T) -> Self {
+        MutQuery { query }
+    }
+
+    /// Unwraps query.
+    pub fn into_inner(self) -> &'a mut T {
+        self.query
+    }
+}
+
+impl<'a, T> QueryFetch<'a> for MutQuery<'_, T>
+where
+    T: Query,
+{
+    type Item = <T as QueryFetch<'a>>::Item;
+    type Fetch = <T as QueryFetch<'a>>::Fetch;
+}
+
+impl<T> IntoQuery for MutQuery<'_, T>
+where
+    T: Query,
+{
+    type Query = Self;
+}
+
+unsafe impl<T> Query for MutQuery<'_, T>
+where
+    T: Query,
+{
+    fn access(&self, ty: TypeId) -> Option<Access> {
+        self.query.access(ty)
+    }
+
+    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+        self.query.skip_archetype(archetype)
+    }
+
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        self.query.access_archetype(archetype, f)
+    }
+
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> <Self as QueryFetch<'a>>::Fetch {
+        self.query.fetch(archetype, epoch)
+    }
+}
+
+unsafe impl<T> ImmutableQuery for MutQuery<'_, T> where T: ImmutableQuery {}
 
 /// Query that does not mutate any components.
 ///

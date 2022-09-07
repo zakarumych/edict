@@ -1,7 +1,7 @@
 use core::fmt::Debug;
 
 use edict::{
-    prelude::ActionEncoderSliceExt,
+    action::ActionEncoderSliceExt,
     query::{Modified, QueryBorrowAll, With},
     scheduler::Scheduler,
     system::State,
@@ -40,7 +40,7 @@ fn main() {
 }
 
 fn system_a(
-    q: QueryRef<(
+    mut q: QueryRef<(
         &mut A,
         Option<&B>,
         Option<QueryBorrowAll<&(dyn Debug + Sync + 'static)>>,
@@ -49,23 +49,23 @@ fn system_a(
 ) {
     *counter += 1;
     println!("Counter: {}", *counter);
-    for (&mut A, b, dbg) in q {
+    for (&mut A, b, dbg) in q.iter_mut() {
         println!("A + {:?} + {:?}", b, dbg);
     }
 }
 
 fn system_b(q: QueryRef<Modified<&B>>) {
-    for &B in q {
+    for &B in q.iter() {
         println!("Modified B");
     }
 }
 
-fn system_c(q: QueryRef<&mut A>) {
+fn system_c(mut q: QueryRef<&mut A>) {
     q.for_each(|_| {});
 }
-fn system_d(q: QueryRef<&mut A, With<B>>) {
+fn system_d(mut q: QueryRef<&mut A, With<B>>) {
     q.for_each(|_| {});
 }
-fn system_e(q: QueryRef<&A, With<B>>) {
+fn system_e(mut q: QueryRef<&A, With<B>>) {
     q.for_each(|_| {});
 }

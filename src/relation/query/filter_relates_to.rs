@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::AtomicBorrow;
-
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -14,7 +12,6 @@ use crate::{
 pub struct FilterFetchRelationTo<'a, R: Relation> {
     target: EntityId,
     ptr: NonNull<OriginComponent<R>>,
-    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
@@ -29,7 +26,6 @@ where
         FilterFetchRelationTo {
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
-            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -61,7 +57,7 @@ pub struct FilterRelatesTo<R> {
     phantom: PhantomData<R>,
 }
 
-phantom_debug!(FilterRelatesTo<R> { target });
+impl_debug!(FilterRelatesTo<R> { target });
 
 impl<R> FilterRelatesTo<R> {
     /// Returns relation filter bound to one specific target.
@@ -88,7 +84,7 @@ where
     type Query = Self;
 }
 
-impl<R> Query for FilterRelatesTo<R>
+unsafe impl<R> Query for FilterRelatesTo<R>
 where
     R: Relation,
 {
@@ -101,8 +97,14 @@ where
         }
     }
 
+    #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
     #[inline]
@@ -111,18 +113,16 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FilterFetchRelationTo<'a, R> {
-        let idx = archetype
-            .id_index(TypeId::of::<OriginComponent<R>>())
+        let component = archetype
+            .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let component = archetype.component(idx);
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FilterFetchRelationTo {
             target: self.target,
             ptr: data.ptr.cast(),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

@@ -67,7 +67,7 @@ where
     type Fetch = Option<<T as PhantomQueryFetch<'a>>::Fetch>;
 }
 
-impl<T> PhantomQuery for Option<T>
+unsafe impl<T> PhantomQuery for Option<T>
 where
     T: PhantomQuery,
 {
@@ -79,6 +79,13 @@ where
     #[inline]
     fn skip_archetype(_: &Archetype) -> bool {
         false
+    }
+
+    #[inline]
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        if !T::skip_archetype(archetype) {
+            T::access_archetype(archetype, f)
+        }
     }
 
     #[inline]

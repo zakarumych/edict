@@ -4,8 +4,8 @@ use core::{
     any::{type_name, TypeId},
     cell::Cell,
     convert::TryFrom,
-    fmt::{self, Debug},
-    hash::Hash,
+    fmt::{self, Debug, Display},
+    hash::{Hash, Hasher},
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
@@ -591,7 +591,7 @@ impl World {
 
         let epoch = self.epoch.next_mut();
 
-        if self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
+        if self.archetypes[src_archetype as usize].has_component(TypeId::of::<T>()) {
             unsafe {
                 self.archetypes[src_archetype as usize].set(entity, idx, component, epoch, encoder);
             }
@@ -646,7 +646,7 @@ impl World {
             .get_location(entity)
             .ok_or(EntityError::NoSuchEntity)?;
 
-        if !self.archetypes[src_archetype as usize].contains_id(TypeId::of::<T>()) {
+        if !self.archetypes[src_archetype as usize].has_component(TypeId::of::<T>()) {
             return Err(EntityError::MissingComponents);
         }
 
@@ -711,7 +711,7 @@ impl World {
             .get_location(entity)
             .ok_or(EntityError::NoSuchEntity)?;
 
-        if !self.archetypes[src_archetype as usize].contains_id(id) {
+        if !self.archetypes[src_archetype as usize].has_component(id) {
             return Err(EntityError::MissingComponents);
         }
 
@@ -957,7 +957,7 @@ impl World {
 
         if B::static_with_ids(|ids| {
             ids.iter()
-                .all(|&id| !self.archetypes[src_archetype as usize].contains_id(id))
+                .all(|&id| !self.archetypes[src_archetype as usize].has_component(id))
         }) {
             // No components to remove.
             return Ok(());
@@ -1110,7 +1110,7 @@ impl World {
         self.entities.get_location(entity).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
-        if let Ok(c) = self.query_one::<&mut OriginComponent<R>>(entity) {
+        if let Ok(mut c) = self.query_one::<&mut OriginComponent<R>>(entity) {
             c.remove_relation(entity, target, encoder);
         }
 
@@ -1118,12 +1118,17 @@ impl World {
     }
 
     /// Queries components from specified entity.
+    /// Returns wrapper with query item.
     ///
     /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
-    pub fn query_one<'a, Q>(&'a self, entity: EntityId) -> Result<QueryItem<'a, Q>, QueryOneError>
+    pub fn query_one<'a, Q>(
+        &'a self,
+        entity: EntityId,
+    ) -> Result<QueryOneItem<'a, Q::Query>, QueryOneError>
     where
         Q: IntoQuery,
         Q::Query: Default,
@@ -1132,8 +1137,10 @@ impl World {
     }
 
     /// Queries components from specified entity.
-    ///
     /// This method accepts query instance to support stateful queries.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
     ///
     /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
@@ -1141,7 +1148,7 @@ impl World {
         &'a self,
         entity: EntityId,
         mut query: Q,
-    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    ) -> Result<QueryOneItem<'a, Q>, QueryOneError>
     where
         Q: Query,
     {
@@ -1160,6 +1167,13 @@ impl World {
             return Err(QueryOneError::NotSatisfied);
         }
 
+        unsafe {
+            query.access_archetype(archetype, &|id, access| {
+                let success = archetype.component(id).unwrap_unchecked().borrow(access);
+                assert!(success, "Failed to lock '{:?}' from archetype", id);
+            });
+        }
+
         let mut fetch = unsafe { query.fetch(archetype, epoch) };
 
         if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
@@ -1173,7 +1187,7 @@ impl World {
         }
 
         let item = unsafe { fetch.get_item(idx as usize) };
-        Ok(item)
+        Ok(QueryOneItem::new(query, archetype, item))
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1238,7 +1252,7 @@ impl World {
     #[inline]
     pub fn has_component<T: 'static>(&self, entity: EntityId) -> Result<bool, NoSuchEntity> {
         let (archetype, _idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
-        Ok(self.archetypes[archetype as usize].contains_id(TypeId::of::<T>()))
+        Ok(self.archetypes[archetype as usize].has_component(TypeId::of::<T>()))
     }
 
     /// Checks if entity is alive.
@@ -1871,7 +1885,7 @@ fn insert_component<T, C>(
 {
     let (src_archetype, idx) = world.entities.get_location(entity).unwrap();
 
-    if world.archetypes[src_archetype as usize].contains_id(TypeId::of::<C>()) {
+    if world.archetypes[src_archetype as usize].has_component(TypeId::of::<C>()) {
         let component = unsafe {
             world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch.current_mut())
         };
@@ -2020,6 +2034,101 @@ impl WorldLocal<'_> {
             // # Safety
             // Mutable reference to `Res` ensures this is the "main" thread.
             self.world.get_local_resource_mut()
+        }
+    }
+}
+
+/// Result for [`QueryRef::one`] and [`World::query_one`] methods.
+pub struct QueryOneItem<'a, Q: Query> {
+    item: QueryItem<'a, Q>,
+    query: Q,
+    archetype: &'a Archetype,
+}
+
+impl<'a, Q: Query> Deref for QueryOneItem<'a, Q> {
+    type Target = QueryItem<'a, Q>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.item
+    }
+}
+
+impl<'a, Q: Query> DerefMut for QueryOneItem<'a, Q> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.item
+    }
+}
+
+impl<'a, Q> Debug for QueryOneItem<'a, Q>
+where
+    Q: Query,
+    QueryItem<'a, Q>: Debug,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.item, f)
+    }
+}
+
+impl<'a, Q> Display for QueryOneItem<'a, Q>
+where
+    Q: Query,
+    QueryItem<'a, Q>: Display,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.item, f)
+    }
+}
+
+impl<'a, Q> Hash for QueryOneItem<'a, Q>
+where
+    Q: Query,
+    QueryItem<'a, Q>: Hash,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Hash::hash(&self.item, state)
+    }
+}
+
+impl<'a, 'b, Q> PartialEq<QueryItem<'b, Q>> for QueryOneItem<'a, Q>
+where
+    Q: Query,
+    QueryItem<'a, Q>: PartialEq<QueryItem<'b, Q>>,
+{
+    #[inline]
+    fn eq(&self, other: &QueryItem<'b, Q>) -> bool {
+        **self == *other
+    }
+}
+
+impl<'a, Q> QueryOneItem<'a, Q>
+where
+    Q: Query,
+{
+    pub(crate) fn new(query: Q, archetype: &'a Archetype, item: QueryItem<'a, Q>) -> Self {
+        Self {
+            item,
+            query,
+            archetype,
+        }
+    }
+}
+
+impl<'a, Q> Drop for QueryOneItem<'a, Q>
+where
+    Q: Query,
+{
+    #[inline]
+    fn drop(&mut self) {
+        let archetype = self.archetype;
+        unsafe {
+            self.query.access_archetype(archetype, &|id, access| {
+                archetype.component(id).unwrap_unchecked().release(access)
+            });
         }
     }
 }

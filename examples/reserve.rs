@@ -1,8 +1,10 @@
 //! This example shows how to use entity reserving mechanism.
 
 use edict::{
-    action::ActionEncoder, executor::MockExecutor, prelude::ActionEncoderSliceExt,
-    scheduler::Scheduler, world::World,
+    action::{ActionEncoder, ActionEncoderSliceExt},
+    executor::MockExecutor,
+    scheduler::Scheduler,
+    world::World,
 };
 use edict_proc::Component;
 
@@ -28,7 +30,7 @@ fn main() {
         .run(&mut world, &MockExecutor)
         .execute_all(&mut world);
 
-    assert_eq!(world.query::<&Foo>().into_iter().count(), 4);
+    assert_eq!(world.query::<&Foo>().iter().count(), 4);
 }
 
 fn reserve_system(world: &World, encoder: &mut ActionEncoder) {

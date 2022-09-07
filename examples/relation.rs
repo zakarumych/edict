@@ -47,7 +47,7 @@ fn main() {
 
     world.add_relation(a, ChildOf, b).unwrap();
 
-    for (e, ChildOf) in world.query::<Entities>().relates_to::<&ChildOf>(b) {
+    for (e, ChildOf) in world.query::<Entities>().relates_to::<&ChildOf>(b).iter() {
         println!("{} is child of {}", e, b);
     }
 
@@ -62,12 +62,14 @@ fn main() {
     world.add_relation(a, Likes, b).unwrap();
     world.add_relation(a, Likes, c).unwrap();
 
-    assert_eq!(world.query_one_with(a, relates_to::<Likes>(b)), Ok(()));
-    assert_eq!(world.query_one_with(a, relates_to::<Likes>(c)), Ok(()));
+    assert!(world.query_one_with(a, relates_to::<Likes>(b)).is_ok());
+    assert!(world.query_one_with(a, relates_to::<Likes>(c)).is_ok());
+
     assert_eq!(
         world
             .query_one::<Relates<&Likes>>(a)
             .unwrap()
+            .clone()
             .collect::<Vec<_>>(),
         vec![(&Likes, b), (&Likes, c)]
     );
@@ -78,6 +80,7 @@ fn main() {
         world
             .query_one::<Relates<&Likes>>(a)
             .unwrap()
+            .clone()
             .collect::<Vec<_>>(),
         vec![(&Likes, c)]
     );
@@ -87,17 +90,18 @@ fn main() {
     world.add_relation(a, Enemy, b).unwrap();
 
     let q = world.query::<Entities>().relates::<&Enemy>();
-    for (e, enemies) in q {
+    for (e, enemies) in q.iter() {
         println!(
             "{} is enemy of {:?}",
             e,
             enemies.into_iter().collect::<Vec<_>>()
         );
     }
+    drop(q);
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.query::<Entities>().relates::<&Enemy>() {
+    for (e, enemies) in world.query::<Entities>().relates::<&Enemy>().iter() {
         println!(
             "{} is enemy of {:?}",
             e,
@@ -107,16 +111,17 @@ fn main() {
 
     let since = EpochId::start();
 
-    let query = world
+    let mut query = world
         .query::<(Entities, &A)>()
         .with::<B>()
         .modified::<&C>(since)
         .relates_to::<&ChildOf>(b)
         .filter(relates_to::<Likes>(c));
 
-    for ((e, a), c, child_of) in query {
+    for ((e, a), c, child_of) in query.iter_mut() {
         drop((e, a, c, child_of));
     }
+    drop(query);
 
     let a = world.spawn((A,));
     let b = world.spawn((B,));

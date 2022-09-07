@@ -49,6 +49,7 @@ use core::hash::{BuildHasher, Hash, Hasher};
 //     }
 // }
 
+#[derive(Default)]
 pub struct NoOpHasher {
     value: u64,
 }
@@ -85,6 +86,7 @@ impl Hasher for NoOpHasher {
     }
 }
 
+#[derive(Default)]
 pub struct NoOpHasherBuilder;
 
 impl BuildHasher for NoOpHasherBuilder {
@@ -157,15 +159,15 @@ impl BuildHasher for MulHasherBuilder {
     }
 }
 
-#[inline]
-pub fn no_op_hash<T>(v: &T) -> u64
-where
-    T: Hash,
-{
-    let mut hasher = NoOpHasher::new();
-    v.hash(&mut hasher);
-    hasher.finish()
-}
+// #[inline]
+// pub fn no_op_hash<T>(v: &T) -> u64
+// where
+//     T: Hash,
+// {
+//     let mut hasher = NoOpHasher::new();
+//     v.hash(&mut hasher);
+//     hasher.finish()
+// }
 
 #[allow(unused)]
 #[inline]

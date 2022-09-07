@@ -1,12 +1,13 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, cell::Cell, marker::PhantomData, mem::ManuallyDrop};
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
     component::Component,
     entity::{EntityId, EntitySet},
     query::{
-        Fetch, Filter, FilteredQuery, IntoFilter, IntoQuery, Modified, PhantomQuery, Query,
-        QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
+        Fetch, Filter, FilteredQuery, ImmutableQuery, IntoFilter, IntoQuery, Modified, MutQuery,
+        PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter,
+        With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -54,13 +55,30 @@ macro_rules! for_tuple {
 
 for_tuple!();
 
-/// Mutable query builder.
+/// Query builder.
 pub struct QueryRef<'a, Q: IntoQuery, F: IntoQuery = ()> {
     archetypes: &'a [Archetype],
     entities: &'a EntitySet,
     epoch: &'a EpochCounter,
-    query: Q::Query,
-    filter: F::Query,
+    filtered_query: FilteredQuery<F::Query, Q::Query>,
+    borrowed: Cell<bool>,
+}
+
+struct QueryRefParts<'a, Q: IntoQuery, F: IntoQuery> {
+    archetypes: &'a [Archetype],
+    entities: &'a EntitySet,
+    epoch: &'a EpochCounter,
+    filtered_query: FilteredQuery<F::Query, Q::Query>,
+}
+
+impl<'a, Q, F> Drop for QueryRef<'a, Q, F>
+where
+    Q: IntoQuery,
+    F: IntoQuery,
+{
+    fn drop(&mut self) {
+        self.release();
+    }
 }
 
 impl<'a, Q, F> QueryRef<'a, Q, F>
@@ -75,20 +93,38 @@ where
             archetypes: world.archetypes(),
             entities: &world.entities,
             epoch: world.epoch_counter(),
-            query,
-            filter,
+            filtered_query: FilteredQuery { filter, query },
+            borrowed: Cell::new(false),
+        }
+    }
+
+    #[inline]
+    fn deconstruct(self) -> QueryRefParts<'a, Q, F> {
+        let mut me = ManuallyDrop::new(self);
+        me.release();
+
+        QueryRefParts {
+            archetypes: me.archetypes,
+            entities: me.entities,
+            epoch: me.epoch,
+            filtered_query: unsafe { core::ptr::read(&mut me.filtered_query) },
         }
     }
 
     /// Creates new layer of tuples of mutable query.
     #[inline]
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: (self.query,),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: (parts.filtered_query.query,),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -101,12 +137,17 @@ where
         Q::Query: ExtendTuple<T>,
         TuplePlus<Q, T>: IntoQuery<Query = TuplePlus<Q::Query, T>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(query),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(query),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -116,12 +157,17 @@ where
     where
         T: Component,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (PhantomData, self.filter),
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (PhantomData, parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -131,12 +177,17 @@ where
     where
         T: Component,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (PhantomData, self.filter),
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (PhantomData, parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -146,12 +197,17 @@ where
     where
         T: Filter,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query,
-            filter: (filter, self.filter),
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (filter, parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -164,12 +220,20 @@ where
         Q::Query: ExtendTuple<Modified<T>>,
         TuplePlus<Q, Modified<T>>: IntoQuery<Query = TuplePlus<Q::Query, Modified<T>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(Modified::new(after_epoch)),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts
+                    .filtered_query
+                    .query
+                    .extend_tuple(Modified::new(after_epoch)),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -183,12 +247,17 @@ where
         TuplePlus<Q, QueryBorrowAny<T>>:
             IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> QueryBorrowAny<T>>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -201,12 +270,20 @@ where
         Q::Query: ExtendTuple<QueryBorrowOne<T>>,
         TuplePlus<Q, QueryBorrowOne<T>>: IntoQuery<Query = TuplePlus<Q::Query, QueryBorrowOne<T>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(QueryBorrowOne::new(id)),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts
+                    .filtered_query
+                    .query
+                    .extend_tuple(QueryBorrowOne::new(id)),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -220,12 +297,17 @@ where
         TuplePlus<Q, QueryBorrowAll<T>>:
             IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> QueryBorrowAll<T>>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -239,12 +321,17 @@ where
         TuplePlus<Q, Relates<R>>:
             IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> Relates<R>>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -258,12 +345,17 @@ where
         TuplePlus<Q, RelatesExclusive<R>>:
             IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> RelatesExclusive<R>>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -276,12 +368,20 @@ where
         Q::Query: ExtendTuple<RelatesTo<R>>,
         TuplePlus<Q, RelatesTo<R>>: IntoQuery<Query = TuplePlus<Q::Query, RelatesTo<R>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(RelatesTo::new(entity)),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts
+                    .filtered_query
+                    .query
+                    .extend_tuple(RelatesTo::new(entity)),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
     }
 
@@ -295,13 +395,97 @@ where
         TuplePlus<Q, Related<R>>:
             IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> Related<R>>>>,
     {
+        let parts = self.deconstruct();
+
         QueryRef {
-            archetypes: self.archetypes,
-            entities: self.entities,
-            epoch: self.epoch,
-            query: self.query.extend_tuple(PhantomData),
-            filter: self.filter,
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(false),
         }
+    }
+
+    /// Borrow from archetypes
+    fn ensure_borrow(&self) {
+        if self.borrowed.get() {
+            return;
+        }
+
+        struct ReleaseOnFailure<'a, Q: Query> {
+            archetypes: &'a [Archetype],
+            query: &'a Q,
+            len: usize,
+        }
+
+        impl<'a, Q> Drop for ReleaseOnFailure<'a, Q>
+        where
+            Q: Query,
+        {
+            fn drop(&mut self) {
+                for archetype in &self.archetypes[..self.len] {
+                    unsafe {
+                        if !self.query.skip_archetype(archetype) {
+                            self.query.access_archetype(archetype, &|id, access| {
+                                archetype.component(id).unwrap_unchecked().release(access);
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut guard = ReleaseOnFailure {
+            archetypes: &self.archetypes,
+            query: &self.filtered_query.query,
+            len: 0,
+        };
+
+        for archetype in self.archetypes {
+            unsafe {
+                if !self.filtered_query.skip_archetype(archetype) {
+                    self.filtered_query
+                        .access_archetype(archetype, &|id, access| {
+                            let success = archetype.component(id).unwrap_unchecked().borrow(access);
+                            assert!(success, "Failed to lock '{:?}' from archetype", id);
+                        });
+                }
+            }
+            guard.len += 1;
+        }
+
+        core::mem::forget(guard);
+
+        self.borrowed.set(true);
+    }
+
+    /// Release borrow locks from archetypes.
+    /// Borrow locks are acquired with [`QueryRef::one`], [`QueryRef::iter`] and [`QueryRef::iter_mut`] methods.
+    /// Borrow locks are automatically released when the [`QueryRef`] is dropped.
+    ///
+    /// This method allows to release borrows early and reuse the query later.
+    /// For example in system with conflicting queries it is possible
+    /// to use this method to release borrows from one query and then use another query.
+    pub fn release(&mut self) {
+        if !*self.borrowed.get_mut() {
+            return;
+        }
+
+        for archetype in self.archetypes {
+            unsafe {
+                if !self.filtered_query.skip_archetype(archetype) {
+                    self.filtered_query
+                        .access_archetype(archetype, &|id, access| {
+                            archetype.component(id).unwrap_unchecked().release(access);
+                        });
+                }
+            }
+        }
+
+        *self.borrowed.get_mut() = false;
     }
 }
 
@@ -311,9 +495,13 @@ where
     F: IntoFilter,
 {
     /// Performs query from single entity.
-    pub fn one(&mut self, entity: EntityId) -> Result<QueryItem<'_, Q>, QueryOneError> {
-        let epoch = self.epoch.next();
-
+    /// Returns query item for the entity or error.
+    ///
+    /// Locks all archetypes for the query.
+    pub fn get_one(
+        &mut self,
+        entity: EntityId,
+    ) -> Result<QueryItem<'_, FilteredQuery<F::Filter, Q::Query>>, QueryOneError> {
         let (archetype, idx) = self
             .entities
             .get_location(entity)
@@ -323,120 +511,374 @@ where
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if self.filter.skip_archetype(archetype) {
+        if self.filtered_query.skip_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        if self.query.skip_archetype(archetype) {
+        self.ensure_borrow();
+
+        let epoch = self.epoch.next();
+
+        let mut fetch = unsafe { self.filtered_query.fetch(archetype, epoch) };
+
+        if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let mut filter_fetch = unsafe { self.filter.fetch(archetype, epoch) };
-        let mut query_fetch = unsafe { self.query.fetch(archetype, epoch) };
+        unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) }
 
-        if unsafe { filter_fetch.skip_chunk(chunk_idx(idx as usize)) } {
+        if unsafe { fetch.skip_item(idx as usize) } {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        if unsafe { query_fetch.skip_chunk(chunk_idx(idx as usize)) } {
-            return Err(QueryOneError::NotSatisfied);
-        }
+        let item = unsafe { fetch.get_item(idx as usize) };
 
-        unsafe { filter_fetch.visit_chunk(chunk_idx(idx as usize)) }
-        unsafe { query_fetch.visit_chunk(chunk_idx(idx as usize)) }
-
-        if unsafe { filter_fetch.skip_item(idx as usize) } {
-            return Err(QueryOneError::NotSatisfied);
-        }
-
-        if unsafe { query_fetch.skip_item(idx as usize) } {
-            return Err(QueryOneError::NotSatisfied);
-        }
-
-        unsafe { filter_fetch.get_item(idx as usize) };
-        let item = unsafe { query_fetch.get_item(idx as usize) };
         Ok(item)
     }
 
-    /// Returns iterator over immutable query results.
-    /// This method is only available with non-tracking queries.
-    #[inline]
-    pub fn iter<'b>(&self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>
+    /// Performs query from single entity.
+    /// Calls provided closure with query item and its result or error.
+    ///
+    /// This method does not allow references from item to escape the closure.
+    /// This allows it to lock only archetype to which entity belongs for the duration of the closure call.
+    pub fn for_one<Fun, R>(&mut self, entity: EntityId, f: Fun) -> Result<R, QueryOneError>
     where
-        Q::Query: Clone,
-        F::Filter: Clone,
+        for<'b> Fun: FnOnce(QueryItem<'b, FilteredQuery<F::Filter, Q::Query>>) -> R,
     {
         let epoch = self.epoch.next();
 
-        QueryIter::new(
-            FilteredQuery {
-                filter: self.filter.clone(),
-                query: self.query.clone(),
-            },
-            epoch,
-            self.archetypes,
-        )
+        if self.borrowed.get() {
+            for_one_pre_borrowed_impl(
+                MutQuery::new(&mut self.filtered_query),
+                self.entities,
+                self.archetypes,
+                epoch,
+                entity,
+                f,
+            )
+        } else {
+            for_one_impl(
+                MutQuery::new(&mut self.filtered_query),
+                self.entities,
+                self.archetypes,
+                epoch,
+                entity,
+                f,
+            )
+        }
     }
 
     /// Returns iterator over query results.
-    /// This method is only available with non-tracking queries.
+    ///
+    /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
     #[inline]
-    pub fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
+    pub fn iter(&self) -> QueryIter<'_, FilteredQuery<F::Filter, Q::Query>>
+    where
+        Q::Query: ImmutableQuery + Clone,
+        F::Filter: Clone,
+    {
+        self.ensure_borrow();
+
+        let epoch = self.epoch.next();
+
+        QueryIter::new(self.filtered_query.clone(), epoch, self.archetypes)
+    }
+
+    /// Returns iterator over query results.
+    ///
+    /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
+    #[inline]
+    pub fn iter_mut(&mut self) -> QueryIter<'_, MutQuery<FilteredQuery<F::Filter, Q::Query>>> {
+        self.ensure_borrow();
+
         let epoch = self.epoch.next();
 
         QueryIter::new(
-            FilteredQuery {
-                filter: self.filter,
-                query: self.query,
-            },
+            MutQuery::new(&mut self.filtered_query),
             epoch,
             self.archetypes,
         )
     }
 
-    /// Iterates through world using specified query.
+    /// Calls a closure on each query item.
     ///
-    /// This method can be used for queries that mutate components.
-    /// This method only works queries that does not track for component changes.
+    /// This method does not allow references from items to escape the closure.
+    /// This allows it to lock only archetype which is currently iterated.
+    /// Yet this method won't release borrow locks if they are already acquired.
+    ///
+    /// For example if `Option<Component>` is used in query,
+    /// and closure receives `None` for some entity,
+    /// A query with `&mut Component` can be used inside the closure.
+    /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
     #[inline]
-    pub fn for_each<Fun>(self, f: Fun)
+    pub fn for_each<Fun>(&mut self, mut f: Fun)
     where
-        Fun: FnMut(QueryItem<'_, Q>),
+        Fun: for<'b> FnMut(QueryItem<'b, Q>),
+    {
+        self.fold((), move |(), item| f(item));
+    }
+
+    /// Folds every query item into an accumulator by applying an operation, returning the final result.
+    ///
+    /// This method does not allow references from items to escape the closure.
+    /// This allows it to lock only archetype which is currently iterated for the duration of the closure call.
+    /// Yet this method won't release borrow locks if they are already acquired.
+    ///
+    /// For example if `Option<Component>` is used in query,
+    /// and closure receives `None` for some entity,
+    /// A query with `&mut Component` can be used inside the closure.
+    /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
+    #[inline]
+    pub fn fold<T, Fun>(&mut self, acc: T, f: Fun) -> T
+    where
+        Fun: for<'b> FnMut(T, QueryItem<'b, Q>) -> T,
     {
         let epoch = self.epoch.next();
-        for_each_impl(self.filter, self.query, self.archetypes, epoch, f)
+
+        if self.borrowed.get() {
+            fold_pre_borrowed_impl(
+                MutQuery::new(&mut self.filtered_query),
+                self.archetypes,
+                epoch,
+                acc,
+                f,
+            )
+        } else {
+            fold_impl(
+                MutQuery::new(&mut self.filtered_query),
+                self.archetypes,
+                epoch,
+                acc,
+                f,
+            )
+        }
     }
 }
 
-impl<'a, Q, F> IntoIterator for QueryRef<'a, Q, F>
+impl<'a, Q, F> IntoIterator for &'a mut QueryRef<'_, Q, F>
 where
     Q: IntoQuery,
     F: IntoFilter,
 {
     type Item = QueryItem<'a, Q>;
-    type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
+    type IntoIter = QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>>;
 
-    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
-        self.into_iter()
+    fn into_iter(self) -> QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>> {
+        self.iter_mut()
     }
 }
 
-pub(crate) fn for_each_impl<Q, F, Fun>(
-    filter: F,
+impl<'a, Q, F> IntoIterator for &'a QueryRef<'_, Q, F>
+where
+    Q: IntoQuery,
+    Q::Query: ImmutableQuery + Clone,
+    F: IntoFilter,
+    F::Filter: Clone,
+{
+    type Item = QueryItem<'a, Q>;
+    type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
+
+    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
+        self.iter()
+    }
+}
+
+struct QueryRelease<'a, Q: Query> {
     query: Q,
+    archetype: &'a Archetype,
+}
+
+impl<Q> QueryRelease<'_, Q>
+where
+    Q: Query,
+{
+    fn release(mut self) -> Q {
+        self.do_release();
+        let mut me = ManuallyDrop::new(self);
+        unsafe { core::ptr::read(&mut me.query) }
+    }
+
+    fn do_release(&mut self) {
+        unsafe {
+            self.query.access_archetype(self.archetype, &|id, access| {
+                self.archetype
+                    .component(id)
+                    .unwrap_unchecked()
+                    .release(access);
+            });
+        }
+    }
+}
+
+impl<Q> Drop for QueryRelease<'_, Q>
+where
+    Q: Query,
+{
+    fn drop(&mut self) {
+        self.do_release();
+    }
+}
+
+fn for_one_impl<Q, R, Fun>(
+    query: Q,
+    entities: &EntitySet,
     archetypes: &[Archetype],
     epoch: EpochId,
-    mut f: Fun,
-) where
+    id: EntityId,
+    f: Fun,
+) -> Result<R, QueryOneError>
+where
     Q: Query,
-    F: Filter,
-    Fun: FnMut(QueryItem<'_, Q>),
+    Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
 {
-    let mut query = FilteredQuery {
-        filter: filter,
-        query: query,
-    };
+    let (archetype_idx, idx) = entities
+        .get_location(id)
+        .ok_or(QueryOneError::NoSuchEntity)?;
 
+    let archetype_idx = archetype_idx as usize;
+    let idx = idx as usize;
+
+    let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
+
+    if query.skip_archetype(archetype) {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    unsafe {
+        query.access_archetype(archetype, &|id, access| {
+            let success = archetype.component(id).unwrap_unchecked().borrow(access);
+            assert!(success, "Failed to borrow from archetype");
+        });
+    }
+
+    let mut guard = QueryRelease { query, archetype };
+
+    let mut fetch = unsafe { guard.query.fetch(archetype, epoch) };
+    if unsafe { fetch.skip_chunk(chunk_idx(idx)) } {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    if unsafe { fetch.skip_item(idx) } {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+
+    let item = unsafe { fetch.get_item(idx) };
+
+    Ok(f(item))
+}
+
+fn for_one_pre_borrowed_impl<Q, R, Fun>(
+    mut query: Q,
+    entities: &EntitySet,
+    archetypes: &[Archetype],
+    epoch: EpochId,
+    id: EntityId,
+    f: Fun,
+) -> Result<R, QueryOneError>
+where
+    Q: Query,
+    Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
+{
+    let (archetype_idx, idx) = entities
+        .get_location(id)
+        .ok_or(QueryOneError::NoSuchEntity)?;
+
+    let archetype_idx = archetype_idx as usize;
+    let idx = idx as usize;
+
+    let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
+
+    if query.skip_archetype(archetype) {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    let mut fetch = unsafe { query.fetch(archetype, epoch) };
+    if unsafe { fetch.skip_chunk(chunk_idx(idx)) } {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    if unsafe { fetch.skip_item(idx) } {
+        return Err(QueryOneError::NotSatisfied);
+    }
+
+    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+
+    let item = unsafe { fetch.get_item(idx) };
+
+    Ok(f(item))
+}
+
+fn fold_impl<Q, T, Fun>(
+    mut query: Q,
+    archetypes: &[Archetype],
+    epoch: EpochId,
+    mut acc: T,
+    mut f: Fun,
+) -> T
+where
+    Q: Query,
+    Fun: FnMut(T, QueryItem<'_, Q>) -> T,
+{
+    for archetype in archetypes {
+        if archetype.is_empty() {
+            continue;
+        }
+
+        if query.skip_archetype(archetype) {
+            continue;
+        }
+
+        unsafe {
+            query.access_archetype(archetype, &|id, access| {
+                let success = archetype.component(id).unwrap_unchecked().borrow(access);
+                assert!(success, "Failed to borrow from archetype");
+            });
+        }
+
+        let mut guard = QueryRelease { query, archetype };
+
+        let mut fetch = unsafe { guard.query.fetch(archetype, epoch) };
+
+        let mut indices = 0..archetype.len();
+        let mut visit_chunk = false;
+
+        while let Some(idx) = indices.next() {
+            if let Some(chunk_idx) = first_of_chunk(idx) {
+                if unsafe { fetch.skip_chunk(chunk_idx) } {
+                    indices.nth(CHUNK_LEN_USIZE - 1);
+                    continue;
+                }
+                visit_chunk = true;
+            }
+
+            if !unsafe { fetch.skip_item(idx) } {
+                if visit_chunk {
+                    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+                    visit_chunk = false;
+                }
+                let item = unsafe { fetch.get_item(idx) };
+                acc = f(acc, item);
+            }
+        }
+
+        query = guard.release();
+    }
+    acc
+}
+
+fn fold_pre_borrowed_impl<Q, T, Fun>(
+    mut query: Q,
+    archetypes: &[Archetype],
+    epoch: EpochId,
+    mut acc: T,
+    mut f: Fun,
+) -> T
+where
+    Q: Query,
+    Fun: FnMut(T, QueryItem<'_, Q>) -> T,
+{
     for archetype in archetypes {
         if archetype.is_empty() {
             continue;
@@ -466,8 +908,9 @@ pub(crate) fn for_each_impl<Q, F, Fun>(
                     visit_chunk = false;
                 }
                 let item = unsafe { fetch.get_item(idx) };
-                f(item);
+                acc = f(acc, item);
             }
         }
     }
+    acc
 }

@@ -39,15 +39,21 @@ fn main() {
     // Entity can be used to access components in the `World`.
     // Note that query returns `Result` because entity may be already despawned
     // or not have a component.
-    assert!(matches!(world.query_one::<&Foo>(e), Ok(&Foo)));
+    assert!(matches!(world.query_one::<&Foo>(e).as_deref(), Ok(&Foo)));
 
     // To add another component to the entity call `World::insert`.
     world.insert(e, Value(0u32)).unwrap();
-    assert!(matches!(world.query_one::<&Value<u32>>(e), Ok(&Value(0))));
+    assert!(matches!(
+        world.query_one::<&Value<u32>>(e).as_deref(),
+        Ok(&Value(0))
+    ));
 
     // If the component is already present in entity, the value is simply replaced.
     world.insert(e, Value(1u32)).unwrap();
-    assert!(matches!(world.query_one::<&Value<u32>>(e), Ok(&Value(1))));
+    assert!(matches!(
+        world.query_one::<&Value<u32>>(e).as_deref(),
+        Ok(&Value(1))
+    ));
 
     // To add few components at once user should call `World::insert_bundle`.
     // This is much more efficient than adding components once by one.

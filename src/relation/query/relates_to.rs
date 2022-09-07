@@ -1,7 +1,5 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
-
 use crate::{
     archetype::Archetype,
     entity::EntityId,
@@ -18,8 +16,8 @@ pub struct RelatesTo<R> {
     phantom: PhantomData<R>,
 }
 
-phantom_debug!(RelatesTo<R> { target });
-phantom_copy!(RelatesTo<R>);
+impl_debug!(RelatesTo<R> { target });
+impl_copy!(RelatesTo<R>);
 
 impl<R> RelatesTo<R> {
     /// Returns relation query bound to one specific target entity.
@@ -36,7 +34,6 @@ pub struct FetchRelatesToRead<'a, R: Relation> {
     target: EntityId,
     item_idx: usize,
     ptr: NonNull<OriginComponent<R>>,
-    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
@@ -52,7 +49,6 @@ where
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
             item_idx: 0,
-            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -104,7 +100,7 @@ where
     type Query = Self;
 }
 
-impl<R> Query for RelatesTo<&R>
+unsafe impl<R> Query for RelatesTo<&R>
 where
     R: Relation + Sync,
 {
@@ -118,7 +114,12 @@ where
     }
 
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
     #[inline]
@@ -127,19 +128,17 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRelatesToRead<'a, R> {
-        let idx = archetype
-            .id_index(TypeId::of::<OriginComponent<R>>())
+        let component = archetype
+            .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let component = archetype.component(idx);
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let data = component.data();
 
         FetchRelatesToRead {
             target: self.target,
             ptr: data.ptr.cast(),
             item_idx: 0,
-            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -155,7 +154,6 @@ pub struct FetchRelatesToWrite<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
-    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut OriginComponent<R>>,
 }
 
@@ -174,7 +172,6 @@ where
             ptr: NonNull::dangling(),
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
-            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -232,7 +229,7 @@ where
     type Query = Self;
 }
 
-impl<R> Query for RelatesTo<&mut R>
+unsafe impl<R> Query for RelatesTo<&mut R>
 where
     R: Relation + Send,
 {
@@ -246,7 +243,12 @@ where
     }
 
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<OriginComponent<R>>(), Access::Write)
     }
 
     #[inline]
@@ -257,16 +259,13 @@ where
     ) -> FetchRelatesToWrite<'a, R> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype
-            .id_index(TypeId::of::<OriginComponent<R>>())
+        let component = archetype
+            .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();
-        let component = archetype.component(idx);
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let mut data = component.data.borrow_mut();
+        let data = component.data_mut();
         data.epoch.bump(epoch);
-
-        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         FetchRelatesToWrite {
             target: self.target,
@@ -275,7 +274,6 @@ where
             ptr: data.ptr.cast(),
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

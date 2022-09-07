@@ -27,7 +27,7 @@ where
     type Fetch = UnitFetch;
 }
 
-impl<R> PhantomQuery for FilterNotRelates<R>
+unsafe impl<R> PhantomQuery for FilterNotRelates<R>
 where
     R: Relation,
 {
@@ -38,8 +38,11 @@ where
 
     #[inline]
     fn skip_archetype(archetype: &Archetype) -> bool {
-        archetype.contains_id(TypeId::of::<OriginComponent<R>>())
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
+
+    #[inline]
+    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {

@@ -1,7 +1,5 @@
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
-use atomicell::borrow::{AtomicBorrow, AtomicBorrowMut};
-
 use crate::{
     archetype::{chunk_idx, Archetype},
     epoch::EpochId,
@@ -25,8 +23,8 @@ pub struct Modified<T> {
     marker: PhantomData<fn() -> T>,
 }
 
-phantom_copy!(Modified<T>);
-phantom_debug!(Modified<T> { after_epoch });
+impl_copy!(Modified<T>);
+impl_debug!(Modified<T> { after_epoch });
 
 impl<T> Modified<T> {
     /// Creates new `Modified` query.
@@ -45,7 +43,6 @@ pub struct ModifiedFetchRead<'a, T> {
     ptr: NonNull<T>,
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
-    _borrow: AtomicBorrow<'a>,
     marker: PhantomData<&'a [T]>,
 }
 
@@ -62,7 +59,6 @@ where
             ptr: NonNull::dangling(),
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
-            _borrow: AtomicBorrow::dummy(),
             marker: PhantomData,
         }
     }
@@ -103,7 +99,7 @@ where
     type Query = Self;
 }
 
-impl<T> Query for Modified<&T>
+unsafe impl<T> Query for Modified<&T>
 where
     T: Sync + 'static,
 {
@@ -114,17 +110,21 @@ where
 
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.id_index(TypeId::of::<T>()) {
+        match archetype.component(TypeId::of::<T>()) {
             None => true,
-            Some(idx) => unsafe {
+            Some(component) => unsafe {
                 debug_assert_eq!(<&T as PhantomQuery>::skip_archetype(archetype), false);
 
-                let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
-                let data = component.data.borrow();
+                let data = component.data();
                 !data.epoch.after(self.after_epoch)
             },
         }
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<T>(), Access::Read)
     }
 
     #[inline]
@@ -135,9 +135,8 @@ where
     ) -> ModifiedFetchRead<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let component = archetype.component(idx);
-        let (data, borrow) = atomicell::Ref::into_split(component.data.borrow());
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
+        let data = component.data();
 
         debug_assert!(data.epoch.after(self.after_epoch));
 
@@ -146,7 +145,6 @@ where
             ptr: data.ptr.cast(),
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -161,7 +159,6 @@ pub struct ModifiedFetchWrite<'a, T> {
     ptr: NonNull<T>,
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
-    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
 
@@ -179,7 +176,6 @@ where
             ptr: NonNull::dangling(),
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
-            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -226,7 +222,7 @@ where
     type Query = Self;
 }
 
-impl<T> Query for Modified<&mut T>
+unsafe impl<T> Query for Modified<&mut T>
 where
     T: Send + 'static,
 {
@@ -237,17 +233,21 @@ where
 
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.id_index(TypeId::of::<T>()) {
+        match archetype.component(TypeId::of::<T>()) {
             None => true,
-            Some(idx) => unsafe {
+            Some(component) => unsafe {
                 debug_assert_eq!(<&mut T as PhantomQuery>::skip_archetype(archetype), false);
 
-                let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
-                let data = component.data.borrow();
+                let data = component.data_mut();
                 !data.epoch.after(self.after_epoch)
             },
         }
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<T>(), Access::Write)
     }
 
     #[inline]
@@ -258,14 +258,11 @@ where
     ) -> ModifiedFetchWrite<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let component = archetype.component(idx);
-        let mut data = component.data.borrow_mut();
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
+        let data = component.data_mut();
 
         debug_assert!(data.epoch.after(self.after_epoch));
         data.epoch.bump(epoch);
-
-        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         ModifiedFetchWrite {
             after_epoch: self.after_epoch,
@@ -273,7 +270,6 @@ where
             ptr: data.ptr.cast(),
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }
@@ -287,7 +283,6 @@ pub struct ModifiedFetchAlt<'a, T> {
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<Cell<EpochId>>,
     archetype_epoch: NonNull<Cell<EpochId>>,
-    _borrow: AtomicBorrowMut<'a>,
     marker: PhantomData<&'a mut [T]>,
 }
 
@@ -306,7 +301,6 @@ where
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
             archetype_epoch: NonNull::dangling(),
-            _borrow: AtomicBorrowMut::dummy(),
             marker: PhantomData,
         }
     }
@@ -359,7 +353,7 @@ where
     type Query = Self;
 }
 
-impl<T> Query for Modified<Alt<T>>
+unsafe impl<T> Query for Modified<Alt<T>>
 where
     T: Send + 'static,
 {
@@ -370,17 +364,21 @@ where
 
     #[inline]
     fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.id_index(TypeId::of::<T>()) {
+        match archetype.component(TypeId::of::<T>()) {
             None => true,
-            Some(idx) => unsafe {
+            Some(component) => unsafe {
                 debug_assert_eq!(<Alt<T> as PhantomQuery>::skip_archetype(archetype), false);
 
-                let component = archetype.component(idx);
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
-                let data = component.data.borrow();
+                let data = component.data_mut();
                 !data.epoch.after(self.after_epoch)
             },
         }
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        f(TypeId::of::<T>(), Access::Write)
     }
 
     #[inline]
@@ -391,16 +389,13 @@ where
     ) -> ModifiedFetchAlt<'a, T> {
         debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
 
-        let idx = archetype.id_index(TypeId::of::<T>()).unwrap_unchecked();
-        let component = archetype.component(idx);
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
-        let data = component.data.borrow_mut();
+        let data = component.data_mut();
 
         debug_assert!(data.epoch.after(self.after_epoch));
         debug_assert!(data.epoch.before(epoch));
-
-        let (data, borrow) = atomicell::RefMut::into_split(data);
 
         ModifiedFetchAlt {
             after_epoch: self.after_epoch,
@@ -409,7 +404,6 @@ where
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast(),
             archetype_epoch: NonNull::from(&mut data.epoch).cast(),
-            _borrow: borrow,
             marker: PhantomData,
         }
     }

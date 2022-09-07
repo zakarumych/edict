@@ -159,7 +159,6 @@ mod borrow;
 mod hash;
 mod idx;
 mod res;
-// mod typeidset;
 
 #[cfg(test)]
 mod test;

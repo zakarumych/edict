@@ -274,6 +274,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
 
     #[inline]
     unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+        let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.skip_chunk(chunk_idx, false);
         false
@@ -281,12 +282,14 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
 
     #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+        let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.visit_chunk(chunk_idx)
     }
 
     #[inline]
     unsafe fn skip_item(&mut self, idx: usize) -> bool {
+        let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.skip_item(idx, false);
         false
@@ -294,6 +297,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> () {
+        let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.get_item(idx)
     }

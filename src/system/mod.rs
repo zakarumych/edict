@@ -82,7 +82,7 @@ pub trait IntoSystem<Marker> {
 }
 
 /// Identity marker for [`IntoSystem`] trait.
-pub struct IsSystem;
+pub enum IsSystem {}
 
 impl<T> IntoSystem<IsSystem> for T
 where
@@ -92,5 +92,139 @@ where
 
     fn into_system(self) -> T {
         self
+    }
+}
+
+/// A thread-safe system that can run in parallel with others.
+///
+/// In contrast with [`System`] incorrect access declaration and archetype skipping
+/// can't result in undefined behavior. Instead runtime checks will cause a panic.
+pub trait ParallelSystem {
+    /// Checks if all queries from this system will skip specified archetype.
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        let _ = archetype;
+        false
+    }
+
+    /// Returns access type to the specified component type this system may perform.
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        let _ = id;
+        None
+    }
+
+    /// Returns access type to the specified resource type this system may perform.
+    fn access_resource(&self, id: TypeId) -> Option<Access> {
+        let _ = id;
+        None
+    }
+
+    /// Runs the system with given context instance.
+    ///
+    /// If `is_local()` returns `true` then running it outside local thread is unsound.
+    fn run(&mut self, world: &World, queue: &mut dyn ActionQueue);
+}
+
+/// Marker for [`IntoSystem`] to turn [`ParallelSystem`] into [`System`].
+pub enum IsParallelSystem {}
+
+/// Wraps [`ParallelSystem`] and implements [`System`] trait.
+pub struct IntoParallelSystem<S> {
+    system: S,
+}
+
+unsafe impl<S> System for IntoParallelSystem<S>
+where
+    S: ParallelSystem,
+{
+    fn is_local(&self) -> bool {
+        false
+    }
+
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
+    }
+
+    fn skips_archetype(&self, archetype: &Archetype) -> bool {
+        self.system.skips_archetype(archetype)
+    }
+
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        self.system.access_component(id)
+    }
+
+    fn access_resource(&self, id: TypeId) -> Option<Access> {
+        self.system.access_resource(id)
+    }
+
+    unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
+        self.system.run(world.as_ref(), queue);
+    }
+}
+
+impl<S> IntoSystem<IsParallelSystem> for S
+where
+    S: ParallelSystem + Send + 'static,
+{
+    type System = IntoParallelSystem<S>;
+
+    fn into_system(self) -> IntoParallelSystem<S> {
+        IntoParallelSystem { system: self }
+    }
+}
+
+/// A thread-local system that cannot run in parallel with others.
+/// Local system borrows whole [`World`] mutably.
+pub trait LocalSystem {
+    /// Runs the system with given context instance.
+    ///
+    /// If `is_local()` returns `true` then running it outside local thread is unsound.
+    fn run(&mut self, world: &mut World);
+}
+
+/// Marker for [`IntoSystem`] to turn [`LocalSystem`] into [`System`].
+pub enum IsLocalSystem {}
+
+/// Wraps [`LocalSystem`] and implements [`System`] trait.
+pub struct IntoLocalSystem<S> {
+    system: S,
+}
+
+unsafe impl<S> System for IntoLocalSystem<S>
+where
+    S: LocalSystem,
+{
+    fn is_local(&self) -> bool {
+        true
+    }
+
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Write)
+    }
+
+    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
+        false
+    }
+
+    fn access_component(&self, _id: TypeId) -> Option<Access> {
+        Some(Access::Write)
+    }
+
+    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+        Some(Access::Write)
+    }
+
+    unsafe fn run_unchecked(&mut self, mut world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+        self.system.run(world.as_mut());
+    }
+}
+
+impl<S> IntoSystem<IsLocalSystem> for S
+where
+    S: LocalSystem + Send + 'static,
+{
+    type System = IntoLocalSystem<S>;
+
+    fn into_system(self) -> IntoLocalSystem<S> {
+        IntoLocalSystem { system: self }
     }
 }

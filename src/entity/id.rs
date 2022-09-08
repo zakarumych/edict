@@ -1,4 +1,5 @@
 use core::{
+    cmp::Ordering,
     fmt,
     num::{NonZeroU32, NonZeroU64},
 };
@@ -15,7 +16,22 @@ pub struct EntityId {
     value: NonZeroU64,
 }
 
+impl PartialOrd for EntityId {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.order().cmp(&other.order()))
+    }
+}
+
+impl Ord for EntityId {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.order().cmp(&other.order())
+    }
+}
+
 impl EntityId {
+    #[inline]
     pub(crate) fn new(id: u32, gen: NonZeroU32) -> Self {
         EntityId {
             value: unsafe { NonZeroU64::new_unchecked((gen.get() as u64) << 32 | id as u64) },
@@ -34,17 +50,20 @@ impl EntityId {
     /// let id = EntityId::dangling();
     /// assert_eq!(world.is_alive(id), false);
     /// ```
+    #[inline]
     pub fn dangling() -> Self {
         EntityId::new(u32::MAX, invalid_gen())
     }
 
     /// Gets 64-bit integer that can be converted back to equal `EntityId`.
+    #[inline]
     pub fn bits(&self) -> u64 {
         self.value.get()
     }
 
     /// Converts 64-bit integer to `EntityId`.
     /// Returns `None` for integer less than or equal to `u32::MAX`.
+    #[inline]
     pub fn from_bits(bits: u64) -> Option<Self> {
         let gen = (bits >> 32) as u32;
         let idx = bits as u32;
@@ -53,17 +72,25 @@ impl EntityId {
     }
 
     /// Returns generation part of the entity id.
+    #[inline]
     pub fn gen(&self) -> NonZeroU32 {
         unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
     }
 
     /// Returns id part of the entity id.
+    #[inline]
     pub fn id(&self) -> u32 {
         self.value.get() as u32
+    }
+
+    #[inline]
+    fn order(&self) -> u64 {
+        (self.value.get() >> 32) | (self.value.get() << 32)
     }
 }
 
 impl fmt::Debug for EntityId {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityId")
             .field("gen", &self.gen().get())
@@ -73,6 +100,7 @@ impl fmt::Debug for EntityId {
 }
 
 impl fmt::Display for EntityId {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{{:0x}#{:x}}}", self.gen().get(), self.id())
     }

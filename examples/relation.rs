@@ -67,7 +67,7 @@ fn main() {
 
     assert_eq!(
         world
-            .query_one::<Relates<&Likes>>(a)
+            .query_one_mut::<Relates<&Likes>>(a)
             .unwrap()
             .clone()
             .collect::<Vec<_>>(),
@@ -78,7 +78,7 @@ fn main() {
 
     assert_eq!(
         world
-            .query_one::<Relates<&Likes>>(a)
+            .query_one_mut::<Relates<&Likes>>(a)
             .unwrap()
             .clone()
             .collect::<Vec<_>>(),

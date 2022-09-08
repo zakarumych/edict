@@ -4,8 +4,8 @@ use core::{
     any::{type_name, TypeId},
     cell::Cell,
     convert::TryFrom,
-    fmt::{self, Debug, Display},
-    hash::{Hash, Hasher},
+    fmt::{self, Debug},
+    hash::Hash,
     iter::FromIterator,
     iter::FusedIterator,
     marker::PhantomData,
@@ -26,14 +26,17 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{EntityId, EntitySet},
     epoch::{EpochCounter, EpochId},
-    query::{Fetch, IntoQuery, Query, QueryItem},
+    query::{Fetch, IntoQuery, Query, QueryFetch, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
     res::Res,
 };
 
 use self::edges::Edges;
 
-pub use self::{builder::WorldBuilder, query::QueryRef};
+pub use self::{
+    builder::WorldBuilder,
+    query::{QueryOne, QueryRef},
+};
 
 mod builder;
 mod edges;
@@ -1110,7 +1113,7 @@ impl World {
         self.entities.get_location(entity).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
-        if let Ok(mut c) = self.query_one::<&mut OriginComponent<R>>(entity) {
+        if let Ok(c) = self.query_one_mut::<&mut OriginComponent<R>>(entity) {
             c.remove_relation(entity, target, encoder);
         }
 
@@ -1118,42 +1121,70 @@ impl World {
     }
 
     /// Queries components from specified entity.
-    /// Returns wrapper with query item.
+    /// Returns query item.
     ///
     /// This method works only for stateless query types.
     /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
-    ///
-    /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
-    pub fn query_one<'a, Q>(
-        &'a self,
+    pub fn query_one_mut<'a, Q>(
+        &'a mut self,
         entity: EntityId,
-    ) -> Result<QueryOneItem<'a, Q::Query>, QueryOneError>
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
         Q: IntoQuery,
         Q::Query: Default,
     {
-        self.query_one_with(entity, Q::Query::default())
+        self.query_one_with_mut(entity, Q::Query::default())
     }
 
     /// Queries components from specified entity.
-    /// This method accepts query instance to support stateful queries.
+    /// Returns query item.
     ///
     /// This method works only for stateless query types.
     /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
-    ///
-    /// If query cannot be satisfied, returns `QueryOneError::NotSatisfied`.
     #[inline]
-    pub fn query_one_with<'a, Q>(
-        &'a self,
+    pub fn query_one_with_mut<'a, Q>(
+        &'a mut self,
         entity: EntityId,
-        mut query: Q,
-    ) -> Result<QueryOneItem<'a, Q>, QueryOneError>
+        query: Q,
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
     where
         Q: Query,
     {
-        let epoch = self.epoch.next();
+        unsafe { self.query_one_with_unchecked::<Q>(entity, query) }
+    }
 
+    /// Queries components from specified entity.
+    /// Returns query item.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub unsafe fn query_one_unchecked<'a, Q>(
+        &'a self,
+        entity: EntityId,
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+    {
+        self.query_one_with_unchecked(entity, Q::Query::default())
+    }
+
+    /// Queries components from specified entity.
+    /// Returns query item.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub unsafe fn query_one_with_unchecked<'a, Q>(
+        &'a self,
+        entity: EntityId,
+        mut query: Q,
+    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    where
+        Q: Query,
+    {
         let (archetype, idx) = self
             .entities
             .get_location(entity)
@@ -1167,27 +1198,201 @@ impl World {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        unsafe {
-            query.access_archetype(archetype, &|id, access| {
-                let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                assert!(success, "Failed to lock '{:?}' from archetype", id);
-            });
-        }
+        let epoch = self.epoch.next();
 
-        let mut fetch = unsafe { query.fetch(archetype, epoch) };
+        let mut fetch = query.fetch(archetype, epoch);
 
-        if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
+        if fetch.skip_chunk(chunk_idx(idx as usize)) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) }
+        fetch.visit_chunk(chunk_idx(idx as usize));
 
-        if unsafe { fetch.skip_item(idx as usize) } {
+        if fetch.skip_item(idx as usize) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let item = unsafe { fetch.get_item(idx as usize) };
-        Ok(QueryOneItem::new(query, archetype, item))
+        let item = fetch.get_item(idx as usize);
+
+        Ok(item)
+    }
+
+    /// Queries components from specified entity.
+    /// Returns world borrow from which query item can be fetched.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub fn query_one<'a, Q>(
+        &'a self,
+        entity: EntityId,
+    ) -> Result<QueryOne<'a, Q::Query>, NoSuchEntity>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+    {
+        self.query_one_with(entity, Q::Query::default())
+    }
+
+    /// Queries components from specified entity.
+    /// This method accepts query instance to support stateful queries.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub fn query_one_with<'a, Q>(
+        &'a self,
+        entity: EntityId,
+        query: Q,
+    ) -> Result<QueryOne<'a, Q>, NoSuchEntity>
+    where
+        Q: Query,
+    {
+        let (archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
+
+        let archetype = &self.archetypes[archetype as usize];
+
+        debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
+
+        Ok(QueryOne::new(query, archetype, idx, &self.epoch))
+    }
+
+    /// Queries components from specified entity.
+    /// Calls provided closure with query item.
+    /// References from query item cannot escape closure execution.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub fn for_one<Q, F, R>(&self, entity: EntityId, f: F) -> Result<R, QueryOneError>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+        F: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
+    {
+        self.for_one_with(entity, Q::Query::default(), f)
+    }
+
+    /// Queries components from specified entity.
+    /// Calls provided closure with query item.
+    /// References from query item cannot escape closure execution.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    #[inline]
+    pub fn for_one_with<Q, F, R>(
+        &self,
+        entity: EntityId,
+        query: Q,
+        f: F,
+    ) -> Result<R, QueryOneError>
+    where
+        Q: Query,
+        F: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
+    {
+        self.query_with::<Q>(query).for_one(entity, f)
+    }
+
+    /// Queries components from specified entity.
+    /// Where query item is a reference to value the implements [`ToOwned`].
+    /// Returns item converted to owned value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_owned<Q, T>(&mut self, entity: EntityId) -> Result<T::Owned, QueryOneError>
+    where
+        T: ToOwned + 'static,
+        Q: IntoQuery,
+        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one::<Q, _, _>(entity, |item| T::to_owned(item))
+    }
+
+    /// Where query item is a reference to value the implements [`Clone`].
+    /// Returns cloned item value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_cloned<Q, T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    where
+        T: Clone + 'static,
+        Q: IntoQuery,
+        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one::<Q, _, _>(entity, |item| T::clone(item))
+    }
+    /// Queries components from specified entity.
+    /// Where query item is a reference to value the implements [`Copy`].
+    /// Returns copied item value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_one_copied<Q, T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    where
+        T: Copy + 'static,
+        Q: IntoQuery,
+        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+    {
+        self.for_one::<Q, _, _>(entity, |item| *item)
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method works only for stateless query types.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
+    #[inline]
+    pub fn query_mut<'a, Q>(&'a mut self) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+    {
+        self.query_with_mut(Q::Query::default())
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method accepts query instance to support stateful queries.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
+    #[inline]
+    pub fn query_with_mut<'a, Q>(&'a mut self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+    {
+        unsafe { self.query_with_unchecked(query) }
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method works only for stateless query types.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
+    #[inline]
+    pub unsafe fn query_unchecked<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+        Q::Query: Default,
+    {
+        self.query_with_unchecked(Q::Query::default())
+    }
+
+    /// Queries the world to iterate over entities and components specified by the query type.
+    ///
+    /// This method accepts query instance to support stateful queries.
+    ///
+    /// Returned query can be augmented with additional sub-queries and filters.
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
+    #[inline]
+    pub unsafe fn query_with_unchecked<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
+    where
+        Q: IntoQuery,
+    {
+        QueryRef::new_unchecked(self, (query,), ())
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1219,6 +1424,22 @@ impl World {
         Q: IntoQuery,
     {
         QueryRef::new(self, (query,), ())
+    }
+
+    /// Starts building new query.
+    ///
+    /// Returned query matches all entities and yields `()` for every one of them.
+    #[inline]
+    pub fn new_query_mut<'a>(&'a mut self) -> QueryRef<'a, (), ()> {
+        unsafe { self.new_query_unchecked() }
+    }
+
+    /// Starts building new query.
+    ///
+    /// Returned query matches all entities and yields `()` for every one of them.
+    #[inline]
+    pub unsafe fn new_query_unchecked<'a>(&'a self) -> QueryRef<'a, (), ()> {
+        QueryRef::new_unchecked(self, (), ())
     }
 
     /// Starts building new query.
@@ -2034,101 +2255,6 @@ impl WorldLocal<'_> {
             // # Safety
             // Mutable reference to `Res` ensures this is the "main" thread.
             self.world.get_local_resource_mut()
-        }
-    }
-}
-
-/// Result for [`World::query_one`] and [`World::query_one_with`] methods.
-pub struct QueryOneItem<'a, Q: Query> {
-    item: QueryItem<'a, Q>,
-    query: Q,
-    archetype: &'a Archetype,
-}
-
-impl<'a, Q: Query> Deref for QueryOneItem<'a, Q> {
-    type Target = QueryItem<'a, Q>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.item
-    }
-}
-
-impl<'a, Q: Query> DerefMut for QueryOneItem<'a, Q> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.item
-    }
-}
-
-impl<'a, Q> Debug for QueryOneItem<'a, Q>
-where
-    Q: Query,
-    QueryItem<'a, Q>: Debug,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.item, f)
-    }
-}
-
-impl<'a, Q> Display for QueryOneItem<'a, Q>
-where
-    Q: Query,
-    QueryItem<'a, Q>: Display,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.item, f)
-    }
-}
-
-impl<'a, Q> Hash for QueryOneItem<'a, Q>
-where
-    Q: Query,
-    QueryItem<'a, Q>: Hash,
-{
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        Hash::hash(&self.item, state)
-    }
-}
-
-impl<'a, 'b, Q> PartialEq<QueryItem<'b, Q>> for QueryOneItem<'a, Q>
-where
-    Q: Query,
-    QueryItem<'a, Q>: PartialEq<QueryItem<'b, Q>>,
-{
-    #[inline]
-    fn eq(&self, other: &QueryItem<'b, Q>) -> bool {
-        **self == *other
-    }
-}
-
-impl<'a, Q> QueryOneItem<'a, Q>
-where
-    Q: Query,
-{
-    pub(crate) fn new(query: Q, archetype: &'a Archetype, item: QueryItem<'a, Q>) -> Self {
-        Self {
-            item,
-            query,
-            archetype,
-        }
-    }
-}
-
-impl<'a, Q> Drop for QueryOneItem<'a, Q>
-where
-    Q: Query,
-{
-    #[inline]
-    fn drop(&mut self) {
-        let archetype = self.archetype;
-        unsafe {
-            self.query.access_archetype(archetype, &|id, access| {
-                archetype.component(id).unwrap_unchecked().release(access)
-            });
         }
     }
 }

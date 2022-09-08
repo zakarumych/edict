@@ -2,16 +2,17 @@ use crate::{
     component::Component,
     query::{Entities, With},
     relation::{Relation, RelationOrigin, RelationTarget},
-    world::{QueryOneError, World},
+    world::World,
+    QueryOneError,
 };
 
 use alloc::{vec, vec::Vec};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Str(&'static str);
 impl Component for Str {}
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct U32(u32);
 impl Component for U32 {}
 
@@ -28,8 +29,8 @@ fn world_spawn() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).as_deref(),
-        Ok(&(&U32(42), &Str("qwe")))
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Ok((&U32(42), &Str("qwe")))
     );
 }
 
@@ -43,15 +44,15 @@ fn world_insert() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).err(),
-        Some(QueryOneError::NotSatisfied)
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Err(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(world.insert(e, Str("qwe")), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).as_deref(),
-        Ok(&(&U32(42), &Str("qwe")))
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Ok((&U32(42), &Str("qwe")))
     );
 }
 
@@ -64,15 +65,15 @@ fn world_remove() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).as_deref(),
-        Ok(&(&U32(42), &Str("qwe")))
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Ok((&U32(42), &Str("qwe")))
     );
 
     assert_eq!(world.remove::<Str>(e), Ok(Str("qwe")));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).err(),
-        Some(QueryOneError::NotSatisfied)
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Err(QueryOneError::NotSatisfied)
     );
 }
 
@@ -85,16 +86,16 @@ fn world_insert_bundle() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).err(),
-        Some(QueryOneError::NotSatisfied)
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Err(QueryOneError::NotSatisfied)
     );
 
     assert_eq!(world.insert_bundle(e, (Str("qwe"), Bool(true))), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(world.has_component::<Bool>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str, &Bool)>(e).as_deref(),
-        Ok(&(&U32(42), &Str("qwe"), &Bool(true)))
+        world.query_one_mut::<(&U32, &Str, &Bool)>(e),
+        Ok((&U32(42), &Str("qwe"), &Bool(true)))
     );
 }
 
@@ -107,16 +108,16 @@ fn world_remove_bundle() {
     assert_eq!(world.has_component::<U32>(e), Ok(true));
     assert_eq!(world.has_component::<Str>(e), Ok(true));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).as_deref(),
-        Ok(&(&U32(42), &Str("qwe")))
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Ok((&U32(42), &Str("qwe")))
     );
 
     // When removing a bundle, any missing component is simply ignored.
     assert_eq!(world.drop_bundle::<(Str, Bool)>(e), Ok(()));
     assert_eq!(world.has_component::<Str>(e), Ok(false));
     assert_eq!(
-        world.query_one::<(&U32, &Str)>(e).err(),
-        Some(QueryOneError::NotSatisfied)
+        world.query_one_mut::<(&U32, &Str)>(e),
+        Err(QueryOneError::NotSatisfied)
     );
 }
 
@@ -148,7 +149,7 @@ fn version_test() {
         vec![]
     );
 
-    **world.query_one::<&mut U32>(e).unwrap() = U32(42);
+    *world.query_one_mut::<&mut U32>(e).unwrap() = U32(42);
 
     assert_eq!(
         world
@@ -188,7 +189,7 @@ fn version_despawn_test() {
         vec![]
     );
 
-    **world.query_one::<&mut U32>(e2).unwrap() = U32(50);
+    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(50);
     assert_eq!(world.despawn(e1), Ok(()));
 
     assert_eq!(
@@ -229,8 +230,8 @@ fn version_insert_test() {
         vec![]
     );
 
-    **world.query_one::<&mut U32>(e1).unwrap() = U32(50);
-    **world.query_one::<&mut U32>(e2).unwrap() = U32(100);
+    *world.query_one_mut::<&mut U32>(e1).unwrap() = U32(50);
+    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(100);
 
     assert_eq!(world.insert(e1, Bool(true)), Ok(()));
 

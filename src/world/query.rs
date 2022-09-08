@@ -463,7 +463,7 @@ where
     }
 
     /// Release borrow locks from archetypes.
-    /// Borrow locks are acquired with [`QueryRef::one`], [`QueryRef::iter`] and [`QueryRef::iter_mut`] methods.
+    /// Borrow locks are acquired with [`QueryRef::get_one`], [`QueryRef::iter`] and [`QueryRef::iter_mut`] methods.
     /// Borrow locks are automatically released when the [`QueryRef`] is dropped.
     ///
     /// This method allows to release borrows early and reuse the query later.

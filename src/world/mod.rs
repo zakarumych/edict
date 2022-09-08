@@ -1195,8 +1195,8 @@ impl World {
     /// This method works only for stateless query types.
     ///
     /// Returned query can be augmented with additional sub-queries and filters.
-    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::into_iter`].
-    /// Alternatively a closure may be called for each matching entity using [`QueryRef::for_each`].
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
     #[inline]
     pub fn query<'a, Q>(&'a self) -> QueryRef<'a, (Q,), ()>
     where
@@ -1211,8 +1211,8 @@ impl World {
     /// This method accepts query instance to support stateful queries.
     ///
     /// Returned query can be augmented with additional sub-queries and filters.
-    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::into_iter`].
-    /// Alternatively a closure may be called for each matching entity using [`QueryRef::for_each`].
+    /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
+    /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
     #[inline]
     pub fn query_with<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
     where
@@ -2038,7 +2038,7 @@ impl WorldLocal<'_> {
     }
 }
 
-/// Result for [`QueryRef::one`] and [`World::query_one`] methods.
+/// Result for [`World::query_one`] and [`World::query_one_with`] methods.
 pub struct QueryOneItem<'a, Q: Query> {
     item: QueryItem<'a, Q>,
     query: Q,

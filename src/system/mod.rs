@@ -4,7 +4,7 @@ mod func;
 
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{action::ActionEncoder, archetype::Archetype, query::Access, world::World};
+use crate::{action::ActionBuffer, archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
     ActionEncoderCache, FnArg, FnArgCache, FnArgGet, FromWorld, IsFunctionSystem, QueryArg,
@@ -17,19 +17,19 @@ pub use self::func::{
 /// Systems must work with any action queue type - the API uses `dyn ActionQueue`.
 pub trait ActionQueue {
     /// Returns action encoder from the queue.
-    fn get_action_encoder(&self) -> ActionEncoder;
+    fn get<'a>(&self) -> ActionBuffer;
 
     /// Flushes action encoder back to the queue.
-    fn flush_action_encoder(&mut self, encoder: ActionEncoder);
+    fn flush(&mut self, buffer: ActionBuffer);
 }
 
-impl ActionQueue for Vec<ActionEncoder> {
-    fn get_action_encoder(&self) -> ActionEncoder {
-        ActionEncoder::new()
+impl ActionQueue for Vec<ActionBuffer> {
+    fn get(&self) -> ActionBuffer {
+        ActionBuffer::new()
     }
 
-    fn flush_action_encoder(&mut self, encoder: ActionEncoder) {
-        self.push(encoder);
+    fn flush(&mut self, buffer: ActionBuffer) {
+        self.push(buffer);
     }
 }
 

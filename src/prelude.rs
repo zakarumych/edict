@@ -1,7 +1,7 @@
 //! A prelude module. Reexports types and traits, enough to start using [`edict`]
 #[doc(no_inline)]
 pub use crate::{
-    action::{ActionEncoder, ActionEncoderSliceExt},
+    action::{ActionBuffer, ActionBufferSliceExt, ActionEncoder},
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle, EntityBuilder},
     component::Component,
     entity::EntityId,

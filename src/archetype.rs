@@ -286,12 +286,7 @@ impl Archetype {
     ///
     /// Returns id of the entity that took the place of despawned.
     #[inline]
-    pub fn despawn(
-        &mut self,
-        entity: EntityId,
-        idx: u32,
-        encoder: &mut ActionEncoder,
-    ) -> Option<u32> {
+    pub fn despawn(&mut self, entity: EntityId, idx: u32, encoder: ActionEncoder) -> Option<u32> {
         assert!(idx < self.entities.len() as u32);
 
         unsafe { self.despawn_unchecked(entity, idx, encoder) }
@@ -308,7 +303,7 @@ impl Archetype {
         &mut self,
         entity: EntityId,
         idx: u32,
-        encoder: &mut ActionEncoder,
+        mut encoder: ActionEncoder,
     ) -> Option<u32> {
         let entity_idx = idx as usize;
         debug_assert!(entity_idx < self.entities.len());
@@ -322,7 +317,7 @@ impl Archetype {
 
             let ptr = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
 
-            component.info.drop_one(ptr, entity, encoder);
+            component.info.drop_one(ptr, entity, encoder.reborrow());
 
             if entity_idx != last_entity_idx {
                 let chunk_idx = chunk_idx(entity_idx);
@@ -364,7 +359,7 @@ impl Archetype {
         idx: u32,
         bundle: B,
         epoch: EpochId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) where
         B: DynamicBundle,
     {
@@ -389,7 +384,7 @@ impl Archetype {
         idx: u32,
         value: T,
         epoch: EpochId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) where
         T: 'static,
     {
@@ -479,7 +474,7 @@ impl Archetype {
         src_idx: u32,
         bundle: B,
         epoch: EpochId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) -> (u32, Option<u32>)
     where
         B: DynamicBundle,
@@ -650,7 +645,7 @@ impl Archetype {
         entity: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
-        encoder: &mut ActionEncoder,
+        mut encoder: ActionEncoder,
     ) -> (u32, Option<u32>) {
         debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
 
@@ -665,7 +660,7 @@ impl Archetype {
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
 
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
-            info.drop_one(ptr, entity, encoder);
+            info.drop_one(ptr, entity, encoder.reborrow());
         });
 
         let entity = self.entities.swap_remove(src_entity_idx);
@@ -730,7 +725,7 @@ impl Archetype {
         entity_idx: usize,
         bundle: B,
         epoch: EpochId,
-        mut encoder: Option<&mut ActionEncoder>,
+        mut encoder: Option<ActionEncoder>,
         occupied: F,
     ) where
         B: DynamicBundle,
@@ -750,7 +745,7 @@ impl Archetype {
 
             let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
             if occupied(id) {
-                component.set_one(dst, src, entity, encoder.as_mut().unwrap());
+                component.set_one(dst, src, entity, encoder.as_mut().unwrap().reborrow());
             } else {
                 ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
             }
@@ -764,7 +759,7 @@ impl Archetype {
         entity_idx: usize,
         value: T,
         epoch: EpochId,
-        occupied: Option<&mut ActionEncoder>,
+        occupied: Option<ActionEncoder>,
     ) where
         T: 'static,
     {

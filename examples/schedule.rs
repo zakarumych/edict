@@ -1,7 +1,6 @@
 use core::fmt::Debug;
 
 use edict::{
-    action::ActionEncoderSliceExt,
     query::{Modified, QueryBorrowAll, With},
     scheduler::Scheduler,
     system::State,
@@ -33,9 +32,9 @@ fn main() {
     for i in 0..10 {
         println!("Loop: {i}");
 
-        world.query_one::<&mut B>(c).unwrap();
+        world.query_one_mut::<&mut B>(c).unwrap();
 
-        std::thread::scope(|scope| schedule.run(&mut world, &scope)).execute_all(&mut world);
+        schedule.run_threaded(&mut world);
     }
 }
 

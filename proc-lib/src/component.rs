@@ -40,7 +40,7 @@ pub fn derive(
             quote::quote! {
                 #[allow(unused_variables)]
                 #[inline]
-                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) {
+                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::ActionEncoder<'_>) {
                     (#on_drop)(self, entity, encoder)
                 }
             }
@@ -51,7 +51,7 @@ pub fn derive(
             quote::quote! {
                 #[allow(unused_variables)]
                 #[inline]
-                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: &mut #edict_path::action::ActionEncoder) -> bool {
+                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::ActionEncoder<'_>) -> bool {
                     (#on_replace)(self, value, entity, encoder)
                 }
             }

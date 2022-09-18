@@ -29,8 +29,8 @@ use core::{
 use hashbrown::HashSet;
 
 use crate::{
-    action::ActionEncoder,
-    executor::ScopedExecutor,
+    action::ActionBuffer,
+    executor::{MockExecutor, ScopedExecutor},
     query::Access,
     system::{ActionQueue, IntoSystem, System},
     world::World,
@@ -41,7 +41,7 @@ use crate::{
 pub struct Scheduler {
     systems: Vec<ScheduledSystem>,
     schedule_cache_id: Option<u64>,
-    encoders: Vec<ActionEncoder>,
+    action_buffers: Vec<ActionBuffer>,
 }
 
 struct SyncUnsafeCell<T: ?Sized> {
@@ -82,22 +82,21 @@ struct ScheduledSystem {
 
 #[derive(Clone)]
 struct MyActionQueue {
-    encoder_rx: flume::Receiver<ActionEncoder>,
-    encoder_tx: flume::Sender<ActionEncoder>,
+    buffer_rx: flume::Receiver<ActionBuffer>,
+    buffer_tx: flume::Sender<ActionBuffer>,
 }
 
 impl ActionQueue for MyActionQueue {
     #[inline]
-    fn get_action_encoder(&self) -> ActionEncoder {
-        match self.encoder_rx.try_recv() {
-            Err(_) => ActionEncoder::new(),
-            Ok(encoder) => encoder,
-        }
+    fn get<'a>(&self) -> ActionBuffer {
+        self.buffer_rx
+            .try_recv()
+            .unwrap_or_else(|_| ActionBuffer::new())
     }
 
     #[inline]
-    fn flush_action_encoder(&mut self, encoder: ActionEncoder) {
-        self.encoder_tx.send(encoder).unwrap();
+    fn flush(&mut self, buffer: ActionBuffer) {
+        self.buffer_tx.send(buffer).unwrap();
     }
 }
 
@@ -178,7 +177,7 @@ impl Scheduler {
         Scheduler {
             systems: Vec::new(),
             schedule_cache_id: None,
-            encoders: Vec::new(),
+            action_buffers: Vec::new(),
         }
     }
 
@@ -199,16 +198,36 @@ impl Scheduler {
         self.schedule_cache_id = None;
     }
 
+    #[cfg(feature = "std")]
+    pub fn run_threaded(&mut self, world: &mut World) {
+        use crate::ActionBufferSliceExt;
+        let buffers = std::thread::scope(|scope| self.run_with(world, &scope));
+        buffers.execute_all(world);
+    }
+
+    #[cfg(feature = "rayon")]
+    pub fn run_rayon(&mut self, world: &mut World) {
+        use crate::ActionBufferSliceExt;
+        let buffers = rayon::in_place_scope(|scope| self.run_with(world, scope));
+        buffers.execute_all(world);
+    }
+
+    pub fn run_sequential(&mut self, world: &mut World) {
+        use crate::ActionBufferSliceExt;
+        let buffers = self.run_with(world, &mut MockExecutor);
+        buffers.execute_all(world);
+    }
+
     /// Runs all systems in the scheduler.
     /// Provided closure should spawn system execution task.
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
     #[must_use]
-    pub fn run<'scope, 'later: 'scope>(
+    pub fn run_with<'scope, 'later: 'scope>(
         &'later mut self,
         world: &'scope mut World,
         executor: &impl ScopedExecutor<'scope>,
-    ) -> &'later mut [ActionEncoder] {
+    ) -> &'later mut [ActionBuffer] {
         self.reschedule(world);
 
         for system in &mut self.systems {
@@ -216,15 +235,15 @@ impl Scheduler {
         }
 
         let (task_tx, task_rx) = flume::bounded(self.systems.len());
-        let (encoder_tx, encoder_rx) = flume::unbounded();
+        let (buffer_tx, buffer_rx) = flume::unbounded();
 
-        for encoder in self.encoders.drain(..) {
-            encoder_tx.send(encoder).unwrap();
+        for buffer in self.action_buffers.drain(..) {
+            buffer_tx.send(buffer).unwrap();
         }
 
         let action_queue = MyActionQueue {
-            encoder_rx,
-            encoder_tx,
+            buffer_rx,
+            buffer_tx,
         };
 
         let mut unroll = None;
@@ -261,17 +280,17 @@ impl Scheduler {
         }
 
         let MyActionQueue {
-            encoder_rx,
-            encoder_tx,
+            buffer_rx,
+            buffer_tx,
         } = action_queue;
 
-        drop(encoder_tx);
+        drop(buffer_tx);
 
-        while let Ok(encoder) = encoder_rx.recv() {
-            self.encoders.push(encoder);
+        while let Ok(buffer) = buffer_rx.recv() {
+            self.action_buffers.push(buffer);
         }
 
-        &mut self.encoders[..]
+        &mut self.action_buffers[..]
     }
 
     fn reschedule(&mut self, world: &World) {
@@ -379,9 +398,7 @@ mod test {
 
     use super::*;
 
-    use crate::{
-        action::ActionEncoderSliceExt, component::Component, executor::MockExecutor, system::State,
-    };
+    use crate::{component::Component, system::State};
     struct Foo;
 
     impl Component for Foo {}
@@ -396,9 +413,7 @@ mod test {
             println!("{}", *q);
         });
 
-        scheduler
-            .run(&mut world, &MockExecutor)
-            .execute_all(&mut world);
+        scheduler.run_sequential(&mut world);
     }
 }
 

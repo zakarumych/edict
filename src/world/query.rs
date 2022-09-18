@@ -1039,7 +1039,9 @@ where
 {
     #[inline]
     fn drop(&mut self) {
-        release_archetypes(core::slice::from_ref(self.archetype), &self.query);
+        if *self.borrowed.get_mut() {
+            release_archetypes(core::slice::from_ref(self.archetype), &self.query);
+        }
     }
 }
 

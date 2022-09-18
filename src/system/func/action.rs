@@ -1,19 +1,23 @@
 use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
-    action::ActionEncoder, archetype::Archetype, query::Access, system::ActionQueue, world::World,
+    action::{ActionBuffer, ActionEncoder},
+    archetype::Archetype,
+    query::Access,
+    system::ActionQueue,
+    world::World,
 };
 
 use super::{FnArg, FnArgCache, FnArgGet};
 
-impl FnArg for &mut ActionEncoder {
+impl FnArg for ActionEncoder<'_> {
     type Cache = ActionEncoderCache;
 }
 
-/// [`FnArgCache`] for `&mut ActionEncoder` argument.
+/// [`FnArgCache`] for `ActionEncoder` argument.
 #[derive(Default)]
 pub struct ActionEncoderCache {
-    encoder: Option<ActionEncoder>,
+    buffer: Option<ActionBuffer>,
 }
 
 impl FnArgCache for ActionEncoderCache {
@@ -44,22 +48,22 @@ impl FnArgCache for ActionEncoderCache {
 }
 
 unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
-    type Arg = &'a mut ActionEncoder;
+    type Arg = ActionEncoder<'a>;
 
     #[inline]
     unsafe fn get_unchecked(
         &'a mut self,
-        _world: NonNull<World>,
+        world: NonNull<World>,
         queue: &mut dyn ActionQueue,
-    ) -> &'a mut ActionEncoder {
-        self.encoder
-            .get_or_insert_with(|| queue.get_action_encoder())
+    ) -> ActionEncoder<'a> {
+        let buffer = self.buffer.get_or_insert_with(|| queue.get());
+        ActionEncoder::new(buffer, world.as_ref().entity_set())
     }
 
     #[inline]
     unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
-        if let Some(encoder) = self.encoder.take() {
-            queue.flush_action_encoder(encoder);
+        if let Some(buffer) = self.buffer.take() {
+            queue.flush(buffer);
         }
     }
 }

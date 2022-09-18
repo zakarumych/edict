@@ -1,11 +1,11 @@
 use crate::{
-    action::ActionEncoder,
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
     },
     entity::EntitySet,
     res::Res,
+    ActionBuffer,
 };
 
 use super::{ArchetypeSet, Edges, EpochCounter, World};
@@ -36,7 +36,7 @@ impl WorldBuilder {
             edges: Edges::new(),
             res: Res::new(),
             registry: self.registry,
-            cached_encoder: Some(ActionEncoder::new()),
+            cached_action_buffer: Some(ActionBuffer::new()),
         }
     }
 

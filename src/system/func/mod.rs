@@ -44,7 +44,7 @@ pub unsafe trait FnArgGet<'a> {
     /// Flushes cache to the world.
     /// This method provides an opportunity for argument cache to do a cleanup of flushing.
     ///
-    /// For instance `ActionEncoderCache` - a cache type for `&mut ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
+    /// For instance `ActionEncoderCache` - a cache type for `ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
     #[inline]
     unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, _queue: &mut dyn ActionQueue) {}
 }

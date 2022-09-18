@@ -31,6 +31,7 @@ proc_easy::easy_argument! {
 proc_easy::easy_argument! {
     struct OnDrop {
         kw: kw::on_drop,
+        eq: syn::Token![=],
         function: syn::Expr,
     }
 }
@@ -38,6 +39,7 @@ proc_easy::easy_argument! {
 proc_easy::easy_argument! {
     struct OnReplace {
         kw: kw::on_replace,
+        eq: syn::Token![=],
         function: syn::Expr,
     }
 }
@@ -45,6 +47,7 @@ proc_easy::easy_argument! {
 proc_easy::easy_argument! {
     struct OnTargetDrop {
         kw: kw::on_target_drop,
+        eq: syn::Token![=],
         function: syn::Expr,
     }
 }

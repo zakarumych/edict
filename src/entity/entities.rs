@@ -88,7 +88,7 @@ impl EntitySet {
         }
     }
 
-    pub fn reserve(&self) -> EntityId {
+    pub fn alloc(&self) -> EntityId {
         let counter = self.reserve_counter.fetch_sub(1, Ordering::Release);
 
         if counter > 0 {
@@ -107,7 +107,7 @@ impl EntitySet {
         }
     }
 
-    pub fn spawn_reserved(&mut self, mut f: impl FnMut(EntityId) -> u32) {
+    pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserve_counter = self.reserve_counter.get_mut();
 
         // A tail of free_entity_ids was consumed by `reserve` method.
@@ -199,6 +199,10 @@ impl EntitySet {
         }
         let data = &self.array[id.id() as usize];
         Some((data.archetype, data.idx))
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        self.array.reserve(additional);
     }
 }
 

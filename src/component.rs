@@ -345,7 +345,7 @@ pub trait Component: Sized + 'static {
 
     /// Hook that is executed when entity with component is dropped.
     #[inline]
-    fn on_drop(&mut self, entity: EntityId, encoder: &mut ActionEncoder) {
+    fn on_drop(&mut self, entity: EntityId, encoder: ActionEncoder) {
         drop(entity);
         drop(encoder);
     }
@@ -353,7 +353,7 @@ pub trait Component: Sized + 'static {
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
     #[inline]
-    fn on_replace(&mut self, value: &Self, entity: EntityId, encoder: &mut ActionEncoder) -> bool {
+    fn on_replace(&mut self, value: &Self, entity: EntityId, encoder: ActionEncoder) -> bool {
         drop(value);
         drop(entity);
         drop(encoder);
@@ -451,7 +451,7 @@ impl ComponentInfo {
     }
 
     #[inline(always)]
-    pub(crate) fn drop_one(&self, ptr: NonNull<u8>, entity: EntityId, encoder: &mut ActionEncoder) {
+    pub(crate) fn drop_one(&self, ptr: NonNull<u8>, entity: EntityId, encoder: ActionEncoder) {
         unsafe {
             (self.drop_one)(&self.on_drop, ptr, entity, encoder);
         }
@@ -463,7 +463,7 @@ impl ComponentInfo {
         dst: NonNull<u8>,
         src: NonNull<u8>,
         entity: EntityId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) {
         unsafe {
             (self.set_one)(&self.on_replace, &self.on_drop, dst, src, entity, encoder);
@@ -489,24 +489,24 @@ impl ComponentInfo {
 }
 
 /// Trait to be implemented by custom drop hooks.
-/// Has blanket implementation for `Fn(&mut T, EntityId, &mut ActionEncoder)`.
+/// Has blanket implementation for `Fn(&mut T, EntityId, ActionEncoder)`.
 pub trait DropHook<T: ?Sized>: Send + Sync + 'static {
     /// Called when entity with component is dropped.
-    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: &mut ActionEncoder);
+    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: ActionEncoder);
 }
 
 impl<T, F> DropHook<T> for F
 where
     T: ?Sized,
-    F: Fn(&mut T, EntityId, &mut ActionEncoder) + Send + Sync + 'static,
+    F: Fn(&mut T, EntityId, ActionEncoder) + Send + Sync + 'static,
 {
-    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: &mut ActionEncoder) {
+    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: ActionEncoder) {
         self(component, entity, encoder);
     }
 }
 
 /// Trait to be implemented by custom set hooks.
-/// Has blanket implementation for `Fn(&mut T, &T, EntityId, &mut ActionEncoder)`.
+/// Has blanket implementation for `Fn(&mut T, &T, EntityId, ActionEncoder)`.
 pub trait SetHook<T: ?Sized>: Send + Sync + 'static {
     /// Called when new value is assigned to component instance.
     /// By default fallbacks to drop hook.
@@ -515,21 +515,21 @@ pub trait SetHook<T: ?Sized>: Send + Sync + 'static {
         component: &mut T,
         value: &T,
         entity: EntityId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) -> bool;
 }
 
 impl<T, F> SetHook<T> for F
 where
     T: ?Sized,
-    F: Fn(&mut T, &T, EntityId, &mut ActionEncoder) -> bool + Send + Sync + 'static,
+    F: Fn(&mut T, &T, EntityId, ActionEncoder) -> bool + Send + Sync + 'static,
 {
     fn on_replace(
         &self,
         component: &mut T,
         value: &T,
         entity: EntityId,
-        encoder: &mut ActionEncoder,
+        encoder: ActionEncoder,
     ) -> bool {
         self(component, value, entity, encoder)
     }
@@ -543,7 +543,7 @@ impl<T> DropHook<T> for DefaultDropHook
 where
     T: Component,
 {
-    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: &mut ActionEncoder) {
+    fn on_drop(&self, component: &mut T, entity: EntityId, encoder: ActionEncoder) {
         T::on_drop(component, entity, encoder);
     }
 }
@@ -556,13 +556,7 @@ impl<T> SetHook<T> for DefaultSetHook
 where
     T: Component,
 {
-    fn on_replace(
-        &self,
-        dst: &mut T,
-        src: &T,
-        entity: EntityId,
-        encoder: &mut ActionEncoder,
-    ) -> bool {
+    fn on_replace(&self, dst: &mut T, src: &T, entity: EntityId, encoder: ActionEncoder) -> bool {
         T::on_replace(dst, src, entity, encoder)
     }
 }
@@ -572,7 +566,7 @@ where
 pub struct ExternalDropHook;
 
 impl<T> DropHook<T> for ExternalDropHook {
-    fn on_drop(&self, _component: &mut T, _entity: EntityId, _encoder: &mut ActionEncoder) {}
+    fn on_drop(&self, _component: &mut T, _entity: EntityId, _encoder: ActionEncoder) {}
 }
 
 /// External set hook type.
@@ -585,7 +579,7 @@ impl<T> SetHook<T> for ExternalSetHook {
         _dst: &mut T,
         _src: &T,
         _entity: EntityId,
-        _encoder: &mut ActionEncoder,
+        _encoder: ActionEncoder,
     ) -> bool {
         false
     }
@@ -669,7 +663,7 @@ where
     /// This hook is not executed on shutdown when `Archetype` is dropped.
     pub fn on_drop_fn<F>(self, hook: F) -> ComponentInfoRef<'a, T, F, S>
     where
-        F: Fn(&mut T, EntityId, &mut ActionEncoder) + Send + Sync + 'static,
+        F: Fn(&mut T, EntityId, ActionEncoder) + Send + Sync + 'static,
     {
         self.on_drop(hook)
     }
@@ -699,7 +693,7 @@ where
     /// By default, set hook is calling `on_drop`.
     pub fn on_replace_fn<F>(self, hook: F) -> ComponentInfoRef<'a, T, D, F>
     where
-        F: Fn(&mut T, &T, EntityId, &mut ActionEncoder) -> bool + Send + Sync + 'static,
+        F: Fn(&mut T, &T, EntityId, ActionEncoder) -> bool + Send + Sync + 'static,
     {
         self.on_replace(hook)
     }
@@ -806,17 +800,12 @@ impl ComponentRegistry {
     }
 }
 
-type DropOneFn = unsafe fn(&dyn Any, NonNull<u8>, EntityId, &mut ActionEncoder);
-type SetOneFn =
-    unsafe fn(&dyn Any, &dyn Any, NonNull<u8>, NonNull<u8>, EntityId, &mut ActionEncoder);
+type DropOneFn = unsafe fn(&dyn Any, NonNull<u8>, EntityId, ActionEncoder);
+type SetOneFn = unsafe fn(&dyn Any, &dyn Any, NonNull<u8>, NonNull<u8>, EntityId, ActionEncoder);
 type FinalDrop = unsafe fn(NonNull<u8>, usize);
 
-unsafe fn drop_one<T, D>(
-    hook: &dyn Any,
-    ptr: NonNull<u8>,
-    entity: EntityId,
-    encoder: &mut ActionEncoder,
-) where
+unsafe fn drop_one<T, D>(hook: &dyn Any, ptr: NonNull<u8>, entity: EntityId, encoder: ActionEncoder)
+where
     T: 'static,
     D: DropHook<T>,
 {
@@ -832,7 +821,7 @@ unsafe fn set_one<T, S, D>(
     dst: NonNull<u8>,
     src: NonNull<u8>,
     entity: EntityId,
-    encoder: &mut ActionEncoder,
+    mut encoder: ActionEncoder,
 ) where
     T: 'static,
     S: SetHook<T>,
@@ -841,7 +830,7 @@ unsafe fn set_one<T, S, D>(
     let src = src.cast::<T>();
     let mut dst = dst.cast::<T>();
     let on_replace = &*(on_replace as *const _ as *const S);
-    if on_replace.on_replace(dst.as_mut(), src.as_ref(), entity, encoder) {
+    if on_replace.on_replace(dst.as_mut(), src.as_ref(), entity, encoder.reborrow()) {
         let on_drop = &*(on_drop as *const _ as *const D);
         on_drop.on_drop(dst.as_mut(), entity, encoder);
     }

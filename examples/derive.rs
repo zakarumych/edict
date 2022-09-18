@@ -7,7 +7,7 @@ use edict::{component::Component, world::World};
 
 #[derive(Component, Debug)]
 #[edict(borrow(dyn Debug, u32, f32))]
-#[edict(on_drop |_, e, _| println!("A {e:?} dropped"))]
+#[edict(on_drop = |_, e, _| println!("A {e:?} dropped"))]
 pub struct A {
     a: f32,
 }

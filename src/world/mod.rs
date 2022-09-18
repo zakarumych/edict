@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use atomicell::{Ref, RefMut};
 
 use crate::{
-    action::ActionEncoder,
+    action::{ActionBuffer, ActionEncoder},
     archetype::{chunk_idx, Archetype},
     bundle::{
         Bundle, BundleDesc, ComponentBundle, ComponentBundleDesc, DynamicBundle,
@@ -102,16 +102,15 @@ impl ArchetypeSet {
     }
 }
 
-fn spawn_reserve(iter: &impl Iterator, archetype: &mut Archetype) {
+pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> usize {
     let (lower, upper) = iter.size_hint();
-    let additional = match (lower, upper) {
+    match (lower, upper) {
         (lower, None) => lower,
         (lower, Some(upper)) => {
             // Iterator is consumed in full, so reserve at least `lower`.
             lower.max(upper.min(MAX_SPAWN_RESERVE))
         }
-    };
-    archetype.reserve(additional);
+    }
 }
 
 /// Container for entities with any sets of components.
@@ -155,7 +154,7 @@ pub struct World {
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
     /// Commands are immediately executed at the end of the mutating call.
-    cached_encoder: Option<ActionEncoder>,
+    cached_action_buffer: Option<ActionBuffer>,
 }
 
 unsafe impl Sync for World {}
@@ -172,15 +171,15 @@ impl Debug for World {
     }
 }
 
-macro_rules! with_encoder {
-    ($world:ident, $encoder:ident => $expr:expr) => {{
-        let mut $encoder = $world
-            .cached_encoder
-            .take()
-            .unwrap_or_else(ActionEncoder::new);
-        let result = $expr;
-        ActionEncoder::execute(&mut $encoder, $world);
-        $world.cached_encoder = Some($encoder);
+macro_rules! with_buffer {
+    ($world:ident, $buffer:ident => $expr:expr) => {{
+        let mut buffer = $world.cached_action_buffer.take().unwrap();
+        let result = {
+            let $buffer = &mut buffer;
+            $expr
+        };
+        ActionBuffer::execute(&mut buffer, $world);
+        $world.cached_action_buffer = Some(buffer);
         result
     }};
 }
@@ -255,8 +254,8 @@ impl World {
     /// assert_eq!(world.is_alive(entity), false);
     /// ```
     #[inline]
-    pub fn reserve(&self) -> EntityId {
-        self.entities.reserve()
+    pub fn allocate(&self) -> EntityId {
+        self.entities.alloc()
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -325,7 +324,7 @@ impl World {
             );
         }
 
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let entity = self.entities.spawn();
 
@@ -418,7 +417,7 @@ impl World {
             );
         }
 
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let archetype_idx = self.edges.insert_bundle(
             &mut self.registry,
@@ -442,6 +441,24 @@ impl World {
         }
     }
 
+    pub(crate) fn spawn_reserve<B>(&mut self, additional: usize)
+    where
+        B: ComponentBundle,
+    {
+        self.entities.reserve(additional);
+
+        let archetype_idx = self.edges.insert_bundle(
+            &mut self.registry,
+            &mut self.archetypes,
+            0,
+            &PhantomData::<B>,
+            |registry| register_bundle(registry, &PhantomData::<B>),
+        );
+
+        let archetype = &mut self.archetypes[archetype_idx as usize];
+        archetype.reserve(additional);
+    }
+
     /// Despawns an entity with specified id.
     /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
     ///
@@ -456,20 +473,23 @@ impl World {
     /// ```
     #[inline]
     pub fn despawn(&mut self, entity: EntityId) -> Result<(), NoSuchEntity> {
-        with_encoder!(self, encoder => self.despawn_with_encoder(entity, &mut encoder))
+        with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
     }
 
-    pub(crate) fn despawn_with_encoder(
+    #[inline]
+    pub(crate) fn despawn_with_buffer(
         &mut self,
         entity: EntityId,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity> {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (archetype, idx) = self.entities.despawn(entity)?;
 
+        let encoder = ActionEncoder::new(buffer, &self.entities);
         let opt_id =
             unsafe { self.archetypes[archetype as usize].despawn_unchecked(entity, idx, encoder) };
+
         if let Some(id) = opt_id {
             self.entities.set_location(id, archetype, idx)
         }
@@ -519,7 +539,22 @@ impl World {
     where
         T: Component,
     {
-        with_encoder!(self, encoder => self.insert_with_encoder(entity, component, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.insert_with_buffer(entity, component, buffer)
+        })
+    }
+
+    #[inline]
+    pub(crate) fn insert_with_buffer<T>(
+        &mut self,
+        entity: EntityId,
+        component: T,
+        buffer: &mut ActionBuffer,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: Component,
+    {
+        self.insert_impl(entity, component, register_one::<T>, buffer)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -547,52 +582,42 @@ impl World {
     where
         T: 'static,
     {
-        with_encoder!(self, encoder => self.insert_with_encoder_external(entity, component, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.insert_external_with_buffer(entity, component, buffer)
+        })
     }
 
     #[inline]
-    pub(crate) fn insert_with_encoder<T>(
+    pub(crate) fn insert_external_with_buffer<T>(
         &mut self,
         entity: EntityId,
         component: T,
-        encoder: &mut ActionEncoder,
-    ) -> Result<(), NoSuchEntity>
-    where
-        T: Component,
-    {
-        self.insert_with_encoder_impl(entity, component, encoder, register_one::<T>)
-    }
-
-    #[inline]
-    pub(crate) fn insert_with_encoder_external<T>(
-        &mut self,
-        entity: EntityId,
-        component: T,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         T: 'static,
     {
-        self.insert_with_encoder_impl(entity, component, encoder, assert_registered_one::<T>)
+        self.insert_impl(entity, component, assert_registered_one::<T>, buffer)
     }
 
-    #[inline]
-    pub(crate) fn insert_with_encoder_impl<T, F>(
+    pub(crate) fn insert_impl<T, F>(
         &mut self,
         entity: EntityId,
         component: T,
-        encoder: &mut ActionEncoder,
         get_or_register: F,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
         let epoch = self.epoch.next_mut();
+
+        let encoder = ActionEncoder::new(buffer, &self.entities);
 
         if self.archetypes[src_archetype as usize].has_component(TypeId::of::<T>()) {
             unsafe {
@@ -642,7 +667,7 @@ impl World {
     where
         T: 'static,
     {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (src_archetype, idx) = self
             .entities
@@ -698,16 +723,19 @@ impl World {
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
     pub fn drop_erased(&mut self, entity: EntityId, id: TypeId) -> Result<(), EntityError> {
-        with_encoder!(self, encoder => self.drop_erased_with_encoder(entity, id, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.drop_erased_with_buffer(entity, id, buffer)
+        })
     }
 
-    pub(crate) fn drop_erased_with_encoder(
+    #[inline]
+    pub(crate) fn drop_erased_with_buffer(
         &mut self,
         entity: EntityId,
         id: TypeId,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), EntityError> {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (src_archetype, idx) = self
             .entities
@@ -731,7 +759,9 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
+        let (dst_idx, opt_src_id) = unsafe {
+            src.drop_bundle(entity, dst, idx, ActionEncoder::new(buffer, &self.entities))
+        };
 
         self.entities
             .set_location(entity.id(), dst_archetype, dst_idx);
@@ -769,20 +799,22 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        with_encoder!(self, encoder => self.insert_bundle_with_encoder(entity, bundle, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.insert_bundle_with_buffer(entity, bundle, buffer)
+        })
     }
 
     #[inline]
-    pub(crate) fn insert_bundle_with_encoder<B>(
+    pub(crate) fn insert_bundle_with_buffer<B>(
         &mut self,
         entity: EntityId,
         bundle: B,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
     {
-        self.insert_bundle_with_encoder_impl(entity, bundle, encoder, register_bundle::<B>)
+        self.insert_bundle_impl(entity, bundle, register_bundle::<B>, buffer)
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -823,28 +855,30 @@ impl World {
     where
         B: DynamicBundle,
     {
-        with_encoder!(self, encoder => self.insert_external_bundle_with_encoder(entity, bundle, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.insert_external_bundle_with_buffer(entity, bundle, buffer)
+        })
     }
 
     #[inline]
-    pub(crate) fn insert_external_bundle_with_encoder<B>(
+    pub(crate) fn insert_external_bundle_with_buffer<B>(
         &mut self,
         entity: EntityId,
         bundle: B,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
     {
-        self.insert_bundle_with_encoder_impl(entity, bundle, encoder, assert_registered_bundle::<B>)
+        self.insert_bundle_impl(entity, bundle, assert_registered_bundle::<B>, buffer)
     }
 
-    fn insert_bundle_with_encoder_impl<B, F>(
+    fn insert_bundle_impl<B, F>(
         &mut self,
         entity: EntityId,
         bundle: B,
-        encoder: &mut ActionEncoder,
         register_bundle: F,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
@@ -857,7 +891,7 @@ impl World {
             );
         }
 
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
@@ -877,9 +911,14 @@ impl World {
 
         if dst_archetype == src_archetype {
             unsafe {
-                self.archetypes[src_archetype as usize]
-                    .set_bundle(entity, idx, bundle, epoch, encoder)
-            };
+                self.archetypes[src_archetype as usize].set_bundle(
+                    entity,
+                    idx,
+                    bundle,
+                    epoch,
+                    ActionEncoder::new(buffer, &self.entities),
+                )
+            }
             return Ok(());
         }
 
@@ -892,8 +931,16 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) =
-            unsafe { src.insert_bundle(entity, dst, idx, bundle, epoch, encoder) };
+        let (dst_idx, opt_src_id) = unsafe {
+            src.insert_bundle(
+                entity,
+                dst,
+                idx,
+                bundle,
+                epoch,
+                ActionEncoder::new(buffer, &self.entities),
+            )
+        };
 
         self.entities
             .set_location(entity.id(), dst_archetype, dst_idx);
@@ -935,14 +982,16 @@ impl World {
     where
         B: Bundle,
     {
-        with_encoder!(self, encoder => self.drop_bundle_with_encoder::<B>(entity, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.drop_bundle_with_buffer::<B>(entity, buffer)
+        })
     }
 
     #[inline]
-    pub(crate) fn drop_bundle_with_encoder<B>(
+    pub(crate) fn drop_bundle_with_buffer<B>(
         &mut self,
         entity: EntityId,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
@@ -954,7 +1003,7 @@ impl World {
             );
         }
 
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         let (src_archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
@@ -981,7 +1030,9 @@ impl World {
             false => (&mut after[0], &mut before[dst_archetype as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe { src.drop_bundle(entity, dst, idx, encoder) };
+        let (dst_idx, opt_src_id) = unsafe {
+            src.drop_bundle(entity, dst, idx, ActionEncoder::new(buffer, &self.entities))
+        };
 
         self.entities
             .set_location(entity.id(), dst_archetype, dst_idx);
@@ -1016,21 +1067,23 @@ impl World {
     where
         R: Relation,
     {
-        with_encoder!(self, encoder => self.add_relation_with_encoder(entity, relation, target, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.add_relation_with_buffer(entity, relation, target, buffer)
+        })
     }
 
-    /// Adds relation between two entities to the [`World`]
-    pub(crate) fn add_relation_with_encoder<R>(
+    #[inline]
+    pub(crate) fn add_relation_with_buffer<R>(
         &mut self,
         entity: EntityId,
         relation: R,
         target: EntityId,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         R: Relation,
     {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         self.entities.get_location(entity).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
@@ -1042,9 +1095,9 @@ impl World {
                 self,
                 entity,
                 relation,
-                encoder,
                 |relation| OriginComponent::new(target, relation),
                 |component, relation, encoder| component.add(entity, target, relation, encoder),
+                buffer,
             );
 
             if target != entity {
@@ -1052,9 +1105,9 @@ impl World {
                     self,
                     target,
                     relation,
-                    encoder,
                     |relation| OriginComponent::new(entity, relation),
                     |component, relation, encoder| component.add(target, entity, relation, encoder),
+                    buffer,
                 );
             }
         } else {
@@ -1062,18 +1115,18 @@ impl World {
                 self,
                 entity,
                 relation,
-                encoder,
                 |relation| OriginComponent::new(target, relation),
                 |component, relation, encoder| component.add(entity, target, relation, encoder),
+                buffer,
             );
 
             insert_component(
                 self,
                 target,
                 (),
-                encoder,
                 |()| TargetComponent::<R>::new(entity),
                 |component, (), _| component.add(entity),
+                buffer,
             );
         }
         Ok(())
@@ -1095,26 +1148,30 @@ impl World {
     where
         R: Relation,
     {
-        with_encoder!(self, encoder => self.drop_relation_with_encoder::<R>(entity, target, &mut encoder))
+        with_buffer!(self, buffer => {
+            self.drop_relation_with_buffer::<R>(entity, target, buffer)
+        })
     }
 
-    /// Drops relation between two entities in the [`World`].
-    pub(crate) fn drop_relation_with_encoder<R>(
+    #[inline]
+    pub(crate) fn drop_relation_with_buffer<R>(
         &mut self,
         entity: EntityId,
         target: EntityId,
-        encoder: &mut ActionEncoder,
+        buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
         R: Relation,
     {
-        self.spawn_reserved();
+        self.spawn_allocated();
 
         self.entities.get_location(entity).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
 
-        if let Ok(c) = self.query_one_mut::<&mut OriginComponent<R>>(entity) {
-            c.remove_relation(entity, target, encoder);
+        unsafe {
+            if let Ok(c) = self.query_one_unchecked::<&mut OriginComponent<R>>(entity) {
+                c.remove_relation(entity, target, ActionEncoder::new(buffer, &self.entities));
+            }
         }
 
         Ok(())
@@ -1786,12 +1843,26 @@ impl World {
         self.res.resource_types()
     }
 
+    /// Returns [`EntitySet`] from the [`World`].
+    pub(crate) fn entity_set(&self) -> &EntitySet {
+        &self.entities
+    }
+
     #[inline]
-    fn spawn_reserved(&mut self) {
+    pub(crate) fn with_buffer(&mut self, buffer: &mut ActionBuffer, f: impl FnOnce(&mut World)) {
+        let cached_action_buffer = self.cached_action_buffer.take();
+        self.cached_action_buffer = Some(core::mem::take(buffer));
+        f(self);
+        *buffer = self.cached_action_buffer.take().unwrap();
+        self.cached_action_buffer = cached_action_buffer;
+    }
+
+    #[inline]
+    fn spawn_allocated(&mut self) {
         let epoch = self.epoch.current_mut();
         let archetype = &mut self.archetypes[0];
         self.entities
-            .spawn_reserved(|id| archetype.spawn(id, (), epoch));
+            .spawn_allocated(|id| archetype.spawn(id, (), epoch));
     }
 }
 
@@ -1811,7 +1882,9 @@ where
 {
     /// Spawns the rest of the entities, dropping their ids.
     pub fn spawn_all(mut self) {
-        spawn_reserve(&self.bundles, self.archetype);
+        let additional = iter_reserve_hint(&self.bundles);
+        self.entities.reserve(additional);
+        self.archetype.reserve(additional);
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
@@ -1866,7 +1939,9 @@ where
     where
         F: FnMut(T, EntityId) -> T,
     {
-        spawn_reserve(&self.bundles, self.archetype);
+        let additional = iter_reserve_hint(&self.bundles);
+        self.entities.reserve(additional);
+        self.archetype.reserve(additional);
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
@@ -1889,7 +1964,9 @@ where
         // until the end of the iterator.
         //
         // Hence we should reserve space in archetype here.
-        spawn_reserve(&self.bundles, self.archetype);
+        let additional = iter_reserve_hint(&self.bundles);
+        self.entities.reserve(additional);
+        self.archetype.reserve(additional);
 
         FromIterator::from_iter(self)
     }
@@ -1941,7 +2018,7 @@ where
         Self: Sized,
         F: FnMut(T, EntityId) -> T,
     {
-        spawn_reserve(&self.bundles, self.archetype);
+        self.archetype.reserve(iter_reserve_hint(&self.bundles));
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
@@ -2098,9 +2175,9 @@ fn insert_component<T, C>(
     world: &mut World,
     entity: EntityId,
     value: T,
-    encoder: &mut ActionEncoder,
     into_component: impl FnOnce(T) -> C,
-    set_component: impl FnOnce(&mut C, T, &mut ActionEncoder),
+    set_component: impl FnOnce(&mut C, T, ActionEncoder),
+    buffer: &mut ActionBuffer,
 ) where
     C: Component,
 {
@@ -2111,7 +2188,11 @@ fn insert_component<T, C>(
             world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch.current_mut())
         };
 
-        set_component(component, value, encoder);
+        set_component(
+            component,
+            value,
+            ActionEncoder::new(buffer, &world.entities),
+        );
 
         return;
     }

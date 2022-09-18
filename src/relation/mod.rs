@@ -173,7 +173,7 @@ where
                     if origins[idx].target == target {
                         origins.swap_remove(idx);
                         if origins.is_empty() {
-                            encoder.remove::<Self>(entity);
+                            encoder.drop::<Self>(entity);
                         }
                         return;
                     }
@@ -182,7 +182,7 @@ where
             true => {
                 let origin = unsafe { &mut *self.exclusive };
                 if origin.target == target {
-                    encoder.remove::<Self>(entity);
+                    encoder.drop::<Self>(entity);
                 }
             }
         }
@@ -230,7 +230,7 @@ where
             if R::OWNED {
                 encoder.despawn(entity);
             } else {
-                encoder.remove::<Self>(entity);
+                encoder.drop::<Self>(entity);
             }
         }
     }
@@ -278,7 +278,7 @@ where
                     if R::OWNED {
                         encoder.despawn(origin.target);
                     } else {
-                        encoder.remove::<Self>(origin.target);
+                        encoder.drop::<Self>(origin.target);
                     }
                 } else {
                     let target = origin.target;
@@ -371,7 +371,7 @@ where
         }
 
         if self.origins.is_empty() {
-            encoder.remove::<Self>(target);
+            encoder.drop::<Self>(target);
         }
     }
 }
@@ -388,7 +388,7 @@ where
                 if R::OWNED {
                     encoder.despawn(entity);
                 } else {
-                    encoder.remove::<OriginComponent<R>>(entity);
+                    encoder.drop::<OriginComponent<R>>(entity);
                 }
             } else {
                 encoder.closure_with_encoder(move |world, encoder| unsafe {

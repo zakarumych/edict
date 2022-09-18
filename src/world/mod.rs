@@ -214,6 +214,17 @@ impl World {
         self.registry.ensure_component_registered::<T>();
     }
 
+    /// Explicitly registers bundle of component types.
+    ///
+    /// This method is only needed if you want to use bundle of component types using
+    /// [`World::insert_external_bundle`] or [`World::spawn_external`].
+    pub fn ensure_bundle_registered<B>(&mut self)
+    where
+        B: ComponentBundle,
+    {
+        register_bundle(&mut self.registry, &PhantomData::<B>);
+    }
+
     /// Explicitly registers external type.
     ///
     /// Unlike [`WorldBuilder::register_external`] method, this method does not return reference to component configuration,
@@ -443,7 +454,7 @@ impl World {
 
     pub(crate) fn spawn_reserve<B>(&mut self, additional: usize)
     where
-        B: ComponentBundle,
+        B: Bundle,
     {
         self.entities.reserve(additional);
 
@@ -452,7 +463,7 @@ impl World {
             &mut self.archetypes,
             0,
             &PhantomData::<B>,
-            |registry| register_bundle(registry, &PhantomData::<B>),
+            |registry| assert_registered_bundle(registry, &PhantomData::<B>),
         );
 
         let archetype = &mut self.archetypes[archetype_idx as usize];

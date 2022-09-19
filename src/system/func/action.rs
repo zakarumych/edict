@@ -28,7 +28,7 @@ impl FnArgCache for ActionEncoderCache {
 
     #[inline]
     fn world_access(&self) -> Option<Access> {
-        None
+        Some(Access::Read)
     }
 
     #[inline]

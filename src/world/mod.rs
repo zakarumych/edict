@@ -259,7 +259,7 @@ impl World {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
-    /// let entity = world.reserve();
+    /// let entity = world.allocate();
     /// assert_eq!(world.is_alive(entity), true);
     /// world.despawn(entity).unwrap();
     /// assert_eq!(world.is_alive(entity), false);

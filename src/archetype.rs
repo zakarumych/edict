@@ -17,12 +17,14 @@ use alloc::{
     boxed::Box,
     vec::Vec,
 };
+use atomicell::borrow::{
+    new_lock, release_borrow, release_borrow_mut, try_borrow, try_borrow_mut, Lock,
+};
 use hashbrown::HashMap;
 
 use crate::{
-    action::ActionEncoder, borrow::AtomicBorrowLock, bundle::DynamicBundle,
-    component::ComponentInfo, entity::EntityId, epoch::EpochId, hash::NoOpHasherBuilder,
-    idx::MAX_IDX_USIZE, query::Access,
+    action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
+    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, query::Access,
 };
 
 pub(crate) struct ComponentData {
@@ -34,7 +36,7 @@ pub(crate) struct ComponentData {
 
 pub(crate) struct ArchetypeComponent {
     info: ComponentInfo,
-    lock: AtomicBorrowLock,
+    lock: Lock,
     data: UnsafeCell<ComponentData>,
 }
 
@@ -49,12 +51,18 @@ impl Deref for ArchetypeComponent {
 impl ArchetypeComponent {
     #[inline]
     pub unsafe fn borrow(&self, access: Access) -> bool {
-        self.lock.borrow_access(access)
+        match access {
+            Access::Read => try_borrow(&self.lock),
+            Access::Write => try_borrow_mut(&self.lock),
+        }
     }
 
     #[inline]
     pub unsafe fn release(&self, access: Access) {
-        self.lock.release_access(access)
+        match access {
+            Access::Read => release_borrow(&self.lock),
+            Access::Write => release_borrow_mut(&self.lock),
+        }
     }
 
     #[inline]
@@ -77,7 +85,7 @@ impl ArchetypeComponent {
                 chunk_epochs: Box::new([]),
                 entity_epochs: Box::new([]),
             }),
-            lock: AtomicBorrowLock::new(),
+            lock: new_lock(),
             info: info.clone(),
         }
     }

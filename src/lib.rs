@@ -155,7 +155,6 @@ pub mod scheduler;
 pub mod system;
 pub mod world;
 
-mod borrow;
 mod hash;
 mod idx;
 mod res;

@@ -1,6 +1,6 @@
 [package]
 name = "edict-proc"
-version = "0.2.0-rc.3"
+version = "0.3.0"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -15,4 +15,4 @@ proc-macro = true
 
 [dependencies]
 syn = "1.0"
-edict-proc-lib = { version = "=0.2.0-rc.3", path = "../proc-lib" }
+edict-proc-lib = { version = "=0.3.0", path = "../proc-lib" }

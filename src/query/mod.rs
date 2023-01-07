@@ -16,6 +16,7 @@ pub use self::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
+    copied::{copied, Copied, FetchCopied},
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
@@ -28,6 +29,7 @@ pub use self::{
 
 mod alt;
 mod borrow;
+mod copied;
 mod entities;
 mod fetch;
 mod filter;
@@ -42,11 +44,15 @@ mod write;
 /// Specifies kind of access query performs for particular component.
 #[derive(Clone, Copy, Debug)]
 pub enum Access {
-    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
-    Read,
-
     /// Cannot be aliased with any other access.
     Write,
+
+    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
+    Read,
+    // /// Temporary access to component. Can be aliased with any other in the same query.
+    // /// For different queries acts like [`Access::Read`].
+    // /// Queries with this access type produce output not tied to component borrow.
+    // Touch,
 }
 
 /// Types associated with a query type.
@@ -95,7 +101,7 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     ) -> <Self as QueryFetch<'a>>::Fetch;
 }
 
-/// Wraps mutable reference to query and implement query.
+/// Wraps mutable reference to query and implement query for it.
 pub struct MutQuery<'a, T: 'a> {
     query: &'a mut T,
 }

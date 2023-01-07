@@ -12,9 +12,9 @@ use crate::{
     component::Component,
     entity::{EntityId, EntitySet},
     query::{
-        Fetch, Filter, FilteredQuery, ImmutableQuery, IntoFilter, IntoQuery, Modified, MutQuery,
-        PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryFetch, QueryItem,
-        QueryIter, With, Without,
+        Copied, Fetch, Filter, FilteredQuery, ImmutableQuery, IntoFilter, IntoQuery, Modified,
+        MutQuery, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryFetch,
+        QueryItem, QueryIter, With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -261,6 +261,30 @@ where
                     .filtered_query
                     .query
                     .extend_tuple(Modified::new(after_epoch)),
+                filter: parts.filtered_query.filter,
+            },
+            borrowed: Cell::new(parts.borrowed),
+        }
+    }
+
+    /// Adds query to fetch copy of component.
+    #[inline]
+    pub fn copied<T>(self) -> QueryRef<'a, TuplePlus<Q, Copied<T>>, F>
+    where
+        Copied<T>: PhantomQuery,
+        Q: ExtendTuple<Copied<T>>,
+        Q::Query: ExtendTuple<PhantomData<fn() -> Copied<T>>>,
+        TuplePlus<Q, Copied<T>>:
+            IntoQuery<Query = TuplePlus<Q::Query, PhantomData<fn() -> Copied<T>>>>,
+    {
+        let parts = self.deconstruct();
+
+        QueryRef {
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query.extend_tuple(PhantomData),
                 filter: parts.filtered_query.filter,
             },
             borrowed: Cell::new(parts.borrowed),

@@ -21,7 +21,10 @@ pub use self::{
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
     iter::QueryIter,
-    modified::{Modified, ModifiedFetchAlt, ModifiedFetchRead, ModifiedFetchWrite},
+    modified::{
+        Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
+        ModifiedFetchWrite,
+    },
     phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch},
     read::{read, FetchRead},
     write::{write, FetchWrite},

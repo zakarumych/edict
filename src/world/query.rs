@@ -267,6 +267,26 @@ where
         }
     }
 
+    /// Adds query to fetch modified components.
+    #[inline]
+    pub fn filter_modified<T>(self, after_epoch: EpochId) -> QueryRef<'a, Q, (Modified<With<T>>, F)>
+    where
+        T: 'static,
+    {
+        let parts = self.deconstruct();
+
+        QueryRef {
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (Modified::new(after_epoch), parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(parts.borrowed),
+        }
+    }
+
     /// Adds query to fetch copy of component.
     #[inline]
     pub fn copied<T>(self) -> QueryRef<'a, TuplePlus<Q, Copied<T>>, F>

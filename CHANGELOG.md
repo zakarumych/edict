@@ -10,4 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Modified<Copied>` query
+- `Modified<With>` filter
+
+## [0.3.1] - 2023-01-07
+
+### Added
+
 - `Copied` query to yield component copies instead of references.

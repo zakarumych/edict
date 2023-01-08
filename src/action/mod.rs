@@ -244,13 +244,14 @@ impl<'a> ActionEncoder<'a> {
         });
     }
 
-    /// Encodes an action to remove component from specified entity.
+    /// Encodes a custom action with a closure that takes mutable reference to `World`.
     #[inline]
     pub fn closure(&mut self, fun: impl FnOnce(&mut World) + Send + 'static) {
         self.push_fn(move |world, buffer| world.with_buffer(buffer, fun))
     }
 
-    /// Encodes an action to remove component from specified entity.
+    /// Encodes a custom action with a closure that takes reference to `World`
+    /// and another [`ActionEncoder`] that can be used to record new actions.
     #[inline]
     pub fn closure_with_encoder(
         &mut self,

@@ -295,6 +295,17 @@ impl ActionBuffer {
         }
     }
 
+    /// Returns an encoder that records actions into this buffer.
+    ///
+    /// Actions should be executed on the same [`World`],
+    /// otherwise entity ids will not refer to the correct entities.
+    pub fn encoder<'a>(&'a mut self, world: &'a World) -> ActionEncoder<'a> {
+        ActionEncoder {
+            actions: &mut self.actions,
+            entities: world.entity_set(),
+        }
+    }
+
     /// Executes recorded commands onto the [`World`].
     /// Iterates through all recorded actions and executes them one by one.
     /// After execution buffer is empty.

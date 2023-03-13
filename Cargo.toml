@@ -1,6 +1,6 @@
 [package]
 name = "edict"
-version = "0.4.0-rc.2"
+version = "0.4.0-rc.3"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -21,7 +21,7 @@ edict-proc = { version = "=0.3.0", path = "proc" }
 hashbrown = { version = "0.13", features = ["ahash"], default-features = false }
 smallvec = { version ="1.8", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
-atomicell = "0.1.8"
+atomicell = "0.1.9"
 flume = { version = "0.10" }
 rayon = { version = "1.5", optional = true }
 

@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch, Query};
+use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, Query};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -62,18 +62,13 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for &mut T
-where
-    T: Send + 'a,
-{
-    type Item = &'a mut T;
-    type Fetch = FetchWrite<'a, T>;
-}
-
 unsafe impl<T> PhantomQuery for &mut T
 where
     T: Send + 'static,
 {
+    type Item<'a> = &'a mut T;
+    type Fetch<'a> = FetchWrite<'a, T>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {

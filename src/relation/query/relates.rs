@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
     relation::{Origin, OriginComponent, Relation},
 };
 
@@ -128,14 +128,6 @@ where
     }
 }
 
-impl<'a, R> PhantomQueryFetch<'a> for Relates<&R>
-where
-    R: Relation + Sync,
-{
-    type Item = RelatesReadIter<'a, R>;
-    type Fetch = FetchRelatesRead<'a, R>;
-}
-
 impl<R> IntoQuery for Relates<&R>
 where
     R: Relation + Sync,
@@ -147,6 +139,9 @@ unsafe impl<R> PhantomQuery for Relates<&R>
 where
     R: Relation + Sync,
 {
+    type Item<'a> = RelatesReadIter<'a, R>;
+    type Fetch<'a> = FetchRelatesRead<'a, R>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -309,14 +304,6 @@ where
     }
 }
 
-impl<'a, R> PhantomQueryFetch<'a> for Relates<&mut R>
-where
-    R: Relation + Send,
-{
-    type Item = RelatesWriteIter<'a, R>;
-    type Fetch = FetchRelatesWrite<'a, R>;
-}
-
 impl<R> IntoQuery for Relates<&mut R>
 where
     R: Relation + 'static,
@@ -328,6 +315,9 @@ unsafe impl<R> PhantomQuery for Relates<&mut R>
 where
     R: Relation + Send,
 {
+    type Item<'a> = RelatesWriteIter<'a, R>;
+    type Fetch<'a> = FetchRelatesWrite<'a, R>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {

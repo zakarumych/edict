@@ -2,7 +2,7 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query, QueryFetch};
+use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
 
 macro_rules! for_tuple {
     () => {
@@ -43,16 +43,14 @@ macro_rules! for_tuple {
             unsafe fn get_item(&mut self, _: usize) {}
         }
 
-        impl QueryFetch<'_> for () {
-            type Item = ();
-            type Fetch = ();
-        }
-
         impl IntoQuery for () {
             type Query = ();
         }
 
         unsafe impl Query for () {
+            type Item<'a> = ();
+            type Fetch<'a> = ();
+
             #[inline]
             fn access(&self, _ty: TypeId) -> Option<Access> {
                 None
@@ -115,15 +113,13 @@ macro_rules! for_tuple {
             }
         }
 
-        #[allow(unused_parens)]
-        impl<'a $(, $a)+> QueryFetch<'a> for ($($a,)+) where $($a: Query,)+ {
-            type Item = ($(<$a as QueryFetch<'a>>::Item),+);
-            type Fetch = ($(<$a as QueryFetch<'a>>::Fetch),+);
-        }
 
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
+            type Item<'a> = ($($a::Item<'a>),+);
+            type Fetch<'a> = ($($a::Fetch<'a>),+);
+
             #[inline]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)+) = self;
@@ -146,7 +142,7 @@ macro_rules! for_tuple {
 
             #[inline]
             #[allow(unused_parens)]
-            unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> ($(<$a as QueryFetch<'a>>::Fetch),+) {
+            unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
                 ($( <$a as Query>::fetch($a, archetype, epoch) ),+)
             }

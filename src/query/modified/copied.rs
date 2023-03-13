@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Copied, Fetch, ImmutableQuery, IntoQuery, QueryFetch},
+    query::{Access, Copied, Fetch, ImmutableQuery, IntoQuery},
     system::{QueryArg, QueryArgCache, QueryArgGet},
     Modified, PhantomQuery, Query, World,
 };
@@ -57,14 +57,6 @@ where
     }
 }
 
-impl<'a, T> QueryFetch<'a> for Modified<Copied<T>>
-where
-    T: Copy + Sync + 'a,
-{
-    type Item = T;
-    type Fetch = ModifiedFetchCopied<'a, T>;
-}
-
 impl<T> IntoQuery for Modified<Copied<T>>
 where
     T: Copy + Sync + 'static,
@@ -76,6 +68,9 @@ unsafe impl<T> Query for Modified<Copied<T>>
 where
     T: Copy + Sync + 'static,
 {
+    type Item<'a> = T;
+    type Fetch<'a> = ModifiedFetchCopied<'a, T>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Copied<T> as PhantomQuery>::access(ty)

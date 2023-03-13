@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query, QueryFetch},
+    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
 };
 
 /// [`Query`] that fetches components with specific `TypeId` as specified borrow.
@@ -79,14 +79,6 @@ where
     }
 }
 
-impl<'a, T> QueryFetch<'a> for QueryBorrowOne<&T>
-where
-    T: Sync + ?Sized + 'a,
-{
-    type Item = &'a T;
-    type Fetch = FetchBorrowOneRead<'a, T>;
-}
-
 impl<T> IntoQuery for QueryBorrowOne<&T>
 where
     T: Sync + ?Sized + 'static,
@@ -98,6 +90,9 @@ unsafe impl<T> Query for QueryBorrowOne<&T>
 where
     T: Sync + ?Sized + 'static,
 {
+    type Item<'a> = &'a T;
+    type Fetch<'a> = FetchBorrowOneRead<'a, T>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == self.id {
@@ -201,14 +196,6 @@ where
     }
 }
 
-impl<'a, T> QueryFetch<'a> for QueryBorrowOne<&mut T>
-where
-    T: Send + ?Sized + 'a,
-{
-    type Item = &'a mut T;
-    type Fetch = FetchBorrowOneWrite<'a, T>;
-}
-
 impl<T> IntoQuery for QueryBorrowOne<&mut T>
 where
     T: Send + ?Sized + 'static,
@@ -220,6 +207,9 @@ unsafe impl<T> Query for QueryBorrowOne<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
+    type Item<'a> = &'a mut T;
+    type Fetch<'a> = FetchBorrowOneWrite<'a, T>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == self.id {

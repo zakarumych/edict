@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
     relation::{Relation, TargetComponent},
 };
 
@@ -42,14 +42,6 @@ where
     }
 }
 
-impl<'a, R> PhantomQueryFetch<'a> for Related<R>
-where
-    R: Relation,
-{
-    type Item = &'a [EntityId];
-    type Fetch = FetchRelated<'a, R>;
-}
-
 impl<R> IntoQuery for Related<R>
 where
     R: Relation,
@@ -61,6 +53,9 @@ unsafe impl<R> PhantomQuery for Related<R>
 where
     R: Relation,
 {
+    type Item<'a> = &'a [EntityId];
+    type Fetch<'a> = FetchRelated<'a, R>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<TargetComponent<R>>() {

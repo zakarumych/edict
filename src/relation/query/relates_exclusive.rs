@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
     relation::{OriginComponent, Relation},
 };
 
@@ -56,14 +56,6 @@ where
     }
 }
 
-impl<'a, R> PhantomQueryFetch<'a> for RelatesExclusive<&R>
-where
-    R: Relation + Sync,
-{
-    type Item = (&'a R, EntityId);
-    type Fetch = FetchRelatesExclusiveRead<'a, R>;
-}
-
 impl<R> IntoQuery for RelatesExclusive<&R>
 where
     R: Relation + Sync,
@@ -75,6 +67,9 @@ unsafe impl<R> PhantomQuery for RelatesExclusive<&R>
 where
     R: Relation + Sync,
 {
+    type Item<'a> = (&'a R, EntityId);
+    type Fetch<'a> = FetchRelatesExclusiveRead<'a, R>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -173,14 +168,6 @@ where
     }
 }
 
-impl<'a, R> PhantomQueryFetch<'a> for RelatesExclusive<&mut R>
-where
-    R: Relation + Send,
-{
-    type Item = (&'a mut R, EntityId);
-    type Fetch = FetchRelatesExclusiveWrite<'a, R>;
-}
-
 impl<R> IntoQuery for RelatesExclusive<&mut R>
 where
     R: Relation + 'static,
@@ -192,6 +179,9 @@ unsafe impl<R> PhantomQuery for RelatesExclusive<&mut R>
 where
     R: Relation + Send,
 {
+    type Item<'a> = (&'a mut R, EntityId);
+    type Fetch<'a> = FetchRelatesExclusiveWrite<'a, R>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {

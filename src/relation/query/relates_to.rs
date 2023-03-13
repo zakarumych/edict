@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query, QueryFetch},
+    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
     relation::{OriginComponent, Relation},
 };
 
@@ -85,14 +85,6 @@ where
     }
 }
 
-impl<'a, R> QueryFetch<'a> for RelatesTo<&R>
-where
-    R: Relation + Sync,
-{
-    type Item = &'a R;
-    type Fetch = FetchRelatesToRead<'a, R>;
-}
-
 impl<R> IntoQuery for RelatesTo<&R>
 where
     R: Relation + 'static,
@@ -104,6 +96,9 @@ unsafe impl<R> Query for RelatesTo<&R>
 where
     R: Relation + Sync,
 {
+    type Item<'a> = &'a R;
+    type Fetch<'a> = FetchRelatesToRead<'a, R>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -161,7 +156,7 @@ unsafe impl<'a, R> Fetch<'a> for FetchRelatesToWrite<'a, R>
 where
     R: Relation + Send,
 {
-    type Item = &'a R;
+    type Item = &'a mut R;
 
     #[inline]
     fn dangling() -> Self {
@@ -205,21 +200,13 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a R {
+    unsafe fn get_item(&mut self, idx: usize) -> &'a mut R {
         let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
         entity_epoch.bump(self.epoch);
 
-        let origin_component = &*self.ptr.as_ptr().add(idx);
-        &origin_component.origins()[self.item_idx].relation
+        let origin_component = &mut *self.ptr.as_ptr().add(idx);
+        &mut origin_component.origins_mut()[self.item_idx].relation
     }
-}
-
-impl<'a, R> QueryFetch<'a> for RelatesTo<&mut R>
-where
-    R: Relation + Send,
-{
-    type Item = &'a R;
-    type Fetch = FetchRelatesToWrite<'a, R>;
 }
 
 impl<R> IntoQuery for RelatesTo<&mut R>
@@ -233,6 +220,9 @@ unsafe impl<R> Query for RelatesTo<&mut R>
 where
     R: Relation + Send,
 {
+    type Item<'a> = &'a mut R;
+    type Fetch<'a> = FetchRelatesToWrite<'a, R>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {

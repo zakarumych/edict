@@ -26,7 +26,7 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{EntityId, EntitySet},
     epoch::{EpochCounter, EpochId},
-    query::{Fetch, IntoQuery, Query, QueryFetch, QueryItem},
+    query::{Fetch, IntoQuery, Query, QueryItem},
     relation::{OriginComponent, Relation, TargetComponent},
     res::Res,
 };
@@ -1370,7 +1370,7 @@ impl World {
     where
         T: ToOwned + 'static,
         Q: IntoQuery,
-        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: Default + for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one::<Q, _, _>(entity, |item| T::to_owned(item))
     }
@@ -1383,7 +1383,7 @@ impl World {
     where
         T: Clone + 'static,
         Q: IntoQuery,
-        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: Default + for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one::<Q, _, _>(entity, |item| T::clone(item))
     }
@@ -1396,7 +1396,7 @@ impl World {
     where
         T: Copy + 'static,
         Q: IntoQuery,
-        Q::Query: Default + for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: Default + for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one::<Q, _, _>(entity, |item| *item)
     }

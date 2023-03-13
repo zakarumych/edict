@@ -7,25 +7,20 @@ use crate::{
     world::World,
 };
 
-use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query, QueryFetch};
-
-/// HRTB for `PhantomQuery` trait.
-pub trait PhantomQueryFetch<'a> {
-    /// Item type this query type yields.
-    type Item: 'a;
-
-    /// Fetch value type for this query type.
-    /// Contains data from one archetype.
-    type Fetch: Fetch<'a, Item = Self::Item>;
-}
+use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
 
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
 ///
 /// [`PhantomData<fn() -> Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
-pub unsafe trait PhantomQuery:
-    for<'a> PhantomQueryFetch<'a> + IntoQuery<Query = PhantomData<fn() -> Self>>
-{
+pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
+    /// Item type this query type yields.
+    type Item<'a>: 'a;
+
+    /// Fetch value type for this query type.
+    /// Contains data from one archetype.
+    type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
+
     /// Returns what kind of access the query performs on the component type.
     fn access(ty: TypeId) -> Option<Access>;
 
@@ -43,10 +38,7 @@ pub unsafe trait PhantomQuery:
     /// # Safety
     ///
     /// Must not be called if `skip_archetype` returned `true`.
-    unsafe fn fetch<'a>(
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> <Self as PhantomQueryFetch<'a>>::Fetch;
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
 }
 
 impl<Q> IntoQuery for PhantomData<fn() -> Q>
@@ -56,18 +48,13 @@ where
     type Query = PhantomData<fn() -> Q>;
 }
 
-impl<'a, Q> QueryFetch<'a> for PhantomData<fn() -> Q>
-where
-    Q: PhantomQuery,
-{
-    type Item = <Q as PhantomQueryFetch<'a>>::Item;
-    type Fetch = <Q as PhantomQueryFetch<'a>>::Fetch;
-}
-
 unsafe impl<Q> Query for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
+    type Item<'a> = Q::Item<'a>;
+    type Fetch<'a> = Q::Fetch<'a>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Q as PhantomQuery>::access(ty)
@@ -84,11 +71,7 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> <Self as QueryFetch<'a>>::Fetch {
+    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
         <Q as PhantomQuery>::fetch(archetype, epoch)
     }
 }

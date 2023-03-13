@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, QueryFetch, With},
+    query::{Access, Fetch, ImmutableQuery, IntoQuery, With},
     system::{QueryArg, QueryArgCache, QueryArgGet},
     Modified, PhantomQuery, Query, World,
 };
@@ -53,14 +53,6 @@ where
     unsafe fn get_item(&mut self, _: usize) {}
 }
 
-impl<'a, T> QueryFetch<'a> for Modified<With<T>>
-where
-    T: 'a,
-{
-    type Item = ();
-    type Fetch = ModifiedFetchWith<'a, T>;
-}
-
 impl<T> IntoQuery for Modified<With<T>>
 where
     T: 'static,
@@ -72,6 +64,9 @@ unsafe impl<T> Query for Modified<With<T>>
 where
     T: 'static,
 {
+    type Item<'a> = ();
+    type Fetch<'a> = ModifiedFetchWith<'a, T>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <With<T> as PhantomQuery>::access(ty)

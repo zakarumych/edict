@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
 };
 
 phantom_newtype! {
@@ -66,14 +66,6 @@ where
     }
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAll<&T>
-where
-    T: Sync + ?Sized + 'a,
-{
-    type Item = Vec<&'a T>;
-    type Fetch = FetchBorrowAllRead<'a, T>;
-}
-
 impl<T> IntoQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
@@ -85,6 +77,9 @@ unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
 where
     T: Sync + ?Sized + 'static,
 {
+    type Item<'a> = Vec<&'a T>;
+    type Fetch<'a> = FetchBorrowAllRead<'a, T>;
+
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         Some(Access::Read)

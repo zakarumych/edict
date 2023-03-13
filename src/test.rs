@@ -1,6 +1,6 @@
 use crate::{
     component::Component,
-    query::{Entities, With},
+    query::{Entities, ImmutableQuery, With},
     relation::{Relation, RelationOrigin, RelationTarget},
     world::World,
     QueryOneError,
@@ -684,9 +684,13 @@ fn test_symmetric_exclusive_relation() {
 
 #[test]
 fn test_filters() {
-    use crate::query::IntoFilter;
+    use crate::query::IntoQuery;
 
-    fn is_filter<F: IntoFilter>() {}
+    fn is_filter<F: IntoQuery>()
+    where
+        F::Query: ImmutableQuery,
+    {
+    }
     is_filter::<()>();
     is_filter::<((), ())>();
 

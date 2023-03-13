@@ -4,7 +4,6 @@ use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
     phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery,
-    PhantomQueryFetch,
 };
 
 /// [`Fetch`] type for the `&T` query.
@@ -54,18 +53,13 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for &T
-where
-    T: Sync + 'static,
-{
-    type Item = &'a T;
-    type Fetch = FetchRead<'a, T>;
-}
-
 unsafe impl<T> PhantomQuery for &T
 where
     T: Sync + 'static,
 {
+    type Item<'a> = &'a T;
+    type Fetch<'a> = FetchRead<'a, T>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {

@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch},
+    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
 };
 
 phantom_newtype! {
@@ -55,14 +55,6 @@ where
     }
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAny<&T>
-where
-    T: Sync + ?Sized + 'a,
-{
-    type Item = &'a T;
-    type Fetch = FetchBorrowAnyRead<'a, T>;
-}
-
 impl<T> IntoQuery for QueryBorrowAny<&T>
 where
     T: Sync + ?Sized + 'static,
@@ -74,6 +66,9 @@ unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
 where
     T: Sync + ?Sized + 'static,
 {
+    type Item<'a> = &'a T;
+    type Fetch<'a> = FetchBorrowAnyRead<'a, T>;
+
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         Some(Access::Read)
@@ -172,14 +167,6 @@ where
     }
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for QueryBorrowAny<&mut T>
-where
-    T: Send + ?Sized + 'static,
-{
-    type Item = &'a mut T;
-    type Fetch = FetchBorrowAnyWrite<'a, T>;
-}
-
 impl<T> IntoQuery for QueryBorrowAny<&mut T>
 where
     T: Send + ?Sized + 'static,
@@ -191,6 +178,9 @@ unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
 where
     T: Send + ?Sized + 'static,
 {
+    type Item<'a> = &'a mut T;
+    type Fetch<'a> = FetchBorrowAnyWrite<'a, T>;
+
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         Some(Access::Write)

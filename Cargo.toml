@@ -1,6 +1,6 @@
 [package]
 name = "edict"
-version = "0.3.3"
+version = "0.4.0-rc.1"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"

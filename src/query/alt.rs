@@ -11,7 +11,7 @@ use crate::{
     epoch::EpochId,
 };
 
-use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, PhantomQueryFetch};
+use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery};
 
 /// Item type that [`Alt`] yields.
 /// Wraps `&mut T` and implements [`DerefMut`] to `T`.
@@ -118,14 +118,6 @@ phantom_newtype! {
     pub struct Alt<T>
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for Alt<T>
-where
-    T: Send + 'a,
-{
-    type Item = RefMut<'a, T>;
-    type Fetch = FetchAlt<'a, T>;
-}
-
 impl<T> IntoQuery for Alt<T>
 where
     T: Send + 'static,
@@ -137,6 +129,9 @@ unsafe impl<T> PhantomQuery for Alt<T>
 where
     T: Send + 'static,
 {
+    type Item<'a> = RefMut<'a, T>;
+    type Fetch<'a> = FetchAlt<'a, T>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {

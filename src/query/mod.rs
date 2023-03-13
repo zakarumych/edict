@@ -19,13 +19,13 @@ pub use self::{
     copied::{copied, Copied, FetchCopied},
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
-    filter::{Filter, FilteredFetch, FilteredQuery, IntoFilter, With, Without},
+    filter::{And, FilteredFetch, FilteredQuery, Or, With, Without, Xor},
     iter::QueryIter,
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
         ModifiedFetchWrite,
     },
-    phantom::{ImmutablePhantomQuery, PhantomQuery, PhantomQueryFetch},
+    phantom::{ImmutablePhantomQuery, PhantomQuery},
     read::{read, FetchRead},
     write::{write, FetchWrite},
 };
@@ -64,22 +64,19 @@ pub trait IntoQuery {
     type Query: Query + IntoQuery<Query = Self::Query>;
 }
 
-/// HRKT for [`Query`] trait.
-pub trait QueryFetch<'a> {
-    /// Item type this query type yields.
-    type Item: 'a;
-
-    /// Fetch value type for this query type.
-    /// Contains data from one archetype.
-    type Fetch: Fetch<'a, Item = Self::Item>;
-}
-
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
 /// references to the components and optionally [`EntityId`] to address same components later.
 ///
 /// [`EntityId`]: edict::entity::EntityId
-pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
+pub unsafe trait Query: IntoQuery<Query = Self> {
+    /// Item type this query type yields.
+    type Item<'a>: 'a;
+
+    /// Fetch value type for this query type.
+    /// Contains data from one archetype.
+    type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
+
     /// Returns what kind of access the query performs on the component type.
     fn access(&self, ty: TypeId) -> Option<Access>;
 
@@ -97,11 +94,7 @@ pub unsafe trait Query: for<'a> QueryFetch<'a> + IntoQuery<Query = Self> {
     /// # Safety
     ///
     /// Must not be called if `skip_archetype` returned `true`.
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> <Self as QueryFetch<'a>>::Fetch;
+    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
 }
 
 /// Wraps mutable reference to query and implement query for it.
@@ -127,14 +120,6 @@ impl<'a, T> MutQuery<'a, T> {
     }
 }
 
-impl<'a, T> QueryFetch<'a> for MutQuery<'_, T>
-where
-    T: Query,
-{
-    type Item = <T as QueryFetch<'a>>::Item;
-    type Fetch = <T as QueryFetch<'a>>::Fetch;
-}
-
 impl<T> IntoQuery for MutQuery<'_, T>
 where
     T: Query,
@@ -146,6 +131,9 @@ unsafe impl<T> Query for MutQuery<'_, T>
 where
     T: Query,
 {
+    type Item<'a> = T::Item<'a>;
+    type Fetch<'a> = T::Fetch<'a>;
+
     fn access(&self, ty: TypeId) -> Option<Access> {
         self.query.access(ty)
     }
@@ -158,11 +146,7 @@ where
         self.query.access_archetype(archetype, f)
     }
 
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> <Self as QueryFetch<'a>>::Fetch {
+    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
         self.query.fetch(archetype, epoch)
     }
 }
@@ -178,7 +162,7 @@ unsafe impl<T> ImmutableQuery for MutQuery<'_, T> where T: ImmutableQuery {}
 pub unsafe trait ImmutableQuery: Query {}
 
 /// Type alias for items returned by the [`Query`] type.
-pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as QueryFetch<'a>>::Item;
+pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as Query>::Item<'a>;
 
 /// Merge two optional access values.
 #[inline]

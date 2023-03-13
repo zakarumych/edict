@@ -3,7 +3,7 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::{chunk_idx, Archetype},
     epoch::EpochId,
-    query::{alt::RefMut, Access, Fetch, IntoQuery, QueryFetch},
+    query::{alt::RefMut, Access, Fetch, IntoQuery},
     system::{QueryArg, QueryArgCache, QueryArgGet},
     Alt, Modified, PhantomQuery, Query, World,
 };
@@ -73,14 +73,6 @@ where
     }
 }
 
-impl<'a, T> QueryFetch<'a> for Modified<Alt<T>>
-where
-    T: Send + 'a,
-{
-    type Item = RefMut<'a, T>;
-    type Fetch = ModifiedFetchAlt<'a, T>;
-}
-
 impl<T> IntoQuery for Modified<Alt<T>>
 where
     T: Send + 'static,
@@ -92,6 +84,9 @@ unsafe impl<T> Query for Modified<Alt<T>>
 where
     T: Send + 'static,
 {
+    type Item<'a> = RefMut<'a, T>;
+    type Fetch<'a> = ModifiedFetchAlt<'a, T>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(ty)

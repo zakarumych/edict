@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query, QueryFetch},
+    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
     relation::{OriginComponent, Relation},
 };
 
@@ -83,14 +83,6 @@ impl<R> FilterNotRelatesTo<R> {
     }
 }
 
-impl<'a, R> QueryFetch<'a> for FilterNotRelatesTo<R>
-where
-    R: Relation,
-{
-    type Item = ();
-    type Fetch = FetchFilterNotRelatesTo<'a, R>;
-}
-
 impl<R> IntoQuery for FilterNotRelatesTo<R>
 where
     R: Relation,
@@ -102,6 +94,9 @@ unsafe impl<R> Query for FilterNotRelatesTo<R>
 where
     R: Relation,
 {
+    type Item<'a> = ();
+    type Fetch<'a> = FetchFilterNotRelatesTo<'a, R>;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {

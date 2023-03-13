@@ -12,9 +12,8 @@ use crate::{
     component::Component,
     entity::{EntityId, EntitySet},
     query::{
-        Copied, Fetch, Filter, FilteredQuery, ImmutableQuery, IntoFilter, IntoQuery, Modified,
-        MutQuery, PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryFetch,
-        QueryItem, QueryIter, With, Without,
+        Copied, Fetch, FilteredQuery, ImmutableQuery, IntoQuery, Modified, MutQuery, PhantomQuery,
+        Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -225,7 +224,7 @@ where
     #[inline]
     pub fn filter<T>(self, filter: T) -> QueryRef<'a, Q, (T, F)>
     where
-        T: Filter,
+        T: ImmutableQuery,
     {
         let parts = self.deconstruct();
 
@@ -514,7 +513,8 @@ where
 impl<'a, Q, F> QueryRef<'a, Q, F>
 where
     Q: IntoQuery,
-    F: IntoFilter,
+    F: IntoQuery,
+    F::Query: ImmutableQuery,
 {
     /// Queries components from specified entity.
     /// Returns query item for the entity or error.
@@ -523,7 +523,7 @@ where
     pub fn get_one(
         &mut self,
         entity: EntityId,
-    ) -> Result<QueryItem<'_, FilteredQuery<F::Filter, Q::Query>>, QueryOneError> {
+    ) -> Result<QueryItem<'_, FilteredQuery<F::Query, Q::Query>>, QueryOneError> {
         let (archetype, idx) = self
             .entities
             .get_location(entity)
@@ -565,7 +565,7 @@ where
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
     pub fn for_one<Fun, R>(&mut self, entity: EntityId, f: Fun) -> Result<R, QueryOneError>
     where
-        for<'b> Fun: FnOnce(QueryItem<'b, FilteredQuery<F::Filter, Q::Query>>) -> R,
+        for<'b> Fun: FnOnce(QueryItem<'b, FilteredQuery<F::Query, Q::Query>>) -> R,
     {
         let epoch = self.epoch.next();
 
@@ -598,7 +598,7 @@ where
     pub fn get_one_owned<T>(&mut self, entity: EntityId) -> Result<T::Owned, QueryOneError>
     where
         T: ToOwned + 'static,
-        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one(entity, |item| T::to_owned(item))
     }
@@ -611,7 +611,7 @@ where
     pub fn get_one_cloned<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
     where
         T: Clone + 'static,
-        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one(entity, |item| T::clone(item))
     }
@@ -624,7 +624,7 @@ where
     pub fn get_one_copied<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
     where
         T: Copy + 'static,
-        Q::Query: for<'b> QueryFetch<'b, Item = &'b T>,
+        Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
         self.for_one(entity, |item| *item)
     }
@@ -633,10 +633,10 @@ where
     ///
     /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
     #[inline]
-    pub fn iter(&self) -> QueryIter<'_, FilteredQuery<F::Filter, Q::Query>>
+    pub fn iter(&self) -> QueryIter<'_, FilteredQuery<F::Query, Q::Query>>
     where
         Q::Query: ImmutableQuery + Clone,
-        F::Filter: Clone,
+        F::Query: Clone,
     {
         self.ensure_borrow();
 
@@ -649,7 +649,7 @@ where
     ///
     /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
     #[inline]
-    pub fn iter_mut(&mut self) -> QueryIter<'_, MutQuery<FilteredQuery<F::Filter, Q::Query>>> {
+    pub fn iter_mut(&mut self) -> QueryIter<'_, MutQuery<FilteredQuery<F::Query, Q::Query>>> {
         self.ensure_borrow();
 
         let epoch = self.epoch.next();
@@ -753,13 +753,14 @@ where
 impl<'a, Q, F> IntoIterator for &'a mut QueryRef<'_, Q, F>
 where
     Q: IntoQuery,
-    F: IntoFilter,
+    F: IntoQuery,
+    F::Query: ImmutableQuery,
 {
     type Item = QueryItem<'a, Q>;
-    type IntoIter = QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>>;
+    type IntoIter = QueryIter<'a, MutQuery<'a, FilteredQuery<F::Query, Q::Query>>>;
 
     #[inline]
-    fn into_iter(self) -> QueryIter<'a, MutQuery<'a, FilteredQuery<F::Filter, Q::Query>>> {
+    fn into_iter(self) -> QueryIter<'a, MutQuery<'a, FilteredQuery<F::Query, Q::Query>>> {
         self.iter_mut()
     }
 }
@@ -768,14 +769,14 @@ impl<'a, Q, F> IntoIterator for &'a QueryRef<'_, Q, F>
 where
     Q: IntoQuery,
     Q::Query: ImmutableQuery + Clone,
-    F: IntoFilter,
-    F::Filter: Clone,
+    F: IntoQuery,
+    F::Query: ImmutableQuery + Clone,
 {
     type Item = QueryItem<'a, Q>;
-    type IntoIter = QueryIter<'a, FilteredQuery<F::Filter, Q::Query>>;
+    type IntoIter = QueryIter<'a, FilteredQuery<F::Query, Q::Query>>;
 
     #[inline]
-    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Filter, Q::Query>> {
+    fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Query, Q::Query>> {
         self.iter()
     }
 }

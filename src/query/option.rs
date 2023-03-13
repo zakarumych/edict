@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery, PhantomQueryFetch};
+use super::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -59,18 +59,13 @@ where
     type Query = PhantomData<fn() -> Option<T>>;
 }
 
-impl<'a, T> PhantomQueryFetch<'a> for Option<T>
-where
-    T: PhantomQuery,
-{
-    type Item = Option<<T as PhantomQueryFetch<'a>>::Item>;
-    type Fetch = Option<<T as PhantomQueryFetch<'a>>::Fetch>;
-}
-
 unsafe impl<T> PhantomQuery for Option<T>
 where
     T: PhantomQuery,
 {
+    type Item<'a> = Option<T::Item<'a>>;
+    type Fetch<'a> = Option<T::Fetch<'a>>;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         T::access(ty)
@@ -89,10 +84,7 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> Option<<T as PhantomQueryFetch<'a>>::Fetch> {
+    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Option<T::Fetch<'a>> {
         if T::skip_archetype(archetype) {
             None
         } else {

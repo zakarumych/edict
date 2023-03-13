@@ -13,6 +13,16 @@ phantom_newtype! {
     pub struct QueryBorrowAll<T>
 }
 
+impl<T> QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    /// Creates a new [`QueryBorrowAll`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,

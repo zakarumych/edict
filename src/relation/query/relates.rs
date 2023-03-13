@@ -15,6 +15,26 @@ phantom_newtype! {
     pub struct Relates<R>
 }
 
+impl<R> Relates<&R>
+where
+    R: Relation + Sync,
+{
+    /// Creates a new [`Relates`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
+impl<R> Relates<&mut R>
+where
+    R: Relation + Send,
+{
+    /// Creates a new [`Relates`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 /// Iterator over relations of a given type on one entity.
 #[derive(Clone)]
 pub struct RelatesReadIter<'a, R> {

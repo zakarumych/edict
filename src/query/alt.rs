@@ -115,6 +115,16 @@ where
     type Query = PhantomData<fn() -> Self>;
 }
 
+impl<T> Alt<T>
+where
+    T: Send + 'static,
+{
+    /// Creates a new [`Alt`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 unsafe impl<T> PhantomQuery for Alt<T>
 where
     T: Send + 'static,

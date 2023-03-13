@@ -11,6 +11,26 @@ phantom_newtype! {
     pub struct QueryBorrowAny<T>
 }
 
+impl<T> QueryBorrowAny<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    /// Creates a new [`QueryBorrowAny`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
+impl<T> QueryBorrowAny<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
+    /// Creates a new [`QueryBorrowAny`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 /// [`Fetch`] for [`QueryBorrowAny<&T>`].
 pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,

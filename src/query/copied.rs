@@ -38,6 +38,16 @@ where
 /// Skips entities that don't have the component.
 pub struct Copied<T>(PhantomData<T>);
 
+impl<T> Copied<T>
+where
+    T: Copy + Sync + 'static,
+{
+    /// Creates a new [`Copied`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 impl<T> IntoQuery for Copied<T>
 where
     T: Copy + Sync + 'static,

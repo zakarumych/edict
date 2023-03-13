@@ -15,6 +15,26 @@ phantom_newtype! {
     pub struct RelatesExclusive<R>
 }
 
+impl<R> RelatesExclusive<&R>
+where
+    R: Relation + Sync,
+{
+    /// Creates a new [`RelatesExclusive`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
+impl<R> RelatesExclusive<&mut R>
+where
+    R: Relation + Send,
+{
+    /// Creates a new [`RelatesExclusive`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 /// Fetch for the [`RelatesExclusive<&R>`] query.
 pub struct FetchRelatesExclusiveRead<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,

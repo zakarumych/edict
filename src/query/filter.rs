@@ -241,6 +241,16 @@ phantom_newtype! {
     pub struct With<T>
 }
 
+impl<T> With<T>
+where
+    T: 'static,
+{
+    /// Creates a new [`Entities`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 impl<T> IntoQuery for With<T>
 where
     T: 'static,

@@ -12,6 +12,16 @@ phantom_newtype! {
     pub struct FilterRelates<R>
 }
 
+impl<R> FilterRelates<R>
+where
+    R: Relation,
+{
+    /// Creates a new [`FilterRelates`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 impl<R> IntoQuery for FilterRelates<R>
 where
     R: Relation,

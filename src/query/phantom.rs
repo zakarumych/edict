@@ -21,6 +21,13 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Contains data from one archetype.
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
+    /// Constructs the query instance.
+    #[must_use]
+    #[inline(always)]
+    fn query() -> PhantomData<fn() -> Self> {
+        PhantomData
+    }
+
     /// Returns what kind of access the query performs on the component type.
     #[must_use]
     fn access(ty: TypeId) -> Option<Access>;

@@ -15,6 +15,16 @@ phantom_newtype! {
     pub struct Related<R>
 }
 
+impl<R> Related<R>
+where
+    R: Relation,
+{
+    /// Creates a new [`Related`] query.
+    pub fn query() -> PhantomData<fn() -> Self> {
+        PhantomQuery::query()
+    }
+}
+
 /// Fetch type for [`Related<R>`]
 pub struct FetchRelated<'a, R> {
     ptr: NonNull<TargetComponent<R>>,

@@ -95,8 +95,8 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        true
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        false
     }
 
     /// Returns access type to the specified component type this argument may perform.
@@ -209,8 +209,8 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        true
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        false
     }
 
     /// Returns access type to the specified component type this argument may perform.
@@ -325,8 +325,8 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        true
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        false
     }
 
     /// Returns access type to the specified component type this argument may perform.
@@ -441,8 +441,8 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        true
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        false
     }
 
     /// Returns access type to the specified component type this argument may perform.

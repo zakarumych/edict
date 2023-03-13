@@ -58,19 +58,6 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
         (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
@@ -103,8 +90,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.has_component(self.id)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(self.id)
     }
 
     #[inline]
@@ -169,17 +156,7 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let chunk_version = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
         chunk_version.bump(self.epoch);
     }
@@ -220,8 +197,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.has_component(self.id)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(self.id)
     }
 
     #[inline]
@@ -235,7 +212,11 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchBorrowOneWrite<'a, T> {
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype.component(self.id).unwrap_unchecked();
 

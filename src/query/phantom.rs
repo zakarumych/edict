@@ -22,10 +22,12 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
     /// Returns what kind of access the query performs on the component type.
+    #[must_use]
     fn access(ty: TypeId) -> Option<Access>;
 
-    /// Checks if archetype must be skipped.
-    fn skip_archetype(archetype: &Archetype) -> bool;
+    /// Checks if archetype must be visited or skipped.
+    #[must_use]
+    fn visit_archetype(archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -38,6 +40,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// # Safety
     ///
     /// Must not be called if `skip_archetype` returned `true`.
+    #[must_use]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
 }
 
@@ -61,8 +64,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        <Q as PhantomQuery>::skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        <Q as PhantomQuery>::visit_archetype(archetype)
     }
 
     #[inline]
@@ -99,8 +102,8 @@ where
     T: PhantomQuery + 'static,
 {
     #[inline]
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        <T as PhantomQuery>::skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        <T as PhantomQuery>::visit_archetype(archetype)
     }
 
     #[inline]

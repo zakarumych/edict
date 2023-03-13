@@ -46,7 +46,7 @@ where
             .archetypes_iter
             .clone()
             .fold(self.indices.len(), |acc, archetype| {
-                if self.query.skip_archetype(archetype) {
+                if !self.query.visit_archetype(archetype) {
                     return acc;
                 }
                 acc + archetype.len()
@@ -68,7 +68,7 @@ where
                             continue;
                         }
 
-                        if self.query.skip_archetype(archetype) {
+                        if !self.query.visit_archetype(archetype) {
                             continue;
                         }
 
@@ -79,16 +79,16 @@ where
                 }
                 Some(idx) => {
                     if let Some(chunk_idx) = first_of_chunk(idx) {
-                        if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                        if !unsafe { self.fetch.visit_chunk(chunk_idx) } {
                             self.indices.nth(CHUNK_LEN_USIZE - 1);
                             continue;
                         }
                         self.visit_chunk = true;
                     }
 
-                    if !unsafe { self.fetch.skip_item(idx) } {
+                    if unsafe { self.fetch.visit_item(idx) } {
                         if self.visit_chunk {
-                            unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                            unsafe { self.fetch.touch_chunk(chunk_idx(idx)) }
                             self.visit_chunk = false;
                         }
 
@@ -109,16 +109,16 @@ where
         let mut acc = init;
         while let Some(idx) = self.indices.next() {
             if let Some(chunk_idx) = first_of_chunk(idx) {
-                if unsafe { self.fetch.skip_chunk(chunk_idx) } {
+                if !unsafe { self.fetch.visit_chunk(chunk_idx) } {
                     self.indices.nth(CHUNK_LEN_USIZE - 1);
                     continue;
                 }
                 self.visit_chunk = true;
             }
 
-            if !unsafe { self.fetch.skip_item(idx) } {
+            if unsafe { self.fetch.visit_item(idx) } {
                 if self.visit_chunk {
-                    unsafe { self.fetch.visit_chunk(chunk_idx(idx)) }
+                    unsafe { self.fetch.touch_chunk(chunk_idx(idx)) }
                     self.visit_chunk = false;
                 }
                 let item = unsafe { self.fetch.get_item(idx) };
@@ -131,7 +131,7 @@ where
             if archetype.is_empty() {
                 continue;
             }
-            if self.query.skip_archetype(archetype) {
+            if !self.query.visit_archetype(archetype) {
                 continue;
             }
             let mut fetch = unsafe { self.query.fetch(archetype, self.epoch) };
@@ -140,16 +140,16 @@ where
 
             while let Some(idx) = indices.next() {
                 if let Some(chunk_idx) = first_of_chunk(idx) {
-                    if unsafe { fetch.skip_chunk(chunk_idx) } {
+                    if !unsafe { fetch.visit_chunk(chunk_idx) } {
                         self.indices.nth(CHUNK_LEN_USIZE - 1);
                         continue;
                     }
                     self.visit_chunk = true;
                 }
 
-                if !unsafe { fetch.skip_item(idx) } {
+                if unsafe { fetch.visit_item(idx) } {
                     if self.visit_chunk {
-                        unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+                        unsafe { fetch.touch_chunk(chunk_idx(idx)) }
                         self.visit_chunk = false;
                     }
                     let item = unsafe { fetch.get_item(idx) };

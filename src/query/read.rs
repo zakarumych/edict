@@ -28,19 +28,6 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
         &*self.ptr.as_ptr().add(idx)
     }
@@ -70,8 +57,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<T>())
     }
 
     #[inline]

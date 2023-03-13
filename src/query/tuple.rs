@@ -27,19 +27,6 @@ macro_rules! for_tuple {
             fn dangling() {}
 
             #[inline]
-            unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-                false
-            }
-
-            #[inline]
-            unsafe fn skip_item(&mut self, _: usize) -> bool {
-                false
-            }
-
-            #[inline]
-            unsafe fn visit_chunk(&mut self, _: usize) {}
-
-            #[inline]
             unsafe fn get_item(&mut self, _: usize) {}
         }
 
@@ -57,8 +44,8 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn skip_archetype(&self, _: &Archetype) -> bool {
-                false
+            fn visit_archetype(&self, _: &Archetype) -> bool {
+                true
             }
 
             #[inline]
@@ -87,23 +74,23 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+            unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
                 let ($($a,)+) = self;
-                $($a.skip_chunk(chunk_idx) ||)+ false
+                $($a.visit_chunk(chunk_idx) &&)+ true
             }
 
-            /// Checks if item with specified index must be skipped.
+            /// Checks if item with specified index must be visited or skipped.
             #[inline]
-            unsafe fn skip_item(&mut self, idx: usize) -> bool {
+            unsafe fn visit_item(&mut self, idx: usize) -> bool {
                 let ($($a,)+) = self;
-                $($a.skip_item(idx) ||)+ false
+                $($a.visit_item(idx) &&)+ true
             }
 
             /// Notifies this fetch that it visits a chunk.
             #[inline]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+            unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
                 let ($($a,)+) = self;
-                $($a.visit_chunk(chunk_idx);)+
+                $($a.touch_chunk(chunk_idx);)+
             }
 
             #[inline]
@@ -129,9 +116,9 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn skip_archetype(&self, archetype: &Archetype) -> bool {
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
-                $( <$a as Query>::skip_archetype($a, archetype) )||+
+                $( <$a as Query>::visit_archetype($a, archetype) )&&+
             }
 
             #[inline]

@@ -36,19 +36,6 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> (&'a R, EntityId) {
         let origin_component = &*self.ptr.as_ptr().add(idx);
         let origin = &origin_component.origins()[0];
@@ -79,8 +66,8 @@ where
         }
     }
 
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
@@ -142,17 +129,7 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
         chunk_epoch.bump(self.epoch);
     }
@@ -192,8 +169,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
@@ -211,7 +188,11 @@ where
             "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
         );
 
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype
             .component(TypeId::of::<OriginComponent<R>>())

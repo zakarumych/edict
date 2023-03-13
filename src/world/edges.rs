@@ -10,6 +10,7 @@ use hashbrown::hash_map::{Entry, HashMap, RawEntryMut};
 use crate::{
     archetype::Archetype,
     bundle::{Bundle, BundleDesc},
+    cold,
     component::{ComponentInfo, ComponentRegistry},
     hash::{MulHasherBuilder, NoOpHasherBuilder},
 };
@@ -43,6 +44,7 @@ pub(super) struct Edges {
 }
 
 impl Edges {
+    #[must_use]
     pub fn new() -> Edges {
         Edges {
             spawn_key: HashMap::with_hasher(NoOpHasherBuilder),
@@ -58,6 +60,7 @@ impl Edges {
 }
 
 impl Edges {
+    #[must_use]
     pub fn spawn<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
@@ -70,13 +73,13 @@ impl Edges {
         F: FnOnce(&mut ComponentRegistry),
     {
         let very_slow = move || {
-            colder();
+            cold();
             match archetypes
                 .iter()
                 .position(|a| bundle.with_ids(|ids| a.matches(ids.iter().copied())))
             {
                 None => {
-                    coldest();
+                    cold();
 
                     archetypes.add_with(|_| {
                         register_components(registry);
@@ -129,6 +132,7 @@ impl Edges {
         }
     }
 
+    #[must_use]
     pub fn insert<F>(
         &mut self,
         id: TypeId,
@@ -147,7 +151,7 @@ impl Edges {
                 a.matches(ids)
             }) {
                 None => {
-                    colder();
+                    cold();
                     archetypes.add_with(|archetypes| {
                         let info = register_component(registry);
                         Archetype::new(archetypes[src as usize].infos().chain(Some(info)))
@@ -167,6 +171,7 @@ impl Edges {
         }
     }
 
+    #[must_use]
     pub fn insert_bundle<B, F>(
         &mut self,
         registry: &mut ComponentRegistry,
@@ -180,7 +185,7 @@ impl Edges {
         F: FnOnce(&mut ComponentRegistry),
     {
         let very_slow = || {
-            colder();
+            cold();
             match archetypes.iter().position(|a| {
                 bundle.with_ids(|ids| {
                     let ids = archetypes[src as usize].ids().chain(ids.iter().copied());
@@ -188,7 +193,7 @@ impl Edges {
                 })
             }) {
                 None => {
-                    coldest();
+                    cold();
                     archetypes.add_with(|archetypes| {
                         register_components(registry);
 
@@ -246,6 +251,7 @@ impl Edges {
         }
     }
 
+    #[must_use]
     pub fn remove(&mut self, archetypes: &mut ArchetypeSet, src: u32, id: TypeId) -> u32 {
         let mut slow = || {
             cold();
@@ -254,7 +260,7 @@ impl Edges {
                 a.matches(ids)
             }) {
                 None => {
-                    colder();
+                    cold();
                     archetypes.add_with(|archetypes| {
                         Archetype::new(
                             archetypes[src as usize]
@@ -277,19 +283,20 @@ impl Edges {
         }
     }
 
+    #[must_use]
     pub fn remove_bundle<B>(&mut self, archetypes: &mut ArchetypeSet, src: u32) -> u32
     where
         B: Bundle,
     {
         let mut very_slow = || {
-            colder();
+            cold();
             let ids = archetypes[src as usize]
                 .ids()
                 .filter(|id| !B::static_contains_id(*id));
 
             match archetypes.iter().position(|a| a.matches(ids.clone())) {
                 None => {
-                    coldest();
+                    cold();
                     drop(ids);
 
                     archetypes.add_with(|archetypes| {
@@ -339,20 +346,4 @@ impl Edges {
             },
         }
     }
-}
-
-#[cold]
-#[inline(always)]
-fn cold() {}
-
-#[cold]
-#[inline(always)]
-fn colder() {
-    cold();
-}
-
-#[cold]
-#[inline(always)]
-fn coldest() {
-    colder();
 }

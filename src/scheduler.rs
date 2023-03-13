@@ -369,7 +369,8 @@ impl Scheduler {
                         &*b.system.get()
                     };
 
-                    if system_a.skips_archetype(archetype) || system_b.skips_archetype(archetype) {
+                    if !system_a.visit_archetype(archetype) || !system_b.visit_archetype(archetype)
+                    {
                         // Ignore skipped archetypes.
                         continue;
                     }

@@ -8,15 +8,15 @@ pub struct VerifyFetch {
     /// panics on any call if true
     dangling: bool,
 
-    /// contains index of the last `skip_chunk` call and whether it returns true.
-    skip_chunk: Option<(usize, bool)>,
+    /// contains index of the last `visit_chunk` call and whether it returns true.
+    visit_chunk: Option<(usize, bool)>,
 
-    /// contains `true` after `visit_chunk` is called.
-    /// cleared in `skip_chunk` call.
-    visit_chunk: Option<usize>,
+    /// contains `Some` after `visit_chunk` is called.
+    /// cleared in `visit_chunk` call.
+    touch_chunk: Option<usize>,
 
     /// Contains index of the `skip_ite,` call and whether it returns true.
-    skip_item: Option<(usize, bool)>,
+    visit_item: Option<(usize, bool)>,
 }
 
 impl VerifyFetch {
@@ -26,9 +26,9 @@ impl VerifyFetch {
     pub fn dangling() -> Self {
         VerifyFetch {
             dangling: true,
-            skip_chunk: None,
             visit_chunk: None,
-            skip_item: None,
+            touch_chunk: None,
+            visit_item: None,
         }
     }
 
@@ -37,26 +37,26 @@ impl VerifyFetch {
     pub fn new() -> Self {
         VerifyFetch {
             dangling: false,
-            skip_chunk: None,
             visit_chunk: None,
-            skip_item: None,
+            touch_chunk: None,
+            visit_item: None,
         }
     }
 
-    /// This method must be called in [`Fetch::skip_chunk`] implementation.
-    /// `skipping` must be equal to the value returned by the [`Fetch::skip_chunk`] method.
+    /// This method must be called in [`Fetch::visit_chunk`] implementation.
+    /// `visiting` must be equal to the value returned by the [`Fetch::visit_chunk`] method.
     ///
     /// # Panics
     ///
     /// If dangling.
     #[inline]
-    pub fn skip_chunk(&mut self, chunk_idx: usize, skipping: bool) {
+    pub fn visit_chunk(&mut self, chunk_idx: usize, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: skip_chunk called for dangling fetch");
         }
-        self.skip_item = None;
+        self.visit_item = None;
         self.visit_chunk = None;
-        self.skip_chunk = Some((chunk_idx, skipping));
+        self.visit_chunk = Some((chunk_idx, visiting));
     }
 
     /// This method must be called in [`Fetch::visit_chunk`] implementation.
@@ -64,51 +64,51 @@ impl VerifyFetch {
     /// # Panics
     ///
     /// If dangling.
-    /// If `skip_chunk` was not called with `skipping = true` for the same chunk just before this call.
+    /// If `visit_chunk` was not called with `visiting = true` for the same chunk just before this call.
     #[inline]
-    pub fn visit_chunk(&mut self, chunk_idx: usize) {
+    pub fn touch_chunk(&mut self, chunk_idx: usize) {
         if self.dangling {
             panic!("FetchVerify: visit_chunk called for dangling fetch");
         }
-        match self.skip_chunk {
+        match self.visit_chunk {
             None => {
-                panic!("FetchVerify: visit_chunk called without skip_chunk");
+                panic!("FetchVerify: visit_chunk called without visit_chunk");
             }
-            Some((skip_chunk_idx, skipping)) => {
-                if chunk_idx != skip_chunk_idx {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but last call to `skip_chunk` was with chunk_idx {}", chunk_idx, skip_chunk_idx);
+            Some((visit_chunk_idx, visiting)) => {
+                if chunk_idx != visit_chunk_idx {
+                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but last call to `visit_chunk` was with chunk_idx {}", chunk_idx, visit_chunk_idx);
                 }
-                if skipping {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but `skip_chunk` returned true for this chunk index", chunk_idx);
+                if !visiting {
+                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but `visit_chunk` returned true for this chunk index", chunk_idx);
                 }
-                self.visit_chunk = Some(skip_chunk_idx);
+                self.touch_chunk = Some(visit_chunk_idx);
             }
         }
     }
 
-    /// This method must be called in [`Fetch::skip_item`] implementation.
+    /// This method must be called in [`Fetch:visit_item`] implementation.
     ///
     /// # Panics
     ///
     /// If dangling.
     /// if `visit_chunk` was not called for the corresponding chunk before this call.
     #[inline]
-    pub fn skip_item(&mut self, idx: usize, skipping: bool) {
+    pub fn visit_item(&mut self, idx: usize, visiting: bool) {
         if self.dangling {
-            panic!("FetchVerify: skip_item called for dangling fetch");
+            panic!("FetchVerify: visit_item called for dangling fetch");
         }
-        match self.skip_chunk {
+        match self.visit_chunk {
             None => {
-                panic!("FetchVerify: skip_item called without skip_chunk");
+                panic!("FetchVerify: visit_item called without visit_chunk");
             }
-            Some((skip_chunk_idx, chunk_skipping)) => {
-                if chunk_idx(idx) != skip_chunk_idx {
-                    panic!("FetchVerify: skip_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` was with chunk_idx {}", idx, chunk_idx(idx), skip_chunk_idx);
+            Some((visit_chunk_idx, chunk_visiting)) => {
+                if chunk_idx(idx) != visit_chunk_idx {
+                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
                 }
-                if chunk_skipping {
-                    panic!("FetchVerify: skip_item called with idx {} that correspond to chunk {}, but last call to `skip_chunk` for this chunk id returned true", idx, chunk_idx(idx));
+                if !chunk_visiting {
+                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` for this chunk id returned true", idx, chunk_idx(idx));
                 }
-                self.skip_item = Some((idx, skipping));
+                self.visit_item = Some((idx, visiting));
             }
         }
     }
@@ -118,24 +118,24 @@ impl VerifyFetch {
     /// # Panics
     ///
     /// If dangling.
-    /// If `skip_item` was not called with `skipping = true` for the same item just before this call.
+    /// If `visit_item` was not called with `visiting = true` for the same item just before this call.
     #[inline]
     pub fn get_item(&mut self, idx: usize) {
         if self.dangling {
             panic!("FetchVerify: get_item called for dangling fetch");
         }
-        match self.skip_item {
+        match self.visit_item {
             None => {
-                panic!("FetchVerify: get_item called without skip_item");
+                panic!("FetchVerify: get_item called without visit_item");
             }
-            Some((valid_idx, skipping)) => {
+            Some((valid_idx, visiting)) => {
                 if idx != valid_idx {
-                    panic!("FetchVerify: get_item called with idx {}, but last call to `skip_item` was with idx {}", idx, valid_idx);
+                    panic!("FetchVerify: get_item called with idx {}, but last call to `visit_item` was with idx {}", idx, valid_idx);
                 }
-                if skipping {
-                    panic!("FetchVerify: get_item called with idx {}, but `skip_item` returned true for this idx", idx);
+                if !visiting {
+                    panic!("FetchVerify: get_item called with idx {}, but `visit_item` returned true for this idx", idx);
                 }
-                self.skip_item = None;
+                self.visit_item = None;
             }
         }
     }
@@ -182,9 +182,10 @@ pub unsafe trait Fetch<'a> {
     ///
     /// Implementations are encouraged to do checks in debug mode
     /// if possible with minor performance penalty.
+    #[must_use]
     fn dangling() -> Self;
 
-    /// Checks if chunk with specified index must be skipped.
+    /// Checks if chunk with specified index must be visited or skipped.
     ///
     /// # Safety
     ///
@@ -192,12 +193,13 @@ pub unsafe trait Fetch<'a> {
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+    #[must_use]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
         drop(chunk_idx);
-        false
+        true
     }
 
-    /// Checks if item with specified index must be skipped.
+    /// Checks if item with specified index must be visited or skipped.
     ///
     /// # Safety
     ///
@@ -205,12 +207,13 @@ pub unsafe trait Fetch<'a> {
     /// where `entity_count` is the number of entities in the archetype
     /// from which query produced this instance.
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    #[must_use]
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         drop(idx);
-        false
+        true
     }
 
-    /// Notifies this fetch that it visits a new chunk.
+    /// Notifies this fetch that at least one item in the chunk will be accessed.
     /// This method is called for each chunk in the archetype that is not skipped.
     ///
     /// # Safety
@@ -219,10 +222,10 @@ pub unsafe trait Fetch<'a> {
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
     ///
-    /// `skip_chunk` must have been called just before this method.
-    /// If `skip_chunk` returned `false`, this method must not be called.
+    /// `visit_chunk` must have been called just before this method.
+    /// If `visit_chunk` returned `false`, this method must not be called.
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         drop(chunk_idx);
     }
 
@@ -239,6 +242,7 @@ pub unsafe trait Fetch<'a> {
     ///
     /// `visit_chunk` must have been called before this method
     /// with chunk index that corresponds to the entity index.
+    #[must_use]
     unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
 }
 
@@ -273,25 +277,25 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
-        self.verify.skip_chunk(chunk_idx, false);
+        self.verify.visit_chunk(chunk_idx, true);
         false
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
-        self.verify.visit_chunk(chunk_idx)
+        self.verify.touch_chunk(chunk_idx)
     }
 
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let _ = idx;
         #[cfg(debug_assertions)]
-        self.verify.skip_item(idx, false);
+        self.verify.visit_item(idx, true);
         false
     }
 

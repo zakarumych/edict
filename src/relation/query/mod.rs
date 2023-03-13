@@ -27,10 +27,6 @@
 //! [`FilterNotRelated`] - filters entities that are not relation targets.
 //! [`FilterNotRelatedBy`] - filters entities that are not relation targets with specified origin.
 
-mod filter_not_related;
-mod filter_not_related_by;
-mod filter_not_relates;
-mod filter_not_relates_to;
 mod filter_related;
 mod filter_related_by;
 mod filter_relates;
@@ -41,10 +37,6 @@ mod relates_exclusive;
 mod relates_to;
 
 pub use self::{
-    filter_not_related::{not_related, FilterNotRelated},
-    filter_not_related_by::{not_related_by, FetchFilterNotRelatedBy, FilterNotRelatedBy},
-    filter_not_relates::{not_relates, FilterNotRelates},
-    filter_not_relates_to::{not_relates_to, FetchFilterNotRelatesTo, FilterNotRelatesTo},
     filter_related::{related, FilterRelated},
     filter_related_by::{related_by, FetchFilterRelatedBy, FilterRelatedBy},
     filter_relates::{relates, FilterRelates},

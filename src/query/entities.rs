@@ -18,19 +18,6 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _chunk_idx: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _chunk_idx: usize) {}
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _idx: usize) -> bool {
-        false
-    }
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> EntityId {
         *self.entities.get_unchecked(idx)
     }
@@ -54,8 +41,8 @@ unsafe impl PhantomQuery for Entities {
     }
 
     #[inline]
-    fn skip_archetype(_archetype: &Archetype) -> bool {
-        false
+    fn visit_archetype(_archetype: &Archetype) -> bool {
+        true
     }
 
     #[inline]

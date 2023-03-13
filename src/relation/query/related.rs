@@ -66,8 +66,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<TargetComponent<R>>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<TargetComponent<R>>())
     }
 
     #[inline]

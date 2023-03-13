@@ -51,19 +51,24 @@ impl ActionQueue for Vec<ActionBuffer> {
 /// [`System::run_unchecked`] must be safe to call in parallel with other systems if for all of them [`System::world_access`] returns [`Some(Access::Read)`].
 pub unsafe trait System {
     /// Returns `true` for local systems that can be run only on thread where [`World`] lives.
+    #[must_use]
     fn is_local(&self) -> bool;
 
     /// Returns access type performed on the entire [`World`].
     /// Most arguments will return some [`Access::Read`], and few will return none.
+    #[must_use]
     fn world_access(&self) -> Option<Access>;
 
-    /// Checks if all queries from this system will skip specified archetype.
-    fn skips_archetype(&self, archetype: &Archetype) -> bool;
+    /// Checks if any query of this system will visit specified archetype.
+    #[must_use]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns access type to the specified component type this system may perform.
+    #[must_use]
     fn access_component(&self, id: TypeId) -> Option<Access>;
 
     /// Returns access type to the specified resource type this system may perform.
+    #[must_use]
     fn access_resource(&self, id: TypeId) -> Option<Access>;
 
     /// Runs the system with given context instance.
@@ -78,6 +83,7 @@ pub trait IntoSystem<Marker> {
     type System: System + Send + 'static;
 
     /// Converts value into system.
+    #[must_use]
     fn into_system(self) -> Self::System;
 }
 
@@ -101,18 +107,18 @@ where
 /// can't result in undefined behavior. Instead runtime checks will cause a panic.
 pub trait ParallelSystem {
     /// Checks if all queries from this system will skip specified archetype.
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        let _ = archetype;
-        false
-    }
+    #[must_use]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns access type to the specified component type this system may perform.
+    #[must_use]
     fn access_component(&self, id: TypeId) -> Option<Access> {
         let _ = id;
         None
     }
 
     /// Returns access type to the specified resource type this system may perform.
+    #[must_use]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         let _ = id;
         None
@@ -144,8 +150,8 @@ where
         Some(Access::Read)
     }
 
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        self.system.skips_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.system.visit_archetype(archetype)
     }
 
     fn access_component(&self, id: TypeId) -> Option<Access> {
@@ -201,8 +207,8 @@ where
         Some(Access::Write)
     }
 
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        false
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        true
     }
 
     fn access_component(&self, _id: TypeId) -> Option<Access> {

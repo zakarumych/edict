@@ -81,19 +81,19 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
-        self.filter.skip_chunk(chunk_idx) || self.query.skip_chunk(chunk_idx)
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+        self.filter.visit_chunk(chunk_idx) && self.query.visit_chunk(chunk_idx)
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        self.filter.visit_chunk(chunk_idx);
-        self.query.visit_chunk(chunk_idx);
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+        self.filter.touch_chunk(chunk_idx);
+        self.query.touch_chunk(chunk_idx);
     }
 
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
-        self.filter.skip_item(idx) || self.query.skip_item(idx)
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+        self.filter.visit_item(idx) && self.query.visit_item(idx)
     }
 
     #[inline]
@@ -132,8 +132,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        self.filter.skip_archetype(archetype) || self.query.skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.filter.visit_archetype(archetype) && self.query.visit_archetype(archetype)
     }
 
     #[inline]
@@ -157,6 +157,83 @@ where
     Q: ImmutableQuery,
     F: ImmutableQuery,
 {
+}
+
+/// Inverse of a filter.
+/// Entities that match the filter are skipped.
+///
+/// The `Not` filter will NOT cause side effects of the inner filter.
+pub struct Not<T>(pub T);
+
+pub struct NotFetch<T>(T, bool);
+
+unsafe impl<'a, T> Fetch<'a> for NotFetch<T>
+where
+    T: Fetch<'a>,
+{
+    type Item = ();
+
+    fn dangling() -> Self {
+        NotFetch(T::dangling(), false)
+    }
+
+    #[inline(always)]
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+        self.1 = self.0.visit_chunk(chunk_idx);
+        true
+    }
+
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, _chunk_idx: usize) {}
+
+    #[inline(always)]
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+        if self.1 {
+            !self.0.visit_item(idx)
+        } else {
+            true
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get_item(&mut self, _idx: usize) {}
+}
+
+impl<T> IntoQuery for Not<T>
+where
+    T: IntoQuery,
+{
+    type Query = Not<T::Query>;
+}
+
+unsafe impl<T> Query for Not<T>
+where
+    T: Query,
+{
+    type Item<'a> = ();
+    type Fetch<'a> = NotFetch<T::Fetch<'a>>;
+
+    #[inline]
+    fn access(&self, _: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        !self.0.visit_archetype(archetype)
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+
+    #[inline]
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> NotFetch<T::Fetch<'a>> {
+        NotFetch(self.0.fetch(archetype, epoch), false)
+    }
 }
 
 phantom_newtype! {
@@ -184,8 +261,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<T>())
     }
 
     #[inline]
@@ -199,104 +276,111 @@ where
 
 unsafe impl<T> ImmutablePhantomQuery for With<T> where T: 'static {}
 
-phantom_newtype! {
-    /// [`Filter`] that allows only archetypes without specified component.
-    pub struct Without<T>
+/// [`Filter`] that allows only archetypes without specified component.
+/// Inverse of [`With`].
+pub type Without<T> = Not<With<T>>;
+
+/// Binary operator for [`BooleanFilter`].
+pub trait BinOp: 'static {
+    /// The boolean binary operator.
+    fn op(a: bool, b: bool) -> bool;
 }
 
-impl<T> IntoQuery for Without<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<fn() -> Without<T>>;
-}
+pub enum AndOp {}
 
-unsafe impl<T> PhantomQuery for Without<T>
-where
-    T: 'static,
-{
-    type Item<'a> = ();
-    type Fetch<'a> = UnitFetch;
-
-    #[inline]
-    fn access(_: TypeId) -> Option<Access> {
-        None
-    }
-
-    #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<T>())
-    }
-
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
-
-    #[inline]
-    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
-        UnitFetch::new()
+impl BinOp for AndOp {
+    fn op(a: bool, b: bool) -> bool {
+        a && b
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for Without<T> where T: 'static {}
+pub enum OrOp {}
+
+impl BinOp for OrOp {
+    fn op(a: bool, b: bool) -> bool {
+        a || b
+    }
+}
+
+pub enum XorOp {}
+
+impl BinOp for XorOp {
+    fn op(a: bool, b: bool) -> bool {
+        a ^ b
+    }
+}
+
+pub enum NandOp {}
+
+impl BinOp for NandOp {
+    fn op(a: bool, b: bool) -> bool {
+        !(a && b)
+    }
+}
 
 /// Combines two filters and yields only entities that pass both.
-pub struct And<A, B>(pub A, pub B);
+pub struct BooleanFilter<A, B, Op>(pub A, pub B, PhantomData<Op>);
 
-pub struct AndFetch<A, B> {
-    a: A,
-    b: B,
+impl<A, B, Op> BooleanFilter<A, B, Op> {
+    /// Construct a new [`BooleanFilter`].
+    pub fn new(a: A, b: B) -> Self {
+        BooleanFilter(a, b, PhantomData)
+    }
 }
 
-unsafe impl<'a, A, B> Fetch<'a> for AndFetch<A, B>
+/// Boolean filter combines two filters and boolean operation.
+pub struct BooleanFetch<A, B, Op>(A, B, PhantomData<Op>);
+
+unsafe impl<'a, A, B, Op> Fetch<'a> for BooleanFetch<A, B, Op>
 where
     A: Fetch<'a>,
     B: Fetch<'a>,
+    Op: BinOp,
 {
     type Item = ();
 
     #[inline(always)]
     fn dangling() -> Self {
-        Self {
-            a: A::dangling(),
-            b: B::dangling(),
-        }
+        BooleanFetch(A::dangling(), B::dangling(), PhantomData)
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, _idx: usize) {}
 
     #[inline(always)]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
-        self.a.skip_item(idx) || self.b.skip_item(idx)
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+        Op::op(self.0.visit_item(idx), self.1.visit_item(idx))
     }
 
     #[inline(always)]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
-        self.a.skip_chunk(chunk_idx) || self.b.skip_chunk(chunk_idx)
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+        Op::op(self.0.visit_chunk(chunk_idx), self.1.visit_chunk(chunk_idx))
     }
 
     #[inline(always)]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
-        self.a.visit_chunk(chunk_idx);
-        self.b.visit_chunk(chunk_idx);
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+        self.0.touch_chunk(chunk_idx);
+        self.1.touch_chunk(chunk_idx);
     }
 }
 
-impl<A, B> IntoQuery for And<A, B>
+impl<A, B, Op> IntoQuery for BooleanFilter<A, B, Op>
 where
     A: IntoQuery,
     B: IntoQuery,
+    Op: BinOp,
 {
-    type Query = And<A::Query, B::Query>;
+    type Query = BooleanFilter<A::Query, B::Query, Op>;
 }
 
-unsafe impl<A, B> Query for And<A, B>
+unsafe impl<A, B, Op> Query for BooleanFilter<A, B, Op>
 where
     A: Query,
     B: Query,
+    Op: BinOp,
 {
     type Item<'a> = ();
-    type Fetch<'a> = AndFetch<A::Fetch<'a>, B::Fetch<'a>>;
+    type Fetch<'a> = BooleanFetch<A::Fetch<'a>, B::Fetch<'a>, Op>;
 
     fn access(&self, ty: TypeId) -> Option<Access> {
         merge_access(self.0.access(ty), self.1.access(ty))
@@ -307,24 +391,28 @@ where
         self.1.access_archetype(archetype, f);
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        self.0.skip_archetype(archetype) || self.1.skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.0.visit_archetype(archetype) && self.1.visit_archetype(archetype)
     }
 
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
         epoch: EpochId,
-    ) -> AndFetch<A::Fetch<'a>, B::Fetch<'a>> {
-        AndFetch {
-            a: self.0.fetch(archetype, epoch),
-            b: self.1.fetch(archetype, epoch),
-        }
+    ) -> BooleanFetch<A::Fetch<'a>, B::Fetch<'a>, Op> {
+        BooleanFetch(
+            self.0.fetch(archetype, epoch),
+            self.1.fetch(archetype, epoch),
+            PhantomData,
+        )
     }
 }
 
-/// Combines two filters and yields entities that pass either.
-pub struct Or<A, B>(pub A, pub B);
+/// Combines two filters and yields only entities that pass both.
+pub type And<A, B> = BooleanFilter<A, B, AndOp>;
 
-/// Combines two filters and yields entities that pass only one of them.
-pub struct Xor<A, B>(pub A, pub B);
+/// Combines two filters and yields only entities that pass either.
+pub type Or<A, B> = BooleanFilter<A, B, OrOp>;
+
+/// Combines two filters and yields only entities that pass either, but not both.
+pub type Xor<A, B> = BooleanFilter<A, B, XorOp>;

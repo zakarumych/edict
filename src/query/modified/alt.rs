@@ -41,18 +41,15 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
         let epoch = &*self.chunk_epochs.as_ptr().add(chunk_idx);
-        !epoch.get().after(self.after_epoch)
+        epoch.get().after(self.after_epoch)
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, _chunk_idx: usize) {}
-
-    #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx);
-        !epoch.after(self.after_epoch)
+        epoch.after(self.after_epoch)
     }
 
     #[inline]
@@ -93,15 +90,15 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
-            None => true,
+            None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<Alt<T> as PhantomQuery>::skip_archetype(archetype), false);
+                debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data_mut();
-                !data.epoch.after(self.after_epoch)
+                data.epoch.after(self.after_epoch)
             },
         }
     }
@@ -117,7 +114,11 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> ModifiedFetchAlt<'a, T> {
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
@@ -165,8 +166,8 @@ where
         <&mut T as PhantomQuery>::access(id)
     }
 
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        <&mut T as PhantomQuery>::skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        <&mut T as PhantomQuery>::visit_archetype(archetype)
     }
 }
 

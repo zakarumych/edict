@@ -54,12 +54,7 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let origin_component = &*self.ptr.as_ptr().add(idx);
         let item_idx = origin_component
             .origins()
@@ -67,16 +62,13 @@ where
             .position(|origin| origin.target == self.target);
 
         match item_idx {
-            None => true,
+            None => false,
             Some(item_idx) => {
                 self.item_idx = item_idx;
-                false
+                true
             }
         }
     }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a R {
@@ -108,8 +100,8 @@ where
         }
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
@@ -172,18 +164,13 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let origin_component = &*self.ptr.as_ptr().add(idx);
         let item_idx = origin_component
             .origins()
@@ -191,10 +178,10 @@ where
             .position(|origin| origin.target == self.target);
 
         match item_idx {
-            None => true,
+            None => false,
             Some(item_idx) => {
                 self.item_idx = item_idx;
-                false
+                true
             }
         }
     }
@@ -232,8 +219,8 @@ where
         }
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]
@@ -247,7 +234,11 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesToWrite<'a, R> {
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype
             .component(TypeId::of::<OriginComponent<R>>())

@@ -73,19 +73,9 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
         debug_assert!((*chunk_epoch).get().before(self.epoch));
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
     }
 
     #[inline]
@@ -142,8 +132,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<T>())
     }
 
     #[inline]
@@ -153,7 +143,11 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchAlt<'a, T> {
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());

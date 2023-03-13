@@ -57,19 +57,24 @@ pub unsafe trait FnArgGet<'a> {
 /// Otherwise [`FnArgGet::get_unchecked`] must be safe to call from local thread.
 pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + Send + 'static {
     /// Returns `true` for local arguments that can be used only for local function-systems.
+    #[must_use]
     fn is_local(&self) -> bool;
 
     /// Returns access type performed on the entire [`World`].
     /// Most arguments will return some [`Access::Read`], and few will return none.
+    #[must_use]
     fn world_access(&self) -> Option<Access>;
 
     /// Checks if this argument will skip specified archetype.
-    fn skips_archetype(&self, archetype: &Archetype) -> bool;
+    #[must_use]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns access type to the specified component type this argument may perform.
+    #[must_use]
     fn access_component(&self, id: TypeId) -> Option<Access>;
 
     /// Returns access type to the specified resource type this argument may perform.
+    #[must_use]
     fn access_resource(&self, id: TypeId) -> Option<Access>;
 }
 
@@ -126,9 +131,9 @@ macro_rules! for_tuple {
             }
 
             #[inline]
-            fn skips_archetype(&self, archetype: &Archetype) -> bool {
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)*) = &self.args;
-                false $( || $a.skips_archetype(archetype) )*
+                false $( || $a.visit_archetype(archetype) )*
             }
 
             #[inline]
@@ -196,6 +201,7 @@ for_tuple!();
 /// Trait for values that can be created from [`World`] reference.
 pub trait FromWorld {
     /// Returns new value created from [`World`] reference.
+    #[must_use]
     fn from_world(world: &World) -> Self;
 }
 
@@ -211,6 +217,7 @@ where
 
 /// [`merge_access`] but panics when either argument is `Some(Access::Write)` and another is `Some(_)`.
 #[inline]
+#[must_use]
 const fn merge_world_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
     match (lhs, rhs) {
         (None, rhs) => rhs,

@@ -21,6 +21,7 @@ pub struct WorldBuilder {
 
 impl WorldBuilder {
     /// Returns new [`WorldBuilder`] value.
+    #[must_use]
     pub const fn new() -> WorldBuilder {
         WorldBuilder {
             registry: ComponentRegistry::new(),
@@ -28,6 +29,7 @@ impl WorldBuilder {
     }
 
     /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
+    #[must_use]
     pub fn build(self) -> World {
         World {
             epoch: EpochCounter::new(),

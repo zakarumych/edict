@@ -15,31 +15,31 @@ where
         None
     }
 
-    /// Checks if chunk with specified index must be skipped.
+    /// Checks if chunk with specified index must be visited or skipped.
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
         if let Some(fetch) = self {
-            fetch.skip_chunk(chunk_idx)
+            fetch.visit_chunk(chunk_idx)
         } else {
-            false
+            true
         }
     }
 
     /// Notifies this fetch that it visits a chunk.
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         if let Some(fetch) = self {
-            fetch.visit_chunk(chunk_idx);
+            fetch.touch_chunk(chunk_idx);
         }
     }
 
-    /// Checks if item with specified index must be skipped.
+    /// Checks if item with specified index must be visited or skipped.
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         if let Some(fetch) = self {
-            fetch.skip_item(idx)
+            fetch.visit_item(idx)
         } else {
-            false
+            true
         }
     }
 
@@ -72,20 +72,20 @@ where
     }
 
     #[inline]
-    fn skip_archetype(_: &Archetype) -> bool {
-        false
+    fn visit_archetype(_: &Archetype) -> bool {
+        true
     }
 
     #[inline]
     unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        if !T::skip_archetype(archetype) {
+        if T::visit_archetype(archetype) {
             T::access_archetype(archetype, f)
         }
     }
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Option<T::Fetch<'a>> {
-        if T::skip_archetype(archetype) {
+        if !T::visit_archetype(archetype) {
             None
         } else {
             Some(T::fetch(archetype, epoch))

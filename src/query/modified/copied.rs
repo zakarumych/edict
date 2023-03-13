@@ -37,19 +37,16 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
-        !chunk_epoch.after(self.after_epoch)
+        chunk_epoch.after(self.after_epoch)
     }
 
     #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx);
-        !epoch.after(self.after_epoch)
+        epoch.after(self.after_epoch)
     }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> T {
@@ -77,18 +74,18 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
-            None => true,
+            None => false,
             Some(component) => unsafe {
                 debug_assert_eq!(
-                    <Copied<T> as PhantomQuery>::skip_archetype(archetype),
-                    false
+                    <Copied<T> as PhantomQuery>::visit_archetype(archetype),
+                    true
                 );
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
-                !data.epoch.after(self.after_epoch)
+                data.epoch.after(self.after_epoch)
             },
         }
     }
@@ -104,7 +101,11 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchCopied<'a, T> {
-        debug_assert_ne!(archetype.len(), 0, "Empty archetypes must be skipped");
+        debug_assert_ne!(
+            archetype.len(),
+            0,
+            "Empty archetypes must be visited or skipped"
+        );
 
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
@@ -149,8 +150,8 @@ where
         <Copied<T> as PhantomQuery>::access(id)
     }
 
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        <Copied<T> as PhantomQuery>::skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        <Copied<T> as PhantomQuery>::visit_archetype(archetype)
     }
 }
 

@@ -18,15 +18,18 @@ pub trait QueryArgGet<'a> {
     type Query: Query;
 
     /// Returns query for an argument.
+    #[must_use]
     fn get(&'a mut self, world: &'a World) -> Self::Query;
 }
 
 /// Cache for an argument that is stored between calls to function-system.
 pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + Default + 'static {
-    /// Returns true if the query skips component unconditionally.
-    fn skips_archetype(&self, archetype: &Archetype) -> bool;
+    /// Returns true if the query visits archetype.
+    #[must_use]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns some access type performed by the query.
+    #[must_use]
     fn access_component(&self, id: TypeId) -> Option<Access>;
 }
 
@@ -79,8 +82,8 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, archetype: &Archetype) -> bool {
-        self.query.skips_archetype(archetype) || self.filter.skips_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.query.visit_archetype(archetype) && self.filter.visit_archetype(archetype)
     }
 
     #[inline]
@@ -127,13 +130,14 @@ macro_rules! for_tuple {
             type Query = ();
 
             #[inline]
+            #[must_use]
             fn get(&mut self, _world: &World) {}
         }
 
         impl QueryArgCache for () {
             #[inline]
-            fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-                false
+            fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+                true
             }
             #[inline]
             fn access_component(&self, _id: TypeId) -> Option<Access> {
@@ -170,9 +174,9 @@ macro_rules! for_tuple {
             $($a: QueryArgCache,)+
         {
             #[inline]
-            fn skips_archetype(&self, archetype: &Archetype) -> bool {
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
-                $($a.skips_archetype(archetype))||+
+                $($a.visit_archetype(archetype))&&+
             }
 
             #[inline]

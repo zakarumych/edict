@@ -19,7 +19,10 @@ pub use self::{
     copied::{copied, Copied, FetchCopied},
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
-    filter::{And, FilteredFetch, FilteredQuery, Or, With, Without, Xor},
+    filter::{
+        And, BinOp, BooleanFetch, BooleanFilter, FilteredFetch, FilteredQuery, Not, Or, With,
+        Without, Xor,
+    },
     iter::QueryIter,
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
@@ -78,10 +81,12 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
     /// Returns what kind of access the query performs on the component type.
+    #[must_use]
     fn access(&self, ty: TypeId) -> Option<Access>;
 
-    /// Checks if archetype must be skipped.
-    fn skip_archetype(&self, archetype: &Archetype) -> bool;
+    /// Checks if archetype must be visited or skipped.
+    #[must_use]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -94,6 +99,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// # Safety
     ///
     /// Must not be called if `skip_archetype` returned `true`.
+    #[must_use]
     unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
 }
 
@@ -138,8 +144,8 @@ where
         self.query.access(ty)
     }
 
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        self.query.skip_archetype(archetype)
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.query.visit_archetype(archetype)
     }
 
     unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {

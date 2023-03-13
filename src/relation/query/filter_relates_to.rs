@@ -31,20 +31,12 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
-    unsafe fn skip_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: usize) -> bool {
         let origin_component = &*self.ptr.as_ptr().add(idx);
         origin_component
             .origins()
             .iter()
-            .all(|origin| origin.target != self.target)
+            .any(|origin| origin.target == self.target)
     }
 
     #[inline]
@@ -93,8 +85,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(&self, archetype: &Archetype) -> bool {
-        !archetype.has_component(TypeId::of::<OriginComponent<R>>())
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
     #[inline]

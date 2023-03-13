@@ -22,13 +22,11 @@ pub use edict_proc::Relation;
 pub use self::{
     child_of::ChildOf,
     query::{
-        not_related, not_related_by, not_relates, not_relates_to, related, related_by, relates,
-        relates_to, FetchFilterNotRelatedBy, FetchFilterNotRelatesTo, FetchFilterRelatedBy,
-        FetchRelated, FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
+        related, related_by, relates, relates_to, FetchFilterRelatedBy, FetchRelated,
+        FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
         FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite, FilterFetchRelationTo,
-        FilterNotRelated, FilterNotRelatedBy, FilterNotRelates, FilterNotRelatesTo, FilterRelated,
-        FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates, RelatesExclusive,
-        RelatesReadIter, RelatesTo, RelatesWriteIter,
+        FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates,
+        RelatesExclusive, RelatesReadIter, RelatesTo, RelatesWriteIter,
     },
 };
 
@@ -50,6 +48,7 @@ pub trait Relation: Send + Sync + Copy + 'static {
 
     /// Returns name of the relation type.
     #[inline]
+    #[must_use]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
     }
@@ -125,6 +124,7 @@ impl<R> OriginComponent<R>
 where
     R: Relation,
 {
+    #[must_use]
     pub fn new(target: EntityId, relation: R) -> Self {
         match R::EXCLUSIVE {
             false => OriginComponent {
@@ -188,6 +188,7 @@ where
         }
     }
 
+    #[must_use]
     pub fn origins(&self) -> &[Origin<R>] {
         match R::EXCLUSIVE {
             false => unsafe { &*self.non_exclusive },
@@ -195,6 +196,7 @@ where
         }
     }
 
+    #[must_use]
     pub fn origins_mut(&mut self) -> &mut [Origin<R>] {
         match R::EXCLUSIVE {
             false => unsafe { &mut *self.non_exclusive },
@@ -323,6 +325,7 @@ where
     }
 
     #[inline]
+    #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         let mut output = Vec::new();
         if R::SYMMETRIC {
@@ -345,6 +348,7 @@ impl<R> TargetComponent<R>
 where
     R: Relation,
 {
+    #[must_use]
     pub(crate) fn new(entity: EntityId) -> Self {
         debug_assert!(!R::SYMMETRIC);
 
@@ -407,6 +411,7 @@ where
     }
 
     #[inline]
+    #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         let mut output = Vec::new();
         borrow_dyn_trait!(Self as RelationTarget => output);
@@ -423,6 +428,7 @@ impl<R> RelationOrigin for OriginComponent<R>
 where
     R: Relation,
 {
+    #[must_use]
     fn targets(&self) -> Vec<EntityId> {
         self.origins().iter().map(|o| o.target).collect()
     }
@@ -430,6 +436,7 @@ where
 
 #[doc(hidden)]
 pub trait RelationTarget {
+    #[must_use]
     fn origins(&self) -> Vec<EntityId>;
 }
 

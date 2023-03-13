@@ -115,6 +115,7 @@ macro_rules! phantom_newtype {
         impl< $a > $type < $a > {
             /// Constructs new phantom wrapper instance.
             /// This function is noop as it returns ZST and have no side-effects.
+            #[must_use]
             pub const fn new() -> Self {
                 $type {
                     marker: core::marker::PhantomData,
@@ -174,3 +175,7 @@ impl component::Component for ExampleComponent {}
 
 #[doc(inline)]
 pub use self::prelude::*;
+
+#[cold]
+#[inline(always)]
+fn cold() {}

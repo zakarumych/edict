@@ -23,8 +23,8 @@ impl FnArgCache for WorldReadCache {
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        false
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        true
     }
 
     #[inline]
@@ -70,8 +70,8 @@ impl FnArgCache for WorldWriteCache {
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
-        false
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        true
     }
 
     #[inline]

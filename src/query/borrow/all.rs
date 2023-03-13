@@ -40,19 +40,6 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> Vec<&'a T> {
         self.components
             .iter()
@@ -86,8 +73,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_borrow(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.contains_borrow(TypeId::of::<T>())
     }
 
     #[inline]

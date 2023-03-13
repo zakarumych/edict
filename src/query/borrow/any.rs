@@ -34,19 +34,6 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, _: usize) {}
-
-    #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
         (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
@@ -75,8 +62,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_borrow(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.contains_borrow(TypeId::of::<T>())
     }
 
     #[inline]
@@ -140,17 +127,7 @@ where
     }
 
     #[inline]
-    unsafe fn skip_chunk(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn skip_item(&mut self, _: usize) -> bool {
-        false
-    }
-
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
         chunk_epoch.bump(self.epoch);
     }
@@ -187,8 +164,8 @@ where
     }
 
     #[inline]
-    fn skip_archetype(archetype: &Archetype) -> bool {
-        !archetype.contains_borrow_mut(TypeId::of::<T>())
+    fn visit_archetype(archetype: &Archetype) -> bool {
+        archetype.contains_borrow_mut(TypeId::of::<T>())
     }
 
     #[inline]

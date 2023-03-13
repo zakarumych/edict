@@ -87,7 +87,7 @@ where
     }
 
     #[inline]
-    fn skips_archetype(&self, _archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 

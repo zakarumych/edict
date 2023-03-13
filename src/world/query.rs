@@ -12,8 +12,9 @@ use crate::{
     component::Component,
     entity::{EntityId, EntitySet},
     query::{
-        Copied, Fetch, FilteredQuery, ImmutableQuery, IntoQuery, Modified, MutQuery, PhantomQuery,
-        Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter, With, Without,
+        And, Copied, Fetch, FilteredQuery, ImmutableQuery, IntoQuery, Modified, MutQuery, Not, Or,
+        PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter,
+        With, Without, Xor,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -214,7 +215,7 @@ where
             epoch: parts.epoch,
             filtered_query: FilteredQuery {
                 query: parts.filtered_query.query,
-                filter: (PhantomData, parts.filtered_query.filter),
+                filter: (Not(PhantomData), parts.filtered_query.filter),
             },
             borrowed: Cell::new(parts.borrowed),
         }
@@ -235,6 +236,69 @@ where
             filtered_query: FilteredQuery {
                 query: parts.filtered_query.query,
                 filter: (filter, parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(parts.borrowed),
+        }
+    }
+
+    /// Adds boolean AND filter to the query.
+    #[inline]
+    pub fn and_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (And<A, B>, F)>
+    where
+        A: ImmutableQuery,
+        B: ImmutableQuery,
+    {
+        let parts = self.deconstruct();
+
+        QueryRef {
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (And::new(a, b), parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(parts.borrowed),
+        }
+    }
+
+    /// Adds boolean OR filter to the query.
+    #[inline]
+    pub fn or_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (Or<A, B>, F)>
+    where
+        A: ImmutableQuery,
+        B: ImmutableQuery,
+    {
+        let parts = self.deconstruct();
+
+        QueryRef {
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (Or::new(a, b), parts.filtered_query.filter),
+            },
+            borrowed: Cell::new(parts.borrowed),
+        }
+    }
+
+    /// Adds boolean XOR filter to the query.
+    #[inline]
+    pub fn xor_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (Xor<A, B>, F)>
+    where
+        A: ImmutableQuery,
+        B: ImmutableQuery,
+    {
+        let parts = self.deconstruct();
+
+        QueryRef {
+            archetypes: parts.archetypes,
+            entities: parts.entities,
+            epoch: parts.epoch,
+            filtered_query: FilteredQuery {
+                query: parts.filtered_query.query,
+                filter: (Xor::new(a, b), parts.filtered_query.filter),
             },
             borrowed: Cell::new(parts.borrowed),
         }
@@ -533,7 +597,7 @@ where
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if self.filtered_query.skip_archetype(archetype) {
+        if !self.filtered_query.visit_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
@@ -543,15 +607,15 @@ where
 
         let mut fetch = unsafe { self.filtered_query.fetch(archetype, epoch) };
 
-        if unsafe { fetch.skip_chunk(chunk_idx(idx as usize)) } {
+        if !unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) }
-
-        if unsafe { fetch.skip_item(idx as usize) } {
+        if !unsafe { fetch.visit_item(idx as usize) } {
             return Err(QueryOneError::NotSatisfied);
         }
+
+        unsafe { fetch.touch_chunk(chunk_idx(idx as usize)) }
 
         let item = unsafe { fetch.get_item(idx as usize) };
 
@@ -802,7 +866,7 @@ where
 
     let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
 
-    if query.skip_archetype(archetype) {
+    if !query.visit_archetype(archetype) {
         return Err(QueryOneError::NotSatisfied);
     }
 
@@ -816,15 +880,15 @@ where
     let mut query = borrow_archetype(archetype, &mut query);
 
     let mut fetch = unsafe { query.fetch(archetype, epoch) };
-    if unsafe { fetch.skip_chunk(chunk_idx(idx)) } {
+    if !unsafe { fetch.visit_chunk(chunk_idx(idx)) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    if unsafe { fetch.skip_item(idx) } {
+    if !unsafe { fetch.visit_item(idx) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
 
     let item = unsafe { fetch.get_item(idx) };
 
@@ -852,20 +916,20 @@ where
 
     let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
 
-    if query.skip_archetype(archetype) {
+    if !query.visit_archetype(archetype) {
         return Err(QueryOneError::NotSatisfied);
     }
 
     let mut fetch = unsafe { query.fetch(archetype, epoch) };
-    if unsafe { fetch.skip_chunk(chunk_idx(idx)) } {
+    if !unsafe { fetch.visit_chunk(chunk_idx(idx)) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    if unsafe { fetch.skip_item(idx) } {
+    if !unsafe { fetch.visit_item(idx) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
+    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
 
     let item = unsafe { fetch.get_item(idx) };
 
@@ -907,7 +971,7 @@ where
             continue;
         }
 
-        if query.skip_archetype(archetype) {
+        if !query.visit_archetype(archetype) {
             continue;
         }
 
@@ -923,21 +987,21 @@ where
         let mut fetch = unsafe { query.fetch(archetype, epoch) };
 
         let mut indices = 0..archetype.len();
-        let mut visit_chunk = false;
+        let mut touch_chunk = false;
 
         while let Some(idx) = indices.next() {
             if let Some(chunk_idx) = first_of_chunk(idx) {
-                if unsafe { fetch.skip_chunk(chunk_idx) } {
+                if !unsafe { fetch.visit_chunk(chunk_idx) } {
                     indices.nth(CHUNK_LEN_USIZE - 1);
                     continue;
                 }
-                visit_chunk = true;
+                touch_chunk = true;
             }
 
-            if !unsafe { fetch.skip_item(idx) } {
-                if visit_chunk {
-                    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
-                    visit_chunk = false;
+            if !unsafe { fetch.visit_item(idx) } {
+                if touch_chunk {
+                    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
+                    touch_chunk = false;
                 }
                 let item = unsafe { fetch.get_item(idx) };
                 acc = f(acc, item)?;
@@ -963,32 +1027,34 @@ where
             continue;
         }
 
-        if query.skip_archetype(archetype) {
+        if !query.visit_archetype(archetype) {
             continue;
         }
 
         let mut fetch = unsafe { query.fetch(archetype, epoch) };
 
         let mut indices = 0..archetype.len();
-        let mut visit_chunk = false;
+        let mut touch_chunk = false;
 
         while let Some(idx) = indices.next() {
             if let Some(chunk_idx) = first_of_chunk(idx) {
-                if unsafe { fetch.skip_chunk(chunk_idx) } {
+                if !unsafe { fetch.visit_chunk(chunk_idx) } {
                     indices.nth(CHUNK_LEN_USIZE - 1);
                     continue;
                 }
-                visit_chunk = true;
+                touch_chunk = true;
             }
 
-            if !unsafe { fetch.skip_item(idx) } {
-                if visit_chunk {
-                    unsafe { fetch.visit_chunk(chunk_idx(idx)) }
-                    visit_chunk = false;
-                }
-                let item = unsafe { fetch.get_item(idx) };
-                acc = f(acc, item)?;
+            if !unsafe { fetch.visit_item(idx) } {
+                continue;
             }
+
+            if touch_chunk {
+                unsafe { fetch.touch_chunk(chunk_idx(idx)) }
+                touch_chunk = false;
+            }
+            let item = unsafe { fetch.get_item(idx) };
+            acc = f(acc, item)?;
         }
     }
     Ok(acc)
@@ -1055,7 +1121,7 @@ where
     pub fn get(&mut self) -> Option<QueryItem<'_, Q>> {
         let epoch = self.epoch.next();
 
-        if self.query.skip_archetype(self.archetype) {
+        if !self.query.visit_archetype(self.archetype) {
             return None;
         }
 
@@ -1063,15 +1129,15 @@ where
 
         let mut fetch = unsafe { self.query.fetch(self.archetype, epoch) };
 
-        if unsafe { fetch.skip_chunk(chunk_idx(self.idx as usize)) } {
+        if !unsafe { fetch.visit_chunk(chunk_idx(self.idx as usize)) } {
             return None;
         }
 
-        unsafe { fetch.visit_chunk(chunk_idx(self.idx as usize)) }
-
-        if unsafe { fetch.skip_item(self.idx as usize) } {
+        if !unsafe { fetch.visit_item(self.idx as usize) } {
             return None;
         }
+
+        unsafe { fetch.touch_chunk(chunk_idx(self.idx as usize)) }
 
         let item = unsafe { fetch.get_item(self.idx as usize) };
         Some(item)
@@ -1104,7 +1170,7 @@ fn acquire_archetypes(archetypes: &[Archetype], query: &impl Query) {
         fn drop(&mut self) {
             for archetype in &self.archetypes[..self.len] {
                 unsafe {
-                    if !self.query.skip_archetype(archetype) {
+                    if self.query.visit_archetype(archetype) {
                         self.query.access_archetype(archetype, &|id, access| {
                             archetype.component(id).unwrap_unchecked().release(access);
                         });
@@ -1122,7 +1188,7 @@ fn acquire_archetypes(archetypes: &[Archetype], query: &impl Query) {
 
     for archetype in archetypes {
         unsafe {
-            if !query.skip_archetype(archetype) {
+            if query.visit_archetype(archetype) {
                 query.access_archetype(archetype, &|id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
                     assert!(success, "Failed to lock '{:?}' from archetype", id);
@@ -1138,7 +1204,7 @@ fn acquire_archetypes(archetypes: &[Archetype], query: &impl Query) {
 fn release_archetypes(archetypes: &[Archetype], query: &impl Query) {
     for archetype in archetypes {
         unsafe {
-            if !query.skip_archetype(archetype) {
+            if query.visit_archetype(archetype) {
                 query.access_archetype(archetype, &|id, access| {
                     archetype.component(id).unwrap_unchecked().release(access);
                 });

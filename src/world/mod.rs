@@ -1262,7 +1262,7 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        if query.skip_archetype(archetype) {
+        if !query.visit_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
         }
 
@@ -1270,13 +1270,13 @@ impl World {
 
         let mut fetch = query.fetch(archetype, epoch);
 
-        if fetch.skip_chunk(chunk_idx(idx as usize)) {
+        if !fetch.visit_chunk(chunk_idx(idx as usize)) {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        fetch.visit_chunk(chunk_idx(idx as usize));
+        fetch.touch_chunk(chunk_idx(idx as usize));
 
-        if fetch.skip_item(idx as usize) {
+        if !fetch.visit_item(idx as usize) {
             return Err(QueryOneError::NotSatisfied);
         }
 

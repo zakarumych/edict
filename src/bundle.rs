@@ -97,21 +97,8 @@ pub unsafe trait ComponentBundle: Bundle + DynamicComponentBundle {
     fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }
 
-macro_rules! for_tuple {
+macro_rules! impl_bundle {
     () => {
-        for_tuple!(for A B C D E F G H I J K L M N O P);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl) => {
         unsafe impl DynamicBundle for () {
             #[inline]
             fn valid(&self) -> bool { true }
@@ -169,7 +156,7 @@ macro_rules! for_tuple {
         }
     };
 
-    (impl $($a:ident)+) => {
+    ($($a:ident)+) => {
         unsafe impl<$($a),+> DynamicBundle for ($($a,)+)
         where $($a: 'static,)+
         {
@@ -260,7 +247,7 @@ macro_rules! for_tuple {
     };
 }
 
-for_tuple!();
+for_tuple!(impl_bundle);
 
 /// Build entities when exact set of components is not known at compile time.
 ///

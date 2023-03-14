@@ -165,25 +165,28 @@ where
         entity: EntityId,
         target: EntityId,
         mut encoder: ActionEncoder,
-    ) {
+    ) -> Option<R> {
         match R::EXCLUSIVE {
             false => {
                 let origins = unsafe { &mut *self.non_exclusive };
                 for idx in 0..origins.len() {
                     if origins[idx].target == target {
-                        origins.swap_remove(idx);
+                        let origin = origins.swap_remove(idx);
                         if origins.is_empty() {
                             encoder.drop::<Self>(entity);
                         }
-                        return;
+                        return Some(origin.relation);
                     }
                 }
+                None
             }
             true => {
                 let origin = unsafe { &mut *self.exclusive };
                 if origin.target == target {
                     encoder.drop::<Self>(entity);
+                    return Some(origin.relation);
                 }
+                None
             }
         }
     }

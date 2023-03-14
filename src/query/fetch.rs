@@ -281,7 +281,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.visit_chunk(chunk_idx, true);
-        false
+        true
     }
 
     #[inline]
@@ -296,7 +296,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.visit_item(idx, true);
-        false
+        true
     }
 
     #[inline]

@@ -62,6 +62,12 @@ pub struct EpochId {
     value: u64,
 }
 
+impl Default for EpochId {
+    fn default() -> Self {
+        EpochId::start()
+    }
+}
+
 impl Debug for EpochId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {

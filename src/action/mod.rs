@@ -217,7 +217,7 @@ impl<'a> ActionEncoder<'a> {
         R: Relation,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.drop_relation_with_buffer::<R>(entity, target, buffer);
+            let _ = world.remove_relation_with_buffer::<R>(entity, target, buffer);
         });
     }
 

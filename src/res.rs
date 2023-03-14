@@ -79,6 +79,27 @@ impl Res {
         );
     }
 
+    /// Inserts resource into container.
+    /// Old value is replaced.
+    ///
+    /// For `Res<Send>` resource type have to implement `Send`.
+    /// Allowing `Res<Send>` to be moved into another thread and drop resources there.
+    ///
+    /// `Res<NoSend>` accepts any `'static` resource type.
+    pub fn with<T: 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
+        let id = TypeId::of::<T>();
+        self.resources
+            .entry(id)
+            .or_insert_with(|| Resource {
+                data: Box::new(AtomicCell::new(f())),
+                name: type_name::<T>(),
+            })
+            .data
+            .get_mut()
+            .downcast_mut()
+            .unwrap()
+    }
+
     /// Removes resource from container.
     /// Returns `None` if resource is not found.
     pub fn remove<T: 'static>(&mut self) -> Option<T> {

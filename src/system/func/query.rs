@@ -108,23 +108,8 @@ where
     type Cache = QueryRefCache<Q::Cache, F::Cache>;
 }
 
-macro_rules! for_tuple {
+macro_rules! impl_query {
     () => {
-        // This one is shorter because `Default` is not implemented for larger tuples.
-        for_tuple!(for A B C D E F G H I J L M);
-        // for_tuple!(for A);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl) => {
         impl<'a> QueryArgGet<'a> for () {
             type Arg = ();
             type Query = ();
@@ -150,7 +135,7 @@ macro_rules! for_tuple {
         }
     };
 
-    (impl $($a:ident)+) => {
+    ($($a:ident)+) => {
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         impl<'a $(, $a)+> QueryArgGet<'a> for ($($a,)+)
@@ -201,4 +186,4 @@ macro_rules! for_tuple {
     };
 }
 
-for_tuple!();
+for_tuple!(impl_query);

@@ -9,12 +9,11 @@ use core::{
 
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN_USIZE},
-    component::Component,
     entity::{EntityId, EntitySet},
     query::{
-        And, Copied, Fetch, FilteredQuery, ImmutableQuery, IntoQuery, Modified, MutQuery, Not, Or,
+        Copied, Fetch, FilteredQuery, ImmutableQuery, IntoQuery, Modified, MutQuery, Not,
         PhantomQuery, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, QueryItem, QueryIter,
-        With, Without, Xor,
+        With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
@@ -30,37 +29,23 @@ pub trait ExtendTuple<E>: Sized {
 
 pub type TuplePlus<T, E> = <T as ExtendTuple<E>>::Output;
 
-macro_rules! for_tuple {
-    () => {
-        for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-        // for_tuple!(for A);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl $($a:ident)*) => {
+macro_rules! impl_extend {
+    ($($a:ident)*) => {
         impl<Add $(, $a)*> ExtendTuple<Add> for ($($a,)*)
         {
             type Output = ($($a,)* Add,);
 
             #[inline]
-            fn extend_tuple(self, other: Add) -> Self::Output {
+            fn extend_tuple(self, add: Add) -> Self::Output {
                 #![allow(non_snake_case)]
                 let ($($a,)*) = self;
-                 ($($a,)* other,)
+                ($($a,)* add,)
             }
         }
     };
 }
 
-for_tuple!();
+for_tuple!(impl_extend);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BorrowState {
@@ -185,7 +170,7 @@ where
     #[inline]
     pub fn with<T>(self) -> QueryRef<'a, Q, (With<T>, F)>
     where
-        T: Component,
+        T: 'static,
     {
         let parts = self.deconstruct();
 
@@ -205,7 +190,7 @@ where
     #[inline]
     pub fn without<T>(self) -> QueryRef<'a, Q, (Without<T>, F)>
     where
-        T: Component,
+        T: 'static,
     {
         let parts = self.deconstruct();
 
@@ -236,69 +221,6 @@ where
             filtered_query: FilteredQuery {
                 query: parts.filtered_query.query,
                 filter: (filter, parts.filtered_query.filter),
-            },
-            borrowed: Cell::new(parts.borrowed),
-        }
-    }
-
-    /// Adds boolean AND filter to the query.
-    #[inline]
-    pub fn and_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (And<A, B>, F)>
-    where
-        A: ImmutableQuery,
-        B: ImmutableQuery,
-    {
-        let parts = self.deconstruct();
-
-        QueryRef {
-            archetypes: parts.archetypes,
-            entities: parts.entities,
-            epoch: parts.epoch,
-            filtered_query: FilteredQuery {
-                query: parts.filtered_query.query,
-                filter: (And::new(a, b), parts.filtered_query.filter),
-            },
-            borrowed: Cell::new(parts.borrowed),
-        }
-    }
-
-    /// Adds boolean OR filter to the query.
-    #[inline]
-    pub fn or_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (Or<A, B>, F)>
-    where
-        A: ImmutableQuery,
-        B: ImmutableQuery,
-    {
-        let parts = self.deconstruct();
-
-        QueryRef {
-            archetypes: parts.archetypes,
-            entities: parts.entities,
-            epoch: parts.epoch,
-            filtered_query: FilteredQuery {
-                query: parts.filtered_query.query,
-                filter: (Or::new(a, b), parts.filtered_query.filter),
-            },
-            borrowed: Cell::new(parts.borrowed),
-        }
-    }
-
-    /// Adds boolean XOR filter to the query.
-    #[inline]
-    pub fn xor_filter<A, B>(self, a: A, b: B) -> QueryRef<'a, Q, (Xor<A, B>, F)>
-    where
-        A: ImmutableQuery,
-        B: ImmutableQuery,
-    {
-        let parts = self.deconstruct();
-
-        QueryRef {
-            archetypes: parts.archetypes,
-            entities: parts.entities,
-            epoch: parts.epoch,
-            filtered_query: FilteredQuery {
-                query: parts.filtered_query.query,
-                filter: (Xor::new(a, b), parts.filtered_query.filter),
             },
             borrowed: Cell::new(parts.borrowed),
         }
@@ -997,15 +919,15 @@ where
                 }
                 touch_chunk = true;
             }
-
             if !unsafe { fetch.visit_item(idx) } {
-                if touch_chunk {
-                    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
-                    touch_chunk = false;
-                }
-                let item = unsafe { fetch.get_item(idx) };
-                acc = f(acc, item)?;
+                continue;
             }
+            if touch_chunk {
+                unsafe { fetch.touch_chunk(chunk_idx(idx)) }
+                touch_chunk = false;
+            }
+            let item = unsafe { fetch.get_item(idx) };
+            acc = f(acc, item)?;
         }
     }
     Ok(acc)
@@ -1044,11 +966,9 @@ where
                 }
                 touch_chunk = true;
             }
-
             if !unsafe { fetch.visit_item(idx) } {
                 continue;
             }
-
             if touch_chunk {
                 unsafe { fetch.touch_chunk(chunk_idx(idx)) }
                 touch_chunk = false;

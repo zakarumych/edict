@@ -4,22 +4,8 @@ use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
 
-macro_rules! for_tuple {
+macro_rules! impl_fetch {
     () => {
-        for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-        // for_tuple!(for A);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl) => {
         unsafe impl Fetch<'_> for () {
             type Item = ();
 
@@ -60,7 +46,7 @@ macro_rules! for_tuple {
         unsafe impl ImmutableQuery for () {}
     };
 
-    (impl $($a:ident)+) => {
+    ($($a:ident)+) => {
         #[allow(unused_parens)]
         #[allow(non_snake_case)]
         unsafe impl<'a $(, $a)+> Fetch<'a> for ($($a,)+)
@@ -143,4 +129,4 @@ macro_rules! for_tuple {
     };
 }
 
-for_tuple!();
+for_tuple!(impl_fetch);

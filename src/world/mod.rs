@@ -1151,26 +1151,26 @@ impl World {
     /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
     /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
     #[inline]
-    pub fn drop_relation<R>(
+    pub fn remove_relation<R>(
         &mut self,
         entity: EntityId,
         target: EntityId,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<R, EntityError>
     where
         R: Relation,
     {
         with_buffer!(self, buffer => {
-            self.drop_relation_with_buffer::<R>(entity, target, buffer)
+            self.remove_relation_with_buffer::<R>(entity, target, buffer)
         })
     }
 
     #[inline]
-    pub(crate) fn drop_relation_with_buffer<R>(
+    pub(crate) fn remove_relation_with_buffer<R>(
         &mut self,
         entity: EntityId,
         target: EntityId,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<R, EntityError>
     where
         R: Relation,
     {
@@ -1181,11 +1181,14 @@ impl World {
 
         unsafe {
             if let Ok(c) = self.query_one_unchecked::<&mut OriginComponent<R>>(entity) {
-                c.remove_relation(entity, target, ActionEncoder::new(buffer, &self.entities));
+                if let Some(r) =
+                    c.remove_relation(entity, target, ActionEncoder::new(buffer, &self.entities))
+                {
+                    return Ok(r);
+                }
             }
         }
-
-        Ok(())
+        Err(EntityError::MissingComponents)
     }
 
     /// Queries components from specified entity.
@@ -1582,6 +1585,40 @@ impl World {
         self.res.insert(resource)
     }
 
+    /// Returns reference to the resource instance.
+    /// Inserts new instance if it does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let value = world.with_resource(|| 42i32);
+    /// assert_eq!(*value, 42);
+    /// *value = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
+    pub fn with_resource<T: 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
+        self.res.with(f)
+    }
+
+    /// Returns reference to the resource instance.
+    /// Inserts new instance if it does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let value = world.with_default_resource::<u32>();
+    /// assert_eq!(*value, 0);
+    /// *value = 11;
+    /// assert_eq!(*world.get_resource::<u32>().unwrap(), 11);
+    /// ```
+    pub fn with_default_resource<T: Default + 'static>(&mut self) -> &mut T {
+        self.res.with(T::default)
+    }
+
     /// Remove resource instance.
     /// Returns `None` if resource was not found.
     ///
@@ -1715,6 +1752,7 @@ impl World {
     /// world.insert_resource(42i32);
     /// assert_eq!(*world.expect_resource::<i32>(), 42);
     /// ```
+    #[track_caller]
     pub fn expect_resource<T: Sync + 'static>(&self) -> Ref<T> {
         self.res.get().unwrap()
     }
@@ -1739,6 +1777,7 @@ impl World {
     /// world.insert_resource(42i32);
     /// assert_eq!(world.copy_resource::<i32>(), 42);
     /// ```
+    #[track_caller]
     pub fn copy_resource<T: Copy + Sync + 'static>(&self) -> T {
         *self.res.get().unwrap()
     }
@@ -1786,6 +1825,7 @@ impl World {
     /// *world.expect_resource_mut::<i32>() = 11;
     /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
     /// ```
+    #[track_caller]
     pub fn expect_resource_mut<T: Send + 'static>(&self) -> RefMut<T> {
         self.res.get_mut().unwrap()
     }

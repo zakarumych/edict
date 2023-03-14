@@ -20,8 +20,9 @@ pub use self::{
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{
-        And, BinOp, BooleanFetch, BooleanFilter, FilteredFetch, FilteredQuery, Not, Or, With,
-        Without, Xor,
+        And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFilter, BooleanMonoid,
+        FilteredFetch, FilteredQuery, Not, Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, With, Without,
+        Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
     },
     iter::QueryIter,
     modified::{

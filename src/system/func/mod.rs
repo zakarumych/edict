@@ -90,22 +90,8 @@ pub struct FunctionSystem<F, Args> {
     args: Args,
 }
 
-macro_rules! for_tuple {
-    () => {
-        for_tuple!(for A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-        // for_tuple!(for A);
-    };
-
-    (for) => {
-        for_tuple!(impl);
-    };
-
-    (for $head:ident $($tail:ident)*) => {
-        for_tuple!(for $($tail)*);
-        for_tuple!(impl $head $($tail)*);
-    };
-
-    (impl $($a:ident)*) => {
+macro_rules! impl_func {
+    ($($a:ident)*) => {
         #[allow(unused_variables, unused_mut, non_snake_case)]
         unsafe impl<Func $(,$a)*> System for FunctionSystem<Func, ($($a,)*)>
         where
@@ -196,7 +182,7 @@ macro_rules! for_tuple {
     }
 }
 
-for_tuple!();
+for_tuple!(impl_func);
 
 /// Trait for values that can be created from [`World`] reference.
 pub trait FromWorld {

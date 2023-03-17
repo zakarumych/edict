@@ -36,6 +36,11 @@ impl<T> Modified<T> {
             marker: PhantomData,
         }
     }
+
+    /// Epoch id threshold for this query.
+    pub fn after_epoch(&self) -> EpochId {
+        self.after_epoch
+    }
 }
 
 pub struct ModifiedCache<T> {

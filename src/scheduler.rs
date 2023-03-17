@@ -200,20 +200,20 @@ impl Scheduler {
 
     #[cfg(feature = "std")]
     pub fn run_threaded(&mut self, world: &mut World) {
-        use crate::ActionBufferSliceExt;
+        use crate::action::ActionBufferSliceExt;
         let buffers = std::thread::scope(|scope| self.run_with(world, &scope));
         buffers.execute_all(world);
     }
 
     #[cfg(feature = "rayon")]
     pub fn run_rayon(&mut self, world: &mut World) {
-        use crate::ActionBufferSliceExt;
+        use crate::action::ActionBufferSliceExt;
         let buffers = rayon::in_place_scope(|scope| self.run_with(world, scope));
         buffers.execute_all(world);
     }
 
     pub fn run_sequential(&mut self, world: &mut World) {
-        use crate::ActionBufferSliceExt;
+        use crate::action::ActionBufferSliceExt;
         let buffers = self.run_with(world, &mut MockExecutor);
         buffers.execute_all(world);
     }

@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
-    phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery,
+    assert_immutable_query, phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, IntoQuery,
 };
 
 /// [`Fetch`] type for the `&T` query.
@@ -82,14 +82,18 @@ where
 
 unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
 
+/// [`Query`] type for the `&T` phantom query.
+pub type Read<T> = PhantomData<fn() -> &'static T>;
+
 /// Returns query that yields reference to specified component
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn read<T>() -> PhantomData<fn() -> &'static T>
+pub fn read<T>() -> Read<T>
 where
     T: Sync,
-    for<'a> PhantomData<fn() -> &'a T>: ImmutableQuery,
 {
+    assert_immutable_query::<Read<T>>();
+
     PhantomData
 }

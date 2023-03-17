@@ -17,7 +17,7 @@ pub use self::{
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
     copied::{copied, Copied, FetchCopied},
-    entities::{Entities, EntitiesFetch},
+    entities::{Entities, EntitiesFetch, EntitiesQuery},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{
         And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFilter, BooleanMonoid,
@@ -30,8 +30,8 @@ pub use self::{
         ModifiedFetchWrite,
     },
     phantom::{ImmutablePhantomQuery, PhantomQuery},
-    read::{read, FetchRead},
-    write::{write, FetchWrite},
+    read::{read, FetchRead, Read},
+    write::{write, FetchWrite, Write},
 };
 
 mod alt;
@@ -180,4 +180,12 @@ pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Ac
         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
         _ => Some(Access::Write),
     }
+}
+
+/// Helps to assert that type implements [`Query`] in compile time.
+const fn assert_query<Q: Query>() {}
+
+/// Helps to assert that type implements [`ImmutableQuery`] in compile time.
+const fn assert_immutable_query<Q: ImmutableQuery>() {
+    assert_query::<Q>();
 }

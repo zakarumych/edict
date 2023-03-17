@@ -1,11 +1,11 @@
 use crate::{
+    action::ActionBuffer,
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
     },
     entity::EntitySet,
     res::Res,
-    ActionBuffer,
 };
 
 use super::{ArchetypeSet, Edges, EpochCounter, World};

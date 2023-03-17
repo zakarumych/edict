@@ -3,12 +3,16 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::{chunk_idx, Archetype},
     epoch::EpochId,
-    query::{alt::RefMut, Access, Fetch, IntoQuery},
+    query::{
+        alt::{Alt, RefMut},
+        phantom::PhantomQuery,
+        Access, Fetch, IntoQuery, Query,
+    },
     system::{QueryArg, QueryArgCache, QueryArgGet},
-    Alt, Modified, PhantomQuery, Query, World,
+    world::World,
 };
 
-use super::ModifiedCache;
+use super::{Modified, ModifiedCache};
 
 /// [`Fetch`] type for the [`Modified<Alt<T>>`] query.
 pub struct ModifiedFetchAlt<'a, T> {
@@ -163,11 +167,11 @@ where
     T: Send + 'static,
 {
     fn access_component(&self, id: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(id)
+        <Alt<T> as PhantomQuery>::access(id)
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        <&mut T as PhantomQuery>::visit_archetype(archetype)
+        <Alt<T> as PhantomQuery>::visit_archetype(archetype)
     }
 }
 
@@ -176,4 +180,117 @@ where
     T: Send + 'static,
 {
     type Cache = ModifiedCache<Alt<T>>;
+}
+
+impl<T> IntoQuery for Modified<Option<Alt<T>>>
+where
+    T: Send + 'static,
+{
+    type Query = Self;
+}
+
+unsafe impl<T> Query for Modified<Option<Alt<T>>>
+where
+    T: Send + 'static,
+{
+    type Item<'a> = Option<RefMut<'a, T>>;
+    type Fetch<'a> = Option<ModifiedFetchAlt<'a, T>>;
+
+    #[inline]
+    fn access(&self, ty: TypeId) -> Option<Access> {
+        <Alt<T> as PhantomQuery>::access(ty)
+    }
+
+    #[inline]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        match archetype.component(TypeId::of::<T>()) {
+            None => true,
+            Some(component) => unsafe {
+                debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
+
+                debug_assert_eq!(component.id(), TypeId::of::<T>());
+                let data = component.data();
+                data.epoch.after(self.after_epoch)
+            },
+        }
+    }
+
+    #[inline]
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+        if let Some(component) = archetype.component(TypeId::of::<T>()) {
+            debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
+
+            debug_assert_eq!(component.id(), TypeId::of::<T>());
+            let data = component.data();
+            if data.epoch.after(self.after_epoch) {
+                f(TypeId::of::<T>(), Access::Read)
+            }
+        }
+    }
+
+    #[inline]
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Option<ModifiedFetchAlt<'a, T>> {
+        match archetype.component(TypeId::of::<T>()) {
+            None => None,
+            Some(component) => {
+                let data = component.data_mut();
+
+                debug_assert!(data.epoch.after(self.after_epoch));
+
+                Some(ModifiedFetchAlt {
+                    after_epoch: self.after_epoch,
+                    epoch,
+                    ptr: data.ptr.cast(),
+                    entity_epochs: NonNull::new_unchecked(
+                        data.entity_epochs.as_ptr() as *mut EpochId
+                    ),
+                    chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast(),
+                    archetype_epoch: NonNull::from(&mut data.epoch).cast(),
+                    marker: PhantomData,
+                })
+            }
+        }
+    }
+}
+
+impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<Alt<T>>>
+where
+    T: Send + 'static,
+{
+    type Arg = Modified<Option<Alt<T>>>;
+    type Query = Modified<Option<Alt<T>>>;
+
+    #[inline]
+    fn get(&mut self, world: &'a World) -> Modified<Option<Alt<T>>> {
+        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
+
+        Modified {
+            after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> QueryArgCache for ModifiedCache<Option<Alt<T>>>
+where
+    T: Send + 'static,
+{
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        <Alt<T> as PhantomQuery>::access(id)
+    }
+
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        true
+    }
+}
+
+impl<'a, T> QueryArg for Modified<Option<Alt<T>>>
+where
+    T: Send + 'static,
+{
+    type Cache = ModifiedCache<Option<Alt<T>>>;
 }

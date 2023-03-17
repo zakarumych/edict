@@ -77,6 +77,8 @@
 extern crate alloc;
 extern crate self as edict;
 
+pub use atomicell;
+
 macro_rules! for_tuple {
     ($macro:ident) => {
         for_tuple!($macro for A B C D E F G H I J K L);
@@ -89,8 +91,6 @@ macro_rules! for_tuple {
         $macro!($head $($tail)*);
     };
 }
-
-pub use atomicell;
 
 macro_rules! impl_copy {
     ($type:ident < $( $a:ident ),+ >) => {

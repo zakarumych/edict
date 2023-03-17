@@ -1,6 +1,6 @@
 //! This example shows how to use entity reserving mechanism.
 
-use edict::{action::ActionEncoder, scheduler::Scheduler, world::World, EntityId};
+use edict::{action::ActionEncoder, entity::EntityId, scheduler::Scheduler, world::World};
 use edict_proc::Component;
 
 #[derive(Component)]

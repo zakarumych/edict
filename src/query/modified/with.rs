@@ -3,12 +3,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, With},
+    query::{filter::With, phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query},
     system::{QueryArg, QueryArgCache, QueryArgGet},
-    Modified, PhantomQuery, Query, World,
+    world::World,
 };
 
-use super::ModifiedCache;
+use super::{Modified, ModifiedCache};
 
 /// [`Fetch`] type for the [`Modified<&T>`] query.
 pub struct ModifiedFetchWith<'a, T> {

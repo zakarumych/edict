@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{phantom::PhantomQuery, Access, Fetch, IntoQuery, Query};
+use super::{assert_query, phantom::PhantomQuery, Access, Fetch, IntoQuery};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -102,14 +102,17 @@ where
     }
 }
 
+/// Phantom data for the `&mut T` phantom query.
+pub type Write<T> = PhantomData<fn() -> &'static mut T>;
+
 /// Returns query that yields mutable reference to specified component
 /// for each entity that has that component.
 ///
 /// Skips entities that don't have the component.
-pub fn write<T>() -> PhantomData<fn() -> &'static mut T>
+pub fn write<T>() -> Write<T>
 where
     T: Send,
-    for<'a> PhantomData<fn() -> &'a mut T>: Query,
 {
+    assert_query::<Write<T>>();
     PhantomData
 }

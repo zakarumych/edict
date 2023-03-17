@@ -27,6 +27,9 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Entities;
 
+/// Query type for the [`Entities`] phantom query.
+pub type EntitiesQuery = PhantomData<fn() -> Entities>;
+
 impl Entities {
     /// Creates a new [`Entities`] query.
     pub fn query() -> PhantomData<fn() -> Self> {

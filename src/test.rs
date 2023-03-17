@@ -2,8 +2,7 @@ use crate::{
     component::Component,
     query::{Entities, ImmutableQuery, With},
     relation::{Relation, RelationOrigin, RelationTarget},
-    world::World,
-    QueryOneError,
+    world::{QueryOneError, World},
 };
 
 use alloc::{vec, vec::Vec};

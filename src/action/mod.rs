@@ -11,11 +11,12 @@ use core::{any::TypeId, iter::FusedIterator};
 use alloc::collections::VecDeque;
 
 use crate::{
-    bundle::{Bundle, DynamicComponentBundle},
+    bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{EntityId, EntitySet},
+    relation::Relation,
+    world::NoSuchEntity,
     world::{iter_reserve_hint, World},
-    ComponentBundle, DynamicBundle, NoSuchEntity, Relation,
 };
 
 tiny_fn::tiny_fn! {

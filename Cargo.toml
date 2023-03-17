@@ -24,6 +24,10 @@ tiny-fn = "0.1.5"
 atomicell = "0.1.9"
 flume = { version = "0.10" }
 rayon = { version = "1.5", optional = true }
+alkahest = { path = "../alkahest", optional = true }
+nanoserde = { version = "0.1.0", optional = true }
+serde = { version = "1.0", optional = true }
+
 
 [workspace]
 members = ["proc-lib", "proc"]

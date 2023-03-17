@@ -159,6 +159,7 @@ pub mod action;
 pub mod archetype;
 pub mod bundle;
 pub mod component;
+pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;

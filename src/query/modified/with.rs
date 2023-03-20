@@ -55,6 +55,10 @@ where
     T: 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<With<T>>
@@ -138,6 +142,13 @@ impl<T> QueryArgCache for ModifiedCache<With<T>>
 where
     T: 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
             Some(Access::Read)

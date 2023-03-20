@@ -57,6 +57,10 @@ where
     R: Relation,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<R> PhantomQuery for Related<R>

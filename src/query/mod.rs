@@ -12,6 +12,11 @@ use crate::{archetype::Archetype, epoch::EpochId};
 
 pub use self::{
     alt::{Alt, FetchAlt},
+    any_of::AnyOf,
+    boolean::{
+        And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFetchOp, BooleanQuery,
+        Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
+    },
     borrow::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
@@ -19,11 +24,7 @@ pub use self::{
     copied::{copied, Copied, FetchCopied},
     entities::{Entities, EntitiesFetch, EntitiesQuery},
     fetch::{Fetch, UnitFetch, VerifyFetch},
-    filter::{
-        And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFilter, BooleanMonoid,
-        FilteredFetch, FilteredQuery, Not, Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, With, Without,
-        Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
-    },
+    filter::{FilteredFetch, FilteredQuery, Not, With, Without},
     iter::QueryIter,
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
@@ -35,6 +36,8 @@ pub use self::{
 };
 
 mod alt;
+mod any_of;
+mod boolean;
 mod borrow;
 mod copied;
 mod entities;
@@ -66,6 +69,9 @@ pub enum Access {
 pub trait IntoQuery {
     /// Associated query type.
     type Query: Query + IntoQuery<Query = Self::Query>;
+
+    /// Converts into query.
+    fn into_query(self) -> Self::Query;
 }
 
 /// Trait to query components from entities in the world.
@@ -132,6 +138,10 @@ where
     T: Query,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for MutQuery<'_, T>

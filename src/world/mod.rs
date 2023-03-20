@@ -1218,9 +1218,9 @@ impl World {
         &'a mut self,
         entity: EntityId,
         query: Q,
-    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+    ) -> Result<QueryItem<'a, Q::Query>, QueryOneError>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
         unsafe { self.query_one_with_unchecked::<Q>(entity, query) }
     }
@@ -1251,10 +1251,10 @@ impl World {
     pub unsafe fn query_one_with_unchecked<'a, Q>(
         &'a self,
         entity: EntityId,
-        mut query: Q,
-    ) -> Result<QueryItem<'a, Q>, QueryOneError>
+        query: Q,
+    ) -> Result<QueryItem<'a, Q::Query>, QueryOneError>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
         let (archetype, idx) = self
             .entities
@@ -1264,6 +1264,8 @@ impl World {
         let archetype = &self.archetypes[archetype as usize];
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
+
+        let mut query = query.into_query();
 
         if !query.visit_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
@@ -1294,15 +1296,23 @@ impl World {
     /// This method works only for stateless query types.
     /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
     #[inline]
-    pub fn query_one<'a, Q>(
-        &'a self,
-        entity: EntityId,
-    ) -> Result<QueryOne<'a, Q::Query>, NoSuchEntity>
+    pub fn query_one<'a, Q>(&'a self, entity: EntityId) -> Result<QueryOne<'a, Q>, NoSuchEntity>
     where
         Q: IntoQuery,
         Q::Query: Default,
     {
-        self.query_one_with(entity, Q::Query::default())
+        let (archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
+
+        let archetype = &self.archetypes[archetype as usize];
+
+        debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
+
+        Ok(QueryOne::new(
+            Q::Query::default(),
+            archetype,
+            idx,
+            &self.epoch,
+        ))
     }
 
     /// Queries components from specified entity.
@@ -1317,7 +1327,7 @@ impl World {
         query: Q,
     ) -> Result<QueryOne<'a, Q>, NoSuchEntity>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
         let (archetype, idx) = self.entities.get_location(entity).ok_or(NoSuchEntity)?;
 
@@ -1325,7 +1335,12 @@ impl World {
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
-        Ok(QueryOne::new(query, archetype, idx, &self.epoch))
+        Ok(QueryOne::new(
+            query.into_query(),
+            archetype,
+            idx,
+            &self.epoch,
+        ))
     }
 
     /// Queries components from specified entity.
@@ -1358,7 +1373,7 @@ impl World {
         f: F,
     ) -> Result<R, QueryOneError>
     where
-        Q: Query,
+        Q: IntoQuery,
         F: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
     {
         self.query_with::<Q>(query).for_one(entity, f)
@@ -1479,7 +1494,7 @@ impl World {
         Q: IntoQuery,
         Q::Query: Default,
     {
-        self.query_with(Q::Query::default())
+        QueryRef::new(self, (Q::Query::default(),), ())
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1490,11 +1505,11 @@ impl World {
     /// And them transformed to iterator using either [`QueryRef::iter`] or [`QueryRef::iter_mut`].
     /// Alternatively a closure may be called for each matching entity using [`QueryRef::fold`] or [`QueryRef::for_each`].
     #[inline]
-    pub fn query_with<'a, Q>(&'a self, query: Q::Query) -> QueryRef<'a, (Q,), ()>
+    pub fn query_with<'a, Q>(&'a self, query: Q) -> QueryRef<'a, (Q,), ()>
     where
         Q: IntoQuery,
     {
-        QueryRef::new(self, (query,), ())
+        QueryRef::new(self, (query.into_query(),), ())
     }
 
     /// Starts building new query.

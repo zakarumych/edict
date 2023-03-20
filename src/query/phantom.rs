@@ -40,7 +40,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Must call provided closure with type id and access pairs.
     /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
     /// Only types from archetype must be used to call closure.
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access));
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -55,7 +55,12 @@ impl<Q> IntoQuery for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
-    type Query = PhantomData<fn() -> Q>;
+    type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
 }
 
 unsafe impl<Q> Query for PhantomData<fn() -> Q>
@@ -108,6 +113,10 @@ impl<T> QueryArgCache for PhantomData<fn() -> T>
 where
     T: PhantomQuery + 'static,
 {
+    fn new() -> Self {
+        PhantomData
+    }
+
     #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <T as PhantomQuery>::visit_archetype(archetype)

@@ -50,6 +50,11 @@ where
     T: Send + 'static,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<T> PhantomQuery for &mut T

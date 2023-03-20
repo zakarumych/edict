@@ -79,6 +79,11 @@ where
     T: Send + 'static,
 {
     type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Alt<T>>
@@ -166,6 +171,13 @@ impl<T> QueryArgCache for ModifiedCache<Alt<T>>
 where
     T: Send + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(id)
     }
@@ -187,6 +199,11 @@ where
     T: Send + 'static,
 {
     type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Option<Alt<T>>>
@@ -279,6 +296,13 @@ impl<T> QueryArgCache for ModifiedCache<Option<Alt<T>>>
 where
     T: Send + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(id)
     }

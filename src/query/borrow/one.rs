@@ -71,6 +71,10 @@ where
     T: Sync + ?Sized + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for QueryBorrowOne<&T>
@@ -178,6 +182,10 @@ where
     T: Send + ?Sized + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for QueryBorrowOne<&mut T>

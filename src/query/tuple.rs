@@ -18,6 +18,10 @@ macro_rules! impl_fetch {
 
         impl IntoQuery for () {
             type Query = ();
+
+            fn into_query(self) -> () {
+                ()
+            }
         }
 
         unsafe impl Query for () {
@@ -123,8 +127,14 @@ macro_rules! impl_fetch {
 
         unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
 
+        #[allow(non_snake_case)]
         impl<$($a),+> IntoQuery for ($($a,)+) where $($a: IntoQuery,)+ {
             type Query = ($($a::Query,)+);
+
+            fn into_query(self) -> Self::Query {
+                let ($($a,)+) = self;
+                ($( $a.into_query(), )+)
+            }
         }
     };
 }

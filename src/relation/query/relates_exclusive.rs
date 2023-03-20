@@ -68,6 +68,11 @@ where
     R: Relation + Sync,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<R> PhantomQuery for RelatesExclusive<&R>
@@ -170,6 +175,11 @@ where
     R: Relation + 'static,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<R> PhantomQuery for RelatesExclusive<&mut R>

@@ -27,6 +27,11 @@ where
     R: Relation,
 {
     type Query = PhantomData<fn() -> FilterRelated<R>>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<R> PhantomQuery for FilterRelated<R>

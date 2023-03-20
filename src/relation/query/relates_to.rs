@@ -82,6 +82,10 @@ where
     R: Relation + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<R> Query for RelatesTo<&R>
@@ -201,6 +205,10 @@ where
     R: Relation + Send,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<R> Query for RelatesTo<&mut R>

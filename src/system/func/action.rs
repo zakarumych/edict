@@ -21,6 +21,10 @@ pub struct ActionEncoderCache {
 }
 
 impl FnArgCache for ActionEncoderCache {
+    fn new() -> Self {
+        ActionEncoderCache { buffer: None }
+    }
+
     #[inline]
     fn is_local(&self) -> bool {
         false

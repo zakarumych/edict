@@ -57,6 +57,10 @@ where
     T: PhantomQuery,
 {
     type Query = PhantomData<fn() -> Option<T>>;
+
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<T> PhantomQuery for Option<T>

@@ -13,6 +13,11 @@ impl FnArg for &World {
 
 impl FnArgCache for WorldReadCache {
     #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
@@ -59,6 +64,11 @@ impl FnArg for &mut World {
 }
 
 impl FnArgCache for WorldWriteCache {
+    #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
     #[inline]
     fn is_local(&self) -> bool {
         true

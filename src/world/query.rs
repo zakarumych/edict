@@ -145,12 +145,12 @@ where
 
     /// Adds specified query.
     #[inline]
-    pub fn extend_query<T>(self, query: T) -> QueryRef<'a, TuplePlus<Q, T>, F>
+    pub fn extend_query<T>(self, query: T) -> QueryRef<'a, TuplePlus<Q, T::Query>, F>
     where
-        T: Query,
-        Q: ExtendTuple<T>,
-        Q::Query: ExtendTuple<T>,
-        TuplePlus<Q, T>: IntoQuery<Query = TuplePlus<Q::Query, T>>,
+        T: IntoQuery,
+        Q: ExtendTuple<T::Query>,
+        Q::Query: ExtendTuple<T::Query>,
+        TuplePlus<Q, T::Query>: IntoQuery<Query = TuplePlus<Q::Query, T::Query>>,
     {
         let parts = self.deconstruct();
 
@@ -159,7 +159,7 @@ where
             entities: parts.entities,
             epoch: parts.epoch,
             filtered_query: FilteredQuery {
-                query: parts.filtered_query.query.extend_tuple(query),
+                query: parts.filtered_query.query.extend_tuple(query.into_query()),
                 filter: parts.filtered_query.filter,
             },
             borrowed: Cell::new(parts.borrowed),
@@ -981,8 +981,8 @@ where
 }
 
 /// Result for [`World::query_one`] and [`World::query_one_with`] methods.
-pub struct QueryOne<'a, Q: Query> {
-    query: Q,
+pub struct QueryOne<'a, Q: IntoQuery> {
+    query: Q::Query,
     archetype: &'a Archetype,
     idx: u32,
     epoch: &'a EpochCounter,
@@ -991,16 +991,16 @@ pub struct QueryOne<'a, Q: Query> {
 
 impl<'a, Q> QueryOne<'a, Q>
 where
-    Q: Query,
+    Q: IntoQuery,
 {
     pub(crate) fn new(
-        query: Q,
+        query: Q::Query,
         archetype: &'a Archetype,
         idx: u32,
         epoch: &'a EpochCounter,
     ) -> Self {
         QueryOne {
-            query,
+            query: query.into_query(),
             archetype,
             idx,
             epoch,
@@ -1066,7 +1066,7 @@ where
 
 impl<'a, Q> Drop for QueryOne<'a, Q>
 where
-    Q: Query,
+    Q: IntoQuery,
 {
     #[inline]
     fn drop(&mut self) {

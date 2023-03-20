@@ -38,6 +38,10 @@ where
     T: Sync + 'static,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<T> PhantomQuery for &T

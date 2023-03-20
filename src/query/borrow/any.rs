@@ -67,6 +67,11 @@ where
     T: Sync + ?Sized + 'static,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
@@ -169,6 +174,11 @@ where
     T: Send + ?Sized + 'static,
 {
     type Query = PhantomData<fn() -> Self>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>

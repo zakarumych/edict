@@ -123,12 +123,6 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> ModifiedFetchAlt<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 

@@ -32,6 +32,7 @@ pub use self::{
     },
     phantom::{ImmutablePhantomQuery, PhantomQuery},
     read::{read, FetchRead, Read},
+    with_epoch::{EpochOf, FetchEpoch},
     write::{write, FetchWrite, Write},
 };
 
@@ -49,6 +50,7 @@ mod option;
 mod phantom;
 mod read;
 mod tuple;
+mod with_epoch;
 mod write;
 
 /// Specifies kind of access query performs for particular component.

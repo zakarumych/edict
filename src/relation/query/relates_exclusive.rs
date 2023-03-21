@@ -218,12 +218,6 @@ where
             "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
         );
 
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype
             .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();

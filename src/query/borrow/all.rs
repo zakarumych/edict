@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
 };
 
 phantom_newtype! {
@@ -60,18 +60,6 @@ where
                 )
             })
             .collect()
-    }
-}
-
-impl<T> IntoQuery for QueryBorrowAll<&T>
-where
-    T: Sync + ?Sized + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

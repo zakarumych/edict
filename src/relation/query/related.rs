@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
     relation::{Relation, TargetComponent},
 };
 
@@ -49,17 +49,6 @@ where
     unsafe fn get_item(&mut self, idx: usize) -> &'a [EntityId] {
         let component = &*self.ptr.as_ptr().add(idx);
         &component.origins[..]
-    }
-}
-
-impl<R> IntoQuery for Related<R>
-where
-    R: Relation,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

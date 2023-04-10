@@ -2,12 +2,13 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::Archetype,
+    entity::EntityId,
     epoch::EpochId,
     system::{QueryArg, QueryArgCache, QueryArgGet},
     world::World,
 };
 
-use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
@@ -49,6 +50,15 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Must not be called if `skip_archetype` returned `true`.
     #[must_use]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+
+    /// Returns item for reserved entity if reserved entity satisfies the query.
+    /// Otherwise returns `None`.
+    #[must_use]
+    #[inline]
+    fn reserved_entity_item<'a>(id: EntityId) -> Option<Self::Item<'a>> {
+        drop(id);
+        None
+    }
 }
 
 impl<Q> IntoQuery for PhantomData<fn() -> Q>
@@ -60,6 +70,28 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<Q> IntoQuery for Q
+where
+    Q: PhantomQuery,
+{
+    type Query = PhantomData<fn() -> Q>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
+}
+
+impl<Q> DefaultQuery for Q
+where
+    Q: PhantomQuery,
+{
+    #[inline]
+    fn default_query() -> Self::Query {
+        PhantomData
     }
 }
 
@@ -88,6 +120,11 @@ where
     #[inline]
     unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
         <Q as PhantomQuery>::fetch(archetype, epoch)
+    }
+
+    #[inline]
+    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+        <Q as PhantomQuery>::reserved_entity_item(id)
     }
 }
 

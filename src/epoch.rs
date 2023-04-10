@@ -101,7 +101,7 @@ impl EpochId {
     }
 
     /// Bumps epoch to specified one.
-    /// Assumes this epoch is strictly before epoch to.
+    /// Assumes this epoch is strictly before epoch `to`.
     #[inline]
     pub fn bump(&mut self, to: EpochId) {
         debug_assert!(
@@ -112,7 +112,7 @@ impl EpochId {
     }
 
     /// Bumps epoch to specified one.
-    /// Assumes this epoch is before epoch to or the same.
+    /// Assumes this epoch is before epoch `to` or the same.
     #[inline]
     pub fn bump_again(&mut self, to: EpochId) {
         debug_assert!(

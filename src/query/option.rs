@@ -1,8 +1,8 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery};
+use super::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -49,17 +49,6 @@ where
             None => None,
             Some(fetch) => Some(fetch.get_item(idx)),
         }
-    }
-}
-
-impl<T> IntoQuery for Option<T>
-where
-    T: PhantomQuery,
-{
-    type Query = PhantomData<fn() -> Option<T>>;
-
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

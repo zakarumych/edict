@@ -1,8 +1,8 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
-use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 macro_rules! impl_fetch {
     () => {
@@ -44,6 +44,11 @@ macro_rules! impl_fetch {
             #[inline]
             unsafe fn fetch(&mut self, _: &Archetype, _: EpochId) -> () {
                 ()
+            }
+
+            #[inline]
+            fn reserved_entity_item<'a>(&self, _id: EntityId) -> Option<()> where (): 'a {
+                Some(())
             }
         }
 
@@ -90,7 +95,6 @@ macro_rules! impl_fetch {
             }
         }
 
-
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
@@ -118,10 +122,16 @@ macro_rules! impl_fetch {
             }
 
             #[inline]
-            #[allow(unused_parens)]
             unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
                 ($( <$a as Query>::fetch($a, archetype, epoch) ),+)
+            }
+
+            #[inline]
+            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<($($a::Item<'a>),+)> {
+                let ($($a,)+) = self;
+                $( let $a = $a.reserved_entity_item(id)?; )+
+                Some(($($a),+))
             }
         }
 
@@ -134,6 +144,13 @@ macro_rules! impl_fetch {
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self;
                 ($( $a.into_query(), )+)
+            }
+        }
+
+        #[allow(non_snake_case)]
+        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
+            fn default_query() -> Self::Query {
+                ($( $a::default_query(), )+)
             }
         }
     };

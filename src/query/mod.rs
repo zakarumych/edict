@@ -8,7 +8,7 @@
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -70,10 +70,16 @@ pub enum Access {
 /// Types associated with a query type.
 pub trait IntoQuery {
     /// Associated query type.
-    type Query: Query + IntoQuery<Query = Self::Query>;
+    type Query: Query;
 
     /// Converts into query.
     fn into_query(self) -> Self::Query;
+}
+
+/// Types associated with default-constructible query type.
+pub trait DefaultQuery: IntoQuery {
+    /// Converts into query.
+    fn default_query() -> Self::Query;
 }
 
 /// Trait to query components from entities in the world.
@@ -110,6 +116,15 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Must not be called if `skip_archetype` returned `true`.
     #[must_use]
     unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+
+    /// Returns item for reserved entity if reserved entity satisfies the query.
+    /// Otherwise returns `None`.
+    #[must_use]
+    #[inline]
+    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+        drop(id);
+        None
+    }
 }
 
 /// Wraps mutable reference to query and implement query for it.

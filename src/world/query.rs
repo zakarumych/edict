@@ -17,6 +17,7 @@ use crate::{
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
     world::QueryOneError,
+    NoSuchEntity,
 };
 
 use super::{EpochCounter, EpochId, World};
@@ -420,7 +421,7 @@ where
 
     /// Adds query to fetch relation.
     #[inline]
-    pub fn relates_to<R>(self, entity: EntityId) -> QueryRef<'a, TuplePlus<Q, RelatesTo<R>>, F>
+    pub fn relates_to<R>(self, id: EntityId) -> QueryRef<'a, TuplePlus<Q, RelatesTo<R>>, F>
     where
         RelatesTo<R>: Query,
         Q: ExtendTuple<RelatesTo<R>>,
@@ -434,10 +435,7 @@ where
             entities: parts.entities,
             epoch: parts.epoch,
             filtered_query: FilteredQuery {
-                query: parts
-                    .filtered_query
-                    .query
-                    .extend_tuple(RelatesTo::new(entity)),
+                query: parts.filtered_query.query.extend_tuple(RelatesTo::new(id)),
                 filter: parts.filtered_query.filter,
             },
             borrowed: Cell::new(parts.borrowed),
@@ -508,14 +506,17 @@ where
     /// Locks all archetypes for the query.
     pub fn get_one(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
     ) -> Result<QueryItem<'_, FilteredQuery<F::Query, Q::Query>>, QueryOneError> {
-        let (archetype, idx) = self
-            .entities
-            .get_location(entity)
-            .ok_or(QueryOneError::NoSuchEntity)?;
+        let (archetype_idx, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
+        if archetype_idx == u32::MAX {
+            return match self.filtered_query.reserved_entity_item(id) {
+                None => Err(QueryOneError::NotSatisfied),
+                Some(item) => Ok(item),
+            };
+        }
 
-        let archetype = &self.archetypes[archetype as usize];
+        let archetype = &self.archetypes[archetype_idx as usize];
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
@@ -549,7 +550,7 @@ where
     ///
     /// This method does not allow references from item to escape the closure.
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn for_one<Fun, R>(&mut self, entity: EntityId, f: Fun) -> Result<R, QueryOneError>
+    pub fn for_one<Fun, R>(&mut self, id: EntityId, f: Fun) -> Result<R, QueryOneError>
     where
         for<'b> Fun: FnOnce(QueryItem<'b, FilteredQuery<F::Query, Q::Query>>) -> R,
     {
@@ -561,7 +562,7 @@ where
                 self.entities,
                 self.archetypes,
                 epoch,
-                entity,
+                id,
                 f,
             )
         } else {
@@ -570,7 +571,7 @@ where
                 self.entities,
                 self.archetypes,
                 epoch,
-                entity,
+                id,
                 f,
             )
         }
@@ -581,12 +582,12 @@ where
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn get_one_owned<T>(&mut self, entity: EntityId) -> Result<T::Owned, QueryOneError>
+    pub fn get_one_owned<T>(&mut self, id: EntityId) -> Result<T::Owned, QueryOneError>
     where
         T: ToOwned + 'static,
         Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
-        self.for_one(entity, |item| T::to_owned(item))
+        self.for_one(id, |item| T::to_owned(item))
     }
 
     /// Queries components from specified entity.
@@ -594,12 +595,12 @@ where
     /// Returns cloned item value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn get_one_cloned<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    pub fn get_one_cloned<T>(&mut self, id: EntityId) -> Result<T, QueryOneError>
     where
         T: Clone + 'static,
         Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
-        self.for_one(entity, |item| T::clone(item))
+        self.for_one(id, |item| T::clone(item))
     }
 
     /// Queries components from specified entity.
@@ -607,12 +608,12 @@ where
     /// Returns copied item value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn get_one_copied<T>(&mut self, entity: EntityId) -> Result<T, QueryOneError>
+    pub fn get_one_copied<T>(&mut self, id: EntityId) -> Result<T, QueryOneError>
     where
         T: Copy + 'static,
         Q::Query: for<'b> Query<Item<'b> = &'b T>,
     {
-        self.for_one(entity, |item| *item)
+        self.for_one(id, |item| *item)
     }
 
     /// Returns iterator over query results.
@@ -779,14 +780,17 @@ where
     Q: Query,
     Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
 {
-    let (archetype_idx, idx) = entities
-        .get_location(id)
-        .ok_or(QueryOneError::NoSuchEntity)?;
+    let (archetype_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
+    if archetype_idx == u32::MAX {
+        return match query.reserved_entity_item(id) {
+            None => Err(QueryOneError::NotSatisfied),
+            Some(item) => Ok(f(item)),
+        };
+    }
 
-    let archetype_idx = archetype_idx as usize;
-    let idx = idx as usize;
+    let archetype = unsafe { archetypes.get_unchecked(archetype_idx as usize) };
 
-    let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
+    debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
     if !query.visit_archetype(archetype) {
         return Err(QueryOneError::NotSatisfied);
@@ -802,17 +806,17 @@ where
     let mut query = borrow_archetype(archetype, &mut query);
 
     let mut fetch = unsafe { query.fetch(archetype, epoch) };
-    if !unsafe { fetch.visit_chunk(chunk_idx(idx)) } {
+    if !unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    if !unsafe { fetch.visit_item(idx) } {
+    if !unsafe { fetch.visit_item(idx as usize) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
+    unsafe { fetch.touch_chunk(chunk_idx(idx as usize)) }
 
-    let item = unsafe { fetch.get_item(idx) };
+    let item = unsafe { fetch.get_item(idx as usize) };
 
     Ok(f(item))
 }
@@ -829,31 +833,34 @@ where
     Q: Query,
     Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
 {
-    let (archetype_idx, idx) = entities
-        .get_location(id)
-        .ok_or(QueryOneError::NoSuchEntity)?;
+    let (archetype_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
+    if archetype_idx == u32::MAX {
+        return match query.reserved_entity_item(id) {
+            None => Err(QueryOneError::NotSatisfied),
+            Some(item) => Ok(f(item)),
+        };
+    }
 
-    let archetype_idx = archetype_idx as usize;
-    let idx = idx as usize;
+    let archetype = unsafe { archetypes.get_unchecked(archetype_idx as usize) };
 
-    let archetype = unsafe { archetypes.get_unchecked(archetype_idx) };
+    debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
     if !query.visit_archetype(archetype) {
         return Err(QueryOneError::NotSatisfied);
     }
 
     let mut fetch = unsafe { query.fetch(archetype, epoch) };
-    if !unsafe { fetch.visit_chunk(chunk_idx(idx)) } {
+    if !unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    if !unsafe { fetch.visit_item(idx) } {
+    if !unsafe { fetch.visit_item(idx as usize) } {
         return Err(QueryOneError::NotSatisfied);
     }
 
-    unsafe { fetch.touch_chunk(chunk_idx(idx)) }
+    unsafe { fetch.touch_chunk(chunk_idx(idx as usize)) }
 
-    let item = unsafe { fetch.get_item(idx) };
+    let item = unsafe { fetch.get_item(idx as usize) };
 
     Ok(f(item))
 }
@@ -980,11 +987,15 @@ where
     Ok(acc)
 }
 
+enum QueryOneState<'a> {
+    Existing(&'a Archetype, u32),
+    Reserved(EntityId),
+}
+
 /// Result for [`World::query_one`] and [`World::query_one_with`] methods.
 pub struct QueryOne<'a, Q: IntoQuery> {
     query: Q::Query,
-    archetype: &'a Archetype,
-    idx: u32,
+    state: QueryOneState<'a>,
     epoch: &'a EpochCounter,
     borrowed: Cell<bool>,
 }
@@ -1001,8 +1012,16 @@ where
     ) -> Self {
         QueryOne {
             query: query.into_query(),
-            archetype,
-            idx,
+            state: QueryOneState::Existing(archetype, idx),
+            epoch,
+            borrowed: Cell::new(false),
+        }
+    }
+
+    pub(crate) fn new_reserved(query: Q::Query, id: EntityId, epoch: &'a EpochCounter) -> Self {
+        QueryOne {
+            query: query.into_query(),
+            state: QueryOneState::Reserved(id),
             epoch,
             borrowed: Cell::new(false),
         }
@@ -1014,7 +1033,9 @@ where
             return;
         }
 
-        acquire_archetypes(core::slice::from_ref(self.archetype), &self.query);
+        if let QueryOneState::Existing(archetype, _) = self.state {
+            acquire_archetypes(core::slice::from_ref(archetype), &self.query);
+        }
 
         self.borrowed.set(true);
     }
@@ -1031,7 +1052,9 @@ where
             return;
         }
 
-        release_archetypes(core::slice::from_ref(self.archetype), &self.query);
+        if let QueryOneState::Existing(archetype, _) = self.state {
+            release_archetypes(core::slice::from_ref(archetype), &self.query);
+        }
 
         self.borrowed.set(false);
     }
@@ -1041,25 +1064,30 @@ where
     pub fn get(&mut self) -> Option<QueryItem<'_, Q>> {
         let epoch = self.epoch.next();
 
-        if !self.query.visit_archetype(self.archetype) {
+        let (archetype, idx) = match self.state {
+            QueryOneState::Existing(archetype, idx) => (archetype, idx),
+            QueryOneState::Reserved(id) => return self.query.reserved_entity_item(id),
+        };
+
+        if !self.query.visit_archetype(archetype) {
             return None;
         }
 
         self.ensure_borrow();
 
-        let mut fetch = unsafe { self.query.fetch(self.archetype, epoch) };
+        let mut fetch = unsafe { self.query.fetch(archetype, epoch) };
 
-        if !unsafe { fetch.visit_chunk(chunk_idx(self.idx as usize)) } {
+        if !unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) } {
             return None;
         }
 
-        if !unsafe { fetch.visit_item(self.idx as usize) } {
+        if !unsafe { fetch.visit_item(idx as usize) } {
             return None;
         }
 
-        unsafe { fetch.touch_chunk(chunk_idx(self.idx as usize)) }
+        unsafe { fetch.touch_chunk(chunk_idx(idx as usize)) }
 
-        let item = unsafe { fetch.get_item(self.idx as usize) };
+        let item = unsafe { fetch.get_item(idx as usize) };
         Some(item)
     }
 }
@@ -1071,7 +1099,9 @@ where
     #[inline]
     fn drop(&mut self) {
         if *self.borrowed.get_mut() {
-            release_archetypes(core::slice::from_ref(self.archetype), &self.query);
+            if let QueryOneState::Existing(archetype, _) = self.state {
+                release_archetypes(core::slice::from_ref(archetype), &self.query);
+            }
         }
     }
 }

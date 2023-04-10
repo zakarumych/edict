@@ -5,7 +5,7 @@ use crate::{archetype::Archetype, epoch::EpochId};
 use super::{
     fetch::Fetch,
     phantom::{ImmutablePhantomQuery, PhantomQuery},
-    Access, IntoQuery,
+    Access,
 };
 
 /// Fetch for [`EpochOf`] epochs.
@@ -33,17 +33,6 @@ unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
 
 /// Query for fetching epochs of a component.
 pub struct EpochOf<T>(T);
-
-impl<T> IntoQuery for EpochOf<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    fn into_query(self) -> Self::Query {
-        PhantomData
-    }
-}
 
 unsafe impl<T> PhantomQuery for EpochOf<T>
 where

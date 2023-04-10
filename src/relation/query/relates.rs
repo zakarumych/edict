@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
     relation::{Origin, OriginComponent, Relation},
 };
 
@@ -132,18 +132,6 @@ where
         RelatesReadIter {
             iter: origin_component.origins().iter(),
         }
-    }
-}
-
-impl<R> IntoQuery for Relates<&R>
-where
-    R: Relation + Sync,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 
@@ -303,18 +291,6 @@ where
         RelatesWriteIter {
             iter: origin_component.origins_mut().iter_mut(),
         }
-    }
-}
-
-impl<R> IntoQuery for Relates<&mut R>
-where
-    R: Relation + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

@@ -270,7 +270,7 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
-    pub fn spawn<B>(&mut self, entity: EntityId, bundle: B, epoch: EpochId) -> u32
+    pub fn spawn<B>(&mut self, id: EntityId, bundle: B, epoch: EpochId) -> u32
     where
         B: DynamicBundle,
     {
@@ -283,10 +283,10 @@ impl Archetype {
             self.reserve(1);
 
             debug_assert_ne!(self.entities.len(), self.entities.capacity());
-            self.write_bundle(entity, entity_idx, bundle, epoch, None, |_| false);
+            self.write_bundle(id, entity_idx, bundle, epoch, None, |_| false);
         }
 
-        self.entities.push(entity);
+        self.entities.push(id);
         entity_idx as u32
     }
 
@@ -294,10 +294,10 @@ impl Archetype {
     ///
     /// Returns id of the entity that took the place of despawned.
     #[inline]
-    pub fn despawn(&mut self, entity: EntityId, idx: u32, encoder: ActionEncoder) -> Option<u32> {
+    pub fn despawn(&mut self, id: EntityId, idx: u32, encoder: ActionEncoder) -> Option<EntityId> {
         assert!(idx < self.entities.len() as u32);
 
-        unsafe { self.despawn_unchecked(entity, idx, encoder) }
+        unsafe { self.despawn_unchecked(id, idx, encoder) }
     }
 
     /// Despawns specified entity in the archetype.
@@ -309,13 +309,13 @@ impl Archetype {
     /// idx must be in bounds of the archetype entities array.
     pub unsafe fn despawn_unchecked(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         idx: u32,
         mut encoder: ActionEncoder,
-    ) -> Option<u32> {
+    ) -> Option<EntityId> {
         let entity_idx = idx as usize;
         debug_assert!(entity_idx < self.entities.len());
-        debug_assert_eq!(entity, self.entities[entity_idx]);
+        debug_assert_eq!(id, self.entities[entity_idx]);
 
         let last_entity_idx = self.entities.len() - 1;
 
@@ -325,7 +325,7 @@ impl Archetype {
 
             let ptr = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
 
-            component.info.drop_one(ptr, entity, encoder.reborrow());
+            component.info.drop_one(ptr, id, encoder.reborrow());
 
             if entity_idx != last_entity_idx {
                 let chunk_idx = chunk_idx(entity_idx);
@@ -350,7 +350,7 @@ impl Archetype {
 
         self.entities.swap_remove(entity_idx);
         if entity_idx != last_entity_idx {
-            Some(self.entities[entity_idx].id())
+            Some(self.entities[entity_idx])
         } else {
             None
         }
@@ -363,7 +363,7 @@ impl Archetype {
     /// Bundle must not contain components that are absent in this archetype.
     pub unsafe fn set_bundle<B>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         idx: u32,
         bundle: B,
         epoch: EpochId,
@@ -377,7 +377,7 @@ impl Archetype {
         );
         debug_assert!(entity_idx < self.entities.len());
 
-        self.write_bundle(entity, entity_idx, bundle, epoch, Some(encoder), |_| true);
+        self.write_bundle(id, entity_idx, bundle, epoch, Some(encoder), |_| true);
     }
 
     /// Set component to the entity
@@ -388,7 +388,7 @@ impl Archetype {
     #[inline]
     pub unsafe fn set<T>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         idx: u32,
         value: T,
         epoch: EpochId,
@@ -401,7 +401,7 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        self.write_one(entity, entity_idx, value, epoch, Some(encoder));
+        self.write_one(id, entity_idx, value, epoch, Some(encoder));
     }
 
     /// Get component of the entity
@@ -477,13 +477,13 @@ impl Archetype {
     /// `dst` archetype must contain all component types from this archetype and the bundle.
     pub unsafe fn insert_bundle<B>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
         bundle: B,
         epoch: EpochId,
         encoder: ActionEncoder,
-    ) -> (u32, Option<u32>)
+    ) -> (u32, Option<EntityId>)
     where
         B: DynamicBundle,
     {
@@ -513,7 +513,7 @@ impl Archetype {
             unreachable_unchecked()
         });
 
-        dst.write_bundle(entity, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
+        dst.write_bundle(id, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
             if self.components.contains_key(&id) {
                 true
             } else {
@@ -525,10 +525,7 @@ impl Archetype {
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id()),
-            )
+            (dst_entity_idx as u32, Some(self.entities[src_entity_idx]))
         } else {
             (dst_entity_idx as u32, None)
         }
@@ -543,12 +540,12 @@ impl Archetype {
     /// `dst` archetype must contain all component types from this archetype and specified type.
     pub(crate) unsafe fn insert<T>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
         value: T,
         epoch: EpochId,
-    ) -> (u32, Option<u32>)
+    ) -> (u32, Option<EntityId>)
     where
         T: 'static,
     {
@@ -570,16 +567,13 @@ impl Archetype {
             unreachable_unchecked()
         });
 
-        dst.write_one::<T>(entity, dst_entity_idx, value, epoch, None);
+        dst.write_one::<T>(id, dst_entity_idx, value, epoch, None);
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id()),
-            )
+            (dst_entity_idx as u32, Some(self.entities[src_entity_idx]))
         } else {
             (dst_entity_idx as u32, None)
         }
@@ -594,10 +588,10 @@ impl Archetype {
     /// `dst` archetype must contain all component types from this archetype except specified type.
     pub unsafe fn remove<T>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
-    ) -> (u32, Option<u32>, T)
+    ) -> (u32, Option<EntityId>, T)
     where
         T: 'static,
     {
@@ -608,7 +602,7 @@ impl Archetype {
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
-        debug_assert_eq!(entity, self.entities[src_entity_idx]);
+        debug_assert_eq!(id, self.entities[src_entity_idx]);
 
         let dst_entity_idx = dst.entities.len();
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
@@ -632,7 +626,7 @@ impl Archetype {
         if src_entity_idx != self.entities.len() {
             (
                 dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id()),
+                Some(self.entities[src_entity_idx]),
                 value.assume_init(),
             )
         } else {
@@ -650,16 +644,16 @@ impl Archetype {
     /// `dst` archetype must contain all component types from this archetype except types from bundle.
     pub unsafe fn drop_bundle(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
         mut encoder: ActionEncoder,
-    ) -> (u32, Option<u32>) {
+    ) -> (u32, Option<EntityId>) {
         debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
 
         let src_entity_idx = src_idx as usize;
         debug_assert!(src_entity_idx < self.entities.len());
-        debug_assert_eq!(entity, self.entities[src_entity_idx]);
+        debug_assert_eq!(id, self.entities[src_entity_idx]);
 
         let dst_entity_idx = dst.entities.len();
         debug_assert!(dst_entity_idx < MAX_IDX_USIZE);
@@ -668,17 +662,14 @@ impl Archetype {
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
 
         self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
-            info.drop_one(ptr, entity, encoder.reborrow());
+            info.drop_one(ptr, id, encoder.reborrow());
         });
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx].id()),
-            )
+            (dst_entity_idx as u32, Some(self.entities[src_entity_idx]))
         } else {
             (dst_entity_idx as u32, None)
         }
@@ -729,7 +720,7 @@ impl Archetype {
     #[inline]
     unsafe fn write_bundle<B, F>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         entity_idx: usize,
         bundle: B,
         epoch: EpochId,
@@ -741,8 +732,8 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        bundle.put(|src, id, size| {
-            let component = self.components.get_mut(&id).unwrap_unchecked();
+        bundle.put(|src, tid, size| {
+            let component = self.components.get_mut(&tid).unwrap_unchecked();
             let data = component.data.get_mut();
             let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
             let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
@@ -752,8 +743,8 @@ impl Archetype {
             entity_epoch.bump(epoch);
 
             let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
-            if occupied(id) {
-                component.set_one(dst, src, entity, encoder.as_mut().unwrap().reborrow());
+            if occupied(tid) {
+                component.set_one(dst, src, id, encoder.as_mut().unwrap().reborrow());
             } else {
                 ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
             }
@@ -763,7 +754,7 @@ impl Archetype {
     #[inline]
     unsafe fn write_one<T>(
         &mut self,
-        entity: EntityId,
+        id: EntityId,
         entity_idx: usize,
         value: T,
         epoch: EpochId,
@@ -788,7 +779,7 @@ impl Archetype {
         let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>()));
 
         if let Some(encoder) = occupied {
-            component.set_one(dst, NonNull::from(&value).cast(), entity, encoder)
+            component.set_one(dst, NonNull::from(&value).cast(), id, encoder)
         } else {
             ptr::write(dst.as_ptr().cast(), value);
         }

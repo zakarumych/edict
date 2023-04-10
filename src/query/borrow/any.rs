@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
 };
 
 phantom_newtype! {
@@ -59,18 +59,6 @@ where
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
             PhantomData::<&'a ()>,
         )
-    }
-}
-
-impl<T> IntoQuery for QueryBorrowAny<&T>
-where
-    T: Sync + ?Sized + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 
@@ -166,18 +154,6 @@ where
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
             PhantomData::<&'a mut ()>,
         )
-    }
-}
-
-impl<T> IntoQuery for QueryBorrowAny<&mut T>
-where
-    T: Send + ?Sized + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

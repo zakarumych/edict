@@ -1,8 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
-use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Binary operator for [`BooleanQuery`].
 pub trait BooleanFetchOp: 'static {
@@ -218,14 +218,15 @@ macro_rules! impl_boolean {
             }
         }
 
-        impl<Op $(, $a)+> Default for BooleanQuery<($($a,)+), Op>
+        impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>
         where
-            $($a: Default,)+
+            $($a: DefaultQuery,)+
+            Op: BooleanFetchOp,
         {
             #[inline]
-            fn default() -> Self {
+            fn default_query() -> Self::Query {
                 BooleanQuery {
-                    tuple: ($($a::default(),)+),
+                    tuple: ($($a::default_query(),)+),
                     op: PhantomData,
                 }
             }
@@ -285,6 +286,25 @@ macro_rules! impl_boolean {
                     chunk: 0,
                     item: 0,
                     op: PhantomData,
+                }
+            }
+
+            #[inline]
+            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+                let ($($a,)+) = &self.tuple;
+                let mut mask = 0;
+                let mut mi = 0;
+                $(
+                    let $a = $a.reserved_entity_item(id);
+                    if $a.is_some() {
+                        mask |= 1 << mi;
+                    }
+                    mi += 1;
+                )+
+                if Op::mask(mask, mi) {
+                    Some(($($a,)+))
+                } else {
+                    None
                 }
             }
         }

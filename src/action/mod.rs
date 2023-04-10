@@ -15,7 +15,6 @@ use crate::{
     component::Component,
     entity::{EntityId, EntitySet},
     relation::Relation,
-    world::NoSuchEntity,
     world::{iter_reserve_hint, World},
 };
 
@@ -116,116 +115,110 @@ impl<'a> ActionEncoder<'a> {
 
     /// Encodes an action to despawn specified entity.
     #[inline]
-    pub fn despawn(&mut self, entity: EntityId) {
+    pub fn despawn(&mut self, id: EntityId) {
         self.push_fn(move |world, buffer| {
-            let _ = world.despawn_with_buffer(entity, buffer);
+            let _ = world.despawn_with_buffer(id, buffer);
         })
-    }
-
-    /// Searches for an entity with specified index.
-    #[inline]
-    pub fn find_entity(&self, idx: u32) -> Result<EntityId, NoSuchEntity> {
-        self.entities.find_entity(idx).ok_or(NoSuchEntity)
     }
 
     /// Encodes an action to insert component to the specified entity.
     #[inline]
-    pub fn insert<T>(&mut self, entity: EntityId, component: T)
+    pub fn insert<T>(&mut self, id: EntityId, component: T)
     where
         T: Component + Send,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.insert_with_buffer(entity, component, buffer);
+            let _ = world.insert_with_buffer(id, component, buffer);
         });
     }
 
     /// Encodes an action to insert component to the specified entity.
     #[inline]
-    pub fn insert_external<T>(&mut self, entity: EntityId, component: T)
+    pub fn insert_external<T>(&mut self, id: EntityId, component: T)
     where
         T: Send + 'static,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.insert_external_with_buffer(entity, component, buffer);
+            let _ = world.insert_external_with_buffer(id, component, buffer);
         });
     }
 
     /// Encodes an action to insert components from bundle to the specified entity.
     #[inline]
-    pub fn insert_bundle<B>(&mut self, entity: EntityId, bundle: B)
+    pub fn insert_bundle<B>(&mut self, id: EntityId, bundle: B)
     where
         B: DynamicComponentBundle + Send + 'static,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.insert_bundle_with_buffer(entity, bundle, buffer);
+            let _ = world.insert_bundle_with_buffer(id, bundle, buffer);
         });
     }
 
     /// Encodes an action to insert components from bundle to the specified entity.
     #[inline]
-    pub fn insert_external_bundle<B>(&mut self, entity: EntityId, bundle: B)
+    pub fn insert_external_bundle<B>(&mut self, id: EntityId, bundle: B)
     where
         B: DynamicBundle + Send + 'static,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.insert_external_bundle_with_buffer(entity, bundle, buffer);
+            let _ = world.insert_external_bundle_with_buffer(id, bundle, buffer);
         });
     }
 
     /// Encodes an action to drop component from specified entity.
     #[inline]
-    pub fn drop<T>(&mut self, entity: EntityId)
+    pub fn drop<T>(&mut self, id: EntityId)
     where
         T: 'static,
     {
-        self.drop_erased(entity, TypeId::of::<T>())
+        self.drop_erased(id, TypeId::of::<T>())
     }
 
     /// Encodes an action to drop component from specified entity.
     #[inline]
-    pub fn drop_erased(&mut self, entity: EntityId, ty: TypeId) {
+    pub fn drop_erased(&mut self, id: EntityId, ty: TypeId) {
         self.push_fn(move |world, buffer| {
-            let _ = world.drop_erased_with_buffer(entity, ty, buffer);
+            let _ = world.drop_erased_with_buffer(id, ty, buffer);
         })
     }
 
     /// Encodes an action to drop bundle of components from specified entity.
     #[inline]
-    pub fn drop_bundle<B>(&mut self, entity: EntityId)
+    pub fn drop_bundle<B>(&mut self, id: EntityId)
     where
         B: Bundle,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.drop_bundle_with_buffer::<B>(entity, buffer);
+            let _ = world.drop_bundle_with_buffer::<B>(id, buffer);
         });
     }
 
     /// Encodes an action to add relation between two entities to the [`World`].
     #[inline]
-    pub fn add_relation<R>(&mut self, entity: EntityId, relation: R, target: EntityId)
+    pub fn add_relation<R>(&mut self, id: EntityId, relation: R, target: EntityId)
     where
         R: Relation,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.add_relation_with_buffer(entity, relation, target, buffer);
+            let _ = world.add_relation_with_buffer(id, relation, target, buffer);
         });
     }
 
     /// Encodes an action to drop relation between two entities in the [`World`].
     #[inline]
-    pub fn drop_relation<R>(&mut self, entity: EntityId, target: EntityId)
+    pub fn drop_relation<R>(&mut self, id: EntityId, target: EntityId)
     where
         R: Relation,
     {
         self.push_fn(move |world, buffer| {
-            let _ = world.remove_relation_with_buffer::<R>(entity, target, buffer);
+            let _ = world.remove_relation_with_buffer::<R>(id, target, buffer);
         });
     }
 
     /// Checks if entity is alive.
     #[inline]
-    pub fn is_alive(&self, entity: EntityId) -> bool {
-        self.entities.get_location(entity).is_some()
+    pub fn is_alive(&self, id: EntityId) -> bool {
+        self.entities.get_location(id).is_some()
     }
 
     /// Encodes action to insert resource instance.

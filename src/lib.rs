@@ -79,6 +79,17 @@ extern crate self as edict;
 
 pub use atomicell;
 
+macro_rules! indexed_tuple {
+    ($idx:ident => $($e:expr),* $(,)?) => {{
+        let mut $idx = 0;
+        ($({
+            let e = $e;
+            $idx += 1;
+            e
+        },)*)
+    }};
+}
+
 macro_rules! for_tuple {
     ($macro:ident) => {
         for_tuple!($macro for A B C D E F G H I J K L M N O P);

@@ -264,18 +264,6 @@ where
     }
 }
 
-impl<T> IntoQuery for With<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<fn() -> With<T>>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomQuery::query()
-    }
-}
-
 unsafe impl<T> PhantomQuery for With<T>
 where
     T: 'static,

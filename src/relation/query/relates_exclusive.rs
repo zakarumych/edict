@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
     relation::{OriginComponent, Relation},
 };
 
@@ -60,18 +60,6 @@ where
         let origin_component = &*self.ptr.as_ptr().add(idx);
         let origin = &origin_component.origins()[0];
         (&origin.relation, origin.target)
-    }
-}
-
-impl<R> IntoQuery for RelatesExclusive<&R>
-where
-    R: Relation + Sync,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 
@@ -167,18 +155,6 @@ where
         let origin_component = &mut *self.ptr.as_ptr().add(idx);
         let origin = &mut origin_component.origins_mut()[0];
         (&mut origin.relation, origin.target)
-    }
-}
-
-impl<R> IntoQuery for RelatesExclusive<&mut R>
-where
-    R: Relation + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

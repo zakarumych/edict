@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{assert_query, phantom::PhantomQuery, Access, Fetch, IntoQuery};
+use super::{assert_query, phantom::PhantomQuery, Access, Fetch};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -42,18 +42,6 @@ where
         entity_epoch.bump(self.epoch);
 
         &mut *self.ptr.as_ptr().add(idx)
-    }
-}
-
-impl<T> IntoQuery for &mut T
-where
-    T: Send + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

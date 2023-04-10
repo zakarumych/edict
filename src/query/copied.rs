@@ -2,9 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{
-    phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery, IntoQuery,
-};
+use super::{phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -36,7 +34,7 @@ where
 /// Query to yield copies of specified component.
 ///
 /// Skips entities that don't have the component.
-pub struct Copied<T>(PhantomData<T>);
+pub struct Copied<T>(T);
 
 impl<T> Copied<T>
 where
@@ -45,17 +43,6 @@ where
     /// Creates a new [`Copied`] query.
     pub fn query() -> PhantomData<fn() -> Self> {
         PhantomQuery::query()
-    }
-}
-
-impl<T> IntoQuery for Copied<T>
-where
-    T: Copy + Sync + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-
-    fn into_query(self) -> Self::Query {
-        PhantomData
     }
 }
 

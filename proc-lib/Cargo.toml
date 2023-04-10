@@ -1,6 +1,6 @@
 [package]
 name = "edict-proc-lib"
-version = "0.3.0"
+version = "0.4.0-rc.4"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -12,6 +12,6 @@ description = "Procedural macros library for edict"
 
 [dependencies]
 proc-macro2 = "1.0"
-syn = "1.0"
+syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
-proc-easy = { version = "0.2.3" }
+proc-easy = { version = "0.3.0" }

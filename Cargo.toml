@@ -17,7 +17,7 @@ std = []
 default = ["std"]
 
 [dependencies]
-edict-proc = { version = "=0.3.0", path = "proc" }
+edict-proc = { version = "=0.4.0-rc.4", path = "proc" }
 hashbrown = { version = "0.13", features = ["ahash"], default-features = false }
 smallvec = { version ="1.8", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"

@@ -127,10 +127,9 @@ impl EntitySet {
                     id.get(),
                     EntityData {
                         archetype: 0,
-                        idx: 0,
+                        idx: f(EntityId::new(id)),
                     },
                 );
-                f(EntityId::new(id));
             });
         }
     }

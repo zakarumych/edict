@@ -1,15 +1,9 @@
-use core::{
-    cmp::Ordering,
-    fmt,
-    num::{NonZeroU32, NonZeroU64},
-};
+use core::{cmp::Ordering, fmt, num::NonZeroU64};
 
-use super::entities::invalid_gen;
-
-/// Weak reference to an entity.
-/// This value can be used to access an entity, but it does not keep the entity alive.
-/// On access to a component, if entity is expired (no strong refs left) or doesn't have accessed component,
-/// corresponding error is returned.
+/// Unique identifier of an entity.
+/// The identifier is unique within the world and
+/// can be made unique across multiple worlds by
+/// specifying custom id allocator.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct EntityId {
@@ -32,10 +26,8 @@ impl Ord for EntityId {
 
 impl EntityId {
     #[inline]
-    pub(crate) fn new(id: u32, gen: NonZeroU32) -> Self {
-        EntityId {
-            value: unsafe { NonZeroU64::new_unchecked((gen.get() as u64) << 32 | id as u64) },
-        }
+    pub(crate) fn new(value: NonZeroU64) -> Self {
+        EntityId { value }
     }
 
     /// Returns expired entity id.
@@ -52,7 +44,10 @@ impl EntityId {
     /// ```
     #[inline]
     pub fn dangling() -> Self {
-        EntityId::new(u32::MAX, invalid_gen())
+        EntityId {
+            // Safety: 1 is not 0.
+            value: NonZeroU64::new(1).unwrap(),
+        }
     }
 
     /// Gets 64-bit integer that can be converted back to equal `EntityId`.
@@ -65,27 +60,25 @@ impl EntityId {
     /// Returns `None` for integer less than or equal to `u32::MAX`.
     #[inline]
     pub fn from_bits(bits: u64) -> Option<Self> {
-        let gen = (bits >> 32) as u32;
-        let idx = bits as u32;
-        let gen = NonZeroU32::new(gen)?;
-        Some(EntityId::new(idx, gen))
+        let value = NonZeroU64::new(bits)?;
+        Some(EntityId { value })
     }
 
-    /// Returns generation part of the entity id.
-    #[inline]
-    pub fn gen(&self) -> NonZeroU32 {
-        unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
-    }
+    // /// Returns generation part of the entity id.
+    // #[inline]
+    // pub fn gen(&self) -> NonZeroU32 {
+    //     unsafe { NonZeroU32::new_unchecked((self.value.get() >> 32) as u32) }
+    // }
 
-    /// Returns id part of the entity id.
-    #[inline]
-    pub fn id(&self) -> u32 {
-        self.value.get() as u32
-    }
+    // /// Returns id part of the entity id.
+    // #[inline]
+    // pub fn id(&self) -> u32 {
+    //     self.value.get() as u32
+    // }
 
     #[inline]
     fn order(&self) -> u64 {
-        (self.value.get() >> 32) | (self.value.get() << 32)
+        self.value.get()
     }
 }
 
@@ -93,8 +86,7 @@ impl fmt::Debug for EntityId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityId")
-            .field("gen", &self.gen().get())
-            .field("id", &self.id())
+            .field("value", &self.value.get())
             .finish()
     }
 }
@@ -102,6 +94,6 @@ impl fmt::Debug for EntityId {
 impl fmt::Display for EntityId {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{{:0x}#{:x}}}", self.gen().get(), self.id())
+        write!(f, "{{{:0x}}}", self.value)
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     component::Component,
     query::{Entities, ImmutableQuery, With},
-    relation::{Relation, RelationOrigin, RelationTarget},
+    relation::{ChildOf, Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
 
@@ -695,4 +695,18 @@ fn test_filters() {
 
     struct A;
     is_filter::<With<A>>();
+}
+
+#[test]
+fn add_relation() {
+    let mut world = World::new();
+
+    let target = world.allocate();
+    let origin = world.allocate();
+
+    #[derive(Component)]
+    struct Foo;
+
+    world.insert(origin, Foo).unwrap();
+    world.add_relation(origin, ChildOf, target).unwrap();
 }

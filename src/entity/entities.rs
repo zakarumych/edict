@@ -1,19 +1,19 @@
 use core::{
-    num::NonZeroU32,
-    sync::atomic::{AtomicI32, Ordering},
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
-use alloc::{fmt, vec::Vec};
+use hashbrown::{hash_map::Entry, HashMap};
 
 use crate::world::NoSuchEntity;
 
-use super::EntityId;
+use super::{
+    allocator::{CursorAllocator, IdAllocator, IdRange},
+    EntityId,
+};
 
 /// Stores entity information in the World
 struct EntityData {
-    /// Entity generation.
-    gen: u32,
-
     /// Archetype index.
     archetype: u32,
 
@@ -21,26 +21,9 @@ struct EntityData {
     idx: u32,
 }
 
-impl EntityData {
-    pub fn new(archetype: u32, idx: u32, id: u32, gen: NonZeroU32) -> (Self, EntityId) {
-        let id = EntityId::new(id, gen);
-        let data = EntityData {
-            archetype,
-            gen: gen.get(),
-            idx,
-        };
-        (data, id)
-    }
-
-    pub fn entity(&self, id: u32) -> Option<EntityId> {
-        Some(EntityId::new(id, NonZeroU32::new(self.gen)?))
-    }
-}
-
 impl fmt::Debug for EntityData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EntityData")
-            .field("gen", &self.gen)
             .field("archetype", &self.archetype)
             .field("idx", &self.idx)
             .finish()
@@ -48,168 +31,145 @@ impl fmt::Debug for EntityData {
 }
 
 pub(crate) struct EntitySet {
-    array: Vec<EntityData>,
-    free_entity_ids: Vec<u32>,
-    reserve_counter: AtomicI32,
+    map: HashMap<u64, EntityData>,
+    allocated_id_range: IdRange,
+    reserve_counter: AtomicU64,
+    id_allocator: Box<dyn IdAllocator>,
 }
 
 impl fmt::Debug for EntitySet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Entities")
-            .field("entities", &self.array)
+            .field("entities", &self.map)
             .finish_non_exhaustive()
     }
 }
 
 impl EntitySet {
     pub fn new() -> Self {
+        Self::with_allocator(CursorAllocator::new())
+    }
+
+    pub fn with_allocator(id_allocator: impl IdAllocator + 'static) -> Self {
+        let mut id_allocator = Box::new(id_allocator);
+        let allocated_id_range = id_allocator.allocate_range();
+
         EntitySet {
-            array: Vec::new(),
-            free_entity_ids: Vec::new(),
-            reserve_counter: AtomicI32::new(0),
+            map: HashMap::new(),
+            allocated_id_range,
+            reserve_counter: AtomicU64::new(0),
+            id_allocator,
+        }
+    }
+
+    pub fn alloc_mut(&mut self) -> EntityId {
+        match self.allocated_id_range.next(&mut *self.id_allocator) {
+            None => {
+                panic!("Entity id allocator is exhausted");
+            }
+            Some(id) => EntityId::new(id),
         }
     }
 
     pub fn spawn(&mut self) -> EntityId {
-        match self.free_entity_ids.pop() {
-            None => {
-                let (data, id) = EntityData::new(0, u32::MAX, self.array.len() as u32, first_gen());
-                self.array.push(data);
-                id
-            }
-            Some(id) => {
-                let data = &self.array[id as usize];
-                unsafe {
-                    // # Safety
-                    // Exhausted slots are not placed into free list
-                    data.entity(id).unwrap_unchecked()
-                }
+        let id = self.alloc_mut();
+        self.spawn_at(id);
+        id
+    }
+
+    pub fn spawn_at(&mut self, id: EntityId) {
+        let old = self.map.insert(
+            id.bits(),
+            EntityData {
+                archetype: 0,
+                idx: 0,
+            },
+        );
+        debug_assert!(old.is_none());
+    }
+
+    pub fn spawn_if_missing(&mut self, id: EntityId) -> bool {
+        match self.map.entry(id.bits()) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(EntityData {
+                    archetype: 0,
+                    idx: 0,
+                });
+                true
             }
         }
     }
 
     pub fn alloc(&self) -> EntityId {
-        let counter = self.reserve_counter.fetch_sub(1, Ordering::Release);
+        let counter = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
 
-        if counter > 0 {
-            let index = counter as usize - 1;
-            let id = self.free_entity_ids[index];
+        let Ok(idx) =  u32::try_from(counter) else {
+            self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
+            panic!("Failed to allocate entity id concurrently");
+        };
 
-            let data = &self.array[id as usize];
-            unsafe {
-                // # Safety
-                // Exhausted slots are not placed into free list
-                data.entity(id).unwrap_unchecked()
+        match self.allocated_id_range.get(idx) {
+            None => {
+                self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
+                panic!("Failed to allocate entity id concurrently");
             }
-        } else {
-            let id = self.array.len() as u32 + (-counter) as u32;
-            EntityId::new(id, first_gen())
+            Some(id) => EntityId::new(id),
         }
     }
 
     pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
-        let reserve_counter = self.reserve_counter.get_mut();
-
-        // A tail of free_entity_ids was consumed by `reserve` method.
-        for id in self
-            .free_entity_ids
-            .drain(0.max(*reserve_counter) as usize..)
-        {
-            let entity = unsafe {
-                // # Safety
-                // Exhausted slots are not placed into free list
-                self.array[id as usize].entity(id).unwrap_unchecked()
-            };
-            let idx = f(entity);
-            self.array[id as usize].idx = idx;
+        let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
+        debug_assert!(reserved <= u64::from(u32::MAX));
+        unsafe {
+            self.allocated_id_range.advance(reserved as u32, |id| {
+                self.map.insert(
+                    id.get(),
+                    EntityData {
+                        archetype: 0,
+                        idx: f(EntityId::new(id)),
+                    },
+                );
+            });
         }
-
-        if *reserve_counter < 0 {
-            // Spawn reserved entities.
-            let reserved_count = (-*reserve_counter) as usize;
-            self.array.reserve(reserved_count);
-
-            for _ in 0..reserved_count {
-                let (data, id) = EntityData::new(0, u32::MAX, self.array.len() as u32, first_gen());
-                self.array.push(data);
-                let idx = f(id);
-                let last = self.array.last_mut().unwrap();
-                last.idx = idx;
-            }
-        }
-
-        *reserve_counter = 0;
     }
 
     pub fn despawn(&mut self, id: EntityId) -> Result<(u32, u32), NoSuchEntity> {
-        if self.array.len() as u32 <= id.id() {
-            return Err(NoSuchEntity);
+        match self.map.remove(&id.bits()) {
+            None => Err(NoSuchEntity),
+            Some(data) => Ok((data.archetype, data.idx)),
         }
-        let data = &mut self.array[id.id() as usize];
-        if id.gen().get() != data.gen {
-            return Err(NoSuchEntity);
-        }
-
-        let archetype = core::mem::replace(&mut data.archetype, 0);
-        let idx = core::mem::replace(&mut data.idx, u32::MAX);
-
-        if data.gen != u32::MAX {
-            data.gen += 1;
-            self.free_entity_ids.push(id.id());
-            *self.reserve_counter.get_mut() = self.free_entity_ids.len() as i32;
-        } else {
-            data.gen = 0;
-        }
-        Ok((archetype, idx))
     }
 
-    pub fn set_location(&mut self, id: u32, archetype: u32, idx: u32) {
-        let data = &mut self.array[id as usize];
+    pub fn set_location(&mut self, id: EntityId, archetype: u32, idx: u32) {
+        let data = self.map.get_mut(&id.bits()).expect("Invalid entity id");
         data.archetype = archetype;
         data.idx = idx;
     }
 
-    pub fn find_entity(&self, id: u32) -> Option<EntityId> {
-        if self.array.len() as u32 <= id {
-            let reserved = (-self.reserve_counter.load(Ordering::Acquire)) as u32;
-            if self.array.len() as u32 + reserved > id {
-                Some(EntityId::new(id, first_gen()))
-            } else {
-                None
-            }
-        } else {
-            let data = &self.array[id as usize];
-            Some(EntityId::new(id, NonZeroU32::new(data.gen)?))
-        }
-    }
-
     pub fn get_location(&self, id: EntityId) -> Option<(u32, u32)> {
-        if self.array.len() as u32 <= id.id() {
-            if id.gen() != first_gen() {
-                return None;
+        match self.map.get(&id.bits()) {
+            None => {
+                let bits = id.bits();
+                let reserved = self.reserve_counter.load(Ordering::Acquire);
+                let range = self.allocated_id_range.range();
+                if !range.contains(&bits) || bits >= range.start + reserved {
+                    return None;
+                }
+
+                let reserve_idx = bits - range.start;
+                debug_assert!(
+                    u32::try_from(reserve_idx).is_ok(),
+                    "No more than u32::MAX ids can be reserved"
+                );
+
+                Some((u32::MAX, reserve_idx as u32))
             }
-            let reserved = (-self.reserve_counter.load(Ordering::Acquire)) as u32;
-            if self.array.len() as u32 + reserved > id.id() {
-                return Some((0, u32::MAX));
-            }
-            return None;
+            Some(data) => Some((data.archetype, data.idx)),
         }
-        if id.gen().get() != self.array[id.id() as usize].gen {
-            return None;
-        }
-        let data = &self.array[id.id() as usize];
-        Some((data.archetype, data.idx))
     }
 
-    pub fn reserve(&mut self, additional: usize) {
-        self.array.reserve(additional);
+    pub fn reserve_space(&mut self, additional: usize) {
+        self.map.reserve(additional);
     }
-}
-
-pub(super) fn invalid_gen() -> NonZeroU32 {
-    NonZeroU32::new(1).unwrap()
-}
-
-pub(super) fn first_gen() -> NonZeroU32 {
-    NonZeroU32::new(2).unwrap()
 }

@@ -71,6 +71,10 @@ where
     T: Sync + ?Sized + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for QueryBorrowOne<&T>
@@ -178,6 +182,10 @@ where
     T: Send + ?Sized + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for QueryBorrowOne<&mut T>
@@ -212,12 +220,6 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchBorrowOneWrite<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(self.id).unwrap_unchecked();
 
         let cb = component

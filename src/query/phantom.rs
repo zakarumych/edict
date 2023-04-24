@@ -2,12 +2,13 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::Archetype,
+    entity::EntityId,
     epoch::EpochId,
     system::{QueryArg, QueryArgCache, QueryArgGet},
     world::World,
 };
 
-use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
@@ -40,7 +41,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Must call provided closure with type id and access pairs.
     /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
     /// Only types from archetype must be used to call closure.
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access));
+    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -49,13 +50,49 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Must not be called if `skip_archetype` returned `true`.
     #[must_use]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+
+    /// Returns item for reserved entity if reserved entity satisfies the query.
+    /// Otherwise returns `None`.
+    #[must_use]
+    #[inline]
+    fn reserved_entity_item<'a>(id: EntityId) -> Option<Self::Item<'a>> {
+        drop(id);
+        None
+    }
 }
 
 impl<Q> IntoQuery for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
+    type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<Q> IntoQuery for Q
+where
+    Q: PhantomQuery,
+{
     type Query = PhantomData<fn() -> Q>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        PhantomData
+    }
+}
+
+impl<Q> DefaultQuery for Q
+where
+    Q: PhantomQuery,
+{
+    #[inline]
+    fn default_query() -> Self::Query {
+        PhantomData
+    }
 }
 
 unsafe impl<Q> Query for PhantomData<fn() -> Q>
@@ -84,6 +121,11 @@ where
     unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
         <Q as PhantomQuery>::fetch(archetype, epoch)
     }
+
+    #[inline]
+    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+        <Q as PhantomQuery>::reserved_entity_item(id)
+    }
 }
 
 /// Phantom counterpart of [`ImmutableQuery`] type alias.
@@ -108,6 +150,10 @@ impl<T> QueryArgCache for PhantomData<fn() -> T>
 where
     T: PhantomQuery + 'static,
 {
+    fn new() -> Self {
+        PhantomData
+    }
+
     #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <T as PhantomQuery>::visit_archetype(archetype)

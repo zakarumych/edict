@@ -79,6 +79,11 @@ where
     T: Send + 'static,
 {
     type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Alt<T>>
@@ -118,12 +123,6 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> ModifiedFetchAlt<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
@@ -166,6 +165,13 @@ impl<T> QueryArgCache for ModifiedCache<Alt<T>>
 where
     T: Send + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(id)
     }
@@ -187,6 +193,11 @@ where
     T: Send + 'static,
 {
     type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Option<Alt<T>>>
@@ -279,6 +290,13 @@ impl<T> QueryArgCache for ModifiedCache<Option<Alt<T>>>
 where
     T: Send + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Alt<T> as PhantomQuery>::access(id)
     }

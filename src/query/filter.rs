@@ -112,10 +112,18 @@ pub struct FilteredQuery<F, Q> {
 
 impl<F, Q> IntoQuery for FilteredQuery<F, Q>
 where
-    F: Query,
-    Q: Query,
+    F: IntoQuery,
+    Q: IntoQuery,
 {
-    type Query = FilteredQuery<F, Q>;
+    type Query = FilteredQuery<F::Query, Q::Query>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        FilteredQuery {
+            filter: self.filter.into_query(),
+            query: self.query.into_query(),
+        }
+    }
 }
 
 unsafe impl<F, Q> Query for FilteredQuery<F, Q>
@@ -204,6 +212,11 @@ where
     T: IntoQuery,
 {
     type Query = Not<T::Query>;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        Not(self.0.into_query())
+    }
 }
 
 unsafe impl<T> Query for Not<T>
@@ -251,13 +264,6 @@ where
     }
 }
 
-impl<T> IntoQuery for With<T>
-where
-    T: 'static,
-{
-    type Query = PhantomData<fn() -> With<T>>;
-}
-
 unsafe impl<T> PhantomQuery for With<T>
 where
     T: 'static,
@@ -289,293 +295,3 @@ unsafe impl<T> ImmutablePhantomQuery for With<T> where T: 'static {}
 /// [`Filter`] that allows only archetypes without specified component.
 /// Inverse of [`With`].
 pub type Without<T> = Not<With<T>>;
-
-/// Binary operator for [`BooleanFilter`].
-pub trait BooleanMonoid: 'static {
-    /// The boolean monoid identity.
-    fn identity() -> bool;
-
-    /// The boolean binary operator.
-    fn op(a: bool, b: bool) -> Result<bool, bool>;
-}
-
-pub enum AndOp {}
-
-impl BooleanMonoid for AndOp {
-    fn identity() -> bool {
-        true
-    }
-
-    fn op(a: bool, b: bool) -> Result<bool, bool> {
-        if a && b {
-            Ok(true)
-        } else {
-            Err(false)
-        }
-    }
-}
-
-pub enum OrOp {}
-
-impl BooleanMonoid for OrOp {
-    fn identity() -> bool {
-        false
-    }
-
-    fn op(a: bool, b: bool) -> Result<bool, bool> {
-        if a || b {
-            Err(true)
-        } else {
-            Ok(false)
-        }
-    }
-}
-
-pub enum XorOp {}
-
-impl BooleanMonoid for XorOp {
-    fn identity() -> bool {
-        false
-    }
-
-    fn op(a: bool, b: bool) -> Result<bool, bool> {
-        match (a, b) {
-            (false, false) => Ok(false),
-            (true, true) => Err(false),
-            _ => Ok(true),
-        }
-    }
-}
-
-/// Combines two filters and yields only entities that pass both.
-pub struct BooleanFilter<T, Op>(T, PhantomData<Op>);
-
-impl<T, Op> BooleanFilter<T, Op> {
-    /// Creates a new [`BooleanFilter`].
-    pub fn from_tuple(tuple: T) -> Self {
-        Self(tuple, PhantomData)
-    }
-}
-
-/// Boolean filter combines two filters and boolean operation.
-pub struct BooleanFetch<T, Op>(T, PhantomData<Op>);
-
-pub struct BooleanFetchElem<T>(T, bool, bool);
-
-macro_rules! impl_boolean {
-    ($($a:ident)*) => {
-        #[allow(non_snake_case)]
-        #[allow(unused_variables, unused_mut)]
-        unsafe impl<'a, Op $(, $a)*> Fetch<'a> for BooleanFetch<($(BooleanFetchElem<$a>,)*), Op>
-        where
-            $($a: Fetch<'a>,)*
-            Op: BooleanMonoid,
-        {
-            type Item = ();
-
-            #[inline(always)]
-            fn dangling() -> Self {
-                BooleanFetch(($(BooleanFetchElem($a::dangling(), false, false),)*), PhantomData)
-            }
-
-            #[inline(always)]
-            unsafe fn get_item(&mut self, _idx: usize) {}
-
-            #[inline(always)]
-            unsafe fn visit_item(&mut self, idx: usize) -> bool {
-                let ($($a,)*) = &mut self.0;
-                let mut result = Op::identity();
-                $(
-                    if $a.2 {
-                        match Op::op(result, $a.0.visit_item(idx)) {
-                            Ok(ok) => result = ok,
-                            Err(err) => return err,
-                        }
-                    }
-                )*
-                result
-            }
-
-            #[inline(always)]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
-                let ($($a,)*) = &mut self.0;
-                let mut result = Op::identity();
-                $(
-                    if $a.1 {
-                        $a.2 = $a.0.visit_chunk(chunk_idx);
-                        match Op::op(result, $a.2) {
-                            Ok(ok) => result = ok,
-                            Err(err) => return err,
-                        }
-                    }
-                )*
-                result
-            }
-
-            #[inline(always)]
-            unsafe fn touch_chunk(&mut self, _chunk_idx: usize) {}
-        }
-
-        #[allow(non_snake_case)]
-        impl<'a, Op $(, $a)*> BooleanFilter<($($a,)*), Op>
-        where
-            Op: BooleanMonoid,
-        {
-            /// Creates a new [`BooleanFilter`].
-            #[inline(always)]
-            pub fn new($($a: $a),*) -> Self {
-                BooleanFilter(($($a,)*), PhantomData)
-            }
-        }
-
-        #[allow(non_snake_case)]
-        impl<Op $(, $a)*> IntoQuery for BooleanFilter<($($a,)*), Op>
-        where
-            $($a: IntoQuery,)*
-            Op: BooleanMonoid,
-        {
-            type Query = BooleanFilter<($($a::Query,)*), Op>;
-        }
-
-        #[allow(non_snake_case)]
-        #[allow(unused_variables, unused_mut)]
-        unsafe impl<Op $(, $a)*> Query for BooleanFilter<($($a,)*), Op>
-        where
-            $($a: Query,)*
-            Op: BooleanMonoid,
-        {
-            type Item<'a> = ();
-            type Fetch<'a> = BooleanFetch<($(BooleanFetchElem<$a::Fetch<'a>>,)*), Op>;
-
-            #[inline(always)]
-            fn access(&self, ty: TypeId) -> Option<Access> {
-                let ($($a,)*) = &self.0;
-                let mut result = None;
-                $(result = merge_access(result, $a.access(ty));)*
-                result
-            }
-
-            #[inline(always)]
-            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-                let ($($a,)*) = &self.0;
-                $($a.access_archetype(archetype, f);)*
-            }
-
-            #[inline(always)]
-            fn visit_archetype(&self, archetype: &Archetype) -> bool {
-                let ($($a,)*) = &self.0;
-                let mut result = Op::identity();
-                $({
-                    let visit = $a.visit_archetype(archetype);
-                    match Op::op(result, visit) {
-                        Ok(ok) => result = ok,
-                        Err(err) => return err,
-                    }
-                })*
-                result
-            }
-
-            #[inline(always)]
-            unsafe fn fetch<'a>(
-                &mut self,
-                archetype: &'a Archetype,
-                epoch: EpochId,
-            ) -> BooleanFetch<($(BooleanFetchElem<$a::Fetch<'a>>,)*), Op> {
-                let ($($a,)*) = &mut self.0;
-                BooleanFetch(
-                    ($({
-                        let visit = $a.visit_archetype(archetype);
-                        let fetch = if visit {
-                            $a.fetch(archetype, epoch)
-                        } else {
-                            Fetch::dangling()
-                        };
-                        BooleanFetchElem(fetch, visit, false)
-                    },)*),
-                    PhantomData,
-                )
-            }
-        }
-
-        unsafe impl<Op $(, $a)*> ImmutableQuery for BooleanFilter<($($a,)*), Op>
-        where
-            $($a: ImmutableQuery,)*
-            Op: BooleanMonoid,
-        {
-        }
-    };
-}
-
-for_tuple!(impl_boolean);
-
-/// Combines tuple of filters and yields only entities that pass all of them.
-pub type And<T> = BooleanFilter<T, AndOp>;
-
-/// Combines tuple of filters and yields only entities that pass any of them.
-pub type Or<T> = BooleanFilter<T, OrOp>;
-
-/// Combines tuple of filters and yields only entities that pass exactly one.
-pub type Xor<T> = BooleanFilter<T, XorOp>;
-
-/// Combines two filters and yields only entities that pass all of them.
-pub type And2<A, B> = And<(A, B)>;
-
-/// Combines three filters and yields only entities that pass all of them.
-pub type And3<A, B, C> = And<(A, B, C)>;
-
-/// Combines four filters and yields only entities that pass all of them.
-pub type And4<A, B, C, D> = And<(A, B, C, D)>;
-
-/// Combines five filters and yields only entities that pass all of them.
-pub type And5<A, B, C, D, E> = And<(A, B, C, D, E)>;
-
-/// Combines six filters and yields only entities that pass all of them.
-pub type And6<A, B, C, D, E, F> = And<(A, B, C, D, E, F)>;
-
-/// Combines seven filters and yields only entities that pass all of them.
-pub type And7<A, B, C, D, E, F, G> = And<(A, B, C, D, E, F, G)>;
-
-/// Combines eight filters and yields only entities that pass all of them.
-pub type And8<A, B, C, D, E, F, G, H> = And<(A, B, C, D, E, F, G, H)>;
-
-/// Combines two filters and yields only entities that pass any of them.
-pub type Or2<A, B> = Or<(A, B)>;
-
-/// Combines three filters and yields only entities that pass any of them.
-pub type Or3<A, B, C> = Or<(A, B, C)>;
-
-/// Combines four filters and yields only entities that pass any of them.
-pub type Or4<A, B, C, D> = Or<(A, B, C, D)>;
-
-/// Combines five filters and yields only entities that pass any of them.
-pub type Or5<A, B, C, D, E> = Or<(A, B, C, D, E)>;
-
-/// Combines six filters and yields only entities that pass any of them.
-pub type Or6<A, B, C, D, E, F> = Or<(A, B, C, D, E, F)>;
-
-/// Combines seven filters and yields only entities that pass any of them.
-pub type Or7<A, B, C, D, E, F, G> = Or<(A, B, C, D, E, F, G)>;
-
-/// Combines eight filters and yields only entities that pass any of them.
-pub type Or8<A, B, C, D, E, F, G, H> = Or<(A, B, C, D, E, F, G, H)>;
-
-/// Combines two filters and yields only entities that pass exactly one.
-pub type Xor2<A, B> = Xor<(A, B)>;
-
-/// Combines three filters and yields only entities that pass exactly one.
-pub type Xor3<A, B, C> = Xor<(A, B, C)>;
-
-/// Combines four filters and yields only entities that pass exactly one.
-pub type Xor4<A, B, C, D> = Xor<(A, B, C, D)>;
-
-/// Combines five filters and yields only entities that pass exactly one.
-pub type Xor5<A, B, C, D, E> = Xor<(A, B, C, D, E)>;
-
-/// Combines six filters and yields only entities that pass exactly one.
-pub type Xor6<A, B, C, D, E, F> = Xor<(A, B, C, D, E, F)>;
-
-/// Combines seven filters and yields only entities that pass exactly one.
-pub type Xor7<A, B, C, D, E, F, G> = Xor<(A, B, C, D, E, F, G)>;
-
-/// Combines eight filters and yields only entities that pass exactly one.
-pub type Xor8<A, B, C, D, E, F, G, H> = Xor<(A, B, C, D, E, F, G, H)>;

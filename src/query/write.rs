@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{assert_query, phantom::PhantomQuery, Access, Fetch, IntoQuery};
+use super::{assert_query, phantom::PhantomQuery, Access, Fetch};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -45,13 +45,6 @@ where
     }
 }
 
-impl<T> IntoQuery for &mut T
-where
-    T: Send + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-}
-
 unsafe impl<T> PhantomQuery for &mut T
 where
     T: Send + 'static,
@@ -80,12 +73,6 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchWrite<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 

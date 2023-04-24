@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
     relation::{OriginComponent, Relation},
 };
 
@@ -61,13 +61,6 @@ where
         let origin = &origin_component.origins()[0];
         (&origin.relation, origin.target)
     }
-}
-
-impl<R> IntoQuery for RelatesExclusive<&R>
-where
-    R: Relation + Sync,
-{
-    type Query = PhantomData<fn() -> Self>;
 }
 
 unsafe impl<R> PhantomQuery for RelatesExclusive<&R>
@@ -165,13 +158,6 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesExclusive<&mut R>
-where
-    R: Relation + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-}
-
 unsafe impl<R> PhantomQuery for RelatesExclusive<&mut R>
 where
     R: Relation + Send,
@@ -206,12 +192,6 @@ where
         assert!(
             R::EXCLUSIVE,
             "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
-        );
-
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
         );
 
         let component = archetype

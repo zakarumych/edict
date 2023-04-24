@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, IntoQuery, PhantomQuery},
+    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
     relation::{Origin, OriginComponent, Relation},
 };
 
@@ -133,13 +133,6 @@ where
             iter: origin_component.origins().iter(),
         }
     }
-}
-
-impl<R> IntoQuery for Relates<&R>
-where
-    R: Relation + Sync,
-{
-    type Query = PhantomData<fn() -> Self>;
 }
 
 unsafe impl<R> PhantomQuery for Relates<&R>
@@ -301,13 +294,6 @@ where
     }
 }
 
-impl<R> IntoQuery for Relates<&mut R>
-where
-    R: Relation + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
-}
-
 unsafe impl<R> PhantomQuery for Relates<&mut R>
 where
     R: Relation + Send,
@@ -336,12 +322,6 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchRelatesWrite<'a, R> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype
             .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();

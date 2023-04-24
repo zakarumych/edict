@@ -55,7 +55,11 @@ pub unsafe trait FnArgGet<'a> {
 ///
 /// If [`FnArgCache::is_local`] returns false [`FnArgGet::get_unchecked`] must be safe to call from any thread.
 /// Otherwise [`FnArgGet::get_unchecked`] must be safe to call from local thread.
-pub trait FnArgCache: for<'a> FnArgGet<'a> + Default + Send + 'static {
+pub trait FnArgCache: for<'a> FnArgGet<'a> + Send + 'static {
+    /// Constructs new cache instance.
+    #[must_use]
+    fn new() -> Self;
+
     /// Returns `true` for local arguments that can be used only for local function-systems.
     #[must_use]
     fn is_local(&self) -> bool;
@@ -175,7 +179,7 @@ macro_rules! impl_func {
             fn into_system(self) -> Self::System {
                 FunctionSystem {
                     f: self,
-                    args: ($($a::Cache::default(),)*),
+                    args: ($($a::Cache::new(),)*),
                 }
             }
         }

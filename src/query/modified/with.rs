@@ -55,6 +55,10 @@ where
     T: 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<With<T>>
@@ -94,12 +98,6 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchWith<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
 
@@ -138,6 +136,13 @@ impl<T> QueryArgCache for ModifiedCache<With<T>>
 where
     T: 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
             Some(Access::Read)

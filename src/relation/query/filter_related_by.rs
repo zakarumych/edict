@@ -63,6 +63,11 @@ where
     R: Relation,
 {
     type Query = Self;
+
+    #[inline]
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<R> Query for FilterRelatedBy<R>

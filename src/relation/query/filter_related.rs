@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, ImmutablePhantomQuery, IntoQuery, PhantomQuery, UnitFetch},
+    query::{Access, ImmutablePhantomQuery, PhantomQuery, UnitFetch},
     relation::{Relation, TargetComponent},
 };
 
@@ -20,13 +20,6 @@ where
     pub fn query() -> PhantomData<fn() -> Self> {
         PhantomQuery::query()
     }
-}
-
-impl<R> IntoQuery for FilterRelated<R>
-where
-    R: Relation,
-{
-    type Query = PhantomData<fn() -> FilterRelated<R>>;
 }
 
 unsafe impl<R> PhantomQuery for FilterRelated<R>

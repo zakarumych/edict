@@ -77,6 +77,11 @@ where
     T: Default + Send + 'static,
 {
     #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }

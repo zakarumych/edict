@@ -85,6 +85,11 @@ where
     T: Sync + 'static,
 {
     #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
@@ -198,6 +203,11 @@ impl<T> FnArgCache for ResMutCache<T>
 where
     T: Send + 'static,
 {
+    #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
     #[inline]
     fn is_local(&self) -> bool {
         false
@@ -315,6 +325,11 @@ where
     T: 'static,
 {
     #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
@@ -430,6 +445,11 @@ impl<T> FnArgCache for ResMutNoSendCache<T>
 where
     T: 'static,
 {
+    #[inline]
+    fn new() -> Self {
+        Self::default()
+    }
+
     #[inline]
     fn is_local(&self) -> bool {
         true

@@ -82,6 +82,10 @@ where
     R: Relation + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<R> Query for RelatesTo<&R>
@@ -201,6 +205,10 @@ where
     R: Relation + Send,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<R> Query for RelatesTo<&mut R>
@@ -234,12 +242,6 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesToWrite<'a, R> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype
             .component(TypeId::of::<OriginComponent<R>>())
             .unwrap_unchecked();

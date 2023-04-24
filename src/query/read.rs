@@ -2,9 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{
-    assert_immutable_query, phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, IntoQuery,
-};
+use super::{assert_immutable_query, phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -31,13 +29,6 @@ where
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
         &*self.ptr.as_ptr().add(idx)
     }
-}
-
-impl<T> IntoQuery for &T
-where
-    T: Sync + 'static,
-{
-    type Query = PhantomData<fn() -> Self>;
 }
 
 unsafe impl<T> PhantomQuery for &T

@@ -79,9 +79,20 @@ extern crate self as edict;
 
 pub use atomicell;
 
+macro_rules! indexed_tuple {
+    ($idx:ident => $($e:expr),* $(,)?) => {{
+        let mut $idx = 0;
+        ($({
+            let e = $e;
+            $idx += 1;
+            e
+        },)*)
+    }};
+}
+
 macro_rules! for_tuple {
     ($macro:ident) => {
-        for_tuple!($macro for A B C D E F G H I J K L);
+        for_tuple!($macro for A B C D E F G H I J K L M N O P);
     };
     ($macro:ident for ) => {
         $macro!();
@@ -89,6 +100,23 @@ macro_rules! for_tuple {
     ($macro:ident for $head:ident $($tail:ident)*) => {
         for_tuple!($macro for $($tail)*);
         $macro!($head $($tail)*);
+    };
+}
+
+macro_rules! for_tuple_2 {
+    ($macro:ident) => {
+        for_tuple_2!($macro for
+            AA AB AC AD AE AF AG AH AI AJ AK AL AM AN AO AP,
+            BA BB BC BD BE BF BG BH BI BJ BK BL BM BN BO BP
+        );
+    };
+    ($macro:ident for ,) => {
+        $macro!(,);
+    };
+    ($macro:ident for $a_head:ident $($a_tail:ident)*, $b_head:ident $($b_tail:ident)*) => {
+        for_tuple_2!($macro for $($a_tail)*, $($b_tail)*);
+
+        $macro!($a_head $($a_tail)*, $b_head $($b_tail)*);
     };
 }
 
@@ -159,6 +187,7 @@ pub mod action;
 pub mod archetype;
 pub mod bundle;
 pub mod component;
+pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;

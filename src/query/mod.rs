@@ -8,10 +8,15 @@
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
 pub use self::{
     alt::{Alt, FetchAlt},
+    any_of::AnyOf,
+    boolean::{
+        And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFetchOp, BooleanQuery,
+        Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
+    },
     borrow::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
@@ -19,11 +24,7 @@ pub use self::{
     copied::{copied, Copied, FetchCopied},
     entities::{Entities, EntitiesFetch, EntitiesQuery},
     fetch::{Fetch, UnitFetch, VerifyFetch},
-    filter::{
-        And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFilter, BooleanMonoid,
-        FilteredFetch, FilteredQuery, Not, Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, With, Without,
-        Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
-    },
+    filter::{FilteredFetch, FilteredQuery, Not, With, Without},
     iter::QueryIter,
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
@@ -31,10 +32,13 @@ pub use self::{
     },
     phantom::{ImmutablePhantomQuery, PhantomQuery},
     read::{read, FetchRead, Read},
+    with_epoch::{EpochOf, FetchEpoch},
     write::{write, FetchWrite, Write},
 };
 
 mod alt;
+mod any_of;
+mod boolean;
 mod borrow;
 mod copied;
 mod entities;
@@ -46,6 +50,7 @@ mod option;
 mod phantom;
 mod read;
 mod tuple;
+mod with_epoch;
 mod write;
 
 /// Specifies kind of access query performs for particular component.
@@ -65,7 +70,16 @@ pub enum Access {
 /// Types associated with a query type.
 pub trait IntoQuery {
     /// Associated query type.
-    type Query: Query + IntoQuery<Query = Self::Query>;
+    type Query: Query;
+
+    /// Converts into query.
+    fn into_query(self) -> Self::Query;
+}
+
+/// Types associated with default-constructible query type.
+pub trait DefaultQuery: IntoQuery {
+    /// Converts into query.
+    fn default_query() -> Self::Query;
 }
 
 /// Trait to query components from entities in the world.
@@ -102,6 +116,15 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Must not be called if `skip_archetype` returned `true`.
     #[must_use]
     unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+
+    /// Returns item for reserved entity if reserved entity satisfies the query.
+    /// Otherwise returns `None`.
+    #[must_use]
+    #[inline]
+    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+        drop(id);
+        None
+    }
 }
 
 /// Wraps mutable reference to query and implement query for it.
@@ -132,6 +155,10 @@ where
     T: Query,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self::Query {
+        self
+    }
 }
 
 unsafe impl<T> Query for MutQuery<'_, T>

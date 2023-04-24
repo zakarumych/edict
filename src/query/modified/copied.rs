@@ -61,6 +61,10 @@ where
     T: Copy + Sync + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Copied<T>>
@@ -103,12 +107,6 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchCopied<'a, T> {
-        debug_assert_ne!(
-            archetype.len(),
-            0,
-            "Empty archetypes must be visited or skipped"
-        );
-
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
 
@@ -148,6 +146,13 @@ impl<T> QueryArgCache for ModifiedCache<Copied<T>>
 where
     T: Copy + Sync + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Copied<T> as PhantomQuery>::access(id)
     }
@@ -169,6 +174,10 @@ where
     T: Copy + Sync + 'static,
 {
     type Query = Self;
+
+    fn into_query(self) -> Self {
+        self
+    }
 }
 
 unsafe impl<T> Query for Modified<Option<Copied<T>>>
@@ -267,6 +276,13 @@ impl<T> QueryArgCache for ModifiedCache<Option<Copied<T>>>
 where
     T: Copy + Sync + 'static,
 {
+    fn new() -> Self {
+        ModifiedCache {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
     fn access_component(&self, id: TypeId) -> Option<Access> {
         <Copied<T> as PhantomQuery>::access(id)
     }

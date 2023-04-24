@@ -23,7 +23,11 @@ pub trait QueryArgGet<'a> {
 }
 
 /// Cache for an argument that is stored between calls to function-system.
-pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + Default + 'static {
+pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + 'static {
+    /// Constructs new cache instance.
+    #[must_use]
+    fn new() -> Self;
+
     /// Returns true if the query visits archetype.
     #[must_use]
     fn visit_archetype(&self, archetype: &Archetype) -> bool;
@@ -72,6 +76,14 @@ where
     F: QueryArgCache,
 {
     #[inline]
+    fn new() -> Self {
+        QueryRefCache {
+            query: Q::new(),
+            filter: F::new(),
+        }
+    }
+
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
@@ -109,64 +121,43 @@ where
 }
 
 macro_rules! impl_query {
-    () => {
-        impl<'a> QueryArgGet<'a> for () {
-            type Arg = ();
-            type Query = ();
-
-            #[inline]
-            #[must_use]
-            fn get(&mut self, _world: &World) {}
-        }
-
-        impl QueryArgCache for () {
-            #[inline]
-            fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-                true
-            }
-            #[inline]
-            fn access_component(&self, _id: TypeId) -> Option<Access> {
-                None
-            }
-        }
-
-        impl QueryArg for () {
-            type Cache = ();
-        }
-    };
-
-    ($($a:ident)+) => {
+    ($($a:ident)*) => {
         #[allow(non_snake_case)]
-        #[allow(unused_parens)]
-        impl<'a $(, $a)+> QueryArgGet<'a> for ($($a,)+)
+        #[allow(unused_parens, unused_variables)]
+        impl<'a $(, $a)*> QueryArgGet<'a> for ($($a,)*)
         where
-            $($a: QueryArgGet<'a>,)+
+            $($a: QueryArgGet<'a>,)*
         {
-            type Arg = ($($a::Arg,)+);
-            type Query = ($($a::Query,)+);
+            type Arg = ($($a::Arg,)*);
+            type Query = ($($a::Query,)*);
 
             #[inline]
             fn get(&'a mut self, world: &'a World) -> Self::Query {
-                let ($($a,)+) = self;
-                ($($a::get($a, world),)+)
+                let ($($a,)*) = self;
+                ($($a::get($a, world),)*)
             }
         }
 
         #[allow(non_snake_case)]
-        #[allow(unused_parens)]
-        impl<$($a),+> QueryArgCache for ($($a,)+)
+        #[allow(unused_parens, unused_variables, unused_mut)]
+        impl<$($a,)*> QueryArgCache for ($($a,)*)
         where
-            $($a: QueryArgCache,)+
+            $($a: QueryArgCache,)*
         {
             #[inline]
+            fn new() -> Self {
+                ($($a::new(),)*)
+            }
+
+            #[inline]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
-                let ($($a,)+) = self;
-                $($a.visit_archetype(archetype))&&+
+                let ($($a,)*) = self;
+                true $(&& $a.visit_archetype(archetype))*
             }
 
             #[inline]
             fn access_component(&self, _id: TypeId) -> Option<Access> {
-                let ($($a,)+) = self;
+                let ($($a,)*) = self;
                 let mut access = None;
                 $({
                     access = merge_access(access, $a.access_component(_id));
@@ -177,11 +168,11 @@ macro_rules! impl_query {
 
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
-        impl<$($a),+> QueryArg for ($($a,)+)
+        impl<$($a),*> QueryArg for ($($a,)*)
         where
-            $($a: QueryArg,)+
+            $($a: QueryArg,)*
         {
-            type Cache = ($($a::Cache,)+);
+            type Cache = ($($a::Cache,)*);
         }
     };
 }

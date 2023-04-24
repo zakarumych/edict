@@ -25,5 +25,5 @@ fn allocate_system(world: &World, mut encoder: ActionEncoder) {
 }
 
 fn spawn_system(mut encoder: ActionEncoder) {
-    let _entity: EntityId = encoder.spawn((Foo,));
+    let _id: EntityId = encoder.spawn((Foo,));
 }

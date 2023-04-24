@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use atomicell::{Ref, RefMut};
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::{ActionBuffer, ActionChannel, ActionEncoder, ActionSender},
     archetype::{chunk_idx, Archetype},
     bundle::{
         Bundle, BundleDesc, ComponentBundle, ComponentBundleDesc, DynamicBundle,
@@ -152,7 +152,9 @@ pub struct World {
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
     /// Commands are immediately executed at the end of the mutating call.
-    cached_action_buffer: Option<ActionBuffer>,
+    action_buffer: Option<ActionBuffer>,
+
+    action_channel: ActionChannel,
 }
 
 unsafe impl Sync for World {}
@@ -171,13 +173,13 @@ impl Debug for World {
 
 macro_rules! with_buffer {
     ($world:ident, $buffer:ident => $expr:expr) => {{
-        let mut buffer = $world.cached_action_buffer.take().unwrap();
+        let mut buffer = $world.action_buffer.take().unwrap();
         let result = {
             let $buffer = &mut buffer;
             $expr
         };
         ActionBuffer::execute(&mut buffer, $world);
-        $world.cached_action_buffer = Some(buffer);
+        $world.action_buffer = Some(buffer);
         result
     }};
 }
@@ -295,7 +297,7 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        self.spawn_allocated();
+        self.maintenance();
         self.spawn_impl(bundle, register_bundle::<B>)
     }
 
@@ -323,14 +325,14 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        self.spawn_allocated();
+        self.maintenance();
         self.spawn_with_id_impl(id, bundle, register_bundle::<B>)
     }
 
     /// Spawns entity with specific ID if it is not already spawned.
     #[inline]
     pub fn spawn_if_missing(&mut self, id: EntityId) -> bool {
-        self.spawn_allocated();
+        self.maintenance();
 
         let spawned = self.entities.spawn_if_missing(id);
         if spawned {
@@ -375,7 +377,7 @@ impl World {
     where
         B: DynamicBundle,
     {
-        self.spawn_allocated();
+        self.maintenance();
         self.spawn_impl(bundle, assert_registered_bundle::<B>)
     }
 
@@ -411,7 +413,7 @@ impl World {
     where
         B: DynamicBundle,
     {
-        self.spawn_allocated();
+        self.maintenance();
         self.spawn_with_id_impl(id, bundle, assert_registered_bundle::<B>);
     }
 
@@ -534,7 +536,7 @@ impl World {
             );
         }
 
-        self.spawn_allocated();
+        self.maintenance();
 
         let archetype_idx = self.edges.insert_bundle(
             &mut self.registry,
@@ -599,7 +601,7 @@ impl World {
         id: EntityId,
         buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity> {
-        self.spawn_allocated();
+        self.maintenance();
 
         let (archetype, idx) = self.entities.despawn(id)?;
 
@@ -710,7 +712,7 @@ impl World {
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
-        self.spawn_allocated();
+        self.maintenance();
 
         let (src_archetype, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
         debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
@@ -766,7 +768,7 @@ impl World {
     where
         T: 'static,
     {
-        self.spawn_allocated();
+        self.maintenance();
 
         let (src_archetype, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
         debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
@@ -831,7 +833,7 @@ impl World {
         tid: TypeId,
         buffer: &mut ActionBuffer,
     ) -> Result<(), EntityError> {
-        self.spawn_allocated();
+        self.maintenance();
 
         let (src_archetype, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
         debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
@@ -979,7 +981,7 @@ impl World {
             );
         }
 
-        self.spawn_allocated();
+        self.maintenance();
 
         let (src_archetype, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
         debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
@@ -1091,7 +1093,7 @@ impl World {
             );
         }
 
-        self.spawn_allocated();
+        self.maintenance();
 
         let (src_archetype, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
         debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
@@ -1170,7 +1172,7 @@ impl World {
     where
         R: Relation,
     {
-        self.spawn_allocated();
+        self.maintenance();
 
         self.entities.get_location(origin).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
@@ -1250,7 +1252,7 @@ impl World {
     where
         R: Relation,
     {
-        self.spawn_allocated();
+        self.maintenance();
 
         self.entities.get_location(origin).ok_or(NoSuchEntity)?;
         self.entities.get_location(target).ok_or(NoSuchEntity)?;
@@ -1988,22 +1990,77 @@ impl World {
         self.res.resource_types()
     }
 
+    /// Returns [`ActionSender`] instance bound to this [`World`].\
+    /// [`ActionSender`] can be used to send actions to the [`World`] from
+    /// other threads and async tasks.
+    ///
+    /// [`ActionSender`] API is similar to [`ActionEncoder`]
+    /// except that it can't return [`EntityId`]s of spawned entities.
+    ///
+    /// To take effect actions must be executed with [`World::execute_received_actions`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    ///
+    /// let mut world = World::new();
+    ///
+    /// let action_sender = world.action_sender();
+    ///
+    /// let handle = std::thread::spawn(move || {
+    ///    action_sender.closure(|world| {
+    ///       world.insert_resource(42i32);
+    ///    });
+    /// });
+    ///
+    /// handle.join();
+    ///
+    /// world.execute_received_actions();
+    /// world.expect_resource_mut::<i32>();
+    /// ```
+    pub fn action_sender(&self) -> ActionSender {
+        self.action_channel.sender()
+    }
+
+    /// Executes actions received from [`ActionSender`] instances
+    /// bound to this [`World`].
+    ///
+    /// See [`World::action_sender`] for more information.
+    pub fn execute_received_actions(&mut self) {
+        self.maintenance();
+        with_buffer!(self, buffer => {
+            self.action_channel.fetch();
+            while let Some(f) = self.action_channel.execute() {
+                f(self, buffer);
+            }
+        })
+    }
+
     /// Returns [`EntitySet`] from the [`World`].
     pub(crate) fn entity_set(&self) -> &EntitySet {
         &self.entities
     }
 
+    /// Temporary replaces internal action buffer with provided one.
     #[inline]
     pub(crate) fn with_buffer(&mut self, buffer: &mut ActionBuffer, f: impl FnOnce(&mut World)) {
-        let cached_action_buffer = self.cached_action_buffer.take();
-        self.cached_action_buffer = Some(core::mem::take(buffer));
+        let action_buffer = self.action_buffer.take();
+        self.action_buffer = Some(core::mem::take(buffer));
         f(self);
-        *buffer = self.cached_action_buffer.take().unwrap();
-        self.cached_action_buffer = cached_action_buffer;
+        *buffer = self.action_buffer.take().unwrap();
+        self.action_buffer = action_buffer;
     }
 
+    /// Runs world maintenance.
+    ///
+    /// Users typically do not need to call this method,
+    /// it is automatically called in every method that borrows world mutably.
+    ///
+    /// The only observable effect of manual call to this method
+    /// is execution of actions encoded with [`ActionSender`].
     #[inline]
-    fn spawn_allocated(&mut self) {
+    fn maintenance(&mut self) {
         let epoch = self.epoch.current_mut();
         let archetype = &mut self.archetypes[0];
         self.entities

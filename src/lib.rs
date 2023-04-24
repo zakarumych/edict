@@ -103,6 +103,7 @@ macro_rules! for_tuple {
     };
 }
 
+#[cfg(feature = "alkahest")]
 macro_rules! for_tuple_2 {
     ($macro:ident) => {
         for_tuple_2!($macro for

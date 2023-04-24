@@ -30,7 +30,7 @@ impl_debug!(Modified<T> { after_epoch });
 
 impl<T> Modified<T> {
     /// Creates new `Modified` query.
-    /// Provide `after_epoch` id is used to skip components that are last modified not after this epoch.
+    /// Uses provided `after_epoch` id to skip components that are last modified not after this epoch.
     pub fn new(after_epoch: EpochId) -> Self {
         Modified {
             after_epoch,

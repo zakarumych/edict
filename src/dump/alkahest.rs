@@ -210,7 +210,6 @@ macro_rules! dumper {
 for_tuple_2!(dumper);
 
 #[test]
-#[cfg(feature = "alkahest")]
 fn test_dump() {
     use ::alkahest_proc::{Deserialize, Formula, Serialize};
 

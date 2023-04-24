@@ -1,5 +1,5 @@
 use crate::{
-    action::ActionBuffer,
+    action::{ActionBuffer, ActionChannel},
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
@@ -38,7 +38,8 @@ impl WorldBuilder {
             edges: Edges::new(),
             res: Res::new(),
             registry: self.registry,
-            cached_action_buffer: Some(ActionBuffer::new()),
+            action_buffer: Some(ActionBuffer::new()),
+            action_channel: ActionChannel::new(),
         }
     }
 

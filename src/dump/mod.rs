@@ -12,12 +12,12 @@ mod query;
 use core::marker::PhantomData;
 
 use crate::{
+    action::ActionEncoder,
     component::Component,
     entity::EntityId,
     epoch::EpochId,
     query::ImmutableQuery,
     world::{QueryOneError, World},
-    ActionEncoder,
 };
 
 pub use self::query::DumpItem;

@@ -22,11 +22,11 @@ hashbrown = { version = "0.13", features = ["ahash"], default-features = false }
 smallvec = { version ="1.8", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
 atomicell = "0.1.9"
-flume = { version = "0.10" }
 rayon = { version = "1.5", optional = true }
 alkahest = { version = "0.2.0", optional = true, features = ["alloc", "fixed32"], default-features = false }
 nanoserde = { version = "0.1.0", optional = true, default-features = false }
 serde = { version = "1.0", optional = true, default-features = false }
+parking_lot = "0.12"
 
 [dev-dependencies]
 alkahest-proc = { version = "0.2.0-rc.6" }

@@ -25,8 +25,11 @@ use core::{
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use std::thread::Thread;
 
+use alloc::{collections::VecDeque, sync::Arc};
 use hashbrown::HashSet;
+use parking_lot::Mutex;
 
 use crate::{
     action::ActionBuffer,
@@ -80,23 +83,54 @@ struct ScheduledSystem {
     is_local: bool,
 }
 
-#[derive(Clone)]
-struct MyActionQueue {
-    buffer_rx: flume::Receiver<ActionBuffer>,
-    buffer_tx: flume::Sender<ActionBuffer>,
+struct Queue<T> {
+    items: Mutex<VecDeque<T>>,
+    thread: Thread,
 }
 
-impl ActionQueue for MyActionQueue {
+impl<T> Queue<T> {
+    fn new() -> Self {
+        Queue {
+            items: Mutex::new(VecDeque::new()),
+            thread: std::thread::current(),
+        }
+    }
+
+    fn enqueue(&self, item: T) {
+        self.items.lock().push_back(item);
+        self.thread.unpark();
+    }
+
+    fn try_deque(&self) -> Option<T> {
+        self.items.lock().pop_front()
+    }
+
+    fn deque(self: &Arc<Self>) -> Result<T, ()> {
+        let me: &Self = self;
+        loop {
+            if Arc::strong_count(self) == 1 {
+                return Err(());
+            }
+            if let Some(item) = me.try_deque() {
+                return Ok(item);
+            }
+            std::thread::park();
+        }
+    }
+}
+
+impl ActionQueue for Arc<Queue<ActionBuffer>> {
     #[inline]
     fn get<'a>(&self) -> ActionBuffer {
-        self.buffer_rx
-            .try_recv()
-            .unwrap_or_else(|_| ActionBuffer::new())
+        match self.try_deque() {
+            Some(buffer) => buffer,
+            None => ActionBuffer::new(),
+        }
     }
 
     #[inline]
     fn flush(&mut self, buffer: ActionBuffer) {
-        self.buffer_tx.send(buffer).unwrap();
+        self.enqueue(buffer);
     }
 }
 
@@ -111,8 +145,8 @@ struct Task<'scope> {
     system_idx: usize,
     systems: &'scope [ScheduledSystem],
     world: NonNullWorld,
-    task_tx: flume::Sender<Task<'scope>>,
-    action_queue: MyActionQueue,
+    task_queue: Arc<Queue<Task<'scope>>>,
+    action_queue: Arc<Queue<ActionBuffer>>,
 }
 
 impl<'scope> Task<'scope> {
@@ -121,7 +155,7 @@ impl<'scope> Task<'scope> {
             system_idx,
             systems,
             world,
-            task_tx,
+            task_queue,
             mut action_queue,
         } = self;
 
@@ -156,11 +190,11 @@ impl<'scope> Task<'scope> {
                             system_idx: dependent_idx,
                             systems: systems,
                             world: world,
-                            task_tx: task_tx.clone(),
+                            task_queue: task_queue.clone(),
                             action_queue: action_queue.clone(),
                         };
                         if is_local {
-                            task_tx.send(task).unwrap();
+                            task_queue.enqueue(task);
                         } else {
                             executor.spawn(move |executor| task.run(executor));
                         }
@@ -234,17 +268,12 @@ impl Scheduler {
             *system.wait.get_mut() = system.dependencies;
         }
 
-        let (task_tx, task_rx) = flume::bounded(self.systems.len());
-        let (buffer_tx, buffer_rx) = flume::unbounded();
+        let task_queue = Arc::new(Queue::new());
+        let action_queue = Arc::new(Queue::new());
 
         for buffer in self.action_buffers.drain(..) {
-            buffer_tx.send(buffer).unwrap();
+            action_queue.enqueue(buffer);
         }
-
-        let action_queue = MyActionQueue {
-            buffer_rx,
-            buffer_tx,
-        };
 
         let mut unroll = None;
 
@@ -258,7 +287,7 @@ impl Scheduler {
                     system_idx: idx,
                     world: NonNullWorld { ptr: world_ptr },
                     systems: &self.systems,
-                    task_tx: task_tx.clone(),
+                    task_queue: task_queue.clone(),
                     action_queue: action_queue.clone(),
                 };
                 if is_local && unroll.is_none() {
@@ -269,24 +298,15 @@ impl Scheduler {
             }
         }
 
-        drop(task_tx);
-
         if let Some(task) = unroll {
             task.run(executor);
         }
 
-        while let Ok(task) = task_rx.recv() {
+        while let Ok(task) = task_queue.deque() {
             task.run(executor);
         }
 
-        let MyActionQueue {
-            buffer_rx,
-            buffer_tx,
-        } = action_queue;
-
-        drop(buffer_tx);
-
-        while let Ok(buffer) = buffer_rx.recv() {
+        while let Ok(buffer) = action_queue.deque() {
             self.action_buffers.push(buffer);
         }
 

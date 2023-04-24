@@ -16,8 +16,7 @@ use crate::{
         With, Without,
     },
     relation::{Related, Relates, RelatesExclusive, RelatesTo},
-    world::QueryOneError,
-    NoSuchEntity,
+    world::{NoSuchEntity, QueryOneError},
 };
 
 use super::{EpochCounter, EpochId, World};

@@ -21,49 +21,39 @@ use crate::{
 
 mod tls;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct TaskWaker<T> {
     id: EntityId,
     task: PhantomData<fn() -> T>,
+    queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>,
 }
 
 impl<T: 'static> TaskWaker<T> {
-    fn waker(id: EntityId) -> Waker {
+    fn waker(id: EntityId, queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>) -> Waker {
         let raw_waker = Self::raw_waker(TaskWaker {
             id,
             task: PhantomData,
+            queue,
         });
         unsafe { Waker::from_raw(raw_waker) }
     }
 
     fn raw_waker(self) -> RawWaker {
-        #[cfg(target_pointer_width = "32")]
-        let raw_waker = RawWaker::new(Arc::into_raw(Arc::new(self)) as *const (), Self::vtable());
-
-        #[cfg(target_pointer_width = "64")]
-        let raw_waker = RawWaker::new(unsafe { core::mem::transmute(self) }, Self::vtable());
-
-        raw_waker
+        RawWaker::new(Arc::into_raw(Arc::new(self)) as *const (), Self::vtable())
     }
 
     unsafe fn clone(ptr: *const ()) -> RawWaker {
-        #[cfg(target_pointer_width = "32")]
         Arc::increment_strong_count(ptr as *const TaskWaker<T>);
         RawWaker::new(ptr, Self::vtable())
     }
 
     unsafe fn wake_by_ref(ptr: *const ()) {
-        #[cfg(target_pointer_width = "32")]
-        let waker: Self = *(ptr as *const TaskWaker<T>);
-        #[cfg(target_pointer_width = "64")]
-        let waker: Self = core::mem::transmute(ptr);
-
-        tls::enqueue::<T>(waker.id);
+        let waker: &Self = &*(ptr as *const TaskWaker<T>);
+        waker.queue.lock().push((waker.id, TypeId::of::<T>()));
     }
 
     unsafe fn wake(ptr: *const ()) {
         Self::wake_by_ref(ptr);
-        #[cfg(target_pointer_width = "32")]
         Arc::decrement_strong_count(ptr as *const TaskWaker<T>);
     }
 
@@ -114,7 +104,7 @@ impl<T> Task<T> {
 }
 
 trait AnyTask: Send + 'static {
-    fn poll(&mut self, id: EntityId) -> Poll<()>;
+    fn poll(&mut self, id: EntityId, queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>) -> Poll<()>;
 }
 
 impl<T, F> AnyTask for Task<T, F>
@@ -122,8 +112,8 @@ where
     T: 'static,
     F: Future<Output = ()> + Unpin + Send + 'static,
 {
-    fn poll(&mut self, id: EntityId) -> Poll<()> {
-        let waker = TaskWaker::<Self>::waker(id);
+    fn poll(&mut self, id: EntityId, queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>) -> Poll<()> {
+        let waker = TaskWaker::<Self>::waker(id, queue);
         let mut cx = Context::from_waker(&waker);
         Pin::new(&mut self.fut).poll(&mut cx)
     }
@@ -141,11 +131,14 @@ where
     }
 }
 
+use alloc::sync::Arc;
+use parking_lot::Mutex;
 use tls::WorldTLS;
 
 /// State of [`task_system`].
 #[derive(Default)]
 pub struct TaskSystemState {
+    queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>,
     wakes: Vec<(EntityId, TypeId)>,
     finished: Vec<(EntityId, TypeId)>,
     after_epoch: EpochId,
@@ -261,7 +254,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
                 };
 
                 let id = archetype.entities()[idx];
-                match task.poll(id) {
+                match task.poll(id, state.queue.clone()) {
                     Poll::Pending => {}
                     Poll::Ready(()) => {
                         state.finished.push((id, tid));
@@ -271,7 +264,8 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
         }
     }
 
-    tls::deque(&mut state.wakes);
+    core::mem::swap(&mut state.wakes, &mut state.queue.lock());
+
     for (id, tid) in state.wakes.drain(..) {
         let Some((arch, idx)) = world.entity_set().get_location(id) else {continue;};
         let arch = &world.archetypes()[arch as usize];
@@ -295,7 +289,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
 
         let task =
             unsafe { borrow.borrow_mut::<dyn AnyTask>().unwrap_unchecked()(ptr, PhantomData) };
-        match task.poll(id) {
+        match task.poll(id, state.queue.clone()) {
             Poll::Pending => {}
             Poll::Ready(()) => {
                 state.finished.push((id, tid));
@@ -323,18 +317,18 @@ fn test_task_system() {
 
     struct Yield(bool);
 
-    impl std::future::Future for Yield {
+    impl core::future::Future for Yield {
         type Output = ();
 
         fn poll(
-            self: std::pin::Pin<&mut Self>,
-            cx: &mut std::task::Context,
-        ) -> std::task::Poll<()> {
-            if std::mem::replace(&mut self.get_mut().0, true) {
-                std::task::Poll::Ready(())
+            self: core::pin::Pin<&mut Self>,
+            cx: &mut core::task::Context,
+        ) -> core::task::Poll<()> {
+            if core::mem::replace(&mut self.get_mut().0, true) {
+                core::task::Poll::Ready(())
             } else {
                 cx.waker().wake_by_ref();
-                std::task::Poll::Pending
+                core::task::Poll::Pending
             }
         }
     }

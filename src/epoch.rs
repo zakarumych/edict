@@ -70,7 +70,7 @@ impl Default for EpochId {
 
 impl Debug for EpochId {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> core::fmt::Result {
         <u64 as Debug>::fmt(&self.value, f)
     }
 }

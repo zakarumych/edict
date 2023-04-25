@@ -1,5 +1,6 @@
 //! Self-contained ECS [`World`].
 
+use alloc::{borrow::ToOwned, vec, vec::Vec};
 use core::{
     any::{type_name, TypeId},
     cell::Cell,
@@ -13,7 +14,6 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use alloc::vec::Vec;
 use atomicell::{Ref, RefMut};
 
 use crate::{

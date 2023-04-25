@@ -2,6 +2,7 @@
 
 mod func;
 
+use alloc::vec::Vec;
 use core::{any::TypeId, ptr::NonNull};
 
 use crate::{action::ActionBuffer, archetype::Archetype, query::Access, world::World};

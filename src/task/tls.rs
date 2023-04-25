@@ -1,12 +1,9 @@
-use core::{any::TypeId, cell::Cell, ptr::NonNull};
+use core::{cell::Cell, ptr::NonNull};
 
-use parking_lot::Mutex;
-
-use crate::{entity::EntityId, world::World};
+use crate::world::World;
 
 std::thread_local! {
     static WORLD_TLS: Cell<Option<NonNull<World>>> = Cell::new(None);
-    static QUEUE_TLS: Mutex<Vec<(EntityId, TypeId)>> = Mutex::new(Vec::new());
 }
 
 pub(super) struct WorldTLS {
@@ -28,12 +25,4 @@ impl Drop for WorldTLS {
     fn drop(&mut self) {
         WORLD_TLS.with(|tls| tls.take());
     }
-}
-
-pub(super) fn enqueue<T: 'static>(id: EntityId) {
-    QUEUE_TLS.with(|tls| tls.lock().push((id, TypeId::of::<T>())));
-}
-
-pub(super) fn deque(queue: &mut Vec<(EntityId, TypeId)>) {
-    QUEUE_TLS.with(|tls| queue.append(&mut *tls.lock()))
 }

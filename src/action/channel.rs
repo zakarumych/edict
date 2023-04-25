@@ -52,7 +52,7 @@ impl ActionChannel {
         debug_assert!(self.spare_queue.is_empty());
         if self.shared.non_empty.swap(false, Ordering::Relaxed) {
             let mut queue = self.shared.queue.lock();
-            std::mem::swap(&mut self.spare_queue, &mut *queue);
+            core::mem::swap(&mut self.spare_queue, &mut *queue);
         }
     }
 

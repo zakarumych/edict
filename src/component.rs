@@ -1,5 +1,6 @@
 //! This module defines [`Component`] trait and related types.
 
+use alloc::{sync::Arc, vec, vec::Vec};
 use core::{
     alloc::Layout,
     any::{type_name, Any, TypeId},
@@ -9,7 +10,6 @@ use core::{
     ptr::{self, drop_in_place, slice_from_raw_parts_mut, NonNull},
 };
 
-use alloc::sync::Arc;
 use hashbrown::hash_map::{Entry, HashMap};
 
 use crate::{action::ActionEncoder, entity::EntityId, hash::NoOpHasherBuilder};

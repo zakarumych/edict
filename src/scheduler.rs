@@ -19,6 +19,7 @@
 
 #![allow(missing_docs)]
 
+use alloc::{collections::VecDeque, sync::Arc};
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
@@ -27,7 +28,6 @@ use core::{
 };
 use std::thread::Thread;
 
-use alloc::{collections::VecDeque, sync::Arc};
 use hashbrown::HashSet;
 use parking_lot::Mutex;
 

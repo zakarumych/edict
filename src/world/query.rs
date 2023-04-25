@@ -1,3 +1,4 @@
+use alloc::borrow::ToOwned;
 use core::{
     any::TypeId,
     cell::Cell,

@@ -12,6 +12,7 @@
 //! to the same value twice or mutable and immutable references at the same time is prohibited and cause panics.
 //!
 
+use alloc::boxed::Box;
 use core::{
     any::{type_name, Any, TypeId},
     fmt::{self, Debug},

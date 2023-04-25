@@ -365,10 +365,13 @@ pub mod executor;
 // pub mod prelude;
 pub mod query;
 pub mod relation;
-pub mod scheduler;
 pub mod system;
-pub mod task;
 pub mod world;
+
+#[cfg(feature = "std")]
+pub mod scheduler;
+#[cfg(feature = "std")]
+pub mod task;
 
 mod hash;
 mod idx;

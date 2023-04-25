@@ -153,7 +153,8 @@ pub fn task_world<R>(f: impl FnOnce(&mut World) -> R) -> R {
 /// System that executes async tasks.
 ///
 /// This system relies on TLS,
-/// so only one instance of it can be executed in the entire application.
+/// if `task_system` runs inside another `task_world` call uses
+/// [`World`] from most inner `task_system`.
 ///
 /// # Example
 ///

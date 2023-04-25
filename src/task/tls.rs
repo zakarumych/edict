@@ -7,13 +7,15 @@ std::thread_local! {
 }
 
 pub(super) struct WorldTLS {
-    _private: (),
+    this: NonNull<World>,
+    prev: Option<NonNull<World>>,
 }
 
 impl WorldTLS {
     pub fn new(world: &mut World) -> Self {
-        WORLD_TLS.with(|tls| tls.set(Some(NonNull::from(world))));
-        Self { _private: () }
+        let this = NonNull::from(world);
+        let prev = WORLD_TLS.with(|tls| tls.replace(Some(this)));
+        WorldTLS { this, prev }
     }
 
     pub unsafe fn get<'a>() -> &'a mut World {
@@ -23,6 +25,9 @@ impl WorldTLS {
 
 impl Drop for WorldTLS {
     fn drop(&mut self) {
-        WORLD_TLS.with(|tls| tls.take());
+        WORLD_TLS.with(|tls| {
+            debug_assert_eq!(tls.get(), Some(self.this));
+            tls.set(self.prev)
+        });
     }
 }

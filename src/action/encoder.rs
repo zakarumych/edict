@@ -20,11 +20,24 @@ use super::{ActionBuffer, ActionFn};
 /// In contract `&mut World` argument will cause system to conflict with all other systems, reducing parallelism.
 ///
 /// Provided to component and relation hooks.
-
 pub struct ActionEncoder<'a> {
     actions: &'a mut VecDeque<ActionFn<'static>>,
     entities: &'a EntitySet,
 }
+
+// std::thread_local! {
+//     static TLS: Cell<Option<NonNull<VecDeque<ActionFn<'static>>>>> = Cell::new(None);
+// }
+
+// pub(crate) struct TLSGuard {
+//     _private: (),
+// }
+
+// impl Drop for TLSGuard {
+//     fn drop(&mut self) {
+//         TLS.with(|tls| tls.take());
+//     }
+// }
 
 impl<'a> ActionEncoder<'a> {
     /// Returns new [`ActionEncoder`] that records actions into provided [`ActionBuffer`].
@@ -35,6 +48,29 @@ impl<'a> ActionEncoder<'a> {
             entities,
         }
     }
+
+    // /// Places action queue into thread local storage.
+    // /// Returns guard that will clear thread local storage on drop.
+    // pub(crate) fn into_tls(self) -> TLSGuard {
+    //     let ptr = NonNull::from(self.actions);
+    //     TLS.with(|tls| tls.set(Some(ptr)));
+    //     TLSGuard { _private: () }
+    // }
+
+    // /// Constructs new [`ActionEncoder`] from thread local storage.
+    // ///
+    // /// # Safety
+    // ///
+    // /// Must be called only after [`ActionEncoder::into_tls`] was called
+    // /// and before guard is dropped.
+    // /// Encoder returned from the previous call to this function must already be dropped.
+    // pub(crate) unsafe fn from_tls(entities: &'a EntitySet) -> Self {
+    //     let mut ptr = TLS.with(move |tls| tls.get().unwrap());
+    //     ActionEncoder {
+    //         actions: ptr.as_mut(),
+    //         entities,
+    //     }
+    // }
 
     /// Returns `true` if attached action buffer is empty.
     /// That is, no actions were recorded.

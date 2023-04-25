@@ -41,6 +41,28 @@ use crate::{
 
 /// Scheduler that starts systems in order of their registration.
 /// And executes as many non-conflicting systems in parallel as possible.
+///
+/// # Example
+///
+/// ```
+/// # use edict::{world::World, scheduler::Scheduler, system::{IntoSystem, Res}};
+///
+/// let mut world = World::new();
+/// let mut scheduler = Scheduler::new();
+///
+/// scheduler.add_system(|| {});
+/// scheduler.add_system(|world: &mut World| {
+///   println!("{}", world.with_resource::<i32>(|| 0));
+/// });
+/// scheduler.add_system(|world: &World| {
+///   assert_eq!(0, *world.expect_resource::<i32>());
+/// });
+/// scheduler.add_system(|res: Res<i32>| {
+///   assert_eq!(0, *res);
+/// });
+///
+/// scheduler.run_threaded(&mut world);
+/// ```
 pub struct Scheduler {
     systems: Vec<ScheduledSystem>,
     schedule_cache_id: Option<u64>,

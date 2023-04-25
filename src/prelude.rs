@@ -9,5 +9,6 @@ pub use crate::{
     relation::{ChildOf, Related, Relates, RelatesExclusive, RelatesTo, Relation},
     scheduler::Scheduler,
     system::{IntoSystem, Res, ResMut, ResMutNoSend, ResNoSync, State, System},
+    task::{task_system, task_world, Task},
     world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, QueryRef, World},
 };

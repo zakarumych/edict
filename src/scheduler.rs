@@ -105,43 +105,70 @@ struct ScheduledSystem {
     is_local: bool,
 }
 
-struct Queue<T> {
+struct QueueInner<T> {
     items: Mutex<VecDeque<T>>,
     thread: Thread,
 }
 
+struct Queue<T> {
+    inner: Arc<QueueInner<T>>,
+}
+
+impl<T> Clone for Queue<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Queue {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T> Drop for Queue<T> {
+    #[inline]
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.inner) == 2 {
+            self.inner.thread.unpark();
+        }
+    }
+}
+
 impl<T> Queue<T> {
+    #[inline]
     fn new() -> Self {
         Queue {
-            items: Mutex::new(VecDeque::new()),
-            thread: std::thread::current(),
+            inner: Arc::new(QueueInner {
+                items: Mutex::new(VecDeque::new()),
+                thread: std::thread::current(),
+            }),
         }
     }
 
+    #[inline]
     fn enqueue(&self, item: T) {
-        self.items.lock().push_back(item);
-        self.thread.unpark();
+        self.inner.items.lock().push_back(item);
+        self.inner.thread.unpark();
     }
 
+    #[inline]
     fn try_deque(&self) -> Option<T> {
-        self.items.lock().pop_front()
+        self.inner.items.lock().pop_front()
     }
 
-    fn deque(self: &Arc<Self>) -> Result<T, ()> {
-        let me: &Self = self;
+    #[inline]
+    fn deque(&self) -> Result<T, ()> {
         loop {
-            if Arc::strong_count(self) == 1 {
-                return Err(());
-            }
-            if let Some(item) = me.try_deque() {
+            if let Some(item) = self.try_deque() {
                 return Ok(item);
+            }
+            if Arc::strong_count(&self.inner) == 1 {
+                return Err(());
             }
             std::thread::park();
         }
     }
 }
 
-impl ActionQueue for Arc<Queue<ActionBuffer>> {
+impl ActionQueue for Queue<ActionBuffer> {
     #[inline]
     fn get<'a>(&self) -> ActionBuffer {
         match self.try_deque() {
@@ -167,8 +194,8 @@ struct Task<'scope> {
     system_idx: usize,
     systems: &'scope [ScheduledSystem],
     world: NonNullWorld,
-    task_queue: Arc<Queue<Task<'scope>>>,
-    action_queue: Arc<Queue<ActionBuffer>>,
+    task_queue: Queue<Task<'scope>>,
+    action_queue: Queue<ActionBuffer>,
 }
 
 impl<'scope> Task<'scope> {
@@ -290,8 +317,8 @@ impl Scheduler {
             *system.wait.get_mut() = system.dependencies;
         }
 
-        let task_queue = Arc::new(Queue::new());
-        let action_queue = Arc::new(Queue::new());
+        let task_queue = Queue::new();
+        let action_queue = Queue::new();
 
         for buffer in self.action_buffers.drain(..) {
             action_queue.enqueue(buffer);
@@ -312,8 +339,12 @@ impl Scheduler {
                     task_queue: task_queue.clone(),
                     action_queue: action_queue.clone(),
                 };
-                if is_local && unroll.is_none() {
-                    unroll = Some(task);
+                if is_local {
+                    if unroll.is_none() {
+                        unroll = Some(task);
+                    } else {
+                        task_queue.enqueue(task);
+                    }
                 } else {
                     executor.spawn(move |executor| task.run(executor));
                 }

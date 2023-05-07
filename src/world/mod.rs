@@ -2514,23 +2514,118 @@ impl WorldLocal<'_> {
     /// # Examples
     ///
     /// ```
-    /// # use edict::world::{World, WorldLocal};
+    /// # use std::rc::Rc;
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// assert!(world.get_resource::<Rc<i32>>().is_none());
+    /// ```
     ///
+    /// ```
+    /// # use std::rc::Rc;
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// world.insert_resource(Rc::new(42i32));
+    /// assert_eq!(**world.get_resource::<Rc<i32>>().unwrap(), 42);
+    /// ```
     pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        unsafe {
-            // # Safety
-            // Mutable reference to `Res` ensures this is the "main" thread.
-            self.world.get_local_resource()
-        }
+        // Safety:
+        // Mutable reference to `Res` ensures this is the "main" thread.
+        unsafe { self.world.res.get_local() }
+    }
+
+    /// Returns reference to a resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// world.expect_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.expect_resource::<i32>(), 42);
+    /// ```
+    #[track_caller]
+    pub fn expect_resource<T: 'static>(&self) -> Ref<T> {
+        // Safety:
+        // Mutable reference to `Res` ensures this is the "main" thread.
+        unsafe { self.world.res.get_local() }.unwrap()
+    }
+
+    /// Returns a copy for the a resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.copy_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(world.copy_resource::<i32>(), 42);
+    /// ```
+    #[track_caller]
+    pub fn copy_resource<T: Copy + 'static>(&self) -> T {
+        // Safety:
+        // Mutable reference to `Res` ensures this is the "main" thread.
+        *unsafe { self.world.res.get_local() }.unwrap()
     }
 
     /// Returns some mutable reference to a resource.
     /// Returns none if resource is not found.
     pub fn get_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        unsafe {
-            // # Safety
-            // Mutable reference to `Res` ensures this is the "main" thread.
-            self.world.get_local_resource_mut()
-        }
+        // Safety:
+        // Mutable reference to `Res` ensures this is the "main" thread.
+        unsafe { self.world.res.get_local_mut() }
+    }
+
+    /// Returns mutable reference to a resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// world.expect_resource_mut::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();
+    /// world.insert_resource(42i32);
+    /// *world.expect_resource_mut::<i32>() = 11;
+    /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
+    /// ```
+    #[track_caller]
+    pub fn expect_resource_mut<T: 'static>(&self) -> RefMut<T> {
+        // Safety:
+        // Mutable reference to `Res` ensures this is the "main" thread.
+        unsafe { self.world.res.get_local_mut() }.unwrap()
     }
 }

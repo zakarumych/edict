@@ -67,12 +67,12 @@ impl ArchetypeComponent {
 
     #[inline]
     pub unsafe fn data(&self) -> &ComponentData {
-        &*self.data.get()
+        unsafe { &*self.data.get() }
     }
 
     #[inline]
     pub unsafe fn data_mut(&self) -> &mut ComponentData {
-        &mut *self.data.get()
+        unsafe { &mut *self.data.get() }
     }
 }
 
@@ -96,17 +96,25 @@ impl ArchetypeComponent {
         self.info.final_drop(data.ptr, len);
 
         if self.info.layout().size() != 0 && cap != 0 {
-            let layout = Layout::from_size_align_unchecked(
-                self.info.layout().size() * cap,
-                self.info.layout().align(),
-            );
+            // Safety: layout of existing allocation.
+            let layout = unsafe {
+                Layout::from_size_align_unchecked(
+                    self.info.layout().size() * cap,
+                    self.info.layout().align(),
+                )
+            };
 
-            dealloc(data.ptr.as_ptr(), layout);
+            unsafe {
+                dealloc(data.ptr.as_ptr(), layout);
+            }
         }
     }
 
     unsafe fn grow(&mut self, len: usize, old_cap: usize, new_cap: usize) {
         let data = self.data.get_mut();
+
+        debug_assert!(len <= old_cap);
+        debug_assert!(old_cap < new_cap);
 
         if self.info.layout().size() != 0 {
             let new_layout = Layout::from_size_align(
@@ -115,23 +123,36 @@ impl ArchetypeComponent {
             )
             .unwrap();
 
-            let mut ptr = NonNull::new_unchecked(alloc(new_layout));
+            // # Safety: component size is non-zero, new_cap is non-zero.
+            // Thus new_layout size is non-zero.
+            let Some(mut ptr) = NonNull::new(unsafe { alloc(new_layout) }) else {
+                alloc::alloc::handle_alloc_error(new_layout);
+            };
+
             if len != 0 {
-                copy_nonoverlapping(
-                    data.ptr.as_ptr(),
-                    ptr.as_ptr(),
-                    len * self.info.layout().size(),
-                );
+                unsafe {
+                    copy_nonoverlapping(
+                        data.ptr.as_ptr(),
+                        ptr.as_ptr(),
+                        len * self.info.layout().size(),
+                    )
+                };
             }
 
             if old_cap != 0 {
-                let old_layout = Layout::from_size_align_unchecked(
-                    self.info.layout().size() * old_cap,
-                    self.info.layout().align(),
-                );
+                // Safety: layout of existing allocation.
+                let old_layout = unsafe {
+                    Layout::from_size_align_unchecked(
+                        self.info.layout().size() * old_cap,
+                        self.info.layout().align(),
+                    )
+                };
 
                 mem::swap(&mut data.ptr, &mut ptr);
-                dealloc(ptr.as_ptr(), old_layout);
+
+                unsafe {
+                    dealloc(ptr.as_ptr(), old_layout);
+                }
             } else {
                 data.ptr = ptr;
             }
@@ -323,27 +344,31 @@ impl Archetype {
             let data = component.data.get_mut();
             let size = component.info.layout().size();
 
-            let ptr = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
+            // Safety: ptr within the allocation block.
+            // Or dangling if size is 0, but than result equals `data.ptr`
+            let ptr = unsafe { NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size)) };
 
             component.info.drop_one(ptr, id, encoder.reborrow());
 
             if entity_idx != last_entity_idx {
                 let chunk_idx = chunk_idx(entity_idx);
 
-                let last_epoch = *data.entity_epochs.as_ptr().add(last_entity_idx);
+                let last_epoch = unsafe { *data.entity_epochs.as_ptr().add(last_entity_idx) };
 
-                let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
-                let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
+                let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx) };
+                let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx) };
 
                 chunk_epoch.update(last_epoch);
                 *entity_epoch = last_epoch;
 
-                let last_ptr = data.ptr.as_ptr().add(last_entity_idx * size);
-                ptr::copy_nonoverlapping(last_ptr, ptr.as_ptr(), size);
+                let last_ptr = unsafe { data.ptr.as_ptr().add(last_entity_idx * size) };
+                unsafe {
+                    ptr::copy_nonoverlapping(last_ptr, ptr.as_ptr(), size);
+                }
             }
 
             #[cfg(debug_assertions)]
-            {
+            unsafe {
                 *data.entity_epochs.get_unchecked_mut(last_entity_idx) = EpochId::start();
             }
         }
@@ -377,7 +402,9 @@ impl Archetype {
         );
         debug_assert!(entity_idx < self.entities.len());
 
-        self.write_bundle(id, entity_idx, bundle, epoch, Some(encoder), |_| true);
+        unsafe {
+            self.write_bundle(id, entity_idx, bundle, epoch, Some(encoder), |_| true);
+        }
     }
 
     /// Set component to the entity
@@ -401,7 +428,9 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        self.write_one(id, entity_idx, value, epoch, Some(encoder));
+        unsafe {
+            self.write_one(id, entity_idx, value, epoch, Some(encoder));
+        }
     }
 
     /// Get component of the entity
@@ -419,18 +448,21 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        let component = self
-            .components
-            .get_mut(&TypeId::of::<T>())
-            .unwrap_unchecked();
-        let ptr = component
-            .data
-            .get_mut()
-            .ptr
-            .as_ptr()
-            .cast::<T>()
-            .add(entity_idx);
-        &*ptr
+        let component = unsafe {
+            self.components
+                .get_mut(&TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
+        let ptr = unsafe {
+            component
+                .data
+                .get_mut()
+                .ptr
+                .as_ptr()
+                .cast::<T>()
+                .add(entity_idx)
+        };
+        unsafe { &*ptr }
     }
 
     /// Borrows component mutably. Updates entity epoch.
@@ -450,22 +482,23 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
         debug_assert!(entity_idx < self.entities.len());
 
-        let component = self
-            .components
-            .get_mut(&TypeId::of::<T>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            self.components
+                .get_mut(&TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
         let data = component.data.get_mut();
-        let ptr = data.ptr.as_ptr().cast::<T>().add(entity_idx);
+        let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx) };
 
-        let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
-        let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
+        let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx) };
+        let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx) };
 
         // `epoch` must be advanced in `World` before this call.
         data.epoch.bump(epoch);
         chunk_epoch.bump(epoch);
         entity_epoch.bump(epoch);
 
-        &mut *ptr
+        unsafe { &mut *ptr }
     }
 
     /// Add components from bundle to the entity, moving entity to new archetype.
@@ -509,17 +542,21 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
-            unreachable_unchecked()
-        });
+        unsafe {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
+                unreachable_unchecked()
+            });
+        }
 
-        dst.write_bundle(id, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
-            if self.components.contains_key(&id) {
-                true
-            } else {
-                false
-            }
-        });
+        unsafe {
+            dst.write_bundle(id, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
+                if self.components.contains_key(&id) {
+                    true
+                } else {
+                    false
+                }
+            });
+        }
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
@@ -563,11 +600,15 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
-            unreachable_unchecked()
-        });
+        unsafe {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
+                unreachable_unchecked()
+            });
+        }
 
-        dst.write_one::<T>(id, dst_entity_idx, value, epoch, None);
+        unsafe {
+            dst.write_one::<T>(id, dst_entity_idx, value, epoch, None);
+        }
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
@@ -612,13 +653,15 @@ impl Archetype {
         dst.reserve(1);
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
-            if info.id() != TypeId::of::<T>() {
-                unreachable_unchecked()
-            }
+        unsafe {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
+                if info.id() != TypeId::of::<T>() {
+                    unreachable_unchecked()
+                }
 
-            value.write(ptr::read(ptr.as_ptr().cast()));
-        });
+                value.write(ptr::read(ptr.as_ptr().cast()));
+            });
+        }
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
@@ -627,10 +670,10 @@ impl Archetype {
             (
                 dst_entity_idx as u32,
                 Some(self.entities[src_entity_idx]),
-                value.assume_init(),
+                unsafe { value.assume_init() },
             )
         } else {
-            (dst_entity_idx as u32, None, value.assume_init())
+            (dst_entity_idx as u32, None, unsafe { value.assume_init() })
         }
     }
 
@@ -661,9 +704,11 @@ impl Archetype {
         dst.reserve(1);
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
 
-        self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
-            info.drop_one(ptr, id, encoder.reborrow());
-        });
+        unsafe {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
+                info.drop_one(ptr, id, encoder.reborrow());
+            });
+        }
 
         let entity = self.entities.swap_remove(src_entity_idx);
         dst.entities.push(entity);
@@ -733,20 +778,22 @@ impl Archetype {
         let chunk_idx = chunk_idx(entity_idx);
 
         bundle.put(|src, tid, size| {
-            let component = self.components.get_mut(&tid).unwrap_unchecked();
+            let component = unsafe { self.components.get_mut(&tid).unwrap_unchecked() };
             let data = component.data.get_mut();
-            let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
-            let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
+            let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx) };
+            let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx) };
 
             data.epoch.bump_again(epoch); // Batch spawn would happen with same epoch.
             chunk_epoch.bump_again(epoch); // Batch spawn would happen with same epoch.
             entity_epoch.bump(epoch);
 
-            let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size));
+            let dst = unsafe { NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size)) };
             if occupied(tid) {
                 component.set_one(dst, src, id, encoder.as_mut().unwrap().reborrow());
             } else {
-                ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
+                unsafe {
+                    ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
+                }
             }
         });
     }
@@ -764,24 +811,28 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component = self
-            .components
-            .get_mut(&TypeId::of::<T>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            self.components
+                .get_mut(&TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
         let data = component.data.get_mut();
-        let chunk_epoch = data.chunk_epochs.get_unchecked_mut(chunk_idx);
-        let entity_epoch = data.entity_epochs.get_unchecked_mut(entity_idx);
+        let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx) };
+        let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx) };
 
         data.epoch.bump_again(epoch);
         chunk_epoch.bump_again(epoch);
         entity_epoch.bump(epoch);
 
-        let dst = NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>()));
+        let dst =
+            unsafe { NonNull::new_unchecked(data.ptr.as_ptr().add(entity_idx * size_of::<T>())) };
 
         if let Some(encoder) = occupied {
             component.set_one(dst, NonNull::from(&value).cast(), id, encoder)
         } else {
-            ptr::write(dst.as_ptr().cast(), value);
+            unsafe {
+                ptr::write(dst.as_ptr().cast(), value);
+            }
         }
     }
 
@@ -802,16 +853,16 @@ impl Archetype {
         for (type_id, src_component) in &mut self.components {
             let src_data = src_component.data.get_mut();
             let size = src_component.info.layout().size();
-            let src_ptr = src_data.ptr.as_ptr().add(src_entity_idx * size);
+            let src_ptr = unsafe { src_data.ptr.as_ptr().add(src_entity_idx * size) };
 
             if let Some(dst_component) = dst.components.get_mut(type_id) {
                 let dst_data = dst_component.data.get_mut();
 
-                let epoch = *src_data.entity_epochs.get_unchecked(src_entity_idx);
-
-                let dst_chunk_epochs = dst_data.chunk_epochs.get_unchecked_mut(dst_chunk_idx);
-
-                let dst_entity_epoch = dst_data.entity_epochs.get_unchecked_mut(dst_entity_idx);
+                let epoch = unsafe { *src_data.entity_epochs.get_unchecked(src_entity_idx) };
+                let dst_chunk_epochs =
+                    unsafe { dst_data.chunk_epochs.get_unchecked_mut(dst_chunk_idx) };
+                let dst_entity_epoch =
+                    unsafe { dst_data.entity_epochs.get_unchecked_mut(dst_entity_idx) };
 
                 dst_data.epoch.update(epoch);
                 dst_chunk_epochs.update(epoch);
@@ -819,32 +870,38 @@ impl Archetype {
                 debug_assert_eq!(*dst_entity_epoch, EpochId::start());
                 *dst_entity_epoch = epoch;
 
-                let dst_ptr = dst_data.ptr.as_ptr().add(dst_entity_idx * size);
+                let dst_ptr = unsafe { dst_data.ptr.as_ptr().add(dst_entity_idx * size) };
 
-                ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
+                unsafe {
+                    ptr::copy_nonoverlapping(src_ptr, dst_ptr, size);
+                }
             } else {
-                let src_ptr = src_data.ptr.as_ptr().add(src_entity_idx * size);
-                missing(&src_component.info, NonNull::new_unchecked(src_ptr));
+                let src_ptr = unsafe {
+                    NonNull::new_unchecked(src_data.ptr.as_ptr().add(src_entity_idx * size))
+                };
+                missing(&src_component.info, src_ptr);
             }
 
             if src_entity_idx != last_entity_idx {
                 let src_chunk_idx = chunk_idx(src_entity_idx);
 
-                let last_epoch = *src_data.entity_epochs.as_ptr().add(last_entity_idx);
-
-                let src_chunk_epoch = src_data.chunk_epochs.get_unchecked_mut(src_chunk_idx);
-
-                let src_entity_epoch = src_data.entity_epochs.get_unchecked_mut(src_entity_idx);
+                let last_epoch = unsafe { *src_data.entity_epochs.as_ptr().add(last_entity_idx) };
+                let src_chunk_epoch =
+                    unsafe { src_data.chunk_epochs.get_unchecked_mut(src_chunk_idx) };
+                let src_entity_epoch =
+                    unsafe { src_data.entity_epochs.get_unchecked_mut(src_entity_idx) };
 
                 src_chunk_epoch.update(last_epoch);
                 *src_entity_epoch = last_epoch;
 
-                let last_ptr = src_data.ptr.as_ptr().add(last_entity_idx * size);
-                ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
+                let last_ptr = unsafe { src_data.ptr.as_ptr().add(last_entity_idx * size) };
+                unsafe {
+                    ptr::copy_nonoverlapping(last_ptr, src_ptr, size);
+                }
             }
 
             #[cfg(debug_assertions)]
-            {
+            unsafe {
                 *src_data.entity_epochs.get_unchecked_mut(last_entity_idx) = EpochId::start();
             }
         }

@@ -283,7 +283,7 @@ impl ComponentInfo {
     #[inline(always)]
     pub(crate) fn drop_one(&self, ptr: NonNull<u8>, id: EntityId, encoder: ActionEncoder) {
         unsafe {
-            (self.drop_one)(&self.on_drop, ptr, id, encoder);
+            (self.drop_one)(NonNull::from(&*self.on_drop).cast(), ptr, id, encoder);
         }
     }
 
@@ -296,7 +296,14 @@ impl ComponentInfo {
         encoder: ActionEncoder,
     ) {
         unsafe {
-            (self.set_one)(&self.on_replace, &self.on_drop, dst, src, id, encoder);
+            (self.set_one)(
+                NonNull::from(&*self.on_replace).cast(),
+                NonNull::from(&*self.on_drop).cast(),
+                dst,
+                src,
+                id,
+                encoder,
+            );
         }
     }
 
@@ -330,6 +337,7 @@ where
     T: ?Sized,
     F: Fn(&mut T, EntityId, ActionEncoder) + Send + Sync + 'static,
 {
+    #[inline(always)]
     fn on_drop(&self, component: &mut T, id: EntityId, encoder: ActionEncoder) {
         self(component, id, encoder);
     }
@@ -354,6 +362,7 @@ where
     T: ?Sized,
     F: Fn(&mut T, &T, EntityId, ActionEncoder) -> bool + Send + Sync + 'static,
 {
+    #[inline(always)]
     fn on_replace(
         &self,
         component: &mut T,
@@ -373,6 +382,7 @@ impl<T> DropHook<T> for DefaultDropHook
 where
     T: Component,
 {
+    #[inline(always)]
     fn on_drop(&self, component: &mut T, id: EntityId, encoder: ActionEncoder) {
         T::on_drop(component, id, encoder);
     }
@@ -386,6 +396,7 @@ impl<T> SetHook<T> for DefaultSetHook
 where
     T: Component,
 {
+    #[inline(always)]
     fn on_replace(&self, dst: &mut T, src: &T, id: EntityId, encoder: ActionEncoder) -> bool {
         T::on_replace(dst, src, id, encoder)
     }
@@ -396,6 +407,7 @@ where
 pub struct ExternalDropHook;
 
 impl<T> DropHook<T> for ExternalDropHook {
+    #[inline(always)]
     fn on_drop(&self, _component: &mut T, _id: EntityId, _encoder: ActionEncoder) {}
 }
 
@@ -404,6 +416,7 @@ impl<T> DropHook<T> for ExternalDropHook {
 pub struct ExternalSetHook;
 
 impl<T> SetHook<T> for ExternalSetHook {
+    #[inline(always)]
     fn on_replace(
         &self,
         _dst: &mut T,
@@ -630,24 +643,34 @@ impl ComponentRegistry {
     }
 }
 
-type DropOneFn = unsafe fn(&dyn Any, NonNull<u8>, EntityId, ActionEncoder);
-type SetOneFn = unsafe fn(&dyn Any, &dyn Any, NonNull<u8>, NonNull<u8>, EntityId, ActionEncoder);
+struct Opaque;
+
+type DropOneFn = unsafe fn(NonNull<Opaque>, NonNull<u8>, EntityId, ActionEncoder);
+type SetOneFn =
+    unsafe fn(NonNull<Opaque>, NonNull<Opaque>, NonNull<u8>, NonNull<u8>, EntityId, ActionEncoder);
 type FinalDrop = unsafe fn(NonNull<u8>, usize);
 
-unsafe fn drop_one<T, D>(hook: &dyn Any, ptr: NonNull<u8>, id: EntityId, encoder: ActionEncoder)
-where
+unsafe fn drop_one<T, D>(
+    hook: NonNull<Opaque>,
+    ptr: NonNull<u8>,
+    id: EntityId,
+    encoder: ActionEncoder,
+) where
     T: 'static,
     D: DropHook<T>,
 {
     let mut ptr = ptr.cast::<T>();
-    let hook = &*(hook as *const _ as *const D);
-    hook.on_drop(ptr.as_mut(), id, encoder);
-    drop_in_place(ptr.as_mut());
+    let hook = unsafe { hook.cast::<D>().as_ref() };
+    let value = unsafe { ptr.as_mut() };
+    hook.on_drop(value, id, encoder);
+    unsafe {
+        drop_in_place(value);
+    }
 }
 
 unsafe fn set_one<T, S, D>(
-    on_replace: &dyn Any,
-    on_drop: &dyn Any,
+    on_replace: NonNull<Opaque>,
+    on_drop: NonNull<Opaque>,
     dst: NonNull<u8>,
     src: NonNull<u8>,
     id: EntityId,
@@ -657,17 +680,23 @@ unsafe fn set_one<T, S, D>(
     S: SetHook<T>,
     D: DropHook<T>,
 {
-    let src = src.cast::<T>();
-    let mut dst = dst.cast::<T>();
-    let on_replace = &*(on_replace as *const _ as *const S);
-    if on_replace.on_replace(dst.as_mut(), src.as_ref(), id, encoder.reborrow()) {
-        let on_drop = &*(on_drop as *const _ as *const D);
-        on_drop.on_drop(dst.as_mut(), id, encoder);
+    let src = unsafe { src.cast::<T>().as_ref() };
+    let dst = unsafe { dst.cast::<T>().as_mut() };
+    let on_replace = unsafe { on_replace.cast::<S>().as_ref() };
+    if on_replace.on_replace(dst, src, id, encoder.reborrow()) {
+        let on_drop = unsafe { on_drop.cast::<D>().as_ref() };
+        on_drop.on_drop(dst, id, encoder);
     }
-    *dst.as_mut() = ptr::read(src.as_ref());
+    unsafe {
+        *dst = ptr::read(src);
+    }
 }
 
 /// This drop is always called for all components when `Archetype` is dropped.
+/// Does not invoke any hooks.
 unsafe fn final_drop<T>(ptr: NonNull<u8>, count: usize) {
-    drop_in_place(slice_from_raw_parts_mut(ptr.cast::<T>().as_ptr(), count));
+    let slice = slice_from_raw_parts_mut(ptr.cast::<T>().as_ptr(), count);
+    unsafe {
+        drop_in_place(slice);
+    }
 }

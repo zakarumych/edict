@@ -55,10 +55,12 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a T {
-        (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
-            PhantomData::<&'a ()>,
-        )
+        unsafe {
+            (self.borrow_fn)(
+                NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+                PhantomData::<&'a ()>,
+            )
+        }
     }
 }
 

@@ -52,7 +52,8 @@ unsafe impl<'a> FnArgGet<'a> for WorldReadCache {
         world: NonNull<World>,
         _queue: &mut dyn crate::system::ActionQueue,
     ) -> &'a World {
-        world.as_ref()
+        // Safety: Declares read.
+        unsafe { world.as_ref() }
     }
 }
 
@@ -104,6 +105,7 @@ unsafe impl<'a> FnArgGet<'a> for WorldWriteCache {
         mut world: NonNull<World>,
         _queue: &mut dyn crate::system::ActionQueue,
     ) -> &'a mut World {
-        world.as_mut() // # Safety: Declares write access.
+        // Safety: Declares write.
+        unsafe { world.as_mut() }
     }
 }

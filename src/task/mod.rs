@@ -1,13 +1,13 @@
 //! This module provides mechanism for storing async tasks in ECS, potentially attaching them to existing entities.
 //! Tasks are executed by [`task_system`].
 
-use core::{
+use std::{
     any::TypeId,
     future::Future,
     marker::PhantomData,
     pin::Pin,
     ptr::NonNull,
-    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+    task::{Context, Poll, Waker},
 };
 
 use crate::{
@@ -28,43 +28,26 @@ struct TaskWaker<T> {
     queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>,
 }
 
+impl<T: 'static> Wake for TaskWaker<T> {
+    #[inline(always)]
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    #[inline(always)]
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.queue.lock().push((self.id, TypeId::of::<T>()));
+    }
+}
+
 impl<T: 'static> TaskWaker<T> {
     fn waker(id: EntityId, queue: Arc<Mutex<Vec<(EntityId, TypeId)>>>) -> Waker {
-        let raw_waker = Self::raw_waker(TaskWaker {
+        let waker = Self {
             id,
             task: PhantomData,
             queue,
-        });
-        unsafe { Waker::from_raw(raw_waker) }
-    }
-
-    fn raw_waker(self) -> RawWaker {
-        RawWaker::new(Arc::into_raw(Arc::new(self)) as *const (), Self::vtable())
-    }
-
-    unsafe fn clone(ptr: *const ()) -> RawWaker {
-        Arc::increment_strong_count(ptr as *const TaskWaker<T>);
-        RawWaker::new(ptr, Self::vtable())
-    }
-
-    unsafe fn wake_by_ref(ptr: *const ()) {
-        let waker: &Self = &*(ptr as *const TaskWaker<T>);
-        waker.queue.lock().push((waker.id, TypeId::of::<T>()));
-    }
-
-    unsafe fn wake(ptr: *const ()) {
-        Self::wake_by_ref(ptr);
-        Arc::decrement_strong_count(ptr as *const TaskWaker<T>);
-    }
-
-    unsafe fn drop(ptr: *const ()) {
-        #[cfg(target_pointer_width = "32")]
-        Arc::decrement_strong_count(ptr as *const TaskWaker<T>);
-        drop(ptr);
-    }
-
-    fn vtable() -> &'static RawWakerVTable {
-        &RawWakerVTable::new(Self::clone, Self::wake, Self::wake_by_ref, Self::drop)
+        };
+        Waker::from(Arc::new(waker))
     }
 }
 
@@ -131,7 +114,7 @@ where
     }
 }
 
-use alloc::sync::Arc;
+use alloc::{sync::Arc, task::Wake};
 use parking_lot::Mutex;
 use tls::WorldTLS;
 
@@ -183,7 +166,7 @@ pub fn task_world<R>(f: impl FnOnce(&mut World) -> R) -> R {
 ///   Yield(false)
 /// }
 ///
-/// world.spawn((Task::<()>::pin(async {
+/// world.spawn((Task::pin(async {
 ///   loop {
 ///     let stop = task_world(|world| {
 ///       let r = world.get_resource_mut::<i32>();

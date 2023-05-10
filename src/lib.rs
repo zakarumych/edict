@@ -73,6 +73,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(missing_docs)]
+// #![deny(unsafe_op_in_unsafe_fn)]
+#![allow(unused_unsafe)]
 
 extern crate alloc;
 extern crate self as edict;

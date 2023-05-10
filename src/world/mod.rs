@@ -1315,7 +1315,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        self.query_one_with_unchecked(id, Q::default_query())
+        unsafe { self.query_one_with_unchecked(id, Q::default_query()) }
     }
 
     /// Queries components from specified entity.
@@ -1345,10 +1345,7 @@ impl World {
 
         let archetype = &self.archetypes[archetype_idx as usize];
 
-        debug_assert!(
-            archetype.len() >= idx as usize || (archetype_idx == 0 && idx == u32::MAX),
-            "Entity index is valid"
-        );
+        debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
         if !query.visit_archetype(archetype) {
             return Err(QueryOneError::NotSatisfied);
@@ -1356,19 +1353,19 @@ impl World {
 
         let epoch = self.epoch.next();
 
-        let mut fetch = query.fetch(archetype, epoch);
+        let mut fetch = unsafe { query.fetch(archetype, epoch) };
 
-        if !fetch.visit_chunk(chunk_idx(idx as usize)) {
+        if !unsafe { fetch.visit_chunk(chunk_idx(idx as usize)) } {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        fetch.touch_chunk(chunk_idx(idx as usize));
+        unsafe { fetch.touch_chunk(chunk_idx(idx as usize)) };
 
-        if !fetch.visit_item(idx as usize) {
+        if !unsafe { fetch.visit_item(idx as usize) } {
             return Err(QueryOneError::NotSatisfied);
         }
 
-        let item = fetch.get_item(idx as usize);
+        let item = unsafe { fetch.get_item(idx as usize) };
 
         Ok(item)
     }
@@ -1542,7 +1539,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        self.query_with_unchecked(Q::default_query())
+        unsafe { self.query_with_unchecked(Q::default_query()) }
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1557,7 +1554,7 @@ impl World {
     where
         Q: IntoQuery,
     {
-        QueryRef::new_unchecked(self, (query,), ())
+        unsafe { QueryRef::new_unchecked(self, (query,), ()) }
     }
 
     /// Queries the world to iterate over entities and components specified by the query type.
@@ -1603,7 +1600,7 @@ impl World {
     /// Returned query matches all entities and yields `()` for every one of them.
     #[inline]
     pub unsafe fn new_query_unchecked<'a>(&'a self) -> QueryRef<'a, (), ()> {
-        QueryRef::new_unchecked(self, (), ())
+        unsafe { QueryRef::new_unchecked(self, (), ()) }
     }
 
     /// Starts building new query.
@@ -1766,7 +1763,7 @@ impl World {
     /// assert_eq!(42, *local.get_resource::<i32>().unwrap());
     /// ```
     pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        self.res.get_local()
+        unsafe { self.res.get_local() }
     }
 
     /// Returns some mutable reference to potentially `!Send` resource.
@@ -1804,7 +1801,7 @@ impl World {
     /// *local.get_resource_mut::<i32>().unwrap() = 11;
     /// ```
     pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        self.res.get_local_mut()
+        unsafe { self.res.get_local_mut() }
     }
 
     /// Returns some reference to `Sync` resource.
@@ -2525,7 +2522,7 @@ impl WorldLocal<'_> {
     /// # use std::rc::Rc;
     /// # use edict::world::World;
     /// let mut world = World::new();
-    /// let world = world.local();
+    /// let mut world = world.local();
     /// world.insert_resource(Rc::new(42i32));
     /// assert_eq!(**world.get_resource::<Rc<i32>>().unwrap(), 42);
     /// ```
@@ -2553,6 +2550,7 @@ impl WorldLocal<'_> {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
+    /// let mut world = world.local();
     /// world.insert_resource(42i32);
     /// assert_eq!(*world.expect_resource::<i32>(), 42);
     /// ```
@@ -2574,13 +2572,14 @@ impl WorldLocal<'_> {
     /// ```should_panic
     /// # use edict::world::World;
     /// let mut world = World::new();
+    /// let world = world.local();
     /// world.copy_resource::<i32>();
     /// ```
     ///
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
-    /// let world = world.local();
+    /// let mut world = world.local();
     /// world.insert_resource(42i32);
     /// assert_eq!(world.copy_resource::<i32>(), 42);
     /// ```
@@ -2610,6 +2609,7 @@ impl WorldLocal<'_> {
     /// ```should_panic
     /// # use edict::world::World;
     /// let mut world = World::new();
+    /// let mut world = world.local();
     /// let world = world.local();
     /// world.expect_resource_mut::<i32>();
     /// ```
@@ -2617,7 +2617,7 @@ impl WorldLocal<'_> {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
-    /// let world = world.local();
+    /// let mut world = world.local();
     /// world.insert_resource(42i32);
     /// *world.expect_resource_mut::<i32>() = 11;
     /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);

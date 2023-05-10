@@ -47,7 +47,7 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a [EntityId] {
-        let component = &*self.ptr.as_ptr().add(idx);
+        let component = unsafe { &*self.ptr.as_ptr().add(idx) };
         &component.origins[..]
     }
 }
@@ -80,12 +80,14 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelated<'a, R> {
-        let component = archetype
-            .component(TypeId::of::<TargetComponent<R>>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            archetype
+                .component(TypeId::of::<TargetComponent<R>>())
+                .unwrap_unchecked()
+        };
         debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         FetchRelated {
             ptr: data.ptr.cast(),

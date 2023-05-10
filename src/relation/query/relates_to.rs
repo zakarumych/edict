@@ -55,7 +55,7 @@ where
 
     #[inline]
     unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let origin_component = &*self.ptr.as_ptr().add(idx);
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
         let item_idx = origin_component
             .origins()
             .iter()
@@ -72,7 +72,7 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a R {
-        let origin_component = &*self.ptr.as_ptr().add(idx);
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
         &origin_component.origins()[self.item_idx].relation
     }
 }
@@ -119,12 +119,14 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRelatesToRead<'a, R> {
-        let component = archetype
-            .component(TypeId::of::<OriginComponent<R>>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            archetype
+                .component(TypeId::of::<OriginComponent<R>>())
+                .unwrap_unchecked()
+        };
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         FetchRelatesToRead {
             target: self.target,
@@ -169,13 +171,13 @@ where
 
     #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx) };
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
     unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let origin_component = &*self.ptr.as_ptr().add(idx);
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
         let item_idx = origin_component
             .origins()
             .iter()
@@ -192,10 +194,10 @@ where
 
     #[inline]
     unsafe fn get_item(&mut self, idx: usize) -> &'a mut R {
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = &mut *self.ptr.as_ptr().add(idx);
+        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx) };
         &mut origin_component.origins_mut()[self.item_idx].relation
     }
 }
@@ -242,12 +244,14 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesToWrite<'a, R> {
-        let component = archetype
-            .component(TypeId::of::<OriginComponent<R>>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            archetype
+                .component(TypeId::of::<OriginComponent<R>>())
+                .unwrap_unchecked()
+        };
         debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let data = component.data_mut();
+        let data = unsafe { component.data_mut() };
         data.epoch.bump(epoch);
 
         FetchRelatesToWrite {
@@ -255,8 +259,8 @@ where
             item_idx: 0,
             epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
+            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
             marker: PhantomData,
         }
     }

@@ -61,7 +61,7 @@ unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
         queue: &mut dyn ActionQueue,
     ) -> ActionEncoder<'a> {
         let buffer = self.buffer.get_or_insert_with(|| queue.get());
-        ActionEncoder::new(buffer, world.as_ref().entity_set())
+        ActionEncoder::new(buffer, unsafe { world.as_ref() }.entity_set())
     }
 
     #[inline]

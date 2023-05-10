@@ -73,7 +73,8 @@ where
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> Res<'a, T> {
-        let world = world.as_ref(); // # Safety: Declares read access.
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
         Res {
             inner: world.get_resource().expect("Missing resource"),
         }
@@ -192,7 +193,8 @@ where
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResMut<'a, T> {
-        let world = world.as_ref(); // # Safety: Declares read access.
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
         ResMut {
             inner: world.get_resource_mut().expect("Missing resource"),
         }
@@ -244,7 +246,7 @@ where
 /// Can fetch `!Sync` resources.
 /// Prefer using `Res` for `Sync` resources for better parallelism.
 pub struct ResNoSync<'a, T: ?Sized> {
-    inner: RefMut<'a, T>,
+    inner: Ref<'a, T>,
 }
 
 impl<'a, T> Deref for ResNoSync<'a, T>
@@ -259,23 +261,13 @@ where
     }
 }
 
-impl<'a, T> DerefMut for ResNoSync<'a, T>
-where
-    T: ?Sized,
-{
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut T {
-        self.inner.deref_mut()
-    }
-}
-
 impl<'a, T> ResNoSync<'a, T>
 where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
     #[inline]
-    pub fn inner(self) -> RefMut<'a, T> {
+    pub fn inner(self) -> Ref<'a, T> {
         self.inner
     }
 }
@@ -313,9 +305,13 @@ where
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResNoSync<'a, T> {
-        let world = world.as_ref(); // # Safety: Declares read access.
+        // Safety: Declares read.
+        let world = unsafe { world.as_ref() };
+
+        // Safety: Declares read access and local execution.
+        let res = unsafe { world.get_local_resource() };
         ResNoSync {
-            inner: world.get_local_resource_mut().expect("Missing resource"),
+            inner: res.expect("Missing resource"),
         }
     }
 }
@@ -434,9 +430,13 @@ where
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> ResMutNoSend<'a, T> {
-        let world = world.as_ref(); // # Safety: Declares read access.
+        // Safety: Declares read.
+        let world = unsafe { world.as_ref() };
+
+        // Safety: Declares read access and local execution.
+        let res = unsafe { world.get_local_resource_mut() };
         ResMutNoSend {
-            inner: world.get_local_resource_mut().expect("Missing resource"),
+            inner: res.expect("Missing resource"),
         }
     }
 }
@@ -475,7 +475,7 @@ where
     #[inline]
     fn access_resource(&self, id: TypeId) -> Option<Access> {
         if id == TypeId::of::<T>() {
-            Some(Access::Read)
+            Some(Access::Write)
         } else {
             None
         }

@@ -74,9 +74,9 @@ where
         match self.ptr {
             None => DumpItem::Missing,
             Some(ptr) => {
-                let epoch = *self.entity_epochs.as_ptr().add(idx);
+                let epoch = unsafe { *self.entity_epochs.as_ptr().add(idx) };
                 if epoch.after(self.after_epoch) {
-                    DumpItem::Modified(&*ptr.as_ptr().add(idx))
+                    DumpItem::Modified(unsafe { &*ptr.as_ptr().add(idx) })
                 } else {
                     DumpItem::Unmodified
                 }
@@ -142,16 +142,16 @@ macro_rules! impl_dump_query {
                             marker: PhantomData,
                         },
                         Some(component) => {
-                            let data = component.data();
+                            let data = unsafe { component.data() };
                             DumpFetch {
                                 after_epoch: self.after_epoch,
                                 ptr: Some(data.ptr.cast()),
-                                entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
+                                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) },
                                 marker: PhantomData,
                             }
                         }
                     },)*);
-                (Entities::fetch(archetype, epoch), ($($a),*))
+                (unsafe { Entities::fetch(archetype, epoch) }, ($($a),*))
             }
         }
 

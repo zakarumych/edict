@@ -63,7 +63,8 @@ where
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
     ) -> Self::Arg {
-        let world = world.as_ref(); // # Safety: Declares read access.
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
         let query = self.query.get(world);
         let filter = self.filter.get(world);
         QueryRef::new(world, query, filter)

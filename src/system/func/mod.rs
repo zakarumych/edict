@@ -152,15 +152,14 @@ macro_rules! impl_func {
 
                 {
                     $(
-                        let $a = $a.get_unchecked(world, queue);
+                        let $a = unsafe { $a.get_unchecked(world, queue) };
                     )*
 
                     (self.f)($($a,)*);
                 }
 
-
                 $(
-                    $a.flush_unchecked(world, queue);
+                    unsafe { $a.flush_unchecked(world, queue) };
                 )*
             }
         }

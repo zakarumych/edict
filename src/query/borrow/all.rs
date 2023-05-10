@@ -53,7 +53,7 @@ where
     unsafe fn get_item(&mut self, idx: usize) -> Vec<&'a T> {
         self.components
             .iter()
-            .map(|c| {
+            .map(|c| unsafe {
                 (c.borrow_fn)(
                     NonNull::new_unchecked(c.ptr.as_ptr().add(idx * c.size)),
                     PhantomData::<&'a ()>,
@@ -82,25 +82,30 @@ where
 
     #[inline]
     unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        for (id, _) in archetype
-            .borrow_indices(TypeId::of::<T>())
-            .unwrap_unchecked()
-        {
+        let indices = unsafe {
+            archetype
+                .borrow_indices(TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
+        for (id, _) in indices {
             f(*id, Access::Read);
         }
     }
 
     #[inline]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchBorrowAllRead<'a, T> {
-        let components = archetype
-            .borrow_indices(TypeId::of::<T>())
-            .unwrap_unchecked()
+        let indices = unsafe {
+            archetype
+                .borrow_indices(TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
+        let components = indices
             .iter()
             .map(|&(id, idx)| {
-                let component = archetype.component(id).unwrap_unchecked();
+                let component = unsafe { archetype.component(id).unwrap_unchecked() };
                 debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
 
-                let data = component.data();
+                let data = unsafe { component.data() };
 
                 FetchBorrowAllReadComponent {
                     ptr: data.ptr,

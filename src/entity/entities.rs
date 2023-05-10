@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},
@@ -9,7 +8,7 @@ use hashbrown::{hash_map::Entry, HashMap};
 use crate::world::NoSuchEntity;
 
 use super::{
-    allocator::{CursorAllocator, IdAllocator, IdRange},
+    allocator::{IdAllocator, IdRangeAllocator},
     EntityId,
 };
 
@@ -33,9 +32,8 @@ impl fmt::Debug for EntityData {
 
 pub(crate) struct EntitySet {
     map: HashMap<u64, EntityData>,
-    allocated_id_range: IdRange,
+    id_allocator: IdAllocator,
     reserve_counter: AtomicU64,
-    id_allocator: Box<dyn IdAllocator>,
 }
 
 impl fmt::Debug for EntitySet {
@@ -48,23 +46,23 @@ impl fmt::Debug for EntitySet {
 
 impl EntitySet {
     pub fn new() -> Self {
-        Self::with_allocator(CursorAllocator::new())
-    }
-
-    pub fn with_allocator(id_allocator: impl IdAllocator + 'static) -> Self {
-        let mut id_allocator = Box::new(id_allocator);
-        let allocated_id_range = id_allocator.allocate_range();
-
         EntitySet {
             map: HashMap::new(),
-            allocated_id_range,
+            id_allocator: IdAllocator::new(),
             reserve_counter: AtomicU64::new(0),
-            id_allocator,
+        }
+    }
+
+    pub fn with_allocator(id_allocator: Box<dyn IdRangeAllocator>) -> Self {
+        EntitySet {
+            map: HashMap::new(),
+            id_allocator: IdAllocator::with_range_allocator(id_allocator),
+            reserve_counter: AtomicU64::new(0),
         }
     }
 
     pub fn alloc_mut(&mut self) -> EntityId {
-        match self.allocated_id_range.next(&mut *self.id_allocator) {
+        match self.id_allocator.next() {
             None => {
                 panic!("Entity id allocator is exhausted");
             }
@@ -103,17 +101,12 @@ impl EntitySet {
     }
 
     pub fn alloc(&self) -> EntityId {
-        let counter = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
+        let idx = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
 
-        let Ok(idx) =  u32::try_from(counter) else {
-            self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
-            panic!("Failed to allocate entity id concurrently");
-        };
-
-        match self.allocated_id_range.get(idx) {
+        match self.id_allocator.reserve(idx) {
             None => {
                 self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
-                panic!("Failed to allocate entity id concurrently");
+                panic!("Too much entity ids reserved");
             }
             Some(id) => EntityId::new(id),
         }
@@ -121,9 +114,8 @@ impl EntitySet {
 
     pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
-        debug_assert!(reserved <= u64::from(u32::MAX));
         unsafe {
-            self.allocated_id_range.advance(reserved as u32, |id| {
+            self.id_allocator.flush_reserved(reserved, |id| {
                 self.map.insert(
                     id.get(),
                     EntityData {
@@ -153,18 +145,14 @@ impl EntitySet {
             None => {
                 let bits = id.bits();
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
-                let range = self.allocated_id_range.range();
-                if !range.contains(&bits) || bits >= range.start + reserved {
+                let Some(idx) = self.id_allocator.reserved(bits) else {
+                    return None
+                };
+                if idx >= reserved {
                     return None;
                 }
 
-                let reserve_idx = bits - range.start;
-                debug_assert!(
-                    u32::try_from(reserve_idx).is_ok(),
-                    "No more than u32::MAX ids can be reserved"
-                );
-
-                Some((u32::MAX, reserve_idx as u32))
+                Some((u32::MAX, 0))
             }
             Some(data) => Some((data.archetype, data.idx)),
         }

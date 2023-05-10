@@ -32,7 +32,7 @@ where
 
     #[inline]
     unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let target_component = &*self.ptr.as_ptr().add(idx);
+        let target_component = unsafe { &*self.ptr.as_ptr().add(idx) };
         target_component.origins.contains(&self.origin)
     }
 
@@ -102,12 +102,14 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchFilterRelatedBy<'a, R> {
-        let component = archetype
-            .component(TypeId::of::<TargetComponent<R>>())
-            .unwrap_unchecked();
+        let component = unsafe {
+            archetype
+                .component(TypeId::of::<TargetComponent<R>>())
+                .unwrap_unchecked()
+        };
         debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         FetchFilterRelatedBy {
             origin: self.origin,

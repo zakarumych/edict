@@ -1,6 +1,6 @@
 [package]
 name = "edict"
-version = "0.4.0-rc.5"
+version = "0.5.0"
 edition = "2021"
 authors = ["Zakarum <zakarumych@ya.ru>"]
 license = "MIT OR Apache-2.0"
@@ -17,19 +17,19 @@ std = []
 default = ["std"]
 
 [dependencies]
-edict-proc = { version = "=0.4.0-rc.4", path = "proc" }
+edict-proc = { version = "=0.5.0", path = "proc" }
 hashbrown = { version = "0.13", features = ["ahash"], default-features = false }
-smallvec = { version ="1.8", features = ["union"], default-features = false }
+smallvec = { version ="1.10", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
 atomicell = "0.1.9"
-rayon = { version = "1.5", optional = true }
-alkahest = { version = "0.2.0", optional = true, features = ["alloc", "fixed32"], default-features = false }
-nanoserde = { version = "0.1.0", optional = true, default-features = false }
+rayon = { version = "1.7", optional = true }
+alkahest = { version = "0.3.0", optional = true, features = ["alloc", "fixed32"], default-features = false }
+nanoserde = { version = "0.1.32", optional = true, default-features = false }
 serde = { version = "1.0", optional = true, default-features = false }
 parking_lot = "0.12"
 
 [dev-dependencies]
-alkahest-proc = { version = "0.2.0-rc.6" }
+alkahest-proc = { version = "0.3.0" }
 
 [workspace]
 members = ["proc-lib", "proc"]

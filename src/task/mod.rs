@@ -60,7 +60,7 @@ pub struct Task<T = (), F = Pin<Box<dyn Future<Output = ()> + Send>>> {
 }
 
 impl<T, F> Task<T, F> {
-    /// Creates new task wrapping a unpinnable future.
+    /// Creates new task wrapping a `Unpin` future.
     /// Inserting this as component will
     /// cause [`task_system`] to poll it until completion.
     pub fn new(fut: F) -> Self
@@ -166,7 +166,7 @@ pub fn task_world<R>(f: impl FnOnce(&mut World) -> R) -> R {
 ///   Yield(false)
 /// }
 ///
-/// world.spawn((Task::pin(async {
+/// world.spawn((Task::<()>::pin(async {
 ///   loop {
 ///     let stop = task_world(|world| {
 ///       let r = world.get_resource_mut::<i32>();

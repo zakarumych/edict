@@ -4,7 +4,8 @@
 
 use alkahest::{
     advanced::{slice_writer, write_field, BareFormula, Buffer, Deserializer, Sizes, SliceWriter},
-    deserialize, serialize_to_vec, DeIter, Deserialize, DeserializeError, Formula, Lazy, Serialize,
+    deserialize_with_size, serialize_to_vec, DeIter, Deserialize, DeserializeError, Formula, Lazy,
+    Serialize,
 };
 
 use crate::{action::ActionEncoder, component::Component, query::ImmutableQuery};
@@ -78,7 +79,7 @@ macro_rules! dumper {
             Fi: ImmutableQuery,
         {
             /// Serialize the world with the given alkahest serializer.
-            pub fn dump_alkahest<$($f),+>(self, output: &mut Vec<u8>) -> usize
+            pub fn dump_alkahest<$($f),+>(self, output: &mut Vec<u8>) -> (usize, usize)
             where
                 $($f: Formula,)+
                 $($c: Sync + 'static, for<'b> &'b $c: Serialize<$f>,)+
@@ -193,14 +194,14 @@ macro_rules! dumper {
                 &self,
                 actions: &mut ActionEncoder,
                 buffer: &'de [u8],
-            ) -> Result<usize, DeserializeError>
+                root: usize,
+            ) -> Result<(), DeserializeError>
             where
                 $($f: Formula,)+
                 $($c: Deserialize<'de, $f>,)+
             {
-                let (lazy, size) = deserialize::<WorldFormula<($($f,)+)>, _>(buffer)?;
-                self.load_alkahest_lazy(actions, lazy)?;
-                Ok(size)
+                let lazy = deserialize_with_size::<WorldFormula<($($f,)+)>, _>(buffer, root)?;
+                self.load_alkahest_lazy(actions, lazy)
             }
         }
     };
@@ -211,20 +212,20 @@ for_tuple_2!(dumper);
 
 #[test]
 fn test_dump() {
-    use ::alkahest_proc::{Deserialize, Formula, Serialize};
+    use ::alkahest_proc::{Deserialize, Formula, SerializeRef};
 
     use super::NoMark;
     use crate::{action::ActionBuffer, epoch::EpochId, world::World};
 
     let mut world = World::new();
 
-    #[derive(Component, Debug, PartialEq, Eq, Formula, Serialize, Deserialize)]
+    #[derive(Component, Debug, PartialEq, Eq, Formula, SerializeRef, Deserialize)]
     struct Foo;
 
-    #[derive(Component, Debug, PartialEq, Eq, Formula, Serialize, Deserialize)]
+    #[derive(Component, Debug, PartialEq, Eq, Formula, SerializeRef, Deserialize)]
     struct Bar(u32);
 
-    #[derive(Component, Debug, PartialEq, Eq, Formula, Serialize, Deserialize)]
+    #[derive(Component, Debug, PartialEq, Eq, Formula, SerializeRef, Deserialize)]
     struct Baz(String);
 
     let foo = world.spawn((Foo,));
@@ -239,7 +240,7 @@ fn test_dump() {
     type Set = (Foo, Bar, Baz);
 
     let mut data = Vec::new();
-    WorldDump::<Set, _>::new(&mut world, (), EpochId::start())
+    let (size, root) = WorldDump::<Set, _>::new(&mut world, (), EpochId::start())
         .dump_alkahest::<Foo, Bar, Baz>(&mut data);
 
     let mut world2 = World::new();
@@ -248,7 +249,7 @@ fn test_dump() {
     let mut actions = buffer.encoder(&world2);
 
     WorldLoad::<Set, _>::new(&world2, NoMark)
-        .load_alkahest::<Foo, Bar, Baz>(&mut actions, &data)
+        .load_alkahest::<Foo, Bar, Baz>(&mut actions, &data[..size], root)
         .unwrap();
     buffer.execute(&mut world2);
 

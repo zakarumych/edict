@@ -1,11 +1,17 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{
+    archetype::Archetype,
+    entity::EntityId,
+    epoch::EpochId,
+    system::{QueryArg, QueryArgCache, QueryArgGet},
+    world::World,
+};
 
 use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Binary operator for [`BooleanQuery`].
-pub trait BooleanFetchOp: 'static {
+pub trait BooleanFetchOp: Send + 'static {
     /// Applies binary operator to two values.
     /// Returns `ControlFlow::Continue` if the operation should continue.
     /// Returns `ControlFlow::Break` if applying anything else would not change the result.
@@ -94,6 +100,7 @@ pub struct BooleanFetch<T, Op> {
 
 macro_rules! boolean_shortcut {
     ([$archetype:ident $op:ident] $a:ident $($b:ident)*) => {{
+        #[allow(unused_mut)]
         let mut result = $a.visit_archetype($archetype);
         $(
             match $op::op(result, $b.visit_archetype($archetype)) {
@@ -216,6 +223,63 @@ macro_rules! impl_boolean {
                     op: PhantomData,
                 }
             }
+        }
+
+        impl<'a, Op $(, $a)+> QueryArgGet<'a> for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: QueryArgGet<'a>,)+
+            Op: BooleanFetchOp,
+        {
+            type Arg = BooleanQuery<($($a::Arg,)+), Op>;
+
+            type Query = BooleanQuery<($($a::Query,)+), Op>;
+
+            #[inline(always)]
+            fn get(&'a mut self, world: &'a World) -> Self::Query {
+                let ($($a,)+) = &mut self.tuple;
+                BooleanQuery {
+                    tuple: ($($a.get(world),)+),
+                    op: PhantomData,
+                }
+            }
+        }
+
+        impl<Op $(, $a)+> QueryArgCache for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: QueryArgCache,)+
+            Op: BooleanFetchOp,
+        {
+            #[inline(always)]
+            fn new() -> Self {
+                BooleanQuery {
+                    tuple: ($($a::new(),)+),
+                    op: PhantomData,
+                }
+            }
+
+            #[inline(always)]
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
+                let ($($a,)+) = &self.tuple;
+                boolean_shortcut!([archetype Op] $($a)+)
+            }
+
+            #[inline(always)]
+            fn access_component(&self, id: TypeId) -> Option<Access> {
+                let ($($a,)+) = &self.tuple;
+                let mut access = None;
+                $({
+                    access = merge_access(access, $a.access_component(id));
+                })*
+                access
+            }
+        }
+
+        impl<Op $(, $a)+> QueryArg for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: QueryArg,)+
+            Op: BooleanFetchOp,
+        {
+            type Cache = BooleanQuery<($($a::Cache,)+), Op>;
         }
 
         impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>

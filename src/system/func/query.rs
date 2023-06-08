@@ -57,7 +57,7 @@ where
 {
     type Arg = QueryRef<'a, <Q as QueryArgGet<'a>>::Arg, <F as QueryArgGet<'a>>::Arg>;
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_unchecked(
         &'a mut self,
         world: NonNull<World>,
@@ -76,7 +76,7 @@ where
     Q: QueryArgCache,
     F: QueryArgCache,
 {
-    #[inline]
+    #[inline(always)]
     fn new() -> Self {
         QueryRefCache {
             query: Q::new(),
@@ -84,22 +84,22 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline]
+    #[inline(always)]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.query.visit_archetype(archetype) && self.filter.visit_archetype(archetype)
     }
 
-    #[inline]
+    #[inline(always)]
     fn access_component(&self, id: TypeId) -> Option<Access> {
         merge_access(
             self.query.access_component(id),
@@ -107,7 +107,7 @@ where
         )
     }
 
-    #[inline]
+    #[inline(always)]
     fn access_resource(&self, _id: TypeId) -> Option<Access> {
         None
     }
@@ -132,7 +132,7 @@ macro_rules! impl_query {
             type Arg = ($($a::Arg,)*);
             type Query = ($($a::Query,)*);
 
-            #[inline]
+            #[inline(always)]
             fn get(&'a mut self, world: &'a World) -> Self::Query {
                 let ($($a,)*) = self;
                 ($($a::get($a, world),)*)
@@ -145,18 +145,18 @@ macro_rules! impl_query {
         where
             $($a: QueryArgCache,)*
         {
-            #[inline]
+            #[inline(always)]
             fn new() -> Self {
                 ($($a::new(),)*)
             }
 
-            #[inline]
+            #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)*) = self;
                 true $(&& $a.visit_archetype(archetype))*
             }
 
-            #[inline]
+            #[inline(always)]
             fn access_component(&self, _id: TypeId) -> Option<Access> {
                 let ($($a,)*) = self;
                 let mut access = None;

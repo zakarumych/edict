@@ -30,6 +30,11 @@ impl EntityId {
         EntityId { value }
     }
 
+    #[inline]
+    pub(crate) fn value(&self) -> NonZeroU64 {
+        self.value
+    }
+
     /// Returns expired entity id.
     ///
     /// This function exists primarily to make dummy EntityId values.

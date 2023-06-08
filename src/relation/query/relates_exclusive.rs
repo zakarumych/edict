@@ -63,7 +63,7 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for RelatesExclusive<&R>
+unsafe impl<R> PhantomQuery for RelatesExclusive<&'static R>
 where
     R: Relation + Sync,
 {
@@ -115,7 +115,7 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for RelatesExclusive<&R> where R: Relation + Sync {}
+unsafe impl<R> ImmutablePhantomQuery for RelatesExclusive<&'static R> where R: Relation + Sync {}
 
 /// Fetch for the [`RelatesExclusive<&mut R>`] query.
 pub struct FetchRelatesExclusiveWrite<'a, R: Relation> {
@@ -160,7 +160,7 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for RelatesExclusive<&mut R>
+unsafe impl<R> PhantomQuery for RelatesExclusive<&'static mut R>
 where
     R: Relation + Send,
 {

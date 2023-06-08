@@ -150,7 +150,8 @@ impl IdAllocator {
 
     /// Returns reserve index of the ID.
     /// Returns `None` if ID is not reserved.
-    pub fn reserved(&self, id: u64) -> Option<u64> {
+    pub fn reserved(&self, id: NonZeroU64) -> Option<u64> {
+        let id = id.get();
         if id >= self.current.start.get() && id < self.current.end.get() {
             return Some(id - self.current.start.get());
         }
@@ -163,6 +164,7 @@ impl IdAllocator {
     /// Calls provided closure with reserved IDs.
     /// `count` must be larger than all `idx` values passed to `reserve` that
     /// returned `Some`
+    #[inline(always)]
     pub unsafe fn flush_reserved(&mut self, count: u64, mut f: impl FnMut(NonZeroU64)) {
         let mut advanced = self.current.advance(count, &mut f);
         if advanced < count {

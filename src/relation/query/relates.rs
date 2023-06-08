@@ -135,7 +135,7 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for Relates<&R>
+unsafe impl<R> PhantomQuery for Relates<&'static R>
 where
     R: Relation + Sync,
 {
@@ -180,7 +180,7 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for Relates<&R> where R: Relation + Sync {}
+unsafe impl<R> ImmutablePhantomQuery for Relates<&'static R> where R: Relation + Sync {}
 
 /// Iterator over relations of a given type on one entity.
 pub struct RelatesWriteIter<'a, R> {
@@ -296,7 +296,7 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for Relates<&mut R>
+unsafe impl<R> PhantomQuery for Relates<&'static mut R>
 where
     R: Relation + Send,
 {

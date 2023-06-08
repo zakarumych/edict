@@ -63,7 +63,7 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
+unsafe impl<T> PhantomQuery for QueryBorrowAll<&'static T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -122,4 +122,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&'static T> where T: Sync + ?Sized + 'static {}

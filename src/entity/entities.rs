@@ -12,8 +12,9 @@ use super::{
     EntityId,
 };
 
-/// Stores entity information in the World
-struct EntityData {
+/// Entity location in archetypes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Location {
     /// Archetype index.
     archetype: u32,
 
@@ -21,17 +22,17 @@ struct EntityData {
     idx: u32,
 }
 
-impl fmt::Debug for EntityData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("EntityData")
-            .field("archetype", &self.archetype)
-            .field("idx", &self.idx)
-            .finish()
+impl Location {
+    fn reserved(idx: u32) -> Self {
+        Location {
+            archetype: u32::MAX,
+            idx,
+        }
     }
 }
 
-pub(crate) struct EntitySet {
-    map: HashMap<u64, EntityData>,
+pub struct EntitySet {
+    map: HashMap<u64, Location>,
     id_allocator: IdAllocator,
     reserve_counter: AtomicU64,
 }
@@ -61,6 +62,7 @@ impl EntitySet {
         }
     }
 
+    #[inline(always)]
     pub fn alloc_mut(&mut self) -> EntityId {
         match self.id_allocator.next() {
             None => {
@@ -70,16 +72,18 @@ impl EntitySet {
         }
     }
 
+    #[inline(always)]
     pub fn spawn(&mut self) -> EntityId {
         let id = self.alloc_mut();
         self.spawn_at(id);
         id
     }
 
+    #[inline(always)]
     pub fn spawn_at(&mut self, id: EntityId) {
         let old = self.map.insert(
             id.bits(),
-            EntityData {
+            Location {
                 archetype: 0,
                 idx: 0,
             },
@@ -87,11 +91,12 @@ impl EntitySet {
         debug_assert!(old.is_none());
     }
 
+    #[inline(always)]
     pub fn spawn_if_missing(&mut self, id: EntityId) -> bool {
         match self.map.entry(id.bits()) {
             Entry::Occupied(_) => false,
             Entry::Vacant(entry) => {
-                entry.insert(EntityData {
+                entry.insert(Location {
                     archetype: 0,
                     idx: 0,
                 });
@@ -100,8 +105,14 @@ impl EntitySet {
         }
     }
 
+    #[inline(always)]
     pub fn alloc(&self) -> EntityId {
         let idx = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
+
+        if idx >= u32::MAX as u64 {
+            self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
+            panic!("Too much entity ids reserved");
+        }
 
         match self.id_allocator.reserve(idx) {
             None => {
@@ -112,13 +123,17 @@ impl EntitySet {
         }
     }
 
+    #[inline(always)]
     pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
+        if reserved == 0 {
+            return;
+        }
         unsafe {
             self.id_allocator.flush_reserved(reserved, |id| {
                 self.map.insert(
                     id.get(),
-                    EntityData {
+                    Location {
                         archetype: 0,
                         idx: f(EntityId::new(id)),
                     },
@@ -127,34 +142,33 @@ impl EntitySet {
         }
     }
 
-    pub fn despawn(&mut self, id: EntityId) -> Result<(u32, u32), NoSuchEntity> {
+    #[inline(always)]
+    pub fn despawn(&mut self, id: EntityId) -> Result<Location, NoSuchEntity> {
         match self.map.remove(&id.bits()) {
             None => Err(NoSuchEntity),
-            Some(data) => Ok((data.archetype, data.idx)),
+            Some(loc) => Ok(loc),
         }
     }
 
-    pub fn set_location(&mut self, id: EntityId, archetype: u32, idx: u32) {
-        let data = self.map.get_mut(&id.bits()).expect("Invalid entity id");
-        data.archetype = archetype;
-        data.idx = idx;
+    #[inline(always)]
+    pub fn set_location(&mut self, id: EntityId, loc: Location) {
+        self.map[&id.bits()] = loc;
     }
 
-    pub fn get_location(&self, id: EntityId) -> Option<(u32, u32)> {
+    #[inline(always)]
+    pub fn get_location(&self, id: EntityId) -> Option<Location> {
         match self.map.get(&id.bits()) {
             None => {
-                let bits = id.bits();
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
-                let Some(idx) = self.id_allocator.reserved(bits) else {
+                let Some(idx) = self.id_allocator.reserved(id.value()) else {
                     return None
                 };
                 if idx >= reserved {
                     return None;
                 }
-
-                Some((u32::MAX, 0))
+                Some(Location::reserved(idx as u32))
             }
-            Some(data) => Some((data.archetype, data.idx)),
+            Some(loc) => Some(*loc),
         }
     }
 

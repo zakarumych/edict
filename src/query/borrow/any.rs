@@ -64,7 +64,7 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
+unsafe impl<T> PhantomQuery for QueryBorrowAny<&'static T>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -111,7 +111,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&'static T> where T: Sync + ?Sized + 'static {}
 
 /// [`Fetch`] for [`QueryBorrowAny<&mut T>`].
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
@@ -159,7 +159,7 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
+unsafe impl<T> PhantomQuery for QueryBorrowAny<&'static mut T>
 where
     T: Send + ?Sized + 'static,
 {

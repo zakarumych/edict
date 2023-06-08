@@ -31,7 +31,7 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for &T
+unsafe impl<T> PhantomQuery for &'static T
 where
     T: Sync + 'static,
 {
@@ -71,7 +71,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
+unsafe impl<T> ImmutablePhantomQuery for &'static T where T: Sync + 'static {}
 
 /// [`Query`] type for the `&T` phantom query.
 pub type Read<T> = PhantomData<fn() -> &'static T>;

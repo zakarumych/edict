@@ -1,14 +1,43 @@
-//! Queries and iterators.
+//! Queries are used to fetch data from the [`World`].
 //!
-//! To efficiently iterate over entities with specific set of components,
-//! or only over those where specific component is modified, or missing,
-//! [`Query`] is the solution.
+//! Basic query types are `&T`, `&mut T`, and `Entities`.
+//! `&T` fetches component `T` for reading. It yields `&T`, so it also
+//! filters out entities that don't have component `T`.
+//! `&mut T` fetches component `T` for writing. And filters same way as `&T`.
+//! `Entities` fetches [`EntityId`]s. All entities have an ID,
+//! so it doesn't filter anything.
 //!
-//! [`Query`] trait has a lot of implementations and is composable using tuples.
+//! Queries are divided into two categories: stateful and stateless.
+//!
+//! Stateful queries implement `Query` trait and are passed into methods by value.
+//! Some of them have `DefaultQuery` implementation, and can be used in methods
+//! that do not accept query as an argument and only as a type parameter.
+//!
+//! Stateless queries implement `PhantomQuery` trait, and `PhantomData<Q>`
+//! is stateful counterpart for stateless query `Q`.
+//!
+//! All basic queries are stateless.
+//! Advanced queries like `Modified` - that filter entities based on
+//! component modification - and `RelatedTo` - that filter entities based on
+//! entity relation - are stateful.
+//!
+//! Queries can be combined into tuples producing a new query that yields
+//! a tuple of items from the original queries and filtering out entities
+//! that don't satisfy all queries.
+//!
+//! TODO: Derive impl for structures with named fields.
+//!
+//!
+//! Queries can be used with [`World`] to produce a [`View`].
+//! A [`View`] can be iterated to visit all matching entities and fetch
+//! data from them.
+//! [`View`] can also be indexed with [`Entity`] to fetch data from
+//! a specific entity.
+//!
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
 
 pub use self::{
     alt::{Alt, FetchAlt},

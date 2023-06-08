@@ -45,7 +45,7 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for &mut T
+unsafe impl<T> PhantomQuery for &'static mut T
 where
     T: Send + 'static,
 {

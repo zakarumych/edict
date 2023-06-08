@@ -117,7 +117,6 @@ where
         self.extend_query(PhantomData)
     }
 
-
     /// Extends query tuple with a query element that fetches borrows `T`
     /// from a component of the entity.
     /// Component with user-specified `TypeId` is used.

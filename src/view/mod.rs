@@ -12,6 +12,8 @@ use crate::{
     world::World,
 };
 
+mod extend;
+
 /// A view borrow state.
 ///
 /// View must borrow components it accesses before
@@ -121,35 +123,6 @@ impl BorrowState for StaticallyBorrowed {
     fn release<Q: Query>(&mut self, _query: &Q, _archetypes: &[Archetype]) {}
 }
 
-/// A helper trait to extend tuples.
-pub trait ExtendTuple<E>: Sized {
-    /// Tuple with an additional element `E`.
-    type Output;
-
-    /// Extend tuple with an additional element `E`.
-    fn extend_tuple(self, element: E) -> Self::Output;
-}
-
-/// A helper type alias to extend tuples.
-pub type TuplePlus<T, E> = <T as ExtendTuple<E>>::Output;
-
-macro_rules! impl_extend {
-    ($($a:ident)*) => {
-        impl<Add $(, $a)*> ExtendTuple<Add> for ($($a,)*)
-        {
-            type Output = ($($a,)* Add,);
-
-            #[inline]
-            fn extend_tuple(self, add: Add) -> Self::Output {
-                #![allow(non_snake_case)]
-                let ($($a,)*) = self;
-                ($($a,)* add,)
-            }
-        }
-    };
-}
-
-for_tuple!(impl_extend);
 
 /// A view over [`World`] that may be used to access specific components.
 pub struct View<'a, Q: IntoQuery, F: IntoQuery = (), B: BorrowState = StaticallyBorrowed> {
@@ -215,7 +188,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, Q, F>
+impl<'a, Q, F> View<'a, (Q,), F>
 where
     Q: IntoQuery,
     F: DefaultQuery,
@@ -228,7 +201,7 @@ where
     #[inline]
     pub fn with_query_mut(world: &'a mut World, query: Q) -> Self {
         View {
-            query: query.into_query(),
+            query: (query.into_query(),),
             filter: F::default_query(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
@@ -243,7 +216,7 @@ where
     #[inline]
     pub unsafe fn with_query_unchecked(world: &'a World, query: Q) -> Self {
         View {
-            query: query.into_query(),
+            query: (query.into_query(),),
             filter: F::default_query(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
@@ -252,7 +225,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, Q, F>
+impl<'a, Q, F> View<'a, (Q,), (F,)>
 where
     Q: IntoQuery,
     F: IntoQuery,
@@ -265,8 +238,8 @@ where
     #[inline]
     pub fn with_query_filter_mut(world: &'a mut World, query: Q, filter: F) -> Self {
         View {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: (query.into_query(),),
+            filter: (filter.into_query(),),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow_state: StaticallyBorrowed,
@@ -280,8 +253,8 @@ where
     #[inline]
     pub unsafe fn with_query_filter_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         View {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: (query.into_query(),),
+            filter: (filter.into_query(),),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow_state: StaticallyBorrowed,
@@ -310,7 +283,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, Q, F, RuntimeBorrowState>
+impl<'a, Q, F> View<'a, (Q,), F, RuntimeBorrowState>
 where
     Q: IntoQuery,
     F: DefaultQuery,
@@ -322,7 +295,7 @@ where
     #[inline]
     pub fn with_query(world: &'a World, query: Q) -> Self {
         View {
-            query: query.into_query(),
+            query: (query.into_query(),),
             filter: F::default_query(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
@@ -331,7 +304,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, Q, F, RuntimeBorrowState>
+impl<'a, Q, F> View<'a, (Q,), (F,), RuntimeBorrowState>
 where
     Q: IntoQuery,
     F: IntoQuery,
@@ -343,21 +316,11 @@ where
     #[inline]
     pub fn with_query_filter(world: &'a mut World, query: Q, filter: F) -> Self {
         View {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: (query.into_query(),),
+            filter: (filter.into_query(),),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow_state: RuntimeBorrowState::new(),
         }
     }
-}
-
-impl<'a, Q, F, B> View<'a, Q, F, B>
-where
-    Q: IntoQuery,
-    F: IntoQuery,
-    B: BorrowState,
-{
-    /// Fetches data from the view for the given entity.
-    pub fn get(&mut self, entity: Entity);
 }

@@ -55,7 +55,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Otherwise returns `None`.
     #[must_use]
     #[inline]
-    fn reserved_entity_item<'a>(id: EntityId) -> Option<Self::Item<'a>> {
+    fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         drop(id);
         None
     }
@@ -123,8 +123,8 @@ where
     }
 
     #[inline]
-    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
-        <Q as PhantomQuery>::reserved_entity_item(id)
+    fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
+        <Q as PhantomQuery>::reserved_entity_item(id, idx)
     }
 }
 

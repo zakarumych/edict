@@ -364,9 +364,9 @@ pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;
-pub mod prelude;
+// pub mod prelude;
 pub mod query;
-pub mod relation;
+// pub mod relation;
 pub mod system;
 pub mod view;
 pub mod world;
@@ -383,18 +383,18 @@ mod res;
 #[cfg(test)]
 mod test;
 
-#[doc(hidden)]
-pub mod private {
-    pub use alloc::vec::Vec;
-}
+// #[doc(hidden)]
+// pub mod private {
+//     pub use alloc::vec::Vec;
+// }
 
 #[doc(hidden)]
 pub struct ExampleComponent;
 
 impl component::Component for ExampleComponent {}
 
-#[doc(inline)]
-pub use self::prelude::*;
+// #[doc(inline)]
+// pub use self::prelude::*;
 
 #[cold]
 #[inline(always)]

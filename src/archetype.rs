@@ -911,7 +911,7 @@ impl Archetype {
 pub(crate) const CHUNK_LEN_USIZE: usize = 0x100;
 
 #[inline]
-pub(crate) const fn chunk_idx(idx: usize) -> usize {
+pub(crate) const fn chunk_idx(idx: u32) -> u32 {
     idx >> 8
 }
 

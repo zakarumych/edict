@@ -1,31 +1,41 @@
 use core::{
     fmt,
+    num::NonZeroU64,
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use hashbrown::{hash_map::Entry, HashMap};
 
-use crate::world::NoSuchEntity;
-
 use super::{
     allocator::{IdAllocator, IdRangeAllocator},
-    EntityId,
+    EntityId, EntityLoc,
 };
 
 /// Entity location in archetypes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Location {
     /// Archetype index.
-    archetype: u32,
+    pub arch: u32,
 
     /// Index within archetype.
-    idx: u32,
+    pub idx: u32,
 }
 
 impl Location {
-    fn reserved(idx: u32) -> Self {
+    pub fn new(arch_idx: u32, idx: u32) -> Self {
         Location {
-            archetype: u32::MAX,
+            arch: arch_idx,
+            idx,
+        }
+    }
+
+    pub fn empty(idx: u32) -> Self {
+        Location { arch: 0, idx }
+    }
+
+    pub fn reserved(idx: u32) -> Self {
+        Location {
+            arch: u32::MAX,
             idx,
         }
     }
@@ -63,50 +73,42 @@ impl EntitySet {
     }
 
     #[inline(always)]
-    pub fn alloc_mut(&mut self) -> EntityId {
+    pub fn alloc_mut(&mut self) -> EntityLoc<'_> {
         match self.id_allocator.next() {
             None => {
                 panic!("Entity id allocator is exhausted");
             }
-            Some(id) => EntityId::new(id),
+            Some(id) => EntityLoc::new(id, self),
         }
     }
 
     #[inline(always)]
-    pub fn spawn(&mut self) -> EntityId {
+    pub fn spawn(&mut self) -> EntityLoc<'_> {
         let id = self.alloc_mut();
         self.spawn_at(id);
         id
     }
 
     #[inline(always)]
-    pub fn spawn_at(&mut self, id: EntityId) {
-        let old = self.map.insert(
-            id.bits(),
-            Location {
-                archetype: 0,
-                idx: 0,
-            },
-        );
+    pub fn spawn_at(&mut self, id: EntityId) -> EntityLoc<'_> {
+        let old = self.map.insert(id.get(), Location { arch: 0, idx: 0 });
         debug_assert!(old.is_none());
     }
 
     #[inline(always)]
-    pub fn spawn_if_missing(&mut self, id: EntityId) -> bool {
-        match self.map.entry(id.bits()) {
-            Entry::Occupied(_) => false,
+    pub fn spawn_if_missing(&mut self, id: EntityId) -> (bool, EntityLoc<'_>) {
+        match self.map.entry(id.get()) {
+            Entry::Occupied(loc) => (false, EntityLoc::new(id, loc)),
             Entry::Vacant(entry) => {
-                entry.insert(Location {
-                    archetype: 0,
-                    idx: 0,
-                });
-                true
+                let loc = Location { arch: 0, idx: 0 };
+                entry.insert(loc);
+                (true, EntityLoc::new(id, loc))
             }
         }
     }
 
     #[inline(always)]
-    pub fn alloc(&self) -> EntityId {
+    pub fn alloc(&self) -> EntityLoc<'_> {
         let idx = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
 
         if idx >= u32::MAX as u64 {
@@ -119,12 +121,12 @@ impl EntitySet {
                 self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
                 panic!("Too much entity ids reserved");
             }
-            Some(id) => EntityId::new(id),
+            Some(id) => EntityLoc::new(id, Location::reserved(idx as u32)),
         }
     }
 
     #[inline(always)]
-    pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
+    pub fn spawn_allocated(&mut self, mut f: impl FnMut(NonZeroU64) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
         if reserved == 0 {
             return;
@@ -134,8 +136,8 @@ impl EntitySet {
                 self.map.insert(
                     id.get(),
                     Location {
-                        archetype: 0,
-                        idx: f(EntityId::new(id)),
+                        arch: 0,
+                        idx: f(id),
                     },
                 );
             });
@@ -143,11 +145,8 @@ impl EntitySet {
     }
 
     #[inline(always)]
-    pub fn despawn(&mut self, id: EntityId) -> Result<Location, NoSuchEntity> {
-        match self.map.remove(&id.bits()) {
-            None => Err(NoSuchEntity),
-            Some(loc) => Ok(loc),
-        }
+    pub fn despawn(&mut self, id: EntityId) -> Option<Location> {
+        self.map.remove(&id.get())
     }
 
     #[inline(always)]
@@ -157,10 +156,10 @@ impl EntitySet {
 
     #[inline(always)]
     pub fn get_location(&self, id: EntityId) -> Option<Location> {
-        match self.map.get(&id.bits()) {
+        match self.map.get(&id.get()) {
             None => {
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
-                let Some(idx) = self.id_allocator.reserved(id.value()) else {
+                let Some(idx) = self.id_allocator.reserved(id.non_zero()) else {
                     return None
                 };
                 if idx >= reserved {

@@ -1,25 +1,33 @@
 use core::{any::TypeId, marker::PhantomData};
 
-use crate::{archetype::Archetype, entity::EntityId};
+use crate::{
+    archetype::Archetype,
+    entity::{Entity, EntityId, Located, Location},
+};
 
 use super::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery};
 
 /// [`Fetch`] type for the [`Entities`] query.
 pub struct EntitiesFetch<'a> {
+    archetype: u32,
     entities: &'a [EntityId],
 }
 
 unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
-    type Item = EntityId;
+    type Item = Entity<Located<'a>>;
 
     #[inline]
     fn dangling() -> Self {
-        EntitiesFetch { entities: &[] }
+        EntitiesFetch {
+            archetype: u32::MAX,
+            entities: &[],
+        }
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> EntityId {
-        *self.entities.get_unchecked(idx)
+    unsafe fn get_item(&mut self, idx: u32) -> Entity<Located<'a>> {
+        let id = *self.entities.get_unchecked(idx);
+        Entity::new_located(id, Location::new(self.archetype, idx))
     }
 }
 
@@ -39,7 +47,7 @@ impl Entities {
 
 unsafe impl PhantomQuery for Entities {
     type Fetch<'a> = EntitiesFetch<'a>;
-    type Item<'a> = EntityId;
+    type Item<'a> = Entity<Located<'a>>;
 
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -56,20 +64,22 @@ unsafe impl PhantomQuery for Entities {
 
     #[inline]
     unsafe fn fetch<'a>(
+        archetype_idx: u32,
         archetype: &'a Archetype,
         _epoch: crate::epoch::EpochId,
     ) -> EntitiesFetch<'a> {
         EntitiesFetch {
+            archetype: archetype_idx,
             entities: archetype.entities(),
         }
     }
 
     #[inline]
-    fn reserved_entity_item<'a>(id: EntityId) -> Option<EntityId>
+    fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<Entity<Located<'a>>>
     where
         EntityId: 'a,
     {
-        Some(id)
+        Some(Entity::new_located(id, Location::reserved(idx)))
     }
 }
 

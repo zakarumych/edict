@@ -59,7 +59,7 @@ impl VerifyFetch {
         self.visit_chunk = Some((chunk_idx, visiting));
     }
 
-    /// This method must be called in [`Fetch::visit_chunk`] implementation.
+    /// This method must be called in [`Fetch::touch_chunk`] implementation.
     ///
     /// # Panics
     ///
@@ -91,22 +91,19 @@ impl VerifyFetch {
     /// # Panics
     ///
     /// If dangling.
-    /// if `visit_chunk` was not called for the corresponding chunk before this call.
+    /// if `touch_chunk` was not called for the corresponding chunk before this call.
     #[inline]
     pub fn visit_item(&mut self, idx: usize, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: visit_item called for dangling fetch");
         }
-        match self.visit_chunk {
+        match self.touch_chunk {
             None => {
                 panic!("FetchVerify: visit_item called without visit_chunk");
             }
-            Some((visit_chunk_idx, chunk_visiting)) => {
+            Some(visit_chunk_idx) => {
                 if chunk_idx(idx) != visit_chunk_idx {
-                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
-                }
-                if !chunk_visiting {
-                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `visit_chunk` for this chunk id returned true", idx, chunk_idx(idx));
+                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `touch_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
                 }
                 self.visit_item = Some((idx, visiting));
             }
@@ -194,7 +191,7 @@ pub unsafe trait Fetch<'a> {
     /// from which query produced this instance.
     #[inline]
     #[must_use]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         drop(chunk_idx);
         true
     }
@@ -208,7 +205,7 @@ pub unsafe trait Fetch<'a> {
     /// from which query produced this instance.
     #[inline]
     #[must_use]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
         drop(idx);
         true
     }
@@ -225,7 +222,7 @@ pub unsafe trait Fetch<'a> {
     /// `visit_chunk` must have been called just before this method.
     /// If `visit_chunk` returned `false`, this method must not be called.
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         drop(chunk_idx);
     }
 
@@ -243,7 +240,7 @@ pub unsafe trait Fetch<'a> {
     /// `visit_chunk` must have been called before this method
     /// with chunk index that corresponds to the entity index.
     #[must_use]
-    unsafe fn get_item(&mut self, idx: usize) -> Self::Item;
+    unsafe fn get_item(&mut self, idx: u32) -> Self::Item;
 }
 
 /// Fetch type for `Query` implementations

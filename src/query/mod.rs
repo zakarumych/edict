@@ -37,7 +37,7 @@
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -124,13 +124,16 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Contains data from one archetype.
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
+    /// Returns `true` if query fetches at least one mutable component.
+    const MUTABLE: bool;
+
     /// Returns what kind of access the query performs on the component type.
     #[must_use]
     fn access(&self, ty: TypeId) -> Option<Access>;
 
     /// Checks if archetype must be visited or skipped.
     #[must_use]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool;
+    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -142,44 +145,50 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     ///
     /// # Safety
     ///
-    /// Must not be called if `skip_archetype` returned `true`.
+    /// Must not be called if `visit_archetype` returned `false`.
     #[must_use]
-    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+    unsafe fn fetch<'a>(
+        &self,
+        archetype_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a>;
 
     /// Returns item for reserved entity if reserved entity satisfies the query.
     /// Otherwise returns `None`.
     #[must_use]
     #[inline]
-    fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+    fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         drop(id);
+        drop(idx);
         None
     }
 }
 
 /// Wraps mutable reference to query and implement query for it.
-pub struct MutQuery<'a, T: 'a> {
-    query: &'a mut T,
+pub struct QueryRef<'a, T: 'a> {
+    query: &'a T,
 }
 
-impl<'a, T> From<&'a mut T> for MutQuery<'a, T> {
-    fn from(query: &'a mut T) -> Self {
-        MutQuery { query }
+impl<'a, T> From<&'a T> for QueryRef<'a, T> {
+    fn from(query: &'a T) -> Self {
+        QueryRef { query }
     }
 }
 
-impl<'a, T> MutQuery<'a, T> {
+impl<'a, T> QueryRef<'a, T> {
     /// Wraps mutable reference to query.
-    pub fn new(query: &'a mut T) -> Self {
-        MutQuery { query }
+    pub fn new(query: &'a T) -> Self {
+        QueryRef { query }
     }
 
     /// Unwraps query.
-    pub fn into_inner(self) -> &'a mut T {
+    pub fn inner(self) -> &'a T {
         self.query
     }
 }
 
-impl<T> IntoQuery for MutQuery<'_, T>
+impl<T> IntoQuery for QueryRef<'_, T>
 where
     T: Query,
 {
@@ -190,18 +199,20 @@ where
     }
 }
 
-unsafe impl<T> Query for MutQuery<'_, T>
+unsafe impl<T> Query for QueryRef<'_, T>
 where
     T: Query,
 {
     type Item<'a> = T::Item<'a>;
     type Fetch<'a> = T::Fetch<'a>;
 
+    const MUTABLE: bool = T::MUTABLE;
+
     fn access(&self, ty: TypeId) -> Option<Access> {
         self.query.access(ty)
     }
 
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.query.visit_archetype(archetype)
     }
 
@@ -209,12 +220,17 @@ where
         self.query.access_archetype(archetype, f)
     }
 
-    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
-        self.query.fetch(archetype, epoch)
+    unsafe fn fetch<'a>(
+        &mut self,
+        archetype_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        self.query.fetch(archetype_idx, archetype, epoch)
     }
 }
 
-unsafe impl<T> ImmutableQuery for MutQuery<'_, T> where T: ImmutableQuery {}
+unsafe impl<T> ImmutableQuery for QueryRef<'_, T> where T: ImmutableQuery {}
 
 /// Query that does not mutate any components.
 ///

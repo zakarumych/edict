@@ -24,6 +24,7 @@ impl EpochCounter {
     }
 
     /// Returns current epoch id.
+    #[inline(always)]
     pub fn current(&self) -> EpochId {
         EpochId {
             value: self.value.load(Ordering::Relaxed),
@@ -32,6 +33,7 @@ impl EpochCounter {
 
     /// Returns current epoch id.
     /// But faster.
+    #[inline(always)]
     pub fn current_mut(&mut self) -> EpochId {
         EpochId {
             value: *self.value.get_mut(),
@@ -39,6 +41,7 @@ impl EpochCounter {
     }
 
     /// Bumps to the next epoch and returns new epoch id.
+    #[inline(always)]
     pub fn next(&self) -> EpochId {
         let old = self.value.fetch_add(1, Ordering::Relaxed);
         debug_assert!(old < u64::MAX);
@@ -47,11 +50,23 @@ impl EpochCounter {
 
     /// Bumps to the next epoch and returns new epoch id.
     /// But faster
+    #[inline(always)]
     pub fn next_mut(&mut self) -> EpochId {
         let value = self.value.get_mut();
         debug_assert!(*value < u64::MAX);
         *value += 1;
         EpochId { value: *value }
+    }
+
+    /// Bumps to the next epoch and returns new epoch id if `cond` is true.
+    /// Otherwise returns current epoch id.
+    #[inline(always)]
+    pub fn next_if(&self, cond: bool) -> EpochId {
+        if cond {
+            self.next()
+        } else {
+            self.current()
+        }
     }
 }
 

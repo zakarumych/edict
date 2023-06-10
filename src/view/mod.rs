@@ -4,14 +4,17 @@
 //! Then [`View`] is a columnar slice of the table with filtering.
 
 use crate::{
-    archetype::Archetype,
-    entity::EntitySet,
+    archetype::{chunk_idx, Archetype},
+    entity::{EntitySet, Location},
     epoch::EpochCounter,
-    query::{DefaultQuery, IntoQuery, Query},
+    query::{DefaultQuery, Fetch, IntoQuery, Query, QueryItem},
     world::World,
 };
 
-pub use self::borrow::{BorrowState, RuntimeBorrowState, StaticallyBorrowed};
+pub use self::{
+    borrow::{BorrowState, RuntimeBorrowState, StaticallyBorrowed},
+    one::ViewOne,
+};
 
 mod borrow;
 mod extend;
@@ -36,7 +39,7 @@ pub type View<'a, Q, F = (), B = RuntimeBorrowState> =
 pub type ViewMut<'a, Q, F = ()> =
     ViewState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
 
-impl<'a, Q, F> ViewMut<'a, Q, F>
+impl<'a, Q, F> ViewState<'a, Q, F, StaticallyBorrowed>
 where
     Q: DefaultQuery,
     F: DefaultQuery,
@@ -64,7 +67,7 @@ where
     ///     println!("Found Foo!");
     /// }
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn new_mut(world: &'a mut World) -> Self {
         ViewMut {
             query: Q::default_query(),
@@ -80,7 +83,7 @@ where
     /// This is unsafe because it does not perform runtime borrow checks.
     ///
     /// Uses default-constructed query and filter.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World) -> Self {
         ViewMut {
             query: Q::default_query(),
@@ -93,17 +96,17 @@ where
     }
 }
 
-impl<'a, Q, F> ViewMut<'a, (Q,), F>
+impl<'a, Q, F> ViewState<'a, (Q,), F, StaticallyBorrowed>
 where
-    Q: IntoQuery,
-    F: DefaultQuery,
+    Q: Query,
+    F: Query + Default,
 {
     /// Creates a new view over the world.
     /// Borrows the world mutably, so no other views can be created.
     /// In exchange it does not require runtime borrow checks.
     ///
     /// Uses user-provided query and default-constructed filter.
-    #[inline]
+    #[inline(always)]
     pub fn with_query_mut(world: &'a mut World, query: Q) -> Self {
         ViewMut {
             query: (query.into_query(),),
@@ -119,7 +122,7 @@ where
     /// This is unsafe because it does not perform runtime borrow checks.
     ///
     /// Uses user-provided query and default-constructed filter.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn with_query_unchecked(world: &'a World, query: Q) -> Self {
         ViewMut {
             query: (query.into_query(),),
@@ -132,17 +135,17 @@ where
     }
 }
 
-impl<'a, Q, F> ViewMut<'a, (Q,), (F,)>
+impl<'a, Q, F> ViewState<'a, (Q,), (F,), StaticallyBorrowed>
 where
-    Q: IntoQuery,
-    F: IntoQuery,
+    Q: Query,
+    F: Query,
 {
     /// Creates a new view over the world.
     /// Borrows the world mutably, so no other views can be created.
     /// In exchange it does not require runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
-    #[inline]
+    #[inline(always)]
     pub fn with_query_filter_mut(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewMut {
             query: (query.into_query(),),
@@ -158,7 +161,7 @@ where
     /// This is unsafe because it does not perform runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn with_query_filter_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         ViewMut {
             query: (query.into_query(),),
@@ -171,16 +174,16 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, Q, F, RuntimeBorrowState>
+impl<'a, Q, F> ViewState<'a, Q, F, RuntimeBorrowState>
 where
-    Q: DefaultQuery,
-    F: DefaultQuery,
+    Q: Query,
+    F: Query + Default,
 {
     /// Creates a new view over the world.
     /// Performs runtime borrow checks.
     ///
     /// Uses default-constructed query and filter.
-    #[inline]
+    #[inline(always)]
     pub fn new(world: &'a World) -> Self {
         View {
             query: Q::default_query(),
@@ -193,7 +196,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, (Q,), F, RuntimeBorrowState>
+impl<'a, Q, F> ViewState<'a, (Q,), F, RuntimeBorrowState>
 where
     Q: IntoQuery,
     F: DefaultQuery,
@@ -202,7 +205,7 @@ where
     /// Performs runtime borrow checks.
     ///
     /// Uses user-provided query and default-constructed filter.
-    #[inline]
+    #[inline(always)]
     pub fn with_query(world: &'a World, query: Q) -> Self {
         View {
             query: (query.into_query(),),
@@ -215,7 +218,7 @@ where
     }
 }
 
-impl<'a, Q, F> View<'a, (Q,), (F,), RuntimeBorrowState>
+impl<'a, Q, F> ViewState<'a, (Q,), (F,), RuntimeBorrowState>
 where
     Q: IntoQuery,
     F: IntoQuery,
@@ -224,7 +227,7 @@ where
     /// Performs runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
-    #[inline]
+    #[inline(always)]
     pub fn with_query_filter(world: &'a mut World, query: Q, filter: F) -> Self {
         View {
             query: (query.into_query(),),
@@ -235,4 +238,68 @@ where
             epochs: world.epoch_counter(),
         }
     }
+}
+
+#[inline(always)]
+#[track_caller]
+fn expect_match<T>(value: Option<T>) -> T {
+    value.expect("Entity does not match view's query and filter")
+}
+
+#[inline(always)]
+#[track_caller]
+fn expect_alive<T>(value: Option<T>) -> T {
+    value.expect("Entity is not alive")
+}
+
+#[inline]
+fn get_at<'a, Q, F>(
+    query: &Q,
+    filter: &F,
+    epochs: &EpochCounter,
+    archetype: &'a Archetype,
+    loc: Location,
+) -> Option<QueryItem<'a, Q>>
+where
+    Q: Query,
+    F: Query,
+{
+    let Location { arch, idx } = loc;
+    assert!(idx < archetype.len(), "Wrong location");
+
+    if !unsafe { Query::visit_archetype(query, archetype) } {
+        return None;
+    }
+
+    if !unsafe { Query::visit_archetype(filter, archetype) } {
+        return None;
+    }
+
+    let epoch = epochs.next_if(Q::Query::MUTABLE || F::Query::MUTABLE);
+
+    let mut query_fetch = unsafe { Query::fetch(query, arch, archetype, epoch) };
+
+    if !unsafe { Fetch::visit_chunk(&mut query_fetch, chunk_idx(idx)) } {
+        return None;
+    }
+
+    unsafe { Fetch::touch_chunk(&mut query_fetch, chunk_idx(idx)) }
+
+    if !unsafe { Fetch::visit_item(&mut query_fetch, idx) } {
+        return None;
+    }
+
+    let mut filter_fetch = unsafe { Query::fetch(filter, arch, archetype, epoch) };
+
+    if !unsafe { Fetch::visit_chunk(&mut filter_fetch, chunk_idx(idx)) } {
+        return None;
+    }
+
+    unsafe { Fetch::touch_chunk(&mut filter_fetch, chunk_idx(idx)) }
+
+    if !unsafe { Fetch::visit_item(&mut filter_fetch, idx) } {
+        return None;
+    }
+
+    Some(unsafe { Fetch::get_item(&mut query_fetch, idx) })
 }

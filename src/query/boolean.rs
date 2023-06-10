@@ -8,7 +8,7 @@ use crate::{
     world::World,
 };
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
 
 /// Binary operator for [`BooleanQuery`].
 pub trait BooleanFetchOp: Send + 'static {
@@ -258,7 +258,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            fn visit_archetype(&self, archetype: &Archetype) -> bool {
+            unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
                 boolean_shortcut!([archetype Op] $($a)+)
             }
@@ -280,20 +280,6 @@ macro_rules! impl_boolean {
             Op: BooleanFetchOp,
         {
             type Cache = BooleanQuery<($($a::Cache,)+), Op>;
-        }
-
-        impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>
-        where
-            $($a: DefaultQuery,)+
-            Op: BooleanFetchOp,
-        {
-            #[inline]
-            fn default_query() -> Self::Query {
-                BooleanQuery {
-                    tuple: ($($a::default_query(),)+),
-                    op: PhantomData,
-                }
-            }
         }
 
         #[allow(non_snake_case)]
@@ -321,7 +307,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            fn visit_archetype(&self, archetype: &Archetype) -> bool {
+            unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
                 boolean_shortcut!([archetype Op] $($a)+)
             }
@@ -329,6 +315,7 @@ macro_rules! impl_boolean {
             #[inline(always)]
             unsafe fn fetch<'a>(
                 &mut self,
+                arch_idx: u32,
                 archetype: &'a Archetype,
                 epoch: EpochId,
             ) -> BooleanFetch<($($a::Fetch<'a>,)+), Op> {
@@ -339,7 +326,7 @@ macro_rules! impl_boolean {
                     tuple: ($({
                         let fetch = if $a.visit_archetype(archetype) {
                             mask |= (1 << mi);
-                            $a.fetch(archetype, epoch)
+                            $a.fetch(arch_idx, archetype, epoch)
                         } else {
                             Fetch::dangling()
                         };
@@ -354,12 +341,12 @@ macro_rules! impl_boolean {
             }
 
             #[inline]
-            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+            fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
                 $(
-                    let $a = $a.reserved_entity_item(id);
+                    let $a = $a.reserved_entity_item(id, idx);
                     if $a.is_some() {
                         mask |= 1 << mi;
                     }

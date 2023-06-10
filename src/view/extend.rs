@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-use super::{BorrowState, View};
+use super::{BorrowState, View, ViewState};
 
 /// A helper trait to extend tuples.
 pub trait ExtendTupleQuery<E: IntoQuery>: IntoQuery + Sized {
@@ -44,15 +44,15 @@ macro_rules! impl_extend {
 
 for_tuple!(impl_extend);
 
-impl<'a, Q, F, B> View<'a, Q, F, B>
+impl<'a, Q, F, B> ViewState<'a, Q, F, B>
 where
-    Q: IntoQuery,
-    F: IntoQuery,
+    Q: Query,
+    F: Query,
     B: BorrowState,
 {
     /// Extends query tuple with an additional query element.
     #[inline]
-    pub fn extend_query<E>(self, query: E::Query) -> View<'a, TuplePlus<Q, E>, F, B>
+    pub fn extend_query<E>(self, query: E::Query) -> ViewState<'a, TuplePlus<Q, E>, F, B>
     where
         E: IntoQuery,
         Q: ExtendTupleQuery<E>,

@@ -366,7 +366,7 @@ pub mod epoch;
 pub mod executor;
 // pub mod prelude;
 pub mod query;
-// pub mod relation;
+pub mod relation;
 pub mod system;
 pub mod view;
 pub mod world;

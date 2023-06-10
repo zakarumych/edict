@@ -106,9 +106,17 @@ pub trait IntoQuery {
 }
 
 /// Types associated with default-constructible query type.
-pub trait DefaultQuery: IntoQuery {
-    /// Converts into query.
-    fn default_query() -> Self::Query;
+pub trait DefaultQuery: IntoQuery<Query = Self::DQ> {
+    #[doc(hidden)]
+    type DQ: Default;
+}
+
+impl<Q> DefaultQuery for Q
+where
+    Q: IntoQuery,
+    Q::Query: Default,
+{
+    type DQ = Q::Query;
 }
 
 /// Trait to query components from entities in the world.
@@ -149,7 +157,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     #[must_use]
     unsafe fn fetch<'a>(
         &self,
-        archetype_idx: u32,
+        arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Self::Fetch<'a>;

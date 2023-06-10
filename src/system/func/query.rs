@@ -30,7 +30,7 @@ pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + 'static {
 
     /// Returns true if the query visits archetype.
     #[must_use]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool;
+    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns some access type performed by the query.
     #[must_use]

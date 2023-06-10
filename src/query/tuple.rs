@@ -2,7 +2,7 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
 
 macro_rules! impl_fetch {
     () => {
@@ -34,7 +34,7 @@ macro_rules! impl_fetch {
             }
 
             #[inline]
-            fn visit_archetype(&self, _: &Archetype) -> bool {
+            unsafe fn visit_archetype(&self, _: &Archetype) -> bool {
                 true
             }
 
@@ -110,7 +110,7 @@ macro_rules! impl_fetch {
             }
 
             #[inline]
-            fn visit_archetype(&self, archetype: &Archetype) -> bool {
+            unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
                 $( <$a as Query>::visit_archetype($a, archetype) )&&+
             }
@@ -122,15 +122,15 @@ macro_rules! impl_fetch {
             }
 
             #[inline]
-            unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
+            unsafe fn fetch<'a>(&mut self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
-                ($( <$a as Query>::fetch($a, archetype, epoch) ),+)
+                ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+)
             }
 
             #[inline]
-            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<($($a::Item<'a>),+)> {
+            fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<($($a::Item<'a>),+)> {
                 let ($($a,)+) = self;
-                $( let $a = $a.reserved_entity_item(id)?; )+
+                $( let $a = $a.reserved_entity_item(id, idx)?; )+
                 Some(($($a),+))
             }
         }
@@ -144,13 +144,6 @@ macro_rules! impl_fetch {
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self;
                 ($( $a.into_query(), )+)
-            }
-        }
-
-        #[allow(non_snake_case)]
-        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
-            fn default_query() -> Self::Query {
-                ($( $a::default_query(), )+)
             }
         }
     };

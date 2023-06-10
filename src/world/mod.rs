@@ -1,12 +1,11 @@
 //! Self-contained ECS [`World`].
 
-use alloc::{borrow::ToOwned, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 use core::{
     any::{type_name, TypeId},
     cell::Cell,
     convert::TryFrom,
     fmt::{self, Debug},
-    hash::Hash,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU64, Ordering},
@@ -15,21 +14,19 @@ use core::{
 use atomicell::{Ref, RefMut};
 
 use crate::{
-    action::{ActionBuffer, ActionChannel, ActionEncoder, ActionSender},
-    archetype::{chunk_idx, Archetype},
-    bundle::{
-        Bundle, BundleDesc, ComponentBundle, ComponentBundleDesc, DynamicBundle,
-        DynamicComponentBundle,
-    },
+    action::{ActionBuffer, ActionChannel, ActionSender},
+    archetype::Archetype,
+    bundle::{BundleDesc, ComponentBundleDesc, DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntitySet, Location, NoSuchEntity},
+    entity::{Entity, EntityId, EntityLoc, EntitySet, NoSuchEntity},
     epoch::{EpochCounter, EpochId},
-    query::{DefaultQuery, Fetch, IntoQuery, Query, QueryItem},
+    query::Query,
     res::Res,
-    view::View,
 };
 
 use self::edges::Edges;
+
+pub(crate) use self::spawn::iter_reserve_hint;
 
 pub use self::builder::WorldBuilder;
 
@@ -63,6 +60,7 @@ mod edges;
 mod get;
 mod insert;
 mod remove;
+mod resource;
 mod spawn;
 mod view;
 
@@ -193,7 +191,7 @@ impl World {
         self.archetypes.id()
     }
 
-    pub fn alive(&self, entity: impl Entity) -> Result<EntityLoc, NoSuchEntity> {
+    pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc, NoSuchEntity> {
         let loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
         Ok(EntityLoc::new(entity.id(), loc))
     }
@@ -243,273 +241,6 @@ impl World {
         &self.archetypes
     }
 
-    /// Inserts resource instance.
-    /// Old value is replaced.
-    ///
-    /// To access resource, use [`World::get_resource`] and [`World::get_resource_mut`] methods.
-    ///
-    /// [`World::get_resource`]: struct.World.html#method.get_resource
-    /// [`World::get_resource_mut`]: struct.World.html#method.get_resource_mut
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
-    /// *world.get_resource_mut::<i32>().unwrap() = 11;
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
-    /// ```
-    pub fn insert_resource<T: 'static>(&mut self, resource: T) {
-        self.res.insert(resource)
-    }
-
-    /// Returns reference to the resource instance.
-    /// Inserts new instance if it does not exist.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let value = world.with_resource(|| 42i32);
-    /// assert_eq!(*value, 42);
-    /// *value = 11;
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
-    /// ```
-    pub fn with_resource<T: 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
-        self.res.with(f)
-    }
-
-    /// Returns reference to the resource instance.
-    /// Inserts new instance if it does not exist.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let value = world.with_default_resource::<u32>();
-    /// assert_eq!(*value, 0);
-    /// *value = 11;
-    /// assert_eq!(*world.get_resource::<u32>().unwrap(), 11);
-    /// ```
-    pub fn with_default_resource<T: Default + 'static>(&mut self) -> &mut T {
-        self.res.with(T::default)
-    }
-
-    /// Remove resource instance.
-    /// Returns `None` if resource was not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
-    /// world.remove_resource::<i32>();
-    /// assert!(world.get_resource::<i32>().is_none());
-    /// ```
-    pub fn remove_resource<T: 'static>(&mut self) -> Option<T> {
-        self.res.remove()
-    }
-
-    /// Returns some reference to potentially `!Sync` resource.
-    /// Returns none if resource is not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::{World, WorldLocal};
-    /// # use core::cell::Cell;
-    /// let mut world = World::new();
-    /// world.insert_resource(Cell::new(42i32));
-    /// unsafe {
-    ///     assert_eq!(42, world.get_local_resource::<Cell<i32>>().unwrap().get());
-    /// }
-    /// ```
-    ///
-    /// # Safety
-    ///
-    /// User must ensure that obtained immutable reference is safe.
-    /// For example calling this method from "main" thread is always safe.
-    ///
-    /// If `T` is `Sync` then this method is also safe.
-    /// In this case prefer to use [`World::get_resource`] method instead.
-    ///
-    /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
-    /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
-    ///
-    /// ```
-    /// # use edict::world::{World, WorldLocal};
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// let local = world.local();
-    /// assert_eq!(42, *local.get_resource::<i32>().unwrap());
-    /// ```
-    pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        unsafe { self.res.get_local() }
-    }
-
-    /// Returns some mutable reference to potentially `!Send` resource.
-    /// Returns none if resource is not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::{World, WorldLocal};
-    /// # use core::cell::Cell;
-    /// let mut world = World::new();
-    /// world.insert_resource(Cell::new(42i32));
-    /// unsafe {
-    ///     *world.get_local_resource_mut::<Cell<i32>>().unwrap().get_mut() = 11;
-    ///     assert_eq!(11, world.get_local_resource::<Cell<i32>>().unwrap().get());
-    /// }
-    /// ```
-    ///
-    /// # Safety
-    ///
-    /// User must ensure that obtained mutable reference is safe.
-    /// For example calling this method from "main" thread is always safe.
-    ///
-    /// If `T` is `Send` then this method is also safe.
-    /// In this case prefer to use [`World::get_resource_mut`] method instead.
-    ///
-    /// If user has mutable access to [`World`] this function is guaranteed to be safe to call.
-    /// [`WorldLocal`] wrapper can be used to avoid `unsafe` blocks.
-    ///
-    /// ```
-    /// # use edict::world::{World, WorldLocal};
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// let local = world.local();
-    /// *local.get_resource_mut::<i32>().unwrap() = 11;
-    /// ```
-    pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        unsafe { self.res.get_local_mut() }
-    }
-
-    /// Returns some reference to `Sync` resource.
-    /// Returns none if resource is not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// assert!(world.get_resource::<i32>().is_none());
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
-    /// ```
-    pub fn get_resource<T: Sync + 'static>(&self) -> Option<Ref<T>> {
-        self.res.get()
-    }
-
-    /// Returns reference to `Sync` resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.expect_resource::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(*world.expect_resource::<i32>(), 42);
-    /// ```
-    #[track_caller]
-    pub fn expect_resource<T: Sync + 'static>(&self) -> Ref<T> {
-        self.res.get().unwrap()
-    }
-
-    /// Returns a copy for the `Sync` resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.copy_resource::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(world.copy_resource::<i32>(), 42);
-    /// ```
-    #[track_caller]
-    pub fn copy_resource<T: Copy + Sync + 'static>(&self) -> T {
-        *self.res.get().unwrap()
-    }
-
-    /// Returns some mutable reference to `Send` resource.
-    /// Returns none if resource is not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// assert!(world.get_resource_mut::<i32>().is_none());
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// *world.get_resource_mut::<i32>().unwrap() = 11;
-    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
-    /// ```
-    pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
-        self.res.get_mut()
-    }
-
-    /// Returns mutable reference to `Send` resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.expect_resource_mut::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// *world.expect_resource_mut::<i32>() = 11;
-    /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
-    /// ```
-    #[track_caller]
-    pub fn expect_resource_mut<T: Send + 'static>(&self) -> RefMut<T> {
-        self.res.get_mut().unwrap()
-    }
-
     /// Returns [`WorldLocal`] referencing this [`World`].
     /// [`WorldLocal`] dereferences to [`World`]
     /// And defines overlapping methods `get_resource` and `get_resource_mut` without `Sync` and `Send` bounds.
@@ -529,49 +260,6 @@ impl World {
             world: self,
             marker: PhantomData,
         }
-    }
-
-    /// Reset all possible leaks on resources.
-    /// Mutable reference guarantees that no borrows are active.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{world::World, atomicell::RefMut};
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    ///
-    /// // Leaking reference to resource causes it to stay borrowed.
-    /// let value: &mut i32 = RefMut::leak(world.get_resource_mut().unwrap());
-    /// *value = 11;
-    ///
-    /// // Reset all borrows including leaked ones.
-    /// world.undo_resource_leak();
-    ///
-    /// // Borrow succeeds.
-    /// assert_eq!(world.get_resource::<i32>().unwrap(), 11);
-    /// ```
-    pub fn undo_resource_leak(&mut self) {
-        self.res.undo_leak()
-    }
-
-    /// Returns iterator over resource types.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::{any::TypeId, collections::HashSet};
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.insert_resource(42i32);
-    /// world.insert_resource(1.5f32);
-    /// assert_eq!(
-    ///     world.resource_types().collect::<HashSet<_>>(),
-    ///     HashSet::from([TypeId::of::<i32>(), TypeId::of::<f32>()]),
-    /// );
-    /// ```
-    pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
-        self.res.resource_types()
     }
 
     /// Returns [`ActionSender`] instance bound to this [`World`].\
@@ -626,16 +314,6 @@ impl World {
         &self.entities
     }
 
-    /// Temporary replaces internal action buffer with provided one.
-    #[inline]
-    pub(crate) fn with_buffer(&mut self, buffer: &mut ActionBuffer, f: impl FnOnce(&mut World)) {
-        let action_buffer = self.action_buffer.take();
-        self.action_buffer = Some(core::mem::take(buffer));
-        f(self);
-        *buffer = self.action_buffer.take().unwrap();
-        self.action_buffer = action_buffer;
-    }
-
     /// Runs world maintenance.
     ///
     /// Users typically do not need to call this method,
@@ -649,187 +327,6 @@ impl World {
         let archetype = &mut self.archetypes[0];
         self.entities
             .spawn_allocated(|id| archetype.spawn(id, (), epoch));
-    }
-}
-
-/// Error returned in case specified entity does not contain
-/// component of required type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MissingComponents;
-
-impl fmt::Display for MissingComponents {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Specified component is not found in entity")
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for MissingComponents {}
-
-/// Error returned if either entity reference is invalid
-/// or component of required type is not found for an entity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum EntityError {
-    /// Error returned in case specified [`EntityId`]
-    /// does not reference any live entity in the [`World`].
-    NoSuchEntity,
-
-    /// Error returned in case specified entity does not contain
-    /// component of required type.
-    MissingComponents,
-}
-
-impl fmt::Display for EntityError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
-            Self::MissingComponents => fmt::Display::fmt(&MissingComponents, f),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for EntityError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NoSuchEntity => Some(&NoSuchEntity),
-            Self::MissingComponents => Some(&MissingComponents),
-        }
-    }
-}
-
-impl From<NoSuchEntity> for EntityError {
-    fn from(_: NoSuchEntity) -> Self {
-        EntityError::NoSuchEntity
-    }
-}
-
-impl From<MissingComponents> for EntityError {
-    fn from(_: MissingComponents) -> Self {
-        EntityError::MissingComponents
-    }
-}
-
-impl PartialEq<NoSuchEntity> for EntityError {
-    fn eq(&self, _: &NoSuchEntity) -> bool {
-        matches!(self, EntityError::NoSuchEntity)
-    }
-}
-
-impl PartialEq<MissingComponents> for EntityError {
-    fn eq(&self, _: &MissingComponents) -> bool {
-        matches!(self, EntityError::MissingComponents)
-    }
-}
-
-/// Error returned by [`World::query_one`] method family
-/// when query is not satisfied by the entity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum QueryOneError {
-    /// Error returned in case specified [`EntityId`]
-    /// does not reference any live entity in the [`World`].
-    NoSuchEntity,
-
-    /// Error returned in case specified entity does not contain
-    /// component of required type.
-    NotSatisfied,
-}
-
-impl fmt::Display for QueryOneError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
-            Self::NotSatisfied => f.write_str("Query is not satisfied"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for QueryOneError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NoSuchEntity => Some(&NoSuchEntity),
-            Self::NotSatisfied => None,
-        }
-    }
-}
-
-impl From<NoSuchEntity> for QueryOneError {
-    fn from(_: NoSuchEntity) -> Self {
-        QueryOneError::NoSuchEntity
-    }
-}
-
-impl PartialEq<NoSuchEntity> for QueryOneError {
-    fn eq(&self, _: &NoSuchEntity) -> bool {
-        matches!(self, QueryOneError::NoSuchEntity)
-    }
-}
-
-/// Inserts component.
-/// This function uses different code to assign component when it already exists on entity.
-fn insert_component<T, C>(
-    world: &mut World,
-    id: EntityId,
-    value: T,
-    into_component: impl FnOnce(T) -> C,
-    set_component: impl FnOnce(&mut C, T, ActionEncoder),
-    buffer: &mut ActionBuffer,
-) where
-    C: Component,
-{
-    let Location {
-        archetype: src_archetype,
-        idx,
-    } = world.entities.get_location(id).unwrap();
-    debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
-
-    if world.archetypes[src_archetype as usize].has_component(TypeId::of::<C>()) {
-        let component = unsafe {
-            world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch.current_mut())
-        };
-
-        set_component(
-            component,
-            value,
-            ActionEncoder::new(buffer, &world.entities),
-        );
-
-        return;
-    }
-
-    let component = into_component(value);
-
-    let dst_archetype = world.edges.insert(
-        TypeId::of::<C>(),
-        &mut world.registry,
-        &mut world.archetypes,
-        src_archetype,
-        |registry| registry.get_or_register::<C>(),
-    );
-
-    debug_assert_ne!(src_archetype, dst_archetype);
-
-    let (before, after) = world
-        .archetypes
-        .split_at_mut(src_archetype.max(dst_archetype) as usize);
-
-    let (src, dst) = match src_archetype < dst_archetype {
-        true => (&mut before[src_archetype as usize], &mut after[0]),
-        false => (&mut after[0], &mut before[dst_archetype as usize]),
-    };
-
-    let (dst_idx, opt_src_id) =
-        unsafe { src.insert(id, dst, idx, component, world.epoch.current_mut()) };
-
-    world
-        .entities
-        .set_location(id, Location::new(dst_archetype, dst_idx));
-
-    if let Some(src_id) = opt_src_id {
-        world
-            .entities
-            .set_location(src_id, Location::new(src_archetype, idx));
     }
 }
 

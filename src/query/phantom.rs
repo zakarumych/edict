@@ -8,7 +8,7 @@ use crate::{
     world::World,
 };
 
-use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
 
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
@@ -35,7 +35,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
 
     /// Checks if archetype must be visited or skipped.
     #[must_use]
-    fn visit_archetype(archetype: &Archetype) -> bool;
+    unsafe fn visit_archetype(archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -49,7 +49,8 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     ///
     /// Must not be called if `skip_archetype` returned `true`.
     #[must_use]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a>;
+    unsafe fn fetch<'a>(arch_idx: u32, archetype: &'a Archetype, epoch: EpochId)
+        -> Self::Fetch<'a>;
 
     /// Returns item for reserved entity if reserved entity satisfies the query.
     /// Otherwise returns `None`.
@@ -85,16 +86,6 @@ where
     }
 }
 
-impl<Q> DefaultQuery for Q
-where
-    Q: PhantomQuery,
-{
-    #[inline]
-    fn default_query() -> Self::Query {
-        PhantomData
-    }
-}
-
 unsafe impl<Q> Query for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
@@ -108,7 +99,7 @@ where
     }
 
     #[inline]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <Q as PhantomQuery>::visit_archetype(archetype)
     }
 
@@ -118,8 +109,13 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
-        <Q as PhantomQuery>::fetch(archetype, epoch)
+    unsafe fn fetch<'a>(
+        &mut self,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        <Q as PhantomQuery>::fetch(arch_idx, archetype, epoch)
     }
 
     #[inline]
@@ -155,7 +151,7 @@ where
     }
 
     #[inline]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <T as PhantomQuery>::visit_archetype(archetype)
     }
 

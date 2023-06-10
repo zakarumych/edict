@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{
     archetype::Archetype,
-    entity::{Entity, EntityId, Located, Location},
+    entity::{EntityId, EntityLoc, Location},
 };
 
 use super::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery};
@@ -14,7 +14,7 @@ pub struct EntitiesFetch<'a> {
 }
 
 unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
-    type Item = Entity<Located<'a>>;
+    type Item = EntityLoc<'a>;
 
     #[inline]
     fn dangling() -> Self {
@@ -25,9 +25,9 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: u32) -> Entity<Located<'a>> {
+    unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
         let id = *self.entities.get_unchecked(idx);
-        Entity::new_located(id, Location::new(self.archetype, idx))
+        EntityLoc::new(id, Location::new(self.archetype, idx))
     }
 }
 
@@ -47,7 +47,7 @@ impl Entities {
 
 unsafe impl PhantomQuery for Entities {
     type Fetch<'a> = EntitiesFetch<'a>;
-    type Item<'a> = Entity<Located<'a>>;
+    type Item<'a> = EntityLoc<'a>;
 
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -55,7 +55,7 @@ unsafe impl PhantomQuery for Entities {
     }
 
     #[inline]
-    fn visit_archetype(_archetype: &Archetype) -> bool {
+    unsafe fn visit_archetype(_archetype: &Archetype) -> bool {
         true
     }
 
@@ -64,22 +64,22 @@ unsafe impl PhantomQuery for Entities {
 
     #[inline]
     unsafe fn fetch<'a>(
-        archetype_idx: u32,
+        arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: crate::epoch::EpochId,
     ) -> EntitiesFetch<'a> {
         EntitiesFetch {
-            archetype: archetype_idx,
+            archetype: arch_idx,
             entities: archetype.entities(),
         }
     }
 
     #[inline]
-    fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<Entity<Located<'a>>>
+    fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<EntityLoc<'a>>
     where
         EntityId: 'a,
     {
-        Some(Entity::new_located(id, Location::reserved(idx)))
+        Some(EntityLoc::new(id, Location::reserved(idx)))
     }
 }
 

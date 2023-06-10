@@ -72,7 +72,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchWrite<'a, T> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchWrite<'a, T> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 

@@ -47,9 +47,10 @@ fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
         filter_len: usize,
     }
 
-    impl<'a, Q> Drop for ReleaseOnFailure<'a, Q>
+    impl<'a, Q, F> Drop for ReleaseOnFailure<'a, Q, F>
     where
         Q: Query,
+        F: Query,
     {
         fn drop(&mut self) {
             let len = self.query_len.max(self.filter_len);
@@ -132,9 +133,10 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
         filter_len: usize,
     }
 
-    impl<'a, Q> Drop for ReleaseOnFailure<'a, Q>
+    impl<'a, Q, F> Drop for ReleaseOnFailure<'a, Q, F>
     where
         Q: Query,
+        F: Query,
     {
         fn drop(&mut self) {
             if self.query_len > 0 || self.filter_len > 0 {

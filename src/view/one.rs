@@ -25,5 +25,7 @@ pub type ViewOne<'a, Q, F = ()> =
     ViewOneState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query>;
 
 impl<'a, Q, F> ViewOne<'a, Q, F> {
-    pub fn new(world: &World, entity: impl AliveEntity) -> Self {}
+    pub fn new(world: &World, entity: impl AliveEntity) -> Self {
+        entity.locate(&)
+    }
 }

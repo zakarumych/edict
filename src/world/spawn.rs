@@ -5,7 +5,9 @@ use crate::{
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::ComponentRegistry,
-    entity::{AliveEntity, Entity, EntityId, EntityRef, EntitySet, Location, NoSuchEntity},
+    entity::{
+        AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location, NoSuchEntity,
+    },
     epoch::EpochId,
 };
 
@@ -37,7 +39,7 @@ impl World {
     /// assert_eq!(world.is_alive(entity), false);
     /// ```
     #[inline]
-    pub fn allocate(&self) -> EntityRef<'_> {
+    pub fn allocate(&self) -> EntityLoc<'_> {
         self.entities.alloc()
     }
 
@@ -89,7 +91,7 @@ impl World {
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
     /// ```
     #[inline]
-    pub fn spawn_with_id<B>(&mut self, id: EntityId, bundle: B)
+    pub fn spawn_with_id<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
     {
@@ -106,15 +108,13 @@ impl World {
     pub fn spawn_if_missing(&mut self, id: EntityId) -> (bool, EntityRef<'_>) {
         self.maintenance();
 
-        let (spawned, entity) = self.entities.spawn_if_missing(id);
-        if spawned {
+        let (spawned, loc) = self.entities.spawn_if_missing(id, || {
             let epoch = self.epoch.next_mut();
-            let idx = self.archetypes[0].spawn(id, (), epoch);
-            self.entities.set_location(id, Location::empty(idx));
-            (true, entity)
-        } else {
-            (false, entity)
-        }
+            self.archetypes[0].spawn(id, (), epoch)
+        });
+
+        let entity = EntityRef::new(id, loc, self);
+        (spawned, entity)
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -189,7 +189,7 @@ impl World {
         self.spawn_with_id_impl(id, bundle, assert_registered_bundle::<B>);
     }
 
-    fn _spawn<B, F>(&mut self, bundle: B, register_bundle: F) -> EntityId
+    fn _spawn<B, F>(&mut self, bundle: B, register_bundle: F) -> EntityRef<'_>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -202,11 +202,15 @@ impl World {
         }
 
         let id = self.entities.alloc_mut();
-        self.spawn_with_id_impl(id, bundle, register_bundle);
-        id
+        self.spawn_with_id_impl(id, bundle, register_bundle)
     }
 
-    fn spawn_with_id_impl<B, F>(&mut self, id: EntityId, bundle: B, register_bundle: F)
+    fn spawn_with_id_impl<B, F>(
+        &mut self,
+        id: EntityId,
+        bundle: B,
+        register_bundle: F,
+    ) -> EntityRef<'_>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -220,16 +224,17 @@ impl World {
 
         self.entities.spawn_at(id);
 
-        let archetype_idx = self.edges.spawn(
+        let arch_idx = self.edges.spawn(
             &mut self.registry,
             &mut self.archetypes,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
         let epoch = self.epoch.next_mut();
-        let idx = self.archetypes[archetype_idx as usize].spawn(id, bundle, epoch);
-        self.entities
-            .set_location(id, Location::new(archetype_idx, idx));
+        let idx = self.archetypes[arch_idx as usize].spawn(id, bundle, epoch);
+        let loc = Location::new(arch_idx, idx);
+        self.entities.set_location(id, loc);
+        EntityRef::new(id, loc, self)
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -311,7 +316,7 @@ impl World {
 
         self.maintenance();
 
-        let archetype_idx = self.edges.insert_bundle(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
             0,
@@ -321,25 +326,25 @@ impl World {
 
         let epoch = self.epoch.next_mut();
 
-        let archetype = &mut self.archetypes[archetype_idx as usize];
+        let archetype = &mut self.archetypes[arch_idx as usize];
         let entities = &mut self.entities;
 
         SpawnBatch {
             bundles: bundles.into_iter(),
             epoch,
-            archetype_idx,
+            arch_idx,
             archetype,
             entities,
         }
     }
 
-    pub(crate) fn spawn_reserve<B>(&mut self, additional: usize)
+    pub(crate) fn spawn_reserve<B>(&mut self, additional: u32)
     where
         B: Bundle,
     {
         self.entities.reserve_space(additional);
 
-        let archetype_idx = self.edges.insert_bundle(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
             0,
@@ -347,7 +352,7 @@ impl World {
             |registry| assert_registered_bundle(registry, &PhantomData::<B>),
         );
 
-        let archetype = &mut self.archetypes[archetype_idx as usize];
+        let archetype = &mut self.archetypes[arch_idx as usize];
         archetype.reserve(additional);
     }
 
@@ -394,16 +399,16 @@ impl World {
     ) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
-        let (archetype, idx) = self.entities.despawn(entity.id())?;
+        let loc = self.entities.despawn(entity.id()).ok_or(NoSuchEntity)?;
 
         let encoder = ActionEncoder::new(buffer, &self.entities);
         let opt_id = unsafe {
-            self.archetypes[archetype as usize].despawn_unchecked(entity.id(), idx, encoder)
+            self.archetypes[loc.arch as usize].despawn_unchecked(entity.id(), loc.idx, encoder)
         };
 
         if let Some(id) = opt_id {
             self.entities
-                .set_location(id, Location::new(archetype, idx))
+                .set_location(id, Location::new(loc.arch, loc.idx))
         }
 
         Ok(())
@@ -414,7 +419,7 @@ impl World {
 pub struct SpawnBatch<'a, I> {
     bundles: I,
     epoch: EpochId,
-    archetype_idx: u32,
+    arch_idx: u32,
     archetype: &'a mut Archetype,
     entities: &'a mut EntitySet,
 }
@@ -432,13 +437,13 @@ where
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
-        let archetype_idx = self.archetype_idx;
+        let arch_idx = self.arch_idx;
         let epoch = self.epoch;
 
         self.bundles.for_each(|bundle| {
             let id = entities.spawn();
             let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(archetype_idx, idx));
+            entities.set_location(id, Location::new(arch_idx, idx));
         })
     }
 }
@@ -456,7 +461,7 @@ where
         let id = self.entities.spawn();
         let idx = self.archetype.spawn(id, bundle, self.epoch);
         self.entities
-            .set_location(id, Location::new(self.archetype_idx, idx));
+            .set_location(id, Location::new(self.arch_idx, idx));
 
         Some(id)
     }
@@ -468,7 +473,7 @@ where
         let id = self.entities.spawn();
         let idx = self.archetype.spawn(id, bundle, self.epoch);
         self.entities
-            .set_location(id, Location::new(self.archetype_idx, idx));
+            .set_location(id, Location::new(self.arch_idx, idx));
 
         Some(id)
     }
@@ -487,13 +492,13 @@ where
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
-        let archetype_idx = self.archetype_idx;
+        let arch_idx = self.arch_idx;
         let epoch = self.epoch;
 
         self.bundles.fold(init, |acc, bundle| {
             let id = entities.spawn();
             let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(archetype_idx, idx));
+            entities.set_location(id, Location::new(arch_idx, idx));
             f(acc, id)
         })
     }
@@ -536,7 +541,7 @@ where
         let idx = self.archetype.spawn(id, bundle, self.epoch);
 
         self.entities
-            .set_location(id, Location::new(self.archetype_idx, idx));
+            .set_location(id, Location::new(self.arch_idx, idx));
 
         Some(id)
     }
@@ -550,7 +555,7 @@ where
         let idx = self.archetype.spawn(id, bundle, self.epoch);
 
         self.entities
-            .set_location(id, Location::new(self.archetype_idx, idx));
+            .set_location(id, Location::new(self.arch_idx, idx));
 
         Some(id)
     }
@@ -564,13 +569,13 @@ where
 
         let entities = &mut self.entities;
         let archetype = &mut self.archetype;
-        let archetype_idx = self.archetype_idx;
+        let arch_idx = self.arch_idx;
         let epoch = self.epoch;
 
         self.bundles.rfold(init, |acc, bundle| {
             let id = entities.spawn();
             let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(archetype_idx, idx));
+            entities.set_location(id, Location::new(arch_idx, idx));
             f(acc, id)
         })
     }
@@ -583,13 +588,15 @@ where
 {
 }
 
-pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> usize {
+pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> u32 {
     let (lower, upper) = iter.size_hint();
     match (lower, upper) {
-        (lower, None) => lower,
+        (lower, None) => lower.min(u32::MAX as usize) as u32,
         (lower, Some(upper)) => {
             // Iterator is consumed in full, so reserve at least `lower`.
-            lower.max(upper.min(MAX_SPAWN_RESERVE))
+            lower
+                .max(upper.min(MAX_SPAWN_RESERVE))
+                .min(u32::MAX as usize) as u32
         }
     }
 }

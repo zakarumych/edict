@@ -1,6 +1,5 @@
 use core::{
     fmt,
-    num::NonZeroU64,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -12,7 +11,7 @@ use super::{
 };
 
 /// Entity location in archetypes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Location {
     /// Archetype index.
     pub arch: u32,
@@ -73,36 +72,42 @@ impl EntitySet {
     }
 
     #[inline(always)]
-    pub fn alloc_mut(&mut self) -> EntityLoc<'_> {
+    pub fn alloc_mut(&mut self) -> EntityId {
         match self.id_allocator.next() {
             None => {
                 panic!("Entity id allocator is exhausted");
             }
-            Some(id) => EntityLoc::new(id, self),
+            Some(id) => EntityId::new(id),
         }
     }
 
     #[inline(always)]
-    pub fn spawn(&mut self) -> EntityLoc<'_> {
+    pub fn spawn(&mut self) -> EntityId {
         let id = self.alloc_mut();
         self.spawn_at(id);
         id
     }
 
     #[inline(always)]
-    pub fn spawn_at(&mut self, id: EntityId) -> EntityLoc<'_> {
-        let old = self.map.insert(id.get(), Location { arch: 0, idx: 0 });
+    pub fn spawn_at(&mut self, id: EntityId) {
+        let old = self.map.insert(
+            id.bits(),
+            Location {
+                arch: 0,
+                idx: u32::MAX,
+            },
+        );
         debug_assert!(old.is_none());
     }
 
     #[inline(always)]
-    pub fn spawn_if_missing(&mut self, id: EntityId) -> (bool, EntityLoc<'_>) {
-        match self.map.entry(id.get()) {
-            Entry::Occupied(loc) => (false, EntityLoc::new(id, loc)),
+    pub fn spawn_if_missing(&mut self, id: EntityId, f: impl FnOnce() -> u32) -> (bool, Location) {
+        match self.map.entry(id.bits()) {
+            Entry::Occupied(entry) => (false, *entry.get()),
             Entry::Vacant(entry) => {
-                let loc = Location { arch: 0, idx: 0 };
+                let loc = Location { arch: 0, idx: f() };
                 entry.insert(loc);
-                (true, EntityLoc::new(id, loc))
+                (true, loc)
             }
         }
     }
@@ -121,12 +126,12 @@ impl EntitySet {
                 self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
                 panic!("Too much entity ids reserved");
             }
-            Some(id) => EntityLoc::new(id, Location::reserved(idx as u32)),
+            Some(id) => EntityLoc::new(EntityId::new(id), Location::reserved(idx as u32)),
         }
     }
 
     #[inline(always)]
-    pub fn spawn_allocated(&mut self, mut f: impl FnMut(NonZeroU64) -> u32) {
+    pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
         if reserved == 0 {
             return;
@@ -137,7 +142,7 @@ impl EntitySet {
                     id.get(),
                     Location {
                         arch: 0,
-                        idx: f(id),
+                        idx: f(EntityId::new(id)),
                     },
                 );
             });
@@ -146,7 +151,7 @@ impl EntitySet {
 
     #[inline(always)]
     pub fn despawn(&mut self, id: EntityId) -> Option<Location> {
-        self.map.remove(&id.get())
+        self.map.remove(&id.bits())
     }
 
     #[inline(always)]
@@ -156,7 +161,7 @@ impl EntitySet {
 
     #[inline(always)]
     pub fn get_location(&self, id: EntityId) -> Option<Location> {
-        match self.map.get(&id.get()) {
+        match self.map.get(&id.bits()) {
             None => {
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
                 let Some(idx) = self.id_allocator.reserved(id.non_zero()) else {
@@ -171,7 +176,7 @@ impl EntitySet {
         }
     }
 
-    pub fn reserve_space(&mut self, additional: usize) {
-        self.map.reserve(additional);
+    pub fn reserve_space(&mut self, additional: u32) {
+        self.map.reserve(additional as usize);
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    query::{DefaultQuery, Query},
-    view::{View, ViewMut},
+    query::{DefaultQuery, IntoQuery},
+    view::{View, ViewMut, ViewState},
 };
 
 use super::World;
@@ -12,7 +12,7 @@ impl World {
     /// Use [`View`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn new_view<'a>(&'a self) -> View<'a, ()> {
-        View::new(self)
+        ViewState::new(self)
     }
 
     /// Starts building new view.
@@ -24,7 +24,7 @@ impl World {
     /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn new_view_mut<'a>(&'a mut self) -> ViewMut<'a, ()> {
-        ViewMut::new_mut(self)
+        ViewState::new_mut(self)
     }
 
     /// Starts building new view.
@@ -41,7 +41,7 @@ impl World {
     /// invalid aliasing of world's components.
     #[inline(always)]
     pub unsafe fn new_view_unchecked<'a>(&'a mut self) -> ViewMut<'a, ()> {
-        unsafe { ViewMut::new_unchecked(self) }
+        unsafe { ViewState::new_unchecked(self) }
     }
 
     /// Creates new view with single sub-query.
@@ -54,7 +54,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        View::new(self)
+        ViewState::new(self)
     }
 
     /// Creates new view with single sub-query.
@@ -69,7 +69,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        ViewMut::new_mut(self)
+        ViewState::new_mut(self)
     }
 
     /// Creates new view with single sub-query.
@@ -89,7 +89,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        unsafe { ViewMut::new_unchecked(self) }
+        unsafe { ViewState::new_unchecked(self) }
     }
 
     /// Creates new view with single sub-query.
@@ -102,9 +102,9 @@ impl World {
     #[inline]
     pub fn view_with<'a, Q>(&'a self, query: Q) -> View<'a, (Q,)>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
-        View::with_query(self, query)
+        ViewState::with_query(self, query)
     }
 
     /// Creates new view with single sub-query.
@@ -117,9 +117,9 @@ impl World {
     #[inline]
     pub fn view_with_mut<'a, Q>(&'a mut self, query: Q) -> ViewMut<'a, (Q,)>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
-        ViewMut::with_query_mut(self, query)
+        ViewState::with_query_mut(self, query)
     }
 
     /// Creates new view with single sub-query.
@@ -137,8 +137,8 @@ impl World {
     #[inline]
     pub unsafe fn view_with_unchecked<'a, Q>(&'a self, query: Q) -> ViewMut<'a, (Q,)>
     where
-        Q: Query,
+        Q: IntoQuery,
     {
-        unsafe { ViewMut::with_query_unchecked(self, query) }
+        unsafe { ViewState::with_query_unchecked(self, query) }
     }
 }

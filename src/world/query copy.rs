@@ -508,15 +508,15 @@ where
         &mut self,
         id: EntityId,
     ) -> Result<QueryItem<'_, FilteredQuery<F::Query, Q::Query>>, QueryOneError> {
-        let (archetype_idx, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
-        if archetype_idx == u32::MAX {
+        let (arch_idx, idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
+        if arch_idx == u32::MAX {
             return match self.filtered_query.reserved_entity_item(id) {
                 None => Err(QueryOneError::NotSatisfied),
                 Some(item) => Ok(item),
             };
         }
 
-        let archetype = &self.archetypes[archetype_idx as usize];
+        let archetype = &self.archetypes[arch_idx as usize];
 
         debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
@@ -780,15 +780,15 @@ where
     Q: Query,
     Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
 {
-    let (archetype_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
-    if archetype_idx == u32::MAX {
+    let (arch_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
+    if arch_idx == u32::MAX {
         return match query.reserved_entity_item(id) {
             None => Err(QueryOneError::NotSatisfied),
             Some(item) => Ok(f(item)),
         };
     }
 
-    let archetype = unsafe { archetypes.get_unchecked(archetype_idx as usize) };
+    let archetype = unsafe { archetypes.get_unchecked(arch_idx as usize) };
 
     debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 
@@ -833,15 +833,15 @@ where
     Q: Query,
     Fun: for<'a> FnOnce(QueryItem<'a, Q>) -> R,
 {
-    let (archetype_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
-    if archetype_idx == u32::MAX {
+    let (arch_idx, idx) = entities.get_location(id).ok_or(NoSuchEntity)?;
+    if arch_idx == u32::MAX {
         return match query.reserved_entity_item(id) {
             None => Err(QueryOneError::NotSatisfied),
             Some(item) => Ok(f(item)),
         };
     }
 
-    let archetype = unsafe { archetypes.get_unchecked(archetype_idx as usize) };
+    let archetype = unsafe { archetypes.get_unchecked(arch_idx as usize) };
 
     debug_assert!(archetype.len() >= idx as usize, "Entity index is valid");
 

@@ -1,12 +1,6 @@
 use core::{any::TypeId, marker::PhantomData};
 
-use crate::{
-    archetype::Archetype,
-    entity::EntityId,
-    epoch::EpochId,
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
-};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
 use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
 
@@ -15,6 +9,9 @@ use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
 ///
 /// [`PhantomData<fn() -> Q>`] implements [`Query`] trait if `Q` implements [`Query`] trait.
 pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
+    /// Returns `true` if query fetches at least one mutable component.
+    const MUTABLE: bool;
+
     /// Item type this query type yields.
     type Item<'a>: 'a;
 
@@ -34,8 +31,11 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     fn access(ty: TypeId) -> Option<Access>;
 
     /// Checks if archetype must be visited or skipped.
+    ///
+    /// This method must be safe to execute in parallel with any other accesses
+    /// to the same archetype.
     #[must_use]
-    unsafe fn visit_archetype(archetype: &Archetype) -> bool;
+    fn visit_archetype(archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -93,13 +93,15 @@ where
     type Item<'a> = Q::Item<'a>;
     type Fetch<'a> = Q::Fetch<'a>;
 
+    const MUTABLE: bool = Q::MUTABLE;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Q as PhantomQuery>::access(ty)
     }
 
     #[inline]
-    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <Q as PhantomQuery>::visit_archetype(archetype)
     }
 
@@ -110,7 +112,7 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
         arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
@@ -128,42 +130,3 @@ where
 pub unsafe trait ImmutablePhantomQuery: PhantomQuery {}
 
 unsafe impl<Q> ImmutableQuery for PhantomData<fn() -> Q> where Q: ImmutablePhantomQuery {}
-
-impl<'a, T> QueryArgGet<'a> for PhantomData<fn() -> T>
-where
-    T: PhantomQuery + 'static,
-{
-    type Arg = T;
-    type Query = PhantomData<fn() -> T>;
-
-    #[inline]
-    fn get(&mut self, _world: &World) -> Self::Query {
-        PhantomData
-    }
-}
-
-impl<T> QueryArgCache for PhantomData<fn() -> T>
-where
-    T: PhantomQuery + 'static,
-{
-    fn new() -> Self {
-        PhantomData
-    }
-
-    #[inline]
-    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        <T as PhantomQuery>::visit_archetype(archetype)
-    }
-
-    #[inline]
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <T as PhantomQuery>::access(id)
-    }
-}
-
-impl<T> QueryArg for T
-where
-    T: PhantomQuery + 'static,
-{
-    type Cache = PhantomData<fn() -> T>;
-}

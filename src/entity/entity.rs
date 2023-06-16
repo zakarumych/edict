@@ -24,6 +24,20 @@ pub trait Entity {
 
     /// Returns entity location if it is alive.
     fn lookup(&self, entities: &EntitySet) -> Option<Location>;
+
+    #[inline(always)]
+    fn is_alive(&self, entities: &EntitySet) -> bool {
+        self.lookup(entities).is_some()
+    }
+
+    #[inline(always)]
+    fn entity_loc<'a>(&self, entities: &'a EntitySet) -> Option<EntityLoc<'a>> {
+        self.lookup(entities).map(|loc| EntityLoc {
+            id: self.id(),
+            loc,
+            world: PhantomData,
+        })
+    }
 }
 
 /// Entity which must stay alive while the reference is alive.
@@ -31,6 +45,16 @@ pub trait Entity {
 pub trait AliveEntity: Entity {
     /// Returns entity location.
     fn locate(&self, entities: &EntitySet) -> Location;
+
+    #[inline(always)]
+    fn entity_loc<'a>(&self, entities: &'a EntitySet) -> EntityLoc<'a> {
+        let loc = self.locate(entities);
+        EntityLoc {
+            id: self.id(),
+            loc,
+            world: PhantomData,
+        }
+    }
 }
 
 /// Entity which is guaranteed to be alive
@@ -48,7 +72,24 @@ pub struct EntityId {
     id: NonZeroU64,
 }
 
+impl fmt::Debug for EntityId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("EntityId").field(&self.id).finish()
+    }
+}
+
 impl EntityId {
+    const DANGLING: NonZeroU64 = NonZeroU64::new(1).unwrap();
+
+    pub const fn dangling() -> Self {
+        EntityId { id: Self::DANGLING }
+    }
+
+    #[inline(always)]
+    pub(super) fn new(id: NonZeroU64) -> Self {
+        EntityId { id }
+    }
+
     #[inline(always)]
     pub(super) fn non_zero(&self) -> NonZeroU64 {
         self.id
@@ -108,7 +149,7 @@ impl<'a> Entity for EntityBound<'a> {
 
     #[inline(always)]
     fn lookup(&self, entities: &EntitySet) -> Option<Location> {
-        Ok(self.locate(entities))
+        Some(self.locate(entities))
     }
 }
 
@@ -149,7 +190,7 @@ impl<'a> Entity for EntityLoc<'a> {
 
     #[inline(always)]
     fn lookup(&self, _entities: &EntitySet) -> Option<Location> {
-        Ok(self.loc)
+        Some(self.loc)
     }
 }
 
@@ -178,11 +219,7 @@ pub struct EntityRef<'a> {
 impl<'a> EntityRef<'a> {
     #[inline(always)]
     pub(crate) fn new(id: EntityId, loc: Location, world: &'a mut World) -> Self {
-        EntityRef {
-            id,
-            loc,
-            world: PhantomData,
-        }
+        EntityRef { id, loc, world }
     }
 
     #[inline(always)]
@@ -225,12 +262,12 @@ impl<'a> EntityRef<'a> {
     where
         T: 'static,
     {
-        unsafe { self.world.drop(self.loc()).unwrap_unchecked() }
+        unsafe { self.world.drop::<T>(self.loc()).unwrap_unchecked() }
     }
 
     #[inline(always)]
     pub fn despawn(self) {
-        unsafe { self.world.despawn(self.loc()).unwrap_unchecked() }
+        unsafe { self.world.despawn(self.loc()) }
     }
 }
 

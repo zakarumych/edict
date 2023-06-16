@@ -54,10 +54,10 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         unsafe {
             (self.borrow_fn)(
-                NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+                NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
                 PhantomData::<&'a ()>,
             )
         }
@@ -70,6 +70,8 @@ where
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchBorrowAnyRead<'a, T>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -92,7 +94,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, _epoch: EpochId) -> FetchBorrowAnyRead<T> {
+    unsafe fn fetch(
+        _arch_idx: u32,
+        archetype: &Archetype,
+        _epoch: EpochId,
+    ) -> FetchBorrowAnyRead<T> {
         let (id, idx) = *archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -142,18 +148,18 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx);
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
+        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_version.bump(self.epoch);
 
         (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
             PhantomData::<&'a mut ()>,
         )
     }
@@ -165,6 +171,8 @@ where
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchBorrowAnyWrite<'a, T>;
+
+    const MUTABLE: bool = true;
 
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -187,7 +195,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: EpochId) -> FetchBorrowAnyWrite<T> {
+    unsafe fn fetch(
+        _arch_idx: u32,
+        archetype: &Archetype,
+        epoch: EpochId,
+    ) -> FetchBorrowAnyWrite<T> {
         let (id, idx) = *archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()

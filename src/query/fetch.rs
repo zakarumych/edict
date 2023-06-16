@@ -9,14 +9,14 @@ pub struct VerifyFetch {
     dangling: bool,
 
     /// contains index of the last `visit_chunk` call and whether it returns true.
-    visit_chunk: Option<(usize, bool)>,
+    visit_chunk: Option<(u32, bool)>,
 
     /// contains `Some` after `visit_chunk` is called.
     /// cleared in `visit_chunk` call.
-    touch_chunk: Option<usize>,
+    touch_chunk: Option<u32>,
 
     /// Contains index of the `skip_ite,` call and whether it returns true.
-    visit_item: Option<(usize, bool)>,
+    visit_item: Option<(u32, bool)>,
 }
 
 impl VerifyFetch {
@@ -50,7 +50,7 @@ impl VerifyFetch {
     ///
     /// If dangling.
     #[inline]
-    pub fn visit_chunk(&mut self, chunk_idx: usize, visiting: bool) {
+    pub fn visit_chunk(&mut self, chunk_idx: u32, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: skip_chunk called for dangling fetch");
         }
@@ -66,7 +66,7 @@ impl VerifyFetch {
     /// If dangling.
     /// If `visit_chunk` was not called with `visiting = true` for the same chunk just before this call.
     #[inline]
-    pub fn touch_chunk(&mut self, chunk_idx: usize) {
+    pub fn touch_chunk(&mut self, chunk_idx: u32) {
         if self.dangling {
             panic!("FetchVerify: visit_chunk called for dangling fetch");
         }
@@ -93,7 +93,7 @@ impl VerifyFetch {
     /// If dangling.
     /// if `touch_chunk` was not called for the corresponding chunk before this call.
     #[inline]
-    pub fn visit_item(&mut self, idx: usize, visiting: bool) {
+    pub fn visit_item(&mut self, idx: u32, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: visit_item called for dangling fetch");
         }
@@ -117,7 +117,7 @@ impl VerifyFetch {
     /// If dangling.
     /// If `visit_item` was not called with `visiting = true` for the same item just before this call.
     #[inline]
-    pub fn get_item(&mut self, idx: usize) {
+    pub fn get_item(&mut self, idx: u32) {
         if self.dangling {
             panic!("FetchVerify: get_item called for dangling fetch");
         }
@@ -274,7 +274,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.visit_chunk(chunk_idx, true);
@@ -282,14 +282,14 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.touch_chunk(chunk_idx)
     }
 
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.visit_item(idx, true);
@@ -297,7 +297,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> () {
+    unsafe fn get_item(&mut self, idx: u32) -> () {
         let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.get_item(idx)

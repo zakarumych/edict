@@ -260,7 +260,7 @@ fn test_relation() {
     let b = world.spawn(());
 
     for _origins in world
-        .new_query()
+        .new_view()
         .borrow_all::<&(dyn RelationOrigin + Sync)>()
         .iter()
     {

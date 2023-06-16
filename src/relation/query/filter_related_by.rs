@@ -31,13 +31,13 @@ where
     }
 
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let target_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let target_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         target_component.origins.contains(&self.origin)
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, _: usize) -> () {}
+    unsafe fn get_item(&mut self, _: u32) -> () {}
 }
 
 /// Filters targets of relation with specified origin.
@@ -47,6 +47,7 @@ pub struct FilterRelatedBy<R> {
 }
 
 impl_debug!(FilterRelatedBy<R> { origin });
+impl_copy!(FilterRelatedBy<R>);
 
 impl<R> FilterRelatedBy<R> {
     /// Returns relation filter bound to one specific origin.
@@ -77,6 +78,9 @@ where
     type Item<'a> = ();
     type Fetch<'a> = FetchFilterRelatedBy<'a, R>;
 
+    const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<TargetComponent<R>>() {
@@ -98,7 +102,8 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchFilterRelatedBy<'a, R> {

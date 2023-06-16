@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    entity::EntityId,
+    entity::EntityLoc,
     epoch::EpochId,
     query::{
         merge_access, Access, Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery,
@@ -70,13 +70,13 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> DumpItem<'a, T> {
+    unsafe fn get_item(&mut self, idx: u32) -> DumpItem<'a, T> {
         match self.ptr {
             None => DumpItem::Missing,
             Some(ptr) => {
-                let epoch = unsafe { *self.entity_epochs.as_ptr().add(idx) };
+                let epoch = unsafe { *self.entity_epochs.as_ptr().add(idx as usize) };
                 if epoch.after(self.after_epoch) {
-                    DumpItem::Modified(unsafe { &*ptr.as_ptr().add(idx) })
+                    DumpItem::Modified(unsafe { &*ptr.as_ptr().add(idx as usize) })
                 } else {
                     DumpItem::Unmodified
                 }
@@ -107,13 +107,15 @@ macro_rules! impl_dump_query {
         where
             $($a: Sync + 'static,)*
         {
-            type Item<'a> = (EntityId, ($(DumpItem<'a, $a>),*));
+            type Item<'a> = (EntityLoc<'a>, ($(DumpItem<'a, $a>),*));
             type Fetch<'a> = (EntitiesFetch<'a>, ($(DumpFetch<'a, $a>),*));
+
+            const MUTABLE: bool = false;
 
             #[inline]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 let mut result = None;
-                $(result = merge_access(result, <&$a as PhantomQuery>::access(ty));)*
+                $(result = merge_access::<Self>(result, <&$a as PhantomQuery>::access(ty));)*
                 result
             }
 
@@ -129,7 +131,8 @@ macro_rules! impl_dump_query {
 
             #[inline]
             unsafe fn fetch<'a>(
-                &mut self,
+                &self,
+                arch_idx: u32,
                 archetype: &'a Archetype,
                 epoch: EpochId,
             ) -> (EntitiesFetch<'a>, ($(DumpFetch<'a, $a>),*)) {
@@ -151,7 +154,7 @@ macro_rules! impl_dump_query {
                             }
                         }
                     },)*);
-                (unsafe { Entities::fetch(archetype, epoch) }, ($($a),*))
+                (unsafe { Entities::fetch(arch_idx, archetype, epoch) }, ($($a),*))
             }
         }
 

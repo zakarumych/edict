@@ -2,9 +2,9 @@
 
 use crate::{
     archetype::chunk_idx,
-    entity::{AliveEntity, Entity},
-    query::{DefaultQuery, IntoQuery, Query, QueryItem},
-    view::ViewOne,
+    entity::AliveEntity,
+    query::{DefaultQuery, Fetch, IntoQuery, Query, QueryItem},
+    view::{ViewOne, ViewOneState},
 };
 
 use super::World;
@@ -23,7 +23,7 @@ impl World {
     ///
     /// This method may panic if entity of another world is used.
     #[inline(always)]
-    pub fn get_mut<'a, Q>(&'a mut self, entity: impl AliveEntity) -> Option<QueryItem<'a, Q::Query>>
+    pub fn get_mut<'a, Q>(&'a mut self, entity: impl AliveEntity) -> Option<QueryItem<'a, Q>>
     where
         Q: DefaultQuery,
     {
@@ -119,17 +119,17 @@ impl World {
 
         let mut fetch = unsafe { query.fetch(loc.arch, archetype, epoch) };
 
-        if !unsafe { fetch.visit_chunk(chunk_idx(loc.idx as usize)) } {
+        if !unsafe { fetch.visit_chunk(chunk_idx(loc.idx)) } {
             return None;
         }
 
-        unsafe { fetch.touch_chunk(chunk_idx(loc.idx as usize)) };
+        unsafe { fetch.touch_chunk(chunk_idx(loc.idx)) };
 
-        if !unsafe { fetch.visit_item(loc.idx as usize) } {
+        if !unsafe { fetch.visit_item(loc.idx) } {
             return None;
         }
 
-        let item = unsafe { fetch.get_item(loc.idx as usize) };
+        let item = unsafe { fetch.get_item(loc.idx) };
 
         Some(item)
     }
@@ -144,11 +144,11 @@ impl World {
     ///
     /// This method may panic if entity of another world is used.
     #[inline(always)]
-    pub fn get<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
+    pub fn view_one<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
     where
         Q: DefaultQuery,
     {
-        Ok(ViewOne::new(self, entity))
+        ViewOneState::new(self, entity)
     }
 
     /// Queries components from specified entity.
@@ -161,11 +161,11 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    pub fn get_with<'a, Q>(&'a self, entity: impl AliveEntity, query: Q) -> ViewOne<'a, Q>
+    pub fn view_one_with<'a, Q>(&'a self, entity: impl AliveEntity, query: Q) -> ViewOne<'a, (Q,)>
     where
         Q: IntoQuery,
     {
-        Ok(ViewOne::with_query(self, entity, query))
+        ViewOneState::with_query(self, entity, query)
     }
 
     /// Queries components from specified entity.
@@ -173,11 +173,10 @@ impl World {
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn get_clone<Q, T>(&mut self, entity: impl AliveEntity) -> Option<T>
+    pub fn get_cloned<T>(&mut self, entity: impl AliveEntity) -> Option<T>
     where
-        Q: DefaultQuery,
-        for<'a> QueryItem<'a, Q>: ToOwned<Owned = T>,
+        T: Clone + Sync + 'static,
     {
-        self.get::<Q>(entity)
+        self.view_one::<&T>(entity).map(Clone::clone)
     }
 }

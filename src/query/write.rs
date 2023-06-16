@@ -31,17 +31,17 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_epoch.bump(self.epoch);
 
-        &mut *self.ptr.as_ptr().add(idx)
+        &mut *self.ptr.as_ptr().add(idx as usize)
     }
 }
 
@@ -51,6 +51,8 @@ where
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchWrite<'a, T>;
+
+    const MUTABLE: bool = true;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {

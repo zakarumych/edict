@@ -35,7 +35,7 @@
 //! a specific entity.
 //!
 
-use core::any::TypeId;
+use core::any::{type_name, TypeId};
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
@@ -54,7 +54,6 @@ pub use self::{
     entities::{Entities, EntitiesFetch, EntitiesQuery},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{FilteredFetch, FilteredQuery, Not, With, Without},
-    iter::QueryIter,
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
         ModifiedFetchWrite,
@@ -73,7 +72,6 @@ mod copied;
 mod entities;
 mod fetch;
 mod filter;
-mod iter;
 mod modified;
 mod option;
 mod phantom;
@@ -108,7 +106,12 @@ pub trait IntoQuery {
 /// Types associated with default-constructible query type.
 pub trait DefaultQuery: IntoQuery<Query = Self::DQ> {
     #[doc(hidden)]
-    type DQ: Default;
+    type DQ: Default + Query;
+
+    #[doc(hidden)]
+    fn default_query() -> Self::Query {
+        Self::DQ::default()
+    }
 }
 
 impl<Q> DefaultQuery for Q
@@ -132,16 +135,22 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Contains data from one archetype.
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
-    /// Returns `true` if query fetches at least one mutable component.
+    /// Set to `true` if query fetches at least one mutable component.
     const MUTABLE: bool;
+
+    /// Set to `true` if query filters individual entities.
+    const FILTERS_ENTITIES: bool = false;
 
     /// Returns what kind of access the query performs on the component type.
     #[must_use]
     fn access(&self, ty: TypeId) -> Option<Access>;
 
     /// Checks if archetype must be visited or skipped.
+    ///
+    /// This method must be safe to execute in parallel with any other accesses
+    /// to the same archetype.
     #[must_use]
-    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool;
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
@@ -173,92 +182,45 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     }
 }
 
-/// Wraps mutable reference to query and implement query for it.
-pub struct QueryRef<'a, T: 'a> {
-    query: &'a T,
-}
-
-impl<'a, T> From<&'a T> for QueryRef<'a, T> {
-    fn from(query: &'a T) -> Self {
-        QueryRef { query }
-    }
-}
-
-impl<'a, T> QueryRef<'a, T> {
-    /// Wraps mutable reference to query.
-    pub fn new(query: &'a T) -> Self {
-        QueryRef { query }
-    }
-
-    /// Unwraps query.
-    pub fn inner(self) -> &'a T {
-        self.query
-    }
-}
-
-impl<T> IntoQuery for QueryRef<'_, T>
-where
-    T: Query,
-{
-    type Query = Self;
-
-    fn into_query(self) -> Self::Query {
-        self
-    }
-}
-
-unsafe impl<T> Query for QueryRef<'_, T>
-where
-    T: Query,
-{
-    type Item<'a> = T::Item<'a>;
-    type Fetch<'a> = T::Fetch<'a>;
-
-    const MUTABLE: bool = T::MUTABLE;
-
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        self.query.access(ty)
-    }
-
-    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        self.query.visit_archetype(archetype)
-    }
-
-    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        self.query.access_archetype(archetype, f)
-    }
-
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype_idx: u32,
-        archetype: &'a Archetype,
-        epoch: EpochId,
-    ) -> Self::Fetch<'a> {
-        self.query.fetch(archetype_idx, archetype, epoch)
-    }
-}
-
-unsafe impl<T> ImmutableQuery for QueryRef<'_, T> where T: ImmutableQuery {}
-
 /// Query that does not mutate any components.
 ///
 /// # Safety
 ///
 /// [`Query`] must not borrow components mutably.
 /// [`Query`] must not modify entities versions.
-pub unsafe trait ImmutableQuery: Query {}
+pub unsafe trait ImmutableQuery: Query {
+    const CHECK_VALID: () = {
+        if Self::MUTABLE {
+            panic!("Immutable query cannot fetch mutable components");
+        }
+    };
+}
 
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as Query>::Item<'a>;
 
+pub struct WriteAliasing;
+
 /// Merge two optional access values.
-#[inline]
-pub const fn merge_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+#[inline(always)]
+pub const fn try_merge_access(
+    lhs: Option<Access>,
+    rhs: Option<Access>,
+) -> Result<Option<Access>, WriteAliasing> {
     match (lhs, rhs) {
-        (None, rhs) => rhs,
-        (lhs, None) => lhs,
+        (None, one) | (one, None) => Ok(one),
+        (Some(Access::Read), Some(Access::Read)) => Ok(Some(Access::Read)),
+        _ => Err(WriteAliasing),
+    }
+}
+
+/// Merge two optional access values.
+#[inline(always)]
+pub const fn merge_access<T: ?Sized>(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+    match (lhs, rhs) {
+        (None, one) | (one, None) => one,
         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-        _ => Some(Access::Write),
+        _ => panic!("Write aliasing detected in query: {}", type_name::<T>()),
     }
 }
 
@@ -267,5 +229,5 @@ const fn assert_query<Q: Query>() {}
 
 /// Helps to assert that type implements [`ImmutableQuery`] in compile time.
 const fn assert_immutable_query<Q: ImmutableQuery>() {
-    assert_query::<Q>();
+    Q::CHECK_VALID;
 }

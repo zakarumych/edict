@@ -7,13 +7,13 @@ use crate::{
     archetype::{chunk_idx, Archetype},
     entity::{EntitySet, Location},
     epoch::EpochCounter,
-    query::{DefaultQuery, Fetch, IntoQuery, Query, QueryItem},
+    query::{Fetch, IntoQuery, Query, QueryItem},
     world::World,
 };
 
 pub use self::{
     borrow::{BorrowState, RuntimeBorrowState, StaticallyBorrowed},
-    one::ViewOne,
+    one::{ViewOne, ViewOneState},
 };
 
 mod borrow;
@@ -41,8 +41,8 @@ pub type ViewMut<'a, Q, F = ()> =
 
 impl<'a, Q, F> ViewState<'a, Q, F, StaticallyBorrowed>
 where
-    Q: DefaultQuery,
-    F: DefaultQuery,
+    Q: Query + Default,
+    F: Query + Default,
 {
     /// Creates a new view over the world.
     /// Borrows the world mutably, so no other views can be created.
@@ -69,9 +69,9 @@ where
     /// ```
     #[inline(always)]
     pub fn new_mut(world: &'a mut World) -> Self {
-        ViewMut {
-            query: Q::default_query(),
-            filter: F::default_query(),
+        ViewState {
+            query: Q::default(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: StaticallyBorrowed,
@@ -85,9 +85,9 @@ where
     /// Uses default-constructed query and filter.
     #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World) -> Self {
-        ViewMut {
-            query: Q::default_query(),
-            filter: F::default_query(),
+        ViewState {
+            query: Q::default(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: StaticallyBorrowed,
@@ -107,10 +107,10 @@ where
     ///
     /// Uses user-provided query and default-constructed filter.
     #[inline(always)]
-    pub fn with_query_mut(world: &'a mut World, query: Q) -> Self {
-        ViewMut {
+    pub fn with_query_mut(world: &'a mut World, query: impl IntoQuery<Query = Q>) -> Self {
+        ViewState {
             query: (query.into_query(),),
-            filter: F::default_query(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: StaticallyBorrowed,
@@ -123,10 +123,10 @@ where
     ///
     /// Uses user-provided query and default-constructed filter.
     #[inline(always)]
-    pub unsafe fn with_query_unchecked(world: &'a World, query: Q) -> Self {
-        ViewMut {
+    pub unsafe fn with_query_unchecked(world: &'a World, query: impl IntoQuery<Query = Q>) -> Self {
+        ViewState {
             query: (query.into_query(),),
-            filter: F::default_query(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: StaticallyBorrowed,
@@ -146,8 +146,12 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn with_query_filter_mut(world: &'a mut World, query: Q, filter: F) -> Self {
-        ViewMut {
+    pub fn with_query_filter_mut(
+        world: &'a mut World,
+        query: impl IntoQuery<Query = Q>,
+        filter: impl IntoQuery<Query = F>,
+    ) -> Self {
+        ViewState {
             query: (query.into_query(),),
             filter: (filter.into_query(),),
             archetypes: world.archetypes(),
@@ -162,8 +166,12 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub unsafe fn with_query_filter_unchecked(world: &'a World, query: Q, filter: F) -> Self {
-        ViewMut {
+    pub unsafe fn with_query_filter_unchecked(
+        world: &'a World,
+        query: impl IntoQuery<Query = Q>,
+        filter: impl IntoQuery<Query = F>,
+    ) -> Self {
+        ViewState {
             query: (query.into_query(),),
             filter: (filter.into_query(),),
             archetypes: world.archetypes(),
@@ -176,7 +184,7 @@ where
 
 impl<'a, Q, F> ViewState<'a, Q, F, RuntimeBorrowState>
 where
-    Q: Query,
+    Q: Query + Default,
     F: Query + Default,
 {
     /// Creates a new view over the world.
@@ -185,9 +193,9 @@ where
     /// Uses default-constructed query and filter.
     #[inline(always)]
     pub fn new(world: &'a World) -> Self {
-        View {
-            query: Q::default_query(),
-            filter: F::default_query(),
+        ViewState {
+            query: Q::default(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
@@ -198,18 +206,18 @@ where
 
 impl<'a, Q, F> ViewState<'a, (Q,), F, RuntimeBorrowState>
 where
-    Q: IntoQuery,
-    F: DefaultQuery,
+    Q: Query,
+    F: Query + Default,
 {
     /// Creates a new view over the world.
     /// Performs runtime borrow checks.
     ///
     /// Uses user-provided query and default-constructed filter.
     #[inline(always)]
-    pub fn with_query(world: &'a World, query: Q) -> Self {
-        View {
+    pub fn with_query(world: &'a World, query: impl IntoQuery<Query = Q>) -> Self {
+        ViewState {
             query: (query.into_query(),),
-            filter: F::default_query(),
+            filter: F::default(),
             archetypes: world.archetypes(),
             entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
@@ -220,16 +228,20 @@ where
 
 impl<'a, Q, F> ViewState<'a, (Q,), (F,), RuntimeBorrowState>
 where
-    Q: IntoQuery,
-    F: IntoQuery,
+    Q: Query,
+    F: Query,
 {
     /// Creates a new view over the world.
     /// Performs runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn with_query_filter(world: &'a mut World, query: Q, filter: F) -> Self {
-        View {
+    pub fn with_query_filter(
+        world: &'a mut World,
+        query: impl IntoQuery<Query = Q>,
+        filter: impl IntoQuery<Query = F>,
+    ) -> Self {
+        ViewState {
             query: (query.into_query(),),
             filter: (filter.into_query(),),
             archetypes: world.archetypes(),
@@ -265,7 +277,7 @@ where
     F: Query,
 {
     let Location { arch, idx } = loc;
-    assert!(idx < archetype.len(), "Wrong location");
+    assert!(idx < archetype.len() as u32, "Wrong location");
 
     if !unsafe { Query::visit_archetype(query, archetype) } {
         return None;

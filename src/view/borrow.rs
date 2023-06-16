@@ -249,10 +249,10 @@ pub struct StaticallyBorrowed;
 
 impl BorrowState for StaticallyBorrowed {
     #[inline(always)]
-    fn acquire<Q: Query>(&mut self, _query: &Q, _archetypes: &[Archetype]) {}
+    fn acquire<Q: Query, F: Query>(&self, _query: &Q, _filter: &F, _archetypes: &[Archetype]) {}
 
     #[inline(always)]
-    fn release<Q: Query>(&mut self, _query: &Q, _archetypes: &[Archetype]) {}
+    fn release<Q: Query, F: Query>(&self, _query: &Q, _filter: &F, _archetypes: &[Archetype]) {}
 
     #[inline(always)]
     fn with<Q: Query, F: Query, R>(

@@ -5,7 +5,7 @@ use crate::{
     entity::EntityId,
     epoch::EpochId,
     query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
-    relation::{Origin, OriginComponent, Relation},
+    relation::{OriginComponent, Relation, RelationTarget},
 };
 
 phantom_newtype! {
@@ -38,7 +38,7 @@ where
 /// Iterator over relations of a given type on one entity.
 #[derive(Clone)]
 pub struct RelatesReadIter<'a, R> {
-    iter: core::slice::Iter<'a, Origin<R>>,
+    iter: core::slice::Iter<'a, RelationTarget<R>>,
 }
 
 impl<'a, R> Iterator for RelatesReadIter<'a, R> {
@@ -126,11 +126,11 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> RelatesReadIter<'a, R> {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    unsafe fn get_item(&mut self, idx: u32) -> RelatesReadIter<'a, R> {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
 
         RelatesReadIter {
-            iter: origin_component.origins().iter(),
+            iter: origin_component.relations().iter(),
         }
     }
 }
@@ -141,6 +141,8 @@ where
 {
     type Item<'a> = RelatesReadIter<'a, R>;
     type Fetch<'a> = FetchRelatesRead<'a, R>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -162,7 +164,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelatesRead<'a, R> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRelatesRead<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<OriginComponent<R>>())
@@ -184,7 +190,7 @@ unsafe impl<R> ImmutablePhantomQuery for Relates<&'static R> where R: Relation +
 
 /// Iterator over relations of a given type on one entity.
 pub struct RelatesWriteIter<'a, R> {
-    iter: core::slice::IterMut<'a, Origin<R>>,
+    iter: core::slice::IterMut<'a, RelationTarget<R>>,
 }
 
 impl<'a, R> Iterator for RelatesWriteIter<'a, R> {
@@ -278,20 +284,20 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx) };
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> RelatesWriteIter<'a, R> {
-        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx) };
+    unsafe fn get_item(&mut self, idx: u32) -> RelatesWriteIter<'a, R> {
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx) };
+        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
 
         RelatesWriteIter {
-            iter: origin_component.origins_mut().iter_mut(),
+            iter: origin_component.relations_mut().iter_mut(),
         }
     }
 }
@@ -302,6 +308,8 @@ where
 {
     type Item<'a> = RelatesWriteIter<'a, R>;
     type Fetch<'a> = FetchRelatesWrite<'a, R>;
+
+    const MUTABLE: bool = true;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -323,7 +331,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchRelatesWrite<'a, R> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchRelatesWrite<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<OriginComponent<R>>())

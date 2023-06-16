@@ -4,11 +4,9 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query},
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
 };
 
-use super::{Modified, ModifiedCache};
+use super::Modified;
 
 /// [`Fetch`] type for the [`Modified<&T>`] query.
 pub struct ModifiedFetchRead<'a, T> {
@@ -37,20 +35,20 @@ where
     }
 
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
-        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
+        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let epoch = *self.entity_epochs.as_ptr().add(idx);
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
-        &*self.ptr.as_ptr().add(idx)
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
+        &*self.ptr.as_ptr().add(idx as usize)
     }
 }
 
@@ -72,6 +70,8 @@ where
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = ModifiedFetchRead<'a, T>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -99,7 +99,8 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchRead<'a, T> {
@@ -120,51 +121,6 @@ where
 
 unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
 
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<&'static T>
-where
-    T: Sync + 'static,
-{
-    type Arg = Modified<&'a T>;
-    type Query = Modified<&'a T>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<&'a T> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<&'static T>
-where
-    T: Sync + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        <&T as PhantomQuery>::visit_archetype(archetype)
-    }
-}
-
-impl<'a, T> QueryArg for Modified<&'a T>
-where
-    T: Sync + 'static,
-{
-    type Cache = ModifiedCache<&'static T>;
-}
-
 impl<T> IntoQuery for Modified<Option<&T>>
 where
     T: Sync + 'static,
@@ -182,6 +138,8 @@ where
 {
     type Item<'a> = Option<&'a T>;
     type Fetch<'a> = Option<ModifiedFetchRead<'a, T>>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
@@ -217,7 +175,8 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> Option<ModifiedFetchRead<'a, T>> {
@@ -243,48 +202,3 @@ where
 }
 
 unsafe impl<T> ImmutableQuery for Modified<Option<&T>> where T: Sync + 'static {}
-
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<&'static T>>
-where
-    T: Sync + 'static,
-{
-    type Arg = Modified<Option<&'a T>>;
-    type Query = Modified<Option<&'a T>>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<Option<&T>> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<Option<&'static T>>
-where
-    T: Sync + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-        true
-    }
-}
-
-impl<'a, T> QueryArg for Modified<Option<&T>>
-where
-    T: Sync + 'static,
-{
-    type Cache = ModifiedCache<Option<&'static T>>;
-}

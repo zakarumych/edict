@@ -50,6 +50,7 @@ impl WorldBuilder {
             registry: self.registry,
             action_buffer: Some(ActionBuffer::new()),
             action_channel: ActionChannel::new(),
+            execute_action_buffer: true,
         }
     }
 

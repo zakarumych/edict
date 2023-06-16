@@ -54,10 +54,10 @@ where
     }
 
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let item_idx = origin_component
-            .origins()
+            .relations()
             .iter()
             .position(|origin| origin.target == self.target);
 
@@ -71,9 +71,9 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a R {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
-        &origin_component.origins()[self.item_idx].relation
+    unsafe fn get_item(&mut self, idx: u32) -> &'a R {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+        &origin_component.relations()[self.item_idx].relation
     }
 }
 
@@ -95,6 +95,9 @@ where
     type Item<'a> = &'a R;
     type Fetch<'a> = FetchRelatesToRead<'a, R>;
 
+    const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -115,7 +118,8 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRelatesToRead<'a, R> {
@@ -170,16 +174,16 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx) };
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let item_idx = origin_component
-            .origins()
+            .relations()
             .iter()
             .position(|origin| origin.target == self.target);
 
@@ -193,12 +197,12 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut R {
-        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx) };
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut R {
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx) };
-        &mut origin_component.origins_mut()[self.item_idx].relation
+        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
+        &mut origin_component.relations_mut()[self.item_idx].relation
     }
 }
 
@@ -220,6 +224,9 @@ where
     type Item<'a> = &'a mut R;
     type Fetch<'a> = FetchRelatesToWrite<'a, R>;
 
+    const MUTABLE: bool = true;
+    const FILTERS_ENTITIES: bool = true;
+
     #[inline]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
@@ -240,7 +247,8 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesToWrite<'a, R> {

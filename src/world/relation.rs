@@ -1,3 +1,14 @@
+use core::any::TypeId;
+
+use crate::{
+    action::{ActionBuffer, ActionEncoder},
+    component::Component,
+    entity::{Entity, EntityId, Location, NoSuchEntity},
+    relation::{OriginComponent, Relation, TargetComponent},
+};
+
+use super::World;
+
 impl World {
     /// Adds relation between two entities to the [`World`].
     ///
@@ -15,9 +26,9 @@ impl World {
     #[inline]
     pub fn add_relation<R>(
         &mut self,
-        origin: EntityId,
+        origin: impl Entity,
         relation: R,
-        target: EntityId,
+        target: impl Entity,
     ) -> Result<(), NoSuchEntity>
     where
         R: Relation,
@@ -30,9 +41,9 @@ impl World {
     #[inline]
     pub(crate) fn add_relation_with_buffer<R>(
         &mut self,
-        origin: EntityId,
+        origin: impl Entity,
         relation: R,
-        target: EntityId,
+        target: impl Entity,
         buffer: &mut ActionBuffer,
     ) -> Result<(), NoSuchEntity>
     where
@@ -40,47 +51,53 @@ impl World {
     {
         self.maintenance();
 
-        self.entities.get_location(origin).ok_or(NoSuchEntity)?;
-        self.entities.get_location(target).ok_or(NoSuchEntity)?;
+        origin.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        target.lookup(&self.entities).ok_or(NoSuchEntity)?;
 
         self.epoch.next_mut();
 
         if R::SYMMETRIC {
             set_relation_component(
                 self,
-                origin,
+                origin.id(),
                 relation,
-                |relation| OriginComponent::new(target, relation),
-                |component, relation, encoder| component.add(origin, target, relation, encoder),
+                |relation| OriginComponent::new_relation(target.id(), relation),
+                |component, relation, encoder| {
+                    component.add_relation(origin.id(), target.id(), relation, encoder)
+                },
                 buffer,
             );
 
-            if target != origin {
+            if target.id() != origin.id() {
                 set_relation_component(
                     self,
-                    target,
+                    target.id(),
                     relation,
-                    |relation| OriginComponent::new(origin, relation),
-                    |component, relation, encoder| component.add(target, origin, relation, encoder),
+                    |relation| OriginComponent::new_relation(origin.id(), relation),
+                    |component, relation, encoder| {
+                        component.add_relation(target.id(), origin.id(), relation, encoder)
+                    },
                     buffer,
                 );
             }
         } else {
             set_relation_component(
                 self,
-                origin,
+                origin.id(),
                 relation,
-                |relation| OriginComponent::new(target, relation),
-                |component, relation, encoder| component.add(origin, target, relation, encoder),
+                |relation| OriginComponent::new_relation(target.id(), relation),
+                |comp, relation, encoder| {
+                    comp.add_relation(origin.id(), target.id(), relation, encoder)
+                },
                 buffer,
             );
 
             set_relation_component(
                 self,
-                target,
+                target.id(),
                 (),
-                |()| TargetComponent::<R>::new(origin),
-                |component, (), _| component.add(origin),
+                |()| TargetComponent::<R>::new(origin.id()),
+                |comp, (), _| comp.add(origin.id()),
                 buffer,
             );
         }
@@ -97,9 +114,9 @@ impl World {
     #[inline]
     pub fn remove_relation<R>(
         &mut self,
-        origin: EntityId,
-        target: EntityId,
-    ) -> Result<R, EntityError>
+        origin: impl Entity,
+        target: impl Entity,
+    ) -> Result<Option<R>, NoSuchEntity>
     where
         R: Relation,
     {
@@ -111,28 +128,54 @@ impl World {
     #[inline]
     pub(crate) fn remove_relation_with_buffer<R>(
         &mut self,
-        origin: EntityId,
-        target: EntityId,
+        origin: impl Entity,
+        target: impl Entity,
         buffer: &mut ActionBuffer,
-    ) -> Result<R, EntityError>
+    ) -> Result<Option<R>, NoSuchEntity>
     where
         R: Relation,
     {
         self.maintenance();
 
-        self.entities.get_location(origin).ok_or(NoSuchEntity)?;
-        self.entities.get_location(target).ok_or(NoSuchEntity)?;
+        let origin = origin.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
+        let target = target.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
 
         unsafe {
-            if let Ok(c) = self.query_one_unchecked::<&mut OriginComponent<R>>(origin) {
-                if let Some(r) =
-                    c.remove_relation(origin, target, ActionEncoder::new(buffer, &self.entities))
-                {
-                    return Ok(r);
+            if let Some(comp) = self.get_unchecked::<&mut OriginComponent<R>>(origin) {
+                if let Some(relation) = comp.remove_relation(
+                    origin.id(),
+                    target.id(),
+                    ActionEncoder::new(buffer, &self.entities),
+                ) {
+                    if R::SYMMETRIC {
+                        if origin.id() != target.id() {
+                            let comp = self
+                                .get_unchecked::<&mut OriginComponent<R>>(target)
+                                .unwrap();
+
+                            comp.remove_relation(
+                                target.id(),
+                                origin.id(),
+                                ActionEncoder::new(buffer, &self.entities),
+                            );
+                        }
+                    } else {
+                        let comp = self
+                            .get_unchecked::<&mut TargetComponent<R>>(target)
+                            .unwrap();
+
+                        comp.remove_relation(
+                            origin.id(),
+                            target.id(),
+                            ActionEncoder::new(buffer, &self.entities),
+                        );
+                    }
+
+                    return Ok(Some(relation));
                 }
             }
         }
-        Err(EntityError::MissingComponents)
+        Ok(None)
     }
 }
 
@@ -148,15 +191,13 @@ fn set_relation_component<T, C>(
 ) where
     C: Component,
 {
-    let Location {
-        archetype: src_archetype,
-        idx,
-    } = world.entities.get_location(id).unwrap();
-    debug_assert!(src_archetype < u32::MAX, "Allocated entities were spawned");
+    let src_loc = world.entities.get_location(id).unwrap();
+    debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
-    if world.archetypes[src_archetype as usize].has_component(TypeId::of::<C>()) {
+    if world.archetypes[src_loc.arch as usize].has_component(TypeId::of::<C>()) {
         let component = unsafe {
-            world.archetypes[src_archetype as usize].get_mut::<C>(idx, world.epoch.current_mut())
+            world.archetypes[src_loc.arch as usize]
+                .get_mut::<C>(src_loc.idx, world.epoch.current_mut())
         };
 
         set_component(
@@ -170,35 +211,33 @@ fn set_relation_component<T, C>(
 
     let component = into_component(value);
 
-    let dst_archetype = world.edges.insert(
+    let dst_arch = world.edges.insert(
         TypeId::of::<C>(),
         &mut world.registry,
         &mut world.archetypes,
-        src_archetype,
+        src_loc.arch,
         |registry| registry.get_or_register::<C>(),
     );
 
-    debug_assert_ne!(src_archetype, dst_archetype);
+    debug_assert_ne!(src_loc.arch, dst_arch);
 
     let (before, after) = world
         .archetypes
-        .split_at_mut(src_archetype.max(dst_archetype) as usize);
+        .split_at_mut(src_loc.arch.max(dst_arch) as usize);
 
-    let (src, dst) = match src_archetype < dst_archetype {
-        true => (&mut before[src_archetype as usize], &mut after[0]),
-        false => (&mut after[0], &mut before[dst_archetype as usize]),
+    let (src, dst) = match src_loc.arch < dst_arch {
+        true => (&mut before[src_loc.arch as usize], &mut after[0]),
+        false => (&mut after[0], &mut before[dst_arch as usize]),
     };
 
     let (dst_idx, opt_src_id) =
-        unsafe { src.insert(id, dst, idx, component, world.epoch.current_mut()) };
+        unsafe { src.insert(id, dst, src_loc.idx, component, world.epoch.current_mut()) };
 
     world
         .entities
-        .set_location(id, Location::new(dst_archetype, dst_idx));
+        .set_location(id, Location::new(dst_arch, dst_idx));
 
     if let Some(src_id) = opt_src_id {
-        world
-            .entities
-            .set_location(src_id, Location::new(src_archetype, idx));
+        world.entities.set_location(src_id, src_loc);
     }
 }

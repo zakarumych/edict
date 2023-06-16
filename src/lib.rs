@@ -127,8 +127,13 @@ macro_rules! impl_copy {
     ($type:ident < $( $a:ident ),+ >) => {
         impl< $( $a ),+ > Copy for $type < $( $a ),+ > {}
         impl< $( $a ),+ > Clone for $type < $( $a ),+ > {
+            #[inline(always)]
             fn clone(&self) -> Self {
                 *self
+            }
+            #[inline(always)]
+            fn clone_from(&mut self, source: &Self) {
+                *self = *source
             }
         }
     };

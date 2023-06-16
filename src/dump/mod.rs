@@ -12,12 +12,8 @@ mod query;
 use core::marker::PhantomData;
 
 use crate::{
-    action::ActionEncoder,
-    component::Component,
-    entity::EntityId,
-    epoch::EpochId,
-    query::ImmutableQuery,
-    world::{QueryOneError, World},
+    action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
+    query::ImmutableQuery, world::World,
 };
 
 pub use self::query::DumpItem;
@@ -212,9 +208,9 @@ macro_rules! set {
                 Fi: ImmutableQuery,
                 Du: for<'a> Dumper<($($a,)+), Error = Er>,
             {
-                let mut query = world.query_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
+                let mut view = world.view_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
 
-                query.try_for_each(|(id, ($($a),+))| {
+                view.try_for_each(|(id, ($($a),+))| {
                     let mut present = 0;
                     let mut modified = 0;
 

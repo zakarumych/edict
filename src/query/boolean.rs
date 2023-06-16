@@ -1,12 +1,6 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{
-    archetype::Archetype,
-    entity::EntityId,
-    epoch::EpochId,
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
-};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
 use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
 
@@ -79,6 +73,20 @@ pub struct BooleanQuery<T, Op> {
     op: PhantomData<Op>,
 }
 
+impl<T, Op> Clone for BooleanQuery<T, Op>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        BooleanQuery {
+            tuple: self.tuple.clone(),
+            op: PhantomData,
+        }
+    }
+}
+
+impl<T, Op> Copy for BooleanQuery<T, Op> where T: Copy {}
+
 impl<T, Op> BooleanQuery<T, Op> {
     /// Creates a new [`BooleanQuery`].
     pub fn from_tuple(tuple: T) -> Self {
@@ -136,7 +144,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn get_item(&mut self, idx: usize) -> ($(Option<$a::Item>,)+) {
+            unsafe fn get_item(&mut self, idx: u32) -> ($(Option<$a::Item>,)+) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 ($({
@@ -151,7 +159,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn visit_item(&mut self, idx: usize) -> bool {
+            unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -166,7 +174,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+            unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -181,7 +189,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+            unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -225,62 +233,6 @@ macro_rules! impl_boolean {
             }
         }
 
-        impl<'a, Op $(, $a)+> QueryArgGet<'a> for BooleanQuery<($($a,)+), Op>
-        where
-            $($a: QueryArgGet<'a>,)+
-            Op: BooleanFetchOp,
-        {
-            type Arg = BooleanQuery<($($a::Arg,)+), Op>;
-
-            type Query = BooleanQuery<($($a::Query,)+), Op>;
-
-            #[inline(always)]
-            fn get(&'a mut self, world: &'a World) -> Self::Query {
-                let ($($a,)+) = &mut self.tuple;
-                BooleanQuery {
-                    tuple: ($($a.get(world),)+),
-                    op: PhantomData,
-                }
-            }
-        }
-
-        impl<Op $(, $a)+> QueryArgCache for BooleanQuery<($($a,)+), Op>
-        where
-            $($a: QueryArgCache,)+
-            Op: BooleanFetchOp,
-        {
-            #[inline(always)]
-            fn new() -> Self {
-                BooleanQuery {
-                    tuple: ($($a::new(),)+),
-                    op: PhantomData,
-                }
-            }
-
-            #[inline(always)]
-            unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
-                let ($($a,)+) = &self.tuple;
-                boolean_shortcut!([archetype Op] $($a)+)
-            }
-
-            #[inline(always)]
-            fn access_component(&self, id: TypeId) -> Option<Access> {
-                let ($($a,)+) = &self.tuple;
-                let mut access = None;
-                $({
-                    access = merge_access(access, $a.access_component(id));
-                })*
-                access
-            }
-        }
-
-        impl<Op $(, $a)+> QueryArg for BooleanQuery<($($a,)+), Op>
-        where
-            $($a: QueryArg,)+
-            Op: BooleanFetchOp,
-        {
-            type Cache = BooleanQuery<($($a::Cache,)+), Op>;
-        }
 
         #[allow(non_snake_case)]
         #[allow(unused_variables, unused_mut, unused_assignments)]
@@ -292,11 +244,13 @@ macro_rules! impl_boolean {
             type Item<'a> = ($(Option<$a::Item<'a>>,)+);
             type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op>;
 
+            const MUTABLE: bool = $($a::MUTABLE ||)+ false;
+
             #[inline(always)]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)+) = &self.tuple;
                 let mut result = None;
-                $(result = merge_access(result, $a.access(ty));)+
+                $(result = merge_access::<Self>(result, $a.access(ty));)+
                 result
             }
 
@@ -307,14 +261,14 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool {
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
                 boolean_shortcut!([archetype Op] $($a)+)
             }
 
             #[inline(always)]
             unsafe fn fetch<'a>(
-                &mut self,
+                &self,
                 arch_idx: u32,
                 archetype: &'a Archetype,
                 epoch: EpochId,

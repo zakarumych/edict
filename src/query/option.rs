@@ -17,7 +17,7 @@ where
 
     /// Checks if chunk with specified index must be visited or skipped.
     #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         if let Some(fetch) = self {
             fetch.visit_chunk(chunk_idx)
         } else {
@@ -27,7 +27,7 @@ where
 
     /// Notifies this fetch that it visits a chunk.
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         if let Some(fetch) = self {
             fetch.touch_chunk(chunk_idx);
         }
@@ -35,7 +35,7 @@ where
 
     /// Checks if item with specified index must be visited or skipped.
     #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
         if let Some(fetch) = self {
             fetch.visit_item(idx)
         } else {
@@ -44,7 +44,7 @@ where
     }
 
     /// Returns fetched item at specified index.
-    unsafe fn get_item(&mut self, idx: usize) -> Option<T::Item> {
+    unsafe fn get_item(&mut self, idx: u32) -> Option<T::Item> {
         match self {
             None => None,
             Some(fetch) => Some(fetch.get_item(idx)),
@@ -58,6 +58,8 @@ where
 {
     type Item<'a> = Option<T::Item<'a>>;
     type Fetch<'a> = Option<T::Fetch<'a>>;
+
+    const MUTABLE: bool = T::MUTABLE;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -77,11 +79,15 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> Option<T::Fetch<'a>> {
+    unsafe fn fetch<'a>(
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Option<T::Fetch<'a>> {
         if !T::visit_archetype(archetype) {
             None
         } else {
-            Some(T::fetch(archetype, epoch))
+            Some(T::fetch(arch_idx, archetype, epoch))
         }
     }
 }

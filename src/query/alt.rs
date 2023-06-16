@@ -73,21 +73,21 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         debug_assert!((*chunk_epoch).get().before(self.epoch));
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> RefMut<'a, T> {
+    unsafe fn get_item(&mut self, idx: u32) -> RefMut<'a, T> {
         let archetype_epoch = &mut *self.archetype_epoch.as_ptr();
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx));
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx) as usize);
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
 
         debug_assert!(entity_epoch.before(self.epoch));
 
         RefMut {
-            component: &mut *self.ptr.as_ptr().add(idx),
+            component: &mut *self.ptr.as_ptr().add(idx as usize),
             entity_epoch,
             chunk_epoch,
             archetype_epoch,
@@ -137,6 +137,8 @@ where
     type Item<'a> = RefMut<'a, T>;
     type Fetch<'a> = FetchAlt<'a, T>;
 
+    const MUTABLE: bool = true;
+
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
@@ -157,7 +159,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchAlt<'a, T> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchAlt<'a, T> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
         let data = component.data_mut();

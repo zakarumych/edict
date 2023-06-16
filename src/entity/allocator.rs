@@ -13,8 +13,14 @@ pub struct IdRange {
     pub end: NonZeroU64,
 }
 
-const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
-const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
+/// Value that should never be used as an valid ID.
+pub const DANGLING: NonZeroU64 = NonZeroU64::new(1).unwrap();
+
+/// Start of the valid ID range.
+pub const START: NonZeroU64 = NonZeroU64::new(2).unwrap();
+
+/// End of the valid ID range.
+pub const END: NonZeroU64 = NonZeroU64::new(u64::MAX).unwrap();
 
 impl IdRange {
     /// Returns proper range with `start` less than or equal to `end`.

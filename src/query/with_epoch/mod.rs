@@ -26,8 +26,8 @@ unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> EpochId {
-        *self.entity_epochs.as_ptr().add(idx)
+    unsafe fn get_item(&mut self, idx: u32) -> EpochId {
+        *self.entity_epochs.as_ptr().add(idx as usize)
     }
 }
 
@@ -40,6 +40,8 @@ where
 {
     type Item<'a> = EpochId;
     type Fetch<'a> = FetchEpoch<'a>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -61,7 +63,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchEpoch<'a> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchEpoch<'a> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
 

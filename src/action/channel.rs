@@ -260,7 +260,7 @@ impl ActionSender {
     /// Encodes a custom action with a closure that takes mutable reference to `World`.
     #[inline]
     pub fn closure(&self, fun: impl FnOnce(&mut World) + Send + 'static) {
-        self.push_fn(move |world, buffer| world.with_buffer(buffer, fun))
+        self.push_fn(move |world, buffer| unsafe { world.with_buffer(buffer, fun) })
     }
 
     /// Encodes a custom action with a closure that takes reference to `World`

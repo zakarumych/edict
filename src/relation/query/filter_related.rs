@@ -29,6 +29,8 @@ where
     type Item<'a> = ();
     type Fetch<'a> = UnitFetch;
 
+    const MUTABLE: bool = false;
+
     #[inline]
     fn access(_: TypeId) -> Option<Access> {
         None
@@ -43,7 +45,7 @@ where
     unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
 
     #[inline]
-    unsafe fn fetch(_: &Archetype, _: EpochId) -> UnitFetch {
+    unsafe fn fetch(_: u32, _: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }
 }

@@ -14,13 +14,12 @@ use core::{
 use atomicell::{Ref, RefMut};
 
 use crate::{
-    action::{ActionBuffer, ActionChannel, ActionSender},
+    action::{ActionBuffer, ActionChannel, ActionEncoder, ActionSender},
     archetype::Archetype,
-    bundle::{BundleDesc, ComponentBundleDesc, DynamicBundle, DynamicComponentBundle},
+    bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entity, EntityId, EntityLoc, EntitySet, NoSuchEntity},
+    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntitySet, NoSuchEntity},
     epoch::{EpochCounter, EpochId},
-    query::Query,
     res::Res,
 };
 
@@ -48,7 +47,9 @@ macro_rules! with_buffer {
                 let $buffer = &mut buffer;
                 $expr
             };
-            ActionBuffer::execute(&mut buffer, $world);
+            if $world.execute_action_buffer {
+                ActionBuffer::execute(&mut buffer, $world);
+            }
             $world.action_buffer = Some(buffer);
             result
         }
@@ -59,6 +60,7 @@ mod builder;
 mod edges;
 mod get;
 mod insert;
+mod relation;
 mod remove;
 mod resource;
 mod spawn;
@@ -164,6 +166,7 @@ pub struct World {
     /// This encoder is used to record commands from component hooks.
     /// Commands are immediately executed at the end of the mutating call.
     action_buffer: Option<ActionBuffer>,
+    execute_action_buffer: bool,
 
     action_channel: ActionChannel,
 }
@@ -192,8 +195,8 @@ impl World {
     }
 
     pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc, NoSuchEntity> {
-        let loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
-        Ok(EntityLoc::new(entity.id(), loc))
+        let entity = entity.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
+        Ok(entity)
     }
 
     /// Returns current world epoch.
@@ -217,12 +220,12 @@ impl World {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline]
-    pub fn has_component<T: 'static>(&self, id: EntityId) -> Result<bool, NoSuchEntity> {
-        let (archetype_idx, _idx) = self.entities.get_location(id).ok_or(NoSuchEntity)?;
-        if archetype_idx == u32::MAX {
-            return Ok(false);
+    pub fn has_component<T: 'static>(&self, entity: impl AliveEntity) -> bool {
+        let loc = entity.locate(&self.entities);
+        if loc.arch == u32::MAX {
+            return false;
         }
-        Ok(self.archetypes[archetype_idx as usize].has_component(TypeId::of::<T>()))
+        self.archetypes[loc.arch as usize].has_component(TypeId::of::<T>())
     }
 
     /// Checks if entity is alive.
@@ -327,6 +330,30 @@ impl World {
         let archetype = &mut self.archetypes[0];
         self.entities
             .spawn_allocated(|id| archetype.spawn(id, (), epoch));
+    }
+
+    pub(crate) unsafe fn with_buffer<R>(
+        &mut self,
+        buffer: &mut ActionBuffer,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let old_action_buffer = self.action_buffer.replace(core::mem::take(buffer));
+        let execute_action_buffer = std::mem::take(&mut self.execute_action_buffer);
+        let r = f(self);
+        let action_buffer = self
+            .action_buffer
+            .replace(old_action_buffer.unwrap_unchecked());
+        self.execute_action_buffer = execute_action_buffer;
+        *buffer = action_buffer.unwrap_unchecked();
+        r
+    }
+
+    /// Executes closure with [`ActionEncoder`] instance bound to this [`World`].
+    pub fn with_encoder<R>(&mut self, f: impl FnOnce(&Self, ActionEncoder<'_>) -> R) -> R {
+        with_buffer!(self, buffer => {
+            let encoder = ActionEncoder::new(buffer, &self.entities);
+            f(self, encoder)
+        })
     }
 }
 

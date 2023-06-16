@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    archetype::{first_of_chunk, CHUNK_LEN_USIZE},
+    archetype::{first_of_chunk, CHUNK_LEN},
     component::{Component, ComponentBorrow},
     entity::EntityId,
     epoch::EpochId,
@@ -216,12 +216,12 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
             }
             let borrow = component.borrows()[idx];
 
-            let mut indices = 0..archetype.len();
+            let mut indices = 0..archetype.len() as u32;
 
-            while let Some(idx) = indices.next() {
-                if let Some(chunk_idx) = first_of_chunk(idx) {
-                    if !data.chunk_epochs[chunk_idx].after(after_epoch) {
-                        indices.nth(CHUNK_LEN_USIZE - 1);
+            while let Some(entity_idx) = indices.next() {
+                if let Some(chunk_idx) = first_of_chunk(entity_idx) {
+                    if !data.chunk_epochs[chunk_idx as usize].after(after_epoch) {
+                        indices.nth(CHUNK_LEN as usize - 1);
                         continue;
                     }
                 }
@@ -251,8 +251,8 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
     core::mem::swap(&mut state.wakes, &mut state.queue.lock());
 
     for (id, tid) in state.wakes.drain(..) {
-        let Some((arch, idx)) = world.entity_set().get_location(id) else {continue;};
-        let arch = &world.archetypes()[arch as usize];
+        let Some(loc) = world.entity_set().get_location(id) else {continue;};
+        let arch = &world.archetypes()[loc.arch as usize];
         let Some(component) = arch.component(tid) else {continue;};
         let borrow = unsafe {
             component
@@ -267,7 +267,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
             NonNull::new_unchecked(
                 data.ptr
                     .as_ptr()
-                    .add(component.layout().size() * idx as usize),
+                    .add(component.layout().size() * loc.idx as usize),
             )
         };
 

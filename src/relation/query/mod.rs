@@ -40,7 +40,7 @@ pub use self::{
     filter_related::{related, FilterRelated},
     filter_related_by::{related_by, FetchFilterRelatedBy, FilterRelatedBy},
     filter_relates::{relates, FilterRelates},
-    filter_relates_to::{relates_to, FilterFetchRelationTo, FilterRelatesTo},
+    filter_relates_to::{relates_to, FilterFetchRelatesTo, FilterRelatesTo},
     related::{FetchRelated, Related},
     relates::{FetchRelatesRead, FetchRelatesWrite, Relates, RelatesReadIter, RelatesWriteIter},
     relates_exclusive::{FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, RelatesExclusive},

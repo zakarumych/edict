@@ -8,34 +8,44 @@ use crate::{
     },
 };
 
-use super::{BorrowState, View, ViewState};
+use super::{BorrowState, ViewState};
 
-/// A helper trait to extend tuples.
-pub trait ExtendTupleQuery<E: IntoQuery>: IntoQuery + Sized {
+/// A helper trait to extend tuples of queries to produce a new query.
+pub trait TupleQuery: Query + Sized {
     /// Tuple query with an additional element `E`.
-    type Output: IntoQuery;
+    type Extended<E: Query>: Query;
 
     /// Extend tuple with an additional element `E`.
-    fn extend_query(tuple: Self::Query, element: E::Query) -> <Self::Output as IntoQuery>::Query;
+    fn extend_query<E: Query>(self, element: E) -> Self::Extended<E>;
 }
 
 /// A helper type alias to extend tuples.
-pub type TuplePlus<T, E> = <T as ExtendTupleQuery<E>>::Output;
+pub type TupleQueryAdd<T, E> = <T as TupleQuery>::Extended<<E as IntoQuery>::Query>;
 
 macro_rules! impl_extend {
     () => {};
-    ($skip:ident $($a:ident)*) => {
-        impl<Add $(, $a)*> ExtendTupleQuery<Add> for ($($a,)*)
-        where
-            $($a: IntoQuery,)*
-            Add: IntoQuery,
+    ($skip:ident) => {
+        impl TupleQuery for ()
         {
-            type Output = ($($a,)* Add,);
+            type Extended<Add: Query> = (Add,);
 
             #[inline(always)]
-            fn extend_query(tuple: ($($a::Query,)*), add: Add::Query) -> <Self::Output as IntoQuery>::Query {
+            fn extend_query<Add: Query>(self, add: Add) -> (Add,) {
+                (add,)
+            }
+        }
+    };
+    ($skip:ident $($a:ident)+) => {
+        impl<$($a),*> TupleQuery for ($($a,)*)
+        where
+            $($a: Query,)*
+        {
+            type Extended<Add: Query> = ($($a,)* Add,);
+
+            #[inline(always)]
+            fn extend_query<Add: Query>(self, add: Add) -> Self::Extended<Add> {
                 #![allow(non_snake_case)]
-                let ($($a,)*) = tuple;
+                let ($($a,)*) = self;
                 ($($a,)* add,)
             }
         }
@@ -46,19 +56,18 @@ for_tuple!(impl_extend);
 
 impl<'a, Q, F, B> ViewState<'a, Q, F, B>
 where
-    Q: Query,
+    Q: TupleQuery,
     F: Query,
     B: BorrowState,
 {
     /// Extends query tuple with an additional query element.
     #[inline]
-    pub fn extend_query<E>(self, query: E::Query) -> ViewState<'a, TuplePlus<Q, E>, F, B>
+    pub fn extend<E>(self, query: E) -> ViewState<'a, TupleQueryAdd<Q, E>, F, B>
     where
         E: IntoQuery,
-        Q: ExtendTupleQuery<E>,
     {
-        View {
-            query: Q::extend_query(self.query, query),
+        ViewState {
+            query: Q::extend_query(self.query, query.into_query()),
             filter: self.filter,
             archetypes: self.archetypes,
             entity_set: self.entity_set,
@@ -67,14 +76,79 @@ where
         }
     }
 
+    /// Extends query tuple with a query element that fetches the component,
+    /// filtering entities with the component and it was modified after the `after_epoch`.
+    #[inline]
+    pub fn modified<T>(
+        self,
+        after_epoch: EpochId,
+    ) -> ViewState<'a, TupleQueryAdd<Q, Modified<T>>, F, B>
+    where
+        Modified<T>: Query,
+    {
+        self.extend(Modified::new(after_epoch))
+    }
+
+    /// Extends query tuple with a query element that fetches borrows `T`
+    /// from a component of the entity.
+    /// First component of entity that provide `T` borrowing is used.
+    /// If no component provides `T` borrowing, the entity is filtered out.
+    #[inline]
+    pub fn borrow_any<T>(self) -> ViewState<'a, TupleQueryAdd<Q, QueryBorrowAny<T>>, F, B>
+    where
+        QueryBorrowAny<T>: PhantomQuery,
+    {
+        self.extend(PhantomData)
+    }
+    /// Extends query tuple with a query element that fetches borrows `T`
+    /// from a component of the entity.
+    /// Component with user-specified `TypeId` is used.
+    /// If component with the `TypeId` is not found, the entity is filtered out.
+    ///
+    /// # Panicking
+    ///
+    /// If component with the `TypeId` does not provide `T` borrowing, it panics.
+    #[inline]
+    pub fn borrow_one<T>(
+        self,
+        id: TypeId,
+    ) -> ViewState<'a, TupleQueryAdd<Q, QueryBorrowOne<T>>, F, B>
+    where
+        QueryBorrowOne<T>: Query,
+    {
+        self.extend(QueryBorrowOne::new(id))
+    }
+
+    /// Extends query tuple with a query element that fetches borrows `T`
+    /// from a component of the entity.
+    /// Component with user-specified `TypeId` is used.
+    /// If component with the `TypeId` is not found, the entity is filtered out.
+    ///
+    /// # Panicking
+    ///
+    /// If component with the `TypeId` does not provide `T` borrowing, it panics.
+    #[inline]
+    pub fn borrow_all<T>(self) -> ViewState<'a, TupleQueryAdd<Q, QueryBorrowAll<T>>, F, B>
+    where
+        QueryBorrowAll<T>: PhantomQuery,
+    {
+        self.extend(PhantomData)
+    }
+}
+
+impl<'a, Q, F, B> ViewState<'a, Q, F, B>
+where
+    Q: Query,
+    F: TupleQuery,
+    B: BorrowState,
+{
     /// Extends filter tuple with an additional filter element.
     #[inline]
-    pub fn extend_filter<E>(self, filter: E::Query) -> View<'a, Q, TuplePlus<F, E>, B>
+    pub fn filter<E>(self, filter: E::Query) -> ViewState<'a, Q, TupleQueryAdd<F, E>, B>
     where
         E: IntoQuery,
-        F: ExtendTupleQuery<E>,
     {
-        View {
+        ViewState {
             query: self.query,
             filter: F::extend_query(self.filter, filter),
             archetypes: self.archetypes,
@@ -87,34 +161,21 @@ where
     /// Extends filter tuple with a filter element that
     /// filters entities that have the component.
     #[inline]
-    pub fn with<T>(self) -> View<'a, Q, TuplePlus<F, With<T>>, B>
+    pub fn with<T>(self) -> ViewState<'a, Q, TupleQueryAdd<F, With<T>>, B>
     where
         T: 'static,
-        F: ExtendTupleQuery<With<T>>,
     {
-        self.extend_filter(PhantomData)
+        self.filter::<With<T>>(PhantomData)
     }
 
     /// Extends filter tuple with a filter element that\
     /// filters entities that do not have the component.
     #[inline]
-    pub fn without<T>(self) -> View<'a, Q, TuplePlus<F, Without<T>>, B>
+    pub fn without<T>(self) -> ViewState<'a, Q, TupleQueryAdd<F, Without<T>>, B>
     where
         T: 'static,
-        F: ExtendTupleQuery<Without<T>>,
     {
-        self.extend_filter(Not(PhantomData))
-    }
-
-    /// Extends query tuple with a query element that fetches the component,
-    /// filtering entities with the component and it was modified after the `after_epoch`.
-    #[inline]
-    pub fn modified<T>(self, after_epoch: EpochId) -> View<'a, TuplePlus<Q, Modified<T>>, F, B>
-    where
-        Modified<T>: Query,
-        Q: ExtendTupleQuery<Modified<T>>,
-    {
-        self.extend_query(Modified::new(after_epoch))
+        self.filter::<Without<T>>(Not(PhantomData))
     }
 
     /// Extends filter tuple with a filter element that
@@ -123,58 +184,10 @@ where
     pub fn filter_modified<T>(
         self,
         after_epoch: EpochId,
-    ) -> View<'a, Q, TuplePlus<F, Modified<With<T>>>, B>
+    ) -> ViewState<'a, Q, TupleQueryAdd<F, Modified<With<T>>>, B>
     where
         T: 'static,
-        F: ExtendTupleQuery<Modified<With<T>>>,
     {
-        self.extend_filter(Modified::new(after_epoch))
-    }
-
-    /// Extends query tuple with a query element that fetches borrows `T`
-    /// from a component of the entity.
-    /// First component of entity that provide `T` borrowing is used.
-    /// If no component provides `T` borrowing, the entity is filtered out.
-    #[inline]
-    pub fn borrow_any<T>(self) -> View<'a, TuplePlus<Q, QueryBorrowAny<T>>, F, B>
-    where
-        QueryBorrowAny<T>: PhantomQuery,
-        Q: ExtendTupleQuery<QueryBorrowAny<T>>,
-    {
-        self.extend_query(PhantomData)
-    }
-
-    /// Extends query tuple with a query element that fetches borrows `T`
-    /// from a component of the entity.
-    /// Component with user-specified `TypeId` is used.
-    /// If component with the `TypeId` is not found, the entity is filtered out.
-    ///
-    /// # Panicking
-    ///
-    /// If component with the `TypeId` does not provide `T` borrowing, it panics.
-    #[inline]
-    pub fn borrow_one<T>(self, id: TypeId) -> View<'a, TuplePlus<Q, QueryBorrowOne<T>>, F, B>
-    where
-        QueryBorrowOne<T>: Query,
-        Q: ExtendTupleQuery<QueryBorrowOne<T>>,
-    {
-        self.extend_query(QueryBorrowOne::new(id))
-    }
-
-    /// Extends query tuple with a query element that fetches borrows `T`
-    /// from a component of the entity.
-    /// Component with user-specified `TypeId` is used.
-    /// If component with the `TypeId` is not found, the entity is filtered out.
-    ///
-    /// # Panicking
-    ///
-    /// If component with the `TypeId` does not provide `T` borrowing, it panics.
-    #[inline]
-    pub fn borrow_all<T>(self) -> View<'a, TuplePlus<Q, QueryBorrowAll<T>>, F, B>
-    where
-        QueryBorrowAll<T>: PhantomQuery,
-        Q: ExtendTupleQuery<QueryBorrowAll<T>>,
-    {
-        self.extend_query(PhantomData)
+        self.filter::<Modified<With<T>>>(Modified::new(after_epoch))
     }
 }

@@ -4,14 +4,15 @@ use crate::{
     archetype::Archetype,
     query::{merge_access, Access, IntoQuery, Query},
     system::ActionQueue,
-    world::{QueryRef, World},
+    view::View,
+    world::World,
 };
 
 use super::{FnArg, FnArgCache, FnArgGet};
 
 /// Cache for an argument that is stored between calls to function-system.
 pub trait QueryArgGet<'a> {
-    /// Argument specified in [`QueryRef`]
+    /// Argument specified in [`View`]
     type Arg: QueryArg<Cache = Self, Query = Self::Query>;
 
     /// Constructed query type.
@@ -30,7 +31,7 @@ pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + 'static {
 
     /// Returns true if the query visits archetype.
     #[must_use]
-    unsafe fn visit_archetype(&self, archetype: &Archetype) -> bool;
+    fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Returns some access type performed by the query.
     #[must_use]
@@ -45,17 +46,17 @@ pub trait QueryArg: IntoQuery {
 
 /// Cache type used by corresponding [`QueryRef`].
 #[derive(Default)]
-pub struct QueryRefCache<Q, F> {
+pub struct ViewCache<Q, F> {
     query: Q,
     filter: F,
 }
 
-unsafe impl<'a, Q, F> FnArgGet<'a> for QueryRefCache<Q, F>
+unsafe impl<'a, Q, F> FnArgGet<'a> for ViewCache<Q, F>
 where
     Q: QueryArgCache,
     F: QueryArgCache,
 {
-    type Arg = QueryRef<'a, <Q as QueryArgGet<'a>>::Arg, <F as QueryArgGet<'a>>::Arg>;
+    type Arg = View<'a, <Q as QueryArgGet<'a>>::Arg, <F as QueryArgGet<'a>>::Arg>;
 
     #[inline(always)]
     unsafe fn get_unchecked(
@@ -67,18 +68,18 @@ where
         let world = unsafe { world.as_ref() };
         let query = self.query.get(world);
         let filter = self.filter.get(world);
-        QueryRef::new(world, query, filter)
+        View::with_query_filter(world, query, filter)
     }
 }
 
-impl<Q, F> FnArgCache for QueryRefCache<Q, F>
+impl<Q, F> FnArgCache for ViewCache<Q, F>
 where
     Q: QueryArgCache,
     F: QueryArgCache,
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryRefCache {
+        ViewCache {
             query: Q::new(),
             filter: F::new(),
         }
@@ -101,7 +102,7 @@ where
 
     #[inline(always)]
     fn access_component(&self, id: TypeId) -> Option<Access> {
-        merge_access(
+        merge_access::<Self>(
             self.query.access_component(id),
             self.filter.access_component(id),
         )
@@ -118,7 +119,7 @@ where
     Q: QueryArg,
     F: QueryArg,
 {
-    type Cache = QueryRefCache<Q::Cache, F::Cache>;
+    type Cache = ViewCache<Q::Cache, F::Cache>;
 }
 
 macro_rules! impl_query {

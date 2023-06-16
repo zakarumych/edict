@@ -2,7 +2,7 @@ use core::ops::{Index, IndexMut};
 
 use crate::{
     entity::{AliveEntity, Entity, Location},
-    query::{IntoQuery, Query, QueryItem, Read, Write},
+    query::{Query, QueryItem, Read, Write},
     view::get_at,
 };
 
@@ -20,18 +20,17 @@ where
     /// Returns none if entity does not match the view's query and filter.
     #[inline(always)]
     pub fn get(&self, entity: impl AliveEntity) -> Option<QueryItem<Q>> {
-        let entity = entity.locate(self.entity_set);
-        let Location { arch, idx } = entity.location();
+        let loc = entity.locate(self.entity_set);
 
-        if arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), idx);
+        if loc.arch == u32::MAX {
+            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx);
         }
 
         // Ensure to borrow view's data.
         self.borrow
             .acquire(&self.query, &self.filter, self.archetypes);
 
-        self._get(Location { arch, idx })
+        self._get(loc)
     }
 
     /// Fetches data that matches the view's query and filter
@@ -41,18 +40,21 @@ where
     #[inline(always)]
     #[track_caller]
     pub fn expect(&self, entity: impl Entity) -> QueryItem<Q> {
-        let entity = expect_alive(entity.lookup(self.entity_set));
-        let Location { arch, idx } = entity.location();
+        let loc = expect_alive(entity.lookup(self.entity_set));
 
-        if arch == u32::MAX {
-            return expect_match(Query::reserved_entity_item(&self.query, entity.id(), idx));
+        if loc.arch == u32::MAX {
+            return expect_match(Query::reserved_entity_item(
+                &self.query,
+                entity.id(),
+                loc.idx,
+            ));
         }
 
         // Ensure to borrow view's data.
         self.borrow
             .acquire(&self.query, &self.filter, self.archetypes);
 
-        expect_match(self._get(Location { arch, idx }))
+        expect_match(self._get(loc))
     }
 
     /// Fetches data that matches the view's query and filter
@@ -61,22 +63,21 @@ where
     /// Calls provided closure with fetched data if entity matches query and filter.
     /// Otherwise, calls closure with `None`.
     #[inline(always)]
-    pub fn with<Fun, R>(&self, entity: impl AliveEntity, f: Fun) -> R
+    pub fn map<Fun, R>(&self, entity: impl AliveEntity, f: Fun) -> Option<R>
     where
-        Fun: FnOnce(Option<QueryItem<Q>>) -> R,
+        Fun: FnOnce(QueryItem<Q>) -> R,
     {
-        let entity = entity.locate(self.entity_set);
-        let Location { arch, idx } = entity.location();
+        let loc = entity.locate(self.entity_set);
 
-        if arch == u32::MAX {
-            return f(Query::reserved_entity_item(&self.query, entity.id(), idx));
+        if loc.arch == u32::MAX {
+            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx).map(f);
         }
 
-        let archetype = &self.archetypes[arch];
+        let archetype = &self.archetypes[loc.arch as usize];
 
         // Ensure to borrow view's data.
         self.borrow.with(&self.query, &self.filter, archetype, || {
-            f(self._get(Location { arch, idx }))
+            self._get(loc).map(f)
         })
     }
 
@@ -93,14 +94,16 @@ impl<E, T, F, B> Index<E> for ViewState<'_, Read<T>, F, B>
 where
     E: Entity,
     T: 'static + Sync,
-    F: IntoQuery,
+    F: Query,
     B: BorrowState,
 {
     type Output = T;
 
     #[inline(always)]
     fn index(&self, entity: E) -> &T {
-        let entity = entity.lookup(self.entity_set).expect("Entity is not alive");
+        let entity = entity
+            .entity_loc(self.entity_set)
+            .expect("Entity is not alive");
         self.get(entity)
             .expect("Entity does not match view's query and filter")
     }
@@ -117,7 +120,9 @@ where
 
     #[inline(always)]
     fn index(&self, entity: E) -> &T {
-        let entity = entity.lookup(self.entity_set).expect("Entity is not alive");
+        let entity = entity
+            .entity_loc(self.entity_set)
+            .expect("Entity is not alive");
         self.get(entity)
             .expect("Entity does not match view's query and filter")
     }
@@ -132,7 +137,9 @@ where
 {
     #[inline(always)]
     fn index_mut(&mut self, entity: E) -> &mut T {
-        let entity = entity.lookup(self.entity_set).expect("Entity is not alive");
+        let entity = entity
+            .entity_loc(self.entity_set)
+            .expect("Entity is not alive");
         self.get(entity)
             .expect("Entity does not match view's query and filter")
     }

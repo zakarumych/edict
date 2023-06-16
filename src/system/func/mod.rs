@@ -1,5 +1,5 @@
 mod action;
-mod query;
+// mod query;
 mod res;
 mod state;
 mod world;
@@ -15,7 +15,7 @@ use crate::{
 
 pub use self::{
     action::ActionEncoderCache,
-    query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
+    // query::{QueryArg, QueryArgCache, QueryArgGet, QueryRefCache},
     res::{
         Res, ResCache, ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync,
         ResNoSyncCache,
@@ -45,7 +45,7 @@ pub unsafe trait FnArgGet<'a> {
     /// This method provides an opportunity for argument cache to do a cleanup of flushing.
     ///
     /// For instance `ActionEncoderCache` - a cache type for `ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
-    #[inline]
+    #[inline(always)]
     unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, _queue: &mut dyn ActionQueue) {}
 }
 
@@ -104,49 +104,43 @@ macro_rules! impl_func {
                 <$a as FnArgGet<'a>>::Arg,
             )*),
         {
-            #[inline]
+            #[inline(always)]
             fn is_local(&self) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.is_local() )*
             }
 
-            #[inline]
+            #[inline(always)]
             fn world_access(&self) -> Option<Access> {
                 let ($($a,)*) = &self.args;
-                let mut access = None;
-                $(
-                    access = merge_world_access(access, $a.world_access());
-                )*
-                access
+                let mut result = None;
+                $(result = merge_access::<Func>(result, $a.world_access());)*
+                result
             }
 
-            #[inline]
+            #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.visit_archetype(archetype) )*
             }
 
-            #[inline]
+            #[inline(always)]
             fn access_component(&self, id: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
-                let mut access = None;
-                $(
-                    access = merge_access(access, $a.access_component(id));
-                )*
-                access
+                let mut result = None;
+                $(result = merge_access::<Func>(result, $a.world_access());)*
+                result
             }
 
-            #[inline]
+            #[inline(always)]
             fn access_resource(&self, id: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
-                let mut access = None;
-                $(
-                    access = merge_access(access, $a.access_resource(id));
-                )*
-                access
+                let mut result = None;
+                $(result = merge_access::<Func>(result, $a.access_resource(id));)*
+                result
             }
 
-            #[inline]
+            #[inline(always)]
             unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
                 let ($($a,)*) = &mut self.args;
 
@@ -174,7 +168,7 @@ macro_rules! impl_func {
         {
             type System = FunctionSystem<Self, ($($a::Cache,)*)>;
 
-            #[inline]
+            #[inline(always)]
             fn into_system(self) -> Self::System {
                 FunctionSystem {
                     f: self,
@@ -198,22 +192,8 @@ impl<T> FromWorld for T
 where
     T: Default,
 {
-    #[inline]
+    #[inline(always)]
     fn from_world(_: &World) -> Self {
         T::default()
-    }
-}
-
-/// [`merge_access`] but panics when either argument is `Some(Access::Write)` and another is `Some(_)`.
-#[inline]
-#[must_use]
-const fn merge_world_access(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
-    match (lhs, rhs) {
-        (None, rhs) => rhs,
-        (lhs, None) => lhs,
-        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
-            panic!("Multiple mutable access to `World` is not allowed.");
-        }
     }
 }

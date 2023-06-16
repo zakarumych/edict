@@ -26,7 +26,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
 
     #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
-        let id = *self.entities.get_unchecked(idx);
+        let id = *self.entities.get_unchecked(idx as usize);
         EntityLoc::new(id, Location::new(self.archetype, idx))
     }
 }
@@ -49,13 +49,15 @@ unsafe impl PhantomQuery for Entities {
     type Fetch<'a> = EntitiesFetch<'a>;
     type Item<'a> = EntityLoc<'a>;
 
+    const MUTABLE: bool = false;
+
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
         None
     }
 
     #[inline]
-    unsafe fn visit_archetype(_archetype: &Archetype) -> bool {
+    fn visit_archetype(_archetype: &Archetype) -> bool {
         true
     }
 

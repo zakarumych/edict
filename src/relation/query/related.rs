@@ -46,8 +46,8 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a [EntityId] {
-        let component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    unsafe fn get_item(&mut self, idx: u32) -> &'a [EntityId] {
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         &component.origins[..]
     }
 }
@@ -58,6 +58,8 @@ where
 {
     type Item<'a> = &'a [EntityId];
     type Fetch<'a> = FetchRelated<'a, R>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -79,7 +81,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelated<'a, R> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRelated<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<TargetComponent<R>>())

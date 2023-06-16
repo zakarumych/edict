@@ -2,7 +2,7 @@ use crate::{
     archetype::Archetype,
     entity::{AliveEntity, EntityId, EntitySet, Location},
     epoch::EpochCounter,
-    query::{DefaultQuery, IntoQuery, Query, QueryItem},
+    query::{IntoQuery, Query, QueryItem},
     world::World,
 };
 
@@ -27,61 +27,70 @@ pub type ViewOne<'a, Q, F = ()> =
 
 impl<'a, Q, F> ViewOneState<'a, Q, F>
 where
-    Q: DefaultQuery,
-    F: DefaultQuery,
+    Q: Query + Default,
+    F: Query + Default,
 {
     #[inline(always)]
     pub fn new(world: &World, entity: impl AliveEntity) -> Self {
         let loc = entity.locate(world.entity_set());
         let archetype = &world.archetypes()[loc.arch as usize];
 
-        ViewOne {
-            query: Q::default_query(),
-            filter: F::default_query(),
+        ViewOneState {
+            query: Q::default(),
+            filter: F::default(),
             archetype,
             id: entity.id(),
             loc,
             entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
-            epochs: world.epochs(),
+            epochs: world.epoch_counter(),
         }
     }
 }
 
 impl<'a, Q, F> ViewOneState<'a, (Q,), F>
 where
-    Q: IntoQuery,
-    F: DefaultQuery,
+    Q: Query,
+    F: Query + Default,
 {
     #[inline(always)]
-    pub fn with_query(world: &World, entity: impl AliveEntity, query: Q) -> Self {
+    pub fn with_query(
+        world: &World,
+        entity: impl AliveEntity,
+        query: impl IntoQuery<Query = Q>,
+    ) -> Self {
         let loc = entity.locate(world.entity_set());
         let archetype = &world.archetypes()[loc.arch as usize];
 
-        ViewOne {
+        ViewOneState {
             query: (query.into_query(),),
-            filter: F::default_query(),
+            filter: F::default(),
             archetype,
             id: entity.id(),
             loc,
             entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
-            epochs: world.epochs(),
+            epochs: world.epoch_counter(),
         }
     }
 }
 
 impl<'a, Q, F> ViewOneState<'a, (Q,), (F,)>
 where
-    Q: IntoQuery,
-    F: IntoQuery,
+    Q: Query,
+    F: Query,
 {
     #[inline(always)]
-    pub fn with_query_filter(world: &World, entity: impl AliveEntity, query: Q, filter: F) -> Self {
+    pub fn with_query_filter(
+        world: &World,
+        entity: impl AliveEntity,
+        query: impl IntoQuery<Query = Q>,
+        filter: impl IntoQuery<Query = F>,
+    ) -> Self {
         let loc = entity.locate(world.entity_set());
         let archetype = &world.archetypes()[loc.arch as usize];
 
-        ViewOne {
+        ViewOneState {
             query: (query.into_query(),),
             filter: (filter.into_query(),),
             archetype,
@@ -89,15 +98,15 @@ where
             loc,
             entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
-            epochs: world.epochs(),
+            epochs: world.epoch_counter(),
         }
     }
 }
 
 impl<'a, Q, F> ViewOneState<'a, Q, F>
 where
-    Q: IntoQuery,
-    F: IntoQuery,
+    Q: Query,
+    F: Query,
 {
     /// Fetches data that matches the view's query and filter
     /// from a bound entity.
@@ -148,30 +157,24 @@ where
     /// from a bound entity.
     ///
     /// Calls provided closure with fetched data if entity matches query and filter.
-    /// Otherwise, calls closure with `None`.
+    /// Otherwise, returns `None`.
     #[inline(always)]
-    pub fn with<Fun, R>(&self, f: Fun) -> R
+    pub fn map<Fun, R>(&self, f: Fun) -> Option<R>
     where
-        Fun: FnOnce(Option<QueryItem<Q>>) -> R,
+        Fun: FnOnce(QueryItem<Q>) -> R,
     {
         if self.loc.arch == u32::MAX {
-            return f(Query::reserved_entity_item(
-                &self.query,
-                self.id,
-                self.loc.idx,
-            ));
+            return Query::reserved_entity_item(&self.query, self.id, self.loc.idx).map(f);
         }
 
         // Ensure to borrow view's data.
-        self.borrow.with(
-            &self.query,
-            &self.filter,
-            core::slice::from_ref(self.archetype),
-            || f(self._get()),
-        )
+        self.borrow
+            .with(&self.query, &self.filter, self.archetype, || {
+                self._get().map(f)
+            })
     }
 
-    #[inline]
+    #[inline(always)]
     fn _get(&self) -> Option<QueryItem<Q>> {
         get_at(
             &self.query,

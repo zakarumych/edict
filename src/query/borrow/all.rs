@@ -50,12 +50,12 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> Vec<&'a T> {
+    unsafe fn get_item(&mut self, idx: u32) -> Vec<&'a T> {
         self.components
             .iter()
             .map(|c| unsafe {
                 (c.borrow_fn)(
-                    NonNull::new_unchecked(c.ptr.as_ptr().add(idx * c.size)),
+                    NonNull::new_unchecked(c.ptr.as_ptr().add(idx as usize * c.size)),
                     PhantomData::<&'a ()>,
                 )
             })
@@ -69,6 +69,8 @@ where
 {
     type Item<'a> = Vec<&'a T>;
     type Fetch<'a> = FetchBorrowAllRead<'a, T>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(_ty: TypeId) -> Option<Access> {
@@ -93,7 +95,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchBorrowAllRead<'a, T> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchBorrowAllRead<'a, T> {
         let indices = unsafe {
             archetype
                 .borrow_indices(TypeId::of::<T>())

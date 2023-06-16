@@ -56,9 +56,9 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> (&'a R, EntityId) {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
-        let origin = &origin_component.origins()[0];
+    unsafe fn get_item(&mut self, idx: u32) -> (&'a R, EntityId) {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+        let origin = &origin_component.relations()[0];
         (&origin.relation, origin.target)
     }
 }
@@ -69,6 +69,8 @@ where
 {
     type Item<'a> = (&'a R, EntityId);
     type Fetch<'a> = FetchRelatesExclusiveRead<'a, R>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -90,6 +92,7 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRelatesExclusiveRead<'a, R> {
@@ -144,18 +147,18 @@ where
     }
 
     #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx) };
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> (&'a mut R, EntityId) {
-        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx) };
+    unsafe fn get_item(&mut self, idx: u32) -> (&'a mut R, EntityId) {
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx) };
-        let origin = &mut origin_component.origins_mut()[0];
+        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
+        let origin = &mut origin_component.relations_mut()[0];
         (&mut origin.relation, origin.target)
     }
 }
@@ -166,6 +169,8 @@ where
 {
     type Item<'a> = (&'a mut R, EntityId);
     type Fetch<'a> = FetchRelatesExclusiveWrite<'a, R>;
+
+    const MUTABLE: bool = true;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -188,6 +193,7 @@ where
 
     #[inline]
     unsafe fn fetch<'a>(
+        _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesExclusiveWrite<'a, R> {

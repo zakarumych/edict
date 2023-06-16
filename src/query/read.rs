@@ -26,8 +26,8 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
-        &*self.ptr.as_ptr().add(idx)
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
+        &*self.ptr.as_ptr().add(idx as usize)
     }
 }
 
@@ -37,6 +37,8 @@ where
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchRead<'a, T>;
+
+    const MUTABLE: bool = false;
 
     #[inline]
     fn access(ty: TypeId) -> Option<Access> {
@@ -58,7 +60,11 @@ where
     }
 
     #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRead<'a, T> {
+    unsafe fn fetch<'a>(
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRead<'a, T> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
@@ -85,6 +91,5 @@ where
     T: Sync,
 {
     assert_immutable_query::<Read<T>>();
-
     PhantomData
 }

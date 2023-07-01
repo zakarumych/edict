@@ -268,7 +268,7 @@ impl ActionSender {
     #[inline]
     pub fn closure_with_encoder(&self, fun: impl FnOnce(&World, ActionEncoder) + Send + 'static) {
         self.push_fn(|world, buffer| {
-            let encoder = ActionEncoder::new(buffer, world.entity_set());
+            let encoder = ActionEncoder::new(buffer, world.entities());
             fun(world, encoder);
         });
     }

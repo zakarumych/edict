@@ -84,7 +84,7 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    unsafe fn access_archetype(archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -185,7 +185,7 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    unsafe fn access_archetype(archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()

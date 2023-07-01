@@ -251,7 +251,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
     core::mem::swap(&mut state.wakes, &mut state.queue.lock());
 
     for (id, tid) in state.wakes.drain(..) {
-        let Some(loc) = world.entity_set().get_location(id) else {continue;};
+        let Some(loc) = world.entities().get_location(id) else {continue;};
         let arch = &world.archetypes()[loc.arch as usize];
         let Some(component) = arch.component(tid) else {continue;};
         let borrow = unsafe {

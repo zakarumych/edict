@@ -14,6 +14,7 @@ where
     F: Query,
     B: BorrowState,
 {
+    /// Returns an iterator over entities with a query `Q` and filter `F`.
     #[inline(always)]
     pub fn iter(&self) -> ViewIter<'_, Q, F>
     where
@@ -65,6 +66,7 @@ pub struct ViewIter<'a, Q: Query, F: Query, B = StaticallyBorrowed> {
     archetypes_iter: core::iter::Enumerate<core::slice::Iter<'a, Archetype>>,
     indices: Range<u32>,
     touch_chunk: bool,
+    #[allow(dead_code)]
     borrow: B,
 }
 

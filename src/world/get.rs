@@ -23,11 +23,11 @@ impl World {
     ///
     /// This method may panic if entity of another world is used.
     #[inline(always)]
-    pub fn get_mut<'a, Q>(&'a mut self, entity: impl AliveEntity) -> Option<QueryItem<'a, Q>>
+    pub fn get<'a, Q>(&'a mut self, entity: impl AliveEntity) -> Option<QueryItem<'a, Q>>
     where
         Q: DefaultQuery,
     {
-        self.get_with_mut(entity, Q::default_query())
+        self.get_with(entity, Q::default_query())
     }
 
     /// Queries components from specified entity.
@@ -41,7 +41,7 @@ impl World {
     ///
     /// This method may panic if entity of another world is used.
     #[inline(always)]
-    pub fn get_with_mut<'a, Q>(
+    pub fn get_with<'a, Q>(
         &'a mut self,
         entity: impl AliveEntity,
         query: Q,
@@ -98,7 +98,7 @@ impl World {
     where
         Q: IntoQuery,
     {
-        let mut query = query.into_query();
+        let query = query.into_query();
 
         let loc = entity.locate(&self.entities);
 
@@ -148,7 +148,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        ViewOneState::new(self, entity)
+        ViewOneState::new(self, entity, Q::default_query(), ())
     }
 
     /// Queries components from specified entity.
@@ -156,16 +156,16 @@ impl World {
     ///
     /// This method works only for stateless query types.
     /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
-    #[inline(always)]
     ///
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
+    #[inline(always)]
     pub fn view_one_with<'a, Q>(&'a self, entity: impl AliveEntity, query: Q) -> ViewOne<'a, (Q,)>
     where
         Q: IntoQuery,
     {
-        ViewOneState::with_query(self, entity, query)
+        ViewOneState::new(self, entity, (query.into_query(),), ())
     }
 
     /// Queries components from specified entity.
@@ -173,7 +173,7 @@ impl World {
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    pub fn get_cloned<T>(&mut self, entity: impl AliveEntity) -> Option<T>
+    pub fn get_cloned<T>(&self, entity: impl AliveEntity) -> Option<T>
     where
         T: Clone + Sync + 'static,
     {

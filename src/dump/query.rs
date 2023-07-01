@@ -125,7 +125,7 @@ macro_rules! impl_dump_query {
             }
 
             #[inline]
-            unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+            unsafe fn access_archetype(&self, _archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
                 $(f(TypeId::of::<$a>(), Access::Read);)*
             }
 

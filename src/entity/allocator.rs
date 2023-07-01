@@ -13,14 +13,12 @@ pub struct IdRange {
     pub end: NonZeroU64,
 }
 
-/// Value that should never be used as an valid ID.
-pub const DANGLING: NonZeroU64 = NonZeroU64::new(1).unwrap();
-
 /// Start of the valid ID range.
-pub const START: NonZeroU64 = NonZeroU64::new(2).unwrap();
+pub const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
 
 /// End of the valid ID range.
-pub const END: NonZeroU64 = NonZeroU64::new(u64::MAX).unwrap();
+/// This value is never allocated as valid ID.
+pub const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
 
 impl IdRange {
     /// Returns proper range with `start` less than or equal to `end`.
@@ -225,11 +223,53 @@ pub struct OneRangeAllocator {
     range: IdRange,
 }
 
+const fn client_range() -> IdRange {
+    IdRange {
+        start: unsafe { NonZeroU64::new_unchecked(1) },
+        end: unsafe { NonZeroU64::new_unchecked(1 << 48) },
+    }
+}
+
+const fn server_range() -> IdRange {
+    IdRange {
+        start: unsafe { NonZeroU64::new_unchecked(1 << 48) },
+        end: unsafe { NonZeroU64::new_unchecked(u64::MAX) },
+    }
+}
+
 impl OneRangeAllocator {
     /// Creates new `OneRangeAllocator` that will allocate given range once.
     /// And then return empty range on subsequent allocations.
     pub const fn new(range: IdRange) -> Self {
         OneRangeAllocator { range }
+    }
+
+    /// Creates new `OneRangeAllocator` that will allocate
+    /// client's entity ID range once.
+    /// The client's ID range is pre-defined range `1..2^48`.
+    ///
+    /// The range is chosen to be large enough to not cause
+    /// overflow in years of continuous client activity.
+    pub const fn client() -> Self {
+        OneRangeAllocator {
+            range: client_range(),
+        }
+    }
+
+    /// Creates new `OneRangeAllocator` that will allocate
+    /// server's entity ID range once.
+    /// The server's ID range is pre-defined range `2^48..2^64-1`.
+    /// The range is chosen to be large enough to not cause
+    /// overflow in thousands of years of continuous server activity.
+    ///
+    /// This allocator should only be used for isolated server setup.
+    /// If servers are interconnected and share entities,
+    /// construct custom allocator that will distribute ID ranges
+    /// from common pool.
+    pub const fn server() -> Self {
+        OneRangeAllocator {
+            range: server_range(),
+        }
     }
 }
 

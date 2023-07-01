@@ -21,6 +21,7 @@ pub struct Location {
 }
 
 impl Location {
+    /// Creates a new location instance.
     pub fn new(arch_idx: u32, idx: u32) -> Self {
         Location {
             arch: arch_idx,
@@ -28,10 +29,12 @@ impl Location {
         }
     }
 
+    /// Creates a new location instance with empty archetype index.
     pub fn empty(idx: u32) -> Self {
         Location { arch: 0, idx }
     }
 
+    /// Creates a new location instance with reserved archetype index.
     pub fn reserved(idx: u32) -> Self {
         Location {
             arch: u32::MAX,
@@ -40,6 +43,13 @@ impl Location {
     }
 }
 
+/// Collection of entities with mapping to location.
+/// Unlike maps, this collection allocates entity IDs.
+/// User may affect this process by providing custom [`IdRangeAllocator`].
+/// By default allocates IDs from range `1..u64::MAX` sequentially.
+///
+/// User typically interacts with `World` that contains `EntitySet` internally.
+/// When API needs `EntitySet`, `World::entities()` method is used to get it.
 pub struct EntitySet {
     map: HashMap<u64, Location>,
     id_allocator: IdAllocator,
@@ -55,6 +65,7 @@ impl fmt::Debug for EntitySet {
 }
 
 impl EntitySet {
+    /// Creates a new entity set.
     pub fn new() -> Self {
         EntitySet {
             map: HashMap::new(),
@@ -63,6 +74,10 @@ impl EntitySet {
         }
     }
 
+    /// Creates a new entity set with custom ID range allocator.
+    ///
+    /// Custom range allocator is typically used to create
+    /// entity sets that allocate IDs without collisions.
     pub fn with_allocator(id_allocator: Box<dyn IdRangeAllocator>) -> Self {
         EntitySet {
             map: HashMap::new(),
@@ -71,47 +86,46 @@ impl EntitySet {
         }
     }
 
+    /// Spawns entity with new ID in specified archetype.
+    /// Calls provided closure to place entity into archetype and acquire index.
+    /// Returns entity ID and location.
     #[inline(always)]
-    pub fn alloc_mut(&mut self) -> EntityId {
-        match self.id_allocator.next() {
-            None => {
-                panic!("Entity id allocator is exhausted");
-            }
-            Some(id) => EntityId::new(id),
-        }
-    }
-
-    #[inline(always)]
-    pub fn spawn(&mut self) -> EntityId {
-        let id = self.alloc_mut();
-        self.spawn_at(id);
-        id
-    }
-
-    #[inline(always)]
-    pub fn spawn_at(&mut self, id: EntityId) {
-        let old = self.map.insert(
-            id.bits(),
-            Location {
-                arch: 0,
-                idx: u32::MAX,
-            },
-        );
+    pub fn spawn(&mut self, arch: u32, f: impl FnOnce(EntityId) -> u32) -> (EntityId, Location) {
+        let Some(id) = self.id_allocator.next() else {
+            panic!("Entity id allocator is exhausted");
+        };
+        let id = EntityId::new(id);
+        let loc = Location { arch, idx: f(id) };
+        let old = self.map.insert(id.bits(), loc);
         debug_assert!(old.is_none());
+        (id, loc)
     }
 
+    /// Spawns entity with specified ID in specified archetype.
+    /// If entity with specified ID already exists, returns its `false` and its location.
+    /// Otherwise calls provided closure to place entity into archetype and acquire index.
+    /// And then returns `true` and entity location.
     #[inline(always)]
-    pub fn spawn_if_missing(&mut self, id: EntityId, f: impl FnOnce() -> u32) -> (bool, Location) {
+    pub fn spawn_with(
+        &mut self,
+        id: EntityId,
+        arch: u32,
+        f: impl FnOnce() -> u32,
+    ) -> (bool, Location) {
         match self.map.entry(id.bits()) {
             Entry::Occupied(entry) => (false, *entry.get()),
             Entry::Vacant(entry) => {
-                let loc = Location { arch: 0, idx: f() };
+                let loc = Location { arch, idx: f() };
                 entry.insert(loc);
                 (true, loc)
             }
         }
     }
 
+    /// Allocate entity ID without spawning.
+    /// Entity is place into "reserved" archetype at index `u32::MAX`.
+    /// Allocated entities must be spawned with `spawn_allocated`
+    /// before any other entity is spawned.
     #[inline(always)]
     pub fn alloc(&self) -> EntityLoc<'_> {
         let idx = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
@@ -130,6 +144,7 @@ impl EntitySet {
         }
     }
 
+    /// Spawns all allocated entities.
     #[inline(always)]
     pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
@@ -149,16 +164,19 @@ impl EntitySet {
         }
     }
 
+    /// Despawns entity with specified ID.
     #[inline(always)]
     pub fn despawn(&mut self, id: EntityId) -> Option<Location> {
         self.map.remove(&id.bits())
     }
 
+    /// Set location for entity with specified ID.
     #[inline(always)]
     pub fn set_location(&mut self, id: EntityId, loc: Location) {
-        self.map[&id.bits()] = loc;
+        self.map.insert(id.bits(), loc);
     }
 
+    /// Returns location for entity with specified ID.
     #[inline(always)]
     pub fn get_location(&self, id: EntityId) -> Option<Location> {
         match self.map.get(&id.bits()) {
@@ -176,7 +194,9 @@ impl EntitySet {
         }
     }
 
-    pub fn reserve_space(&mut self, additional: u32) {
+    /// Reserves capacity for at least `additional` more
+    /// entities to be inserted.
+    pub fn reserve(&mut self, additional: u32) {
         self.map.reserve(additional as usize);
     }
 }

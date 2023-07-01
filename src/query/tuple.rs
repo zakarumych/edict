@@ -2,7 +2,7 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
-use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 macro_rules! impl_fetch {
     () => {
@@ -24,6 +24,13 @@ macro_rules! impl_fetch {
             }
         }
 
+        impl DefaultQuery for () {
+            #[inline(always)]
+            fn default_query() -> () {
+                ()
+            }
+        }
+
         unsafe impl Query for () {
             type Item<'a> = ();
             type Fetch<'a> = ();
@@ -41,7 +48,7 @@ macro_rules! impl_fetch {
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, _: &Archetype, _: &dyn Fn(TypeId, Access)) {}
+            unsafe fn access_archetype(&self, _: &Archetype, _: impl FnMut(TypeId, Access)) {}
 
             #[inline(always)]
             unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> () {
@@ -99,6 +106,15 @@ macro_rules! impl_fetch {
 
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
+        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
+            #[inline(always)]
+            fn default_query() -> ($($a::Query,)+) {
+                ($($a::default_query(),)+)
+            }
+        }
+
+        #[allow(non_snake_case)]
+        #[allow(unused_parens)]
         unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
             type Item<'a> = ($($a::Item<'a>),+);
             type Fetch<'a> = ($($a::Fetch<'a>),+);
@@ -121,9 +137,9 @@ macro_rules! impl_fetch {
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+            unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = self;
-                $( <$a as Query>::access_archetype($a, archetype, f); )+
+                $( <$a as Query>::access_archetype($a, archetype, &mut f); )+
             }
 
             #[inline(always)]

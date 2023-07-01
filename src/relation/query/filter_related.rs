@@ -42,7 +42,7 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    unsafe fn access_archetype(_archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch(_: u32, _: &Archetype, _: EpochId) -> UnitFetch {

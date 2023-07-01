@@ -107,7 +107,7 @@ where
     }
 
     #[inline(always)]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline(always)]
     unsafe fn fetch<'a>(
@@ -204,7 +204,7 @@ where
     }
 
     #[inline(always)]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline(always)]
     unsafe fn fetch<'a>(
@@ -252,7 +252,7 @@ where
     }
 
     #[inline(always)]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    unsafe fn access_archetype(_archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline(always)]
     unsafe fn fetch(_: u32, _: &Archetype, _: EpochId) -> UnitFetch {

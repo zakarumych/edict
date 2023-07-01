@@ -72,7 +72,7 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    unsafe fn access_archetype(archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         if T::visit_archetype(archetype) {
             T::access_archetype(archetype, f)
         }

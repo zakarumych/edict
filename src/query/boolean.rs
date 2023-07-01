@@ -255,9 +255,9 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+            unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = &self.tuple;
-                $($a.access_archetype(archetype, f);)+
+                $($a.access_archetype(archetype, &mut f);)+
             }
 
             #[inline(always)]
@@ -273,7 +273,7 @@ macro_rules! impl_boolean {
                 archetype: &'a Archetype,
                 epoch: EpochId,
             ) -> BooleanFetch<($($a::Fetch<'a>,)+), Op> {
-                let ($($a,)+) = &mut self.tuple;
+                let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
                 BooleanFetch {

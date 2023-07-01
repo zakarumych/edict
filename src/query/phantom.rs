@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData};
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
 
-use super::{fetch::Fetch, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Phantom counterpart of [`Query`] trait.
 /// This trait has all the same methods without `self` argument.
@@ -41,7 +41,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Must call provided closure with type id and access pairs.
     /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
     /// Only types from archetype must be used to call closure.
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access));
+    unsafe fn access_archetype(archetype: &Archetype, f: impl FnMut(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -58,6 +58,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     #[inline]
     fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         drop(id);
+        drop(idx);
         None
     }
 }
@@ -106,7 +107,7 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         <Q as PhantomQuery>::access_archetype(archetype, f)
     }
 
@@ -130,3 +131,12 @@ where
 pub unsafe trait ImmutablePhantomQuery: PhantomQuery {}
 
 unsafe impl<Q> ImmutableQuery for PhantomData<fn() -> Q> where Q: ImmutablePhantomQuery {}
+
+impl<Q> DefaultQuery for Q
+where
+    Q: PhantomQuery,
+{
+    fn default_query() -> Self::Query {
+        PhantomData
+    }
+}

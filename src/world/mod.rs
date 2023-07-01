@@ -18,7 +18,7 @@ use crate::{
     archetype::Archetype,
     bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntitySet, NoSuchEntity},
+    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet, NoSuchEntity},
     epoch::{EpochCounter, EpochId},
     res::Res,
 };
@@ -65,10 +65,6 @@ mod remove;
 mod resource;
 mod spawn;
 mod view;
-
-/// Limits on reserving of space for entities and components
-/// in archetypes when `spawn_batch` is used.
-const MAX_SPAWN_RESERVE: usize = 1024;
 
 /// Unique id for the archetype set.
 /// Same sets may or may not share id, but different sets never share id.
@@ -194,8 +190,19 @@ impl World {
         self.archetypes.id()
     }
 
-    pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc, NoSuchEntity> {
+    /// Looks up entity location and returns entity with location and bound
+    /// to the immutable world borrow, ensuring that entity stays alive
+    /// and in the same location.
+    pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc<'_>, NoSuchEntity> {
         let entity = entity.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
+        Ok(entity)
+    }
+
+    /// Returns entity reference
+    /// that can be used to access entity's components,
+    /// insert or remove components, despawn entity etc.
+    pub fn entity(&mut self, entity: impl Entity) -> Result<EntityRef<'_>, NoSuchEntity> {
+        let entity = entity.entity_ref(self).ok_or(NoSuchEntity)?;
         Ok(entity)
     }
 
@@ -313,7 +320,7 @@ impl World {
     }
 
     /// Returns [`EntitySet`] from the [`World`].
-    pub(crate) fn entity_set(&self) -> &EntitySet {
+    pub(crate) fn entities(&self) -> &EntitySet {
         &self.entities
     }
 

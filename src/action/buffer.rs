@@ -30,7 +30,7 @@ impl ActionBuffer {
     /// otherwise entity ids will not refer to the correct entities.
     #[inline]
     pub fn encoder<'a>(&'a mut self, world: &'a World) -> ActionEncoder<'a> {
-        ActionEncoder::new(self, world.entity_set())
+        ActionEncoder::new(self, world.entities())
     }
 
     /// Executes recorded actions onto the [`World`].

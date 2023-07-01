@@ -1,6 +1,11 @@
 use core::{fmt, marker::PhantomData, num::NonZeroU64};
 
-use crate::{component::Component, world::World};
+use crate::{
+    component::Component,
+    query::{DefaultQuery, IntoQuery, QueryItem},
+    view::ViewOne,
+    world::World,
+};
 
 use super::{EntitySet, Location};
 
@@ -25,17 +30,29 @@ pub trait Entity {
     /// Returns entity location if it is alive.
     fn lookup(&self, entities: &EntitySet) -> Option<Location>;
 
+    /// Checks if the entity is alive.
     #[inline(always)]
     fn is_alive(&self, entities: &EntitySet) -> bool {
         self.lookup(entities).is_some()
     }
 
+    /// Returns entity with bound location if it is alive.
     #[inline(always)]
     fn entity_loc<'a>(&self, entities: &'a EntitySet) -> Option<EntityLoc<'a>> {
         self.lookup(entities).map(|loc| EntityLoc {
             id: self.id(),
             loc,
             world: PhantomData,
+        })
+    }
+
+    /// Returns entity reference if it is alive.
+    #[inline(always)]
+    fn entity_ref<'a>(&self, world: &'a mut World) -> Option<EntityRef<'a>> {
+        self.lookup(world.entities()).map(|loc| EntityRef {
+            id: self.id(),
+            loc,
+            world,
         })
     }
 }
@@ -46,6 +63,7 @@ pub trait AliveEntity: Entity {
     /// Returns entity location.
     fn locate(&self, entities: &EntitySet) -> Location;
 
+    /// Returns entity with bound location.
     #[inline(always)]
     fn entity_loc<'a>(&self, entities: &'a EntitySet) -> EntityLoc<'a> {
         let loc = self.locate(entities);
@@ -53,6 +71,17 @@ pub trait AliveEntity: Entity {
             id: self.id(),
             loc,
             world: PhantomData,
+        }
+    }
+
+    /// Returns entity reference if it is alive.
+    #[inline(always)]
+    fn entity_ref<'a>(&self, world: &'a mut World) -> EntityRef<'a> {
+        let loc = self.locate(world.entities());
+        EntityRef {
+            id: self.id(),
+            loc,
+            world,
         }
     }
 }
@@ -79,8 +108,9 @@ impl fmt::Debug for EntityId {
 }
 
 impl EntityId {
-    const DANGLING: NonZeroU64 = NonZeroU64::new(1).unwrap();
+    const DANGLING: NonZeroU64 = super::allocator::END;
 
+    /// Returns a dangling entity ID that no real entity can have.
     pub const fn dangling() -> Self {
         EntityId { id: Self::DANGLING }
     }
@@ -95,11 +125,14 @@ impl EntityId {
         self.id
     }
 
+    /// Returns the raw bits of the entity ID.
     #[inline(always)]
     pub fn bits(&self) -> u64 {
         self.id.get()
     }
 
+    /// Returns the entity ID from the raw bits.
+    /// Returns none if the bits are zero.
     #[inline(always)]
     pub fn from_bits(bits: u64) -> Option<Self> {
         match NonZeroU64::new(bits) {
@@ -133,7 +166,7 @@ pub struct EntityBound<'a> {
 
 impl EntityBound<'_> {
     #[inline(always)]
-    pub fn new(id: EntityId) -> Self {
+    pub(crate) fn new(id: EntityId) -> Self {
         EntityBound {
             id,
             world: PhantomData,
@@ -217,24 +250,162 @@ pub struct EntityRef<'a> {
 }
 
 impl<'a> EntityRef<'a> {
+    /// Returns entity reference if it is alive.
     #[inline(always)]
-    pub(crate) fn new(id: EntityId, loc: Location, world: &'a mut World) -> Self {
+    pub fn new(id: EntityId, world: &'a mut World) -> Result<Self, NoSuchEntity> {
+        let loc = world.entities().get_location(id).ok_or(NoSuchEntity)?;
+        Ok(EntityRef { id, loc, world })
+    }
+
+    #[inline(always)]
+    pub(crate) fn from_parts(id: EntityId, loc: Location, world: &'a mut World) -> Self {
         EntityRef { id, loc, world }
     }
 
+    /// Queries components from specified entity.
+    ///
+    /// Returns query item.
+    ///
+    /// This method works only for default-constructed query types.
+    ///
+    /// Mutably borrows world for the duration of query item's lifetime,
+    /// avoiding runtime borrow checks.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
     #[inline(always)]
-    fn loc(&self) -> EntityLoc<'_> {
-        EntityLoc {
+    pub fn get<'b, Q>(&'b mut self) -> Option<QueryItem<'b, Q>>
+    where
+        Q: DefaultQuery,
+    {
+        self.get_with(Q::default_query())
+    }
+
+    /// Queries components from specified entity.
+    ///
+    /// Returns query item.
+    ///
+    /// Mutably borrows world for the duration of query item's lifetime,
+    /// avoiding runtime borrow checks.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
+    #[inline(always)]
+    pub fn get_with<'b, Q>(&'b mut self, query: Q) -> Option<QueryItem<'b, Q::Query>>
+    where
+        Q: IntoQuery,
+    {
+        let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
             world: PhantomData,
-        }
+        };
+        self.world.get_with(loc, query)
     }
 
+    /// Queries components from specified entity.
+    ///
+    /// Returns query item.
+    ///
+    /// This method works only for default-constructed query types.
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee to not create invalid aliasing of component
+    /// references.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
     #[inline(always)]
-    pub fn get(id: EntityId, world: &'a mut World) -> Result<Self, NoSuchEntity> {
-        let loc = world.entity_set().get_location(id).ok_or(NoSuchEntity)?;
-        Ok(EntityRef { id, loc, world })
+    pub unsafe fn get_unchecked<'b, Q>(&'b self) -> Option<QueryItem<'b, Q>>
+    where
+        Q: DefaultQuery,
+    {
+        unsafe { self.get_with_unchecked(Q::default_query()) }
+    }
+
+    /// Queries components from specified entity.
+    ///
+    /// Returns query item.
+    ///
+    /// # Safety
+    ///
+    /// Caller must guarantee to not create invalid aliasing of component
+    /// references.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
+    #[inline(always)]
+    pub unsafe fn get_with_unchecked<'b, Q>(&'b self, query: Q) -> Option<QueryItem<'b, Q::Query>>
+    where
+        Q: IntoQuery,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.get_with_unchecked(loc, query) }
+    }
+
+    /// Queries components from specified entity.
+    ///
+    /// Returns a wrapper from which query item can be fetched.
+    ///
+    /// The wrapper holds borrow locks for entity's archetype and releases them on drop.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
+    #[inline(always)]
+    pub fn view_one<'b, Q>(&'b self) -> ViewOne<'b, Q>
+    where
+        Q: DefaultQuery,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.world.view_one::<Q>(loc)
+    }
+
+    /// Queries components from specified entity.
+    /// This method accepts query instance to support stateful queries.
+    ///
+    /// This method works only for stateless query types.
+    /// Returned wrapper holds borrow locks for entity's archetype and releases them on drop.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if entity of another world is used.
+    #[inline(always)]
+    pub fn view_one_with<'b, Q>(&'b self, query: Q) -> ViewOne<'b, (Q,)>
+    where
+        Q: IntoQuery,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.world.view_one_with::<Q>(loc, query)
+    }
+
+    /// Queries components from specified entity.
+    /// Where query item is a reference to value the implements [`ToOwned`].
+    /// Returns item converted to owned value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    pub fn get_cloned<T>(&self) -> Option<T>
+    where
+        T: Clone + Sync + 'static,
+    {
+        self.view_one::<&T>().map(Clone::clone)
     }
 
     /// Insert a component to the entity.
@@ -243,7 +414,12 @@ impl<'a> EntityRef<'a> {
     where
         T: Component,
     {
-        unsafe { self.world.insert(self.loc(), component).unwrap_unchecked() }
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.insert(loc, component).unwrap_unchecked() }
     }
 
     /// Removes a component from the entity.
@@ -253,21 +429,37 @@ impl<'a> EntityRef<'a> {
     where
         T: 'static,
     {
-        unsafe { self.world.remove(self.loc()).unwrap_unchecked() }
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.remove(loc).unwrap_unchecked() }
     }
 
-    /// Drops a component from the entity.
+    /// Drops a component from the referenced entity.
     #[inline(always)]
     pub fn drop<T>(&mut self)
     where
         T: 'static,
     {
-        unsafe { self.world.drop::<T>(self.loc()).unwrap_unchecked() }
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.drop::<T>(loc).unwrap_unchecked() }
     }
 
+    /// Despawns the referenced entity.
     #[inline(always)]
     pub fn despawn(self) {
-        unsafe { self.world.despawn(self.loc()) }
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.despawn(loc) }
     }
 }
 

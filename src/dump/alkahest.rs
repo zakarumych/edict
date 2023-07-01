@@ -8,7 +8,7 @@ use alkahest::{
     Serialize,
 };
 
-use crate::{action::ActionEncoder, component::Component, query::ImmutableQuery};
+use crate::{action::ActionEncoder, query::ImmutableQuery};
 
 use super::{
     DumpSet, DumpSlot, Dumper, EntityDump, LoadSet, LoadSlot, Loader, Mark, WorldDump, WorldLoad,
@@ -213,6 +213,7 @@ for_tuple_2!(dumper);
 #[test]
 fn test_dump() {
     use ::alkahest_proc::{Deserialize, Formula, SerializeRef};
+    use ::edict_proc::Component;
 
     use super::NoMark;
     use crate::{action::ActionBuffer, epoch::EpochId, world::World};

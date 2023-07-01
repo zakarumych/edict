@@ -104,22 +104,9 @@ pub trait IntoQuery {
 }
 
 /// Types associated with default-constructible query type.
-pub trait DefaultQuery: IntoQuery<Query = Self::DQ> {
-    #[doc(hidden)]
-    type DQ: Default + Query;
-
-    #[doc(hidden)]
-    fn default_query() -> Self::Query {
-        Self::DQ::default()
-    }
-}
-
-impl<Q> DefaultQuery for Q
-where
-    Q: IntoQuery,
-    Q::Query: Default,
-{
-    type DQ = Q::Query;
+pub trait DefaultQuery: IntoQuery {
+    /// Returns default query instance.
+    fn default_query() -> Self::Query;
 }
 
 /// Trait to query components from entities in the world.
@@ -156,7 +143,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Must call provided closure with type id and access pairs.
     /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
     /// Only types from archetype must be used to call closure.
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access));
+    unsafe fn access_archetype(&self, _archetype: &Archetype, f: impl FnMut(TypeId, Access));
 
     /// Fetches data from one archetype.
     ///
@@ -189,6 +176,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
 /// [`Query`] must not borrow components mutably.
 /// [`Query`] must not modify entities versions.
 pub unsafe trait ImmutableQuery: Query {
+    /// Checks that query is valid in compile time.
     const CHECK_VALID: () = {
         if Self::MUTABLE {
             panic!("Immutable query cannot fetch mutable components");
@@ -199,6 +187,7 @@ pub unsafe trait ImmutableQuery: Query {
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as Query>::Item<'a>;
 
+/// Error type returned by try_merge_access if write aliasing is detected.
 pub struct WriteAliasing;
 
 /// Merge two optional access values.
@@ -216,7 +205,7 @@ pub const fn try_merge_access(
 
 /// Merge two optional access values.
 #[inline(always)]
-pub const fn merge_access<T: ?Sized>(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
+pub fn merge_access<T: ?Sized>(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
     match (lhs, rhs) {
         (None, one) | (one, None) => one,
         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
@@ -229,5 +218,5 @@ const fn assert_query<Q: Query>() {}
 
 /// Helps to assert that type implements [`ImmutableQuery`] in compile time.
 const fn assert_immutable_query<Q: ImmutableQuery>() {
-    Q::CHECK_VALID;
+    let () = Q::CHECK_VALID;
 }

@@ -1,6 +1,6 @@
 use crate::{
     archetype::Archetype,
-    entity::{AliveEntity, EntityId, EntitySet, Location},
+    entity::{AliveEntity, EntityId, Location},
     epoch::EpochCounter,
     query::{IntoQuery, Query, QueryItem},
     world::World,
@@ -17,86 +17,31 @@ pub struct ViewOneState<'a, Q: Query, F: Query> {
     archetype: &'a Archetype,
     id: EntityId,
     loc: Location,
-    entity_set: &'a EntitySet,
     borrow: RuntimeBorrowState,
     epochs: &'a EpochCounter,
 }
 
+/// View for single entity.
 pub type ViewOne<'a, Q, F = ()> =
     ViewOneState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query>;
 
 impl<'a, Q, F> ViewOneState<'a, Q, F>
 where
-    Q: Query + Default,
-    F: Query + Default,
-{
-    #[inline(always)]
-    pub fn new(world: &World, entity: impl AliveEntity) -> Self {
-        let loc = entity.locate(world.entity_set());
-        let archetype = &world.archetypes()[loc.arch as usize];
-
-        ViewOneState {
-            query: Q::default(),
-            filter: F::default(),
-            archetype,
-            id: entity.id(),
-            loc,
-            entity_set: world.entity_set(),
-            borrow: RuntimeBorrowState::new(),
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewOneState<'a, (Q,), F>
-where
-    Q: Query,
-    F: Query + Default,
-{
-    #[inline(always)]
-    pub fn with_query(
-        world: &World,
-        entity: impl AliveEntity,
-        query: impl IntoQuery<Query = Q>,
-    ) -> Self {
-        let loc = entity.locate(world.entity_set());
-        let archetype = &world.archetypes()[loc.arch as usize];
-
-        ViewOneState {
-            query: (query.into_query(),),
-            filter: F::default(),
-            archetype,
-            id: entity.id(),
-            loc,
-            entity_set: world.entity_set(),
-            borrow: RuntimeBorrowState::new(),
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewOneState<'a, (Q,), (F,)>
-where
     Q: Query,
     F: Query,
 {
+    /// Creates a new view over a single entity.
     #[inline(always)]
-    pub fn with_query_filter(
-        world: &World,
-        entity: impl AliveEntity,
-        query: impl IntoQuery<Query = Q>,
-        filter: impl IntoQuery<Query = F>,
-    ) -> Self {
-        let loc = entity.locate(world.entity_set());
+    pub fn new(world: &'a World, entity: impl AliveEntity, query: Q, filter: F) -> Self {
+        let loc = entity.locate(world.entities());
         let archetype = &world.archetypes()[loc.arch as usize];
 
         ViewOneState {
-            query: (query.into_query(),),
-            filter: (filter.into_query(),),
+            query: query.into_query(),
+            filter: filter.into_query(),
             archetype,
             id: entity.id(),
             loc,
-            entity_set: world.entity_set(),
             borrow: RuntimeBorrowState::new(),
             epochs: world.epoch_counter(),
         }

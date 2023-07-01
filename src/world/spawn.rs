@@ -72,7 +72,7 @@ impl World {
     }
 
     /// Spawns a new entity in this world with specific ID and bundle of components.
-    /// The id must be unused by the world.
+    /// The `World` must be configured to never allocate this ID.
     /// Spawned entity is populated with all components from the bundle.
     /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
     ///
@@ -85,36 +85,21 @@ impl World {
     /// ```
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn((ExampleComponent,));
+    /// let id = EntityId::from_bits(42);
+    /// let entity = world.spawn_with(id, (ExampleComponent,));
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
     /// let ExampleComponent = world.remove(entity).unwrap();
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
     /// ```
     #[inline]
-    pub fn spawn_with_id<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
+    pub fn spawn_with<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
     {
         self.maintenance();
-        self.spawn_with_id_impl(id, bundle, register_bundle::<B>)
-    }
-
-    /// Spawns entity with specific ID if it is not already spawned.
-    ///
-    /// Returns a pair of boolean and [`EntityRef`] handle to the entity.
-    /// The boolean is `true` if entity was spawned and `false` if it already
-    /// exists in the world.
-    #[inline]
-    pub fn spawn_if_missing(&mut self, id: EntityId) -> (bool, EntityRef<'_>) {
-        self.maintenance();
-
-        let (spawned, loc) = self.entities.spawn_if_missing(id, || {
-            let epoch = self.epoch.next_mut();
-            self.archetypes[0].spawn(id, (), epoch)
-        });
-
-        let entity = EntityRef::new(id, loc, self);
-        (spawned, entity)
+        let (spawned, entity) = self._spawn_with(id, bundle, register_bundle::<B>);
+        assert!(spawned);
+        entity
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -186,9 +171,10 @@ impl World {
         B: DynamicBundle,
     {
         self.maintenance();
-        self.spawn_with_id_impl(id, bundle, assert_registered_bundle::<B>);
+        self._spawn_with(id, bundle, assert_registered_bundle::<B>);
     }
 
+    /// Umbrella method for spawning entity with new ID.
     fn _spawn<B, F>(&mut self, bundle: B, register_bundle: F) -> EntityRef<'_>
     where
         B: DynamicBundle,
@@ -201,16 +187,32 @@ impl World {
             );
         }
 
-        let id = self.entities.alloc_mut();
-        self.spawn_with_id_impl(id, bundle, register_bundle)
+        let arch_idx = self.edges.spawn(
+            &mut self.registry,
+            &mut self.archetypes,
+            &bundle,
+            |registry| register_bundle(registry, &bundle),
+        );
+
+        let epoch = self.epoch.next_mut();
+        let (id, loc) = self.entities.spawn(arch_idx, |id| {
+            self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
+        });
+
+        EntityRef::from_parts(id, loc, self)
     }
 
-    fn spawn_with_id_impl<B, F>(
+    /// Umbrella method for spawning entity with existing ID.
+    /// Returns tuple of boolean flag indicating if entity was actually spawned
+    /// and [`EntityRef`] handle to the newly spawned entity.
+    ///
+    /// If entity is not spawned, bundle is dropped.
+    fn _spawn_with<B, F>(
         &mut self,
         id: EntityId,
         bundle: B,
         register_bundle: F,
-    ) -> EntityRef<'_>
+    ) -> (bool, EntityRef<'_>)
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -222,19 +224,19 @@ impl World {
             );
         }
 
-        self.entities.spawn_at(id);
-
         let arch_idx = self.edges.spawn(
             &mut self.registry,
             &mut self.archetypes,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
+
         let epoch = self.epoch.next_mut();
-        let idx = self.archetypes[arch_idx as usize].spawn(id, bundle, epoch);
-        let loc = Location::new(arch_idx, idx);
-        self.entities.set_location(id, loc);
-        EntityRef::new(id, loc, self)
+        let (spawned, loc) = self.entities.spawn_with(id, arch_idx, || {
+            self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
+        });
+
+        (spawned, EntityRef::from_parts(id, loc, self))
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -342,7 +344,7 @@ impl World {
     where
         B: Bundle,
     {
-        self.entities.reserve_space(additional);
+        self.entities.reserve(additional);
 
         let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
@@ -432,7 +434,7 @@ where
     /// Spawns the rest of the entities, dropping their ids.
     pub fn spawn_all(mut self) {
         let additional = iter_reserve_hint(&self.bundles);
-        self.entities.reserve_space(additional);
+        self.entities.reserve(additional);
         self.archetype.reserve(additional);
 
         let entities = &mut self.entities;
@@ -441,9 +443,7 @@ where
         let epoch = self.epoch;
 
         self.bundles.for_each(|bundle| {
-            let id = entities.spawn();
-            let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(arch_idx, idx));
+            entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
         })
     }
 }
@@ -458,11 +458,9 @@ where
     fn next(&mut self) -> Option<EntityId> {
         let bundle = self.bundles.next()?;
 
-        let id = self.entities.spawn();
-        let idx = self.archetype.spawn(id, bundle, self.epoch);
-        self.entities
-            .set_location(id, Location::new(self.arch_idx, idx));
-
+        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+            self.archetype.spawn(id, bundle, self.epoch)
+        });
         Some(id)
     }
 
@@ -470,10 +468,9 @@ where
         // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
 
-        let id = self.entities.spawn();
-        let idx = self.archetype.spawn(id, bundle, self.epoch);
-        self.entities
-            .set_location(id, Location::new(self.arch_idx, idx));
+        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+            self.archetype.spawn(id, bundle, self.epoch)
+        });
 
         Some(id)
     }
@@ -487,7 +484,7 @@ where
         F: FnMut(T, EntityId) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
-        self.entities.reserve_space(additional);
+        self.entities.reserve(additional);
         self.archetype.reserve(additional);
 
         let entities = &mut self.entities;
@@ -496,9 +493,7 @@ where
         let epoch = self.epoch;
 
         self.bundles.fold(init, |acc, bundle| {
-            let id = entities.spawn();
-            let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(arch_idx, idx));
+            let (id, _) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
             f(acc, id)
         })
     }
@@ -512,7 +507,7 @@ where
         //
         // Hence we should reserve space in archetype here.
         let additional = iter_reserve_hint(&self.bundles);
-        self.entities.reserve_space(additional);
+        self.entities.reserve(additional);
         self.archetype.reserve(additional);
 
         FromIterator::from_iter(self)
@@ -537,12 +532,9 @@ where
     fn next_back(&mut self) -> Option<EntityId> {
         let bundle = self.bundles.next_back()?;
 
-        let id = self.entities.spawn();
-        let idx = self.archetype.spawn(id, bundle, self.epoch);
-
-        self.entities
-            .set_location(id, Location::new(self.arch_idx, idx));
-
+        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+            self.archetype.spawn(id, bundle, self.epoch)
+        });
         Some(id)
     }
 
@@ -551,12 +543,9 @@ where
         // for which the only reference is immediately dropped
         let bundle = self.bundles.nth_back(n)?;
 
-        let id = self.entities.spawn();
-        let idx = self.archetype.spawn(id, bundle, self.epoch);
-
-        self.entities
-            .set_location(id, Location::new(self.arch_idx, idx));
-
+        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+            self.archetype.spawn(id, bundle, self.epoch)
+        });
         Some(id)
     }
 
@@ -573,9 +562,7 @@ where
         let epoch = self.epoch;
 
         self.bundles.rfold(init, |acc, bundle| {
-            let id = entities.spawn();
-            let idx = archetype.spawn(id, bundle, epoch);
-            entities.set_location(id, Location::new(arch_idx, idx));
+            let (id, _) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
             f(acc, id)
         })
     }

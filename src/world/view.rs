@@ -12,7 +12,7 @@ impl World {
     /// Use [`View`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn new_view<'a>(&'a self) -> View<'a, ()> {
-        ViewState::new(self)
+        ViewState::new(self, (), ())
     }
 
     /// Starts building new view.
@@ -24,7 +24,7 @@ impl World {
     /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn new_view_mut<'a>(&'a mut self) -> ViewMut<'a, ()> {
-        ViewState::new_mut(self)
+        ViewState::new_mut(self, (), ())
     }
 
     /// Starts building new view.
@@ -41,7 +41,7 @@ impl World {
     /// invalid aliasing of world's components.
     #[inline(always)]
     pub unsafe fn new_view_unchecked<'a>(&'a mut self) -> ViewMut<'a, ()> {
-        unsafe { ViewState::new_unchecked(self) }
+        unsafe { ViewState::new_unchecked(self, (), ()) }
     }
 
     /// Creates new view with single sub-query.
@@ -54,7 +54,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        ViewState::new(self)
+        ViewState::new(self, (Q::default_query(),), ())
     }
 
     /// Creates new view with single sub-query.
@@ -69,7 +69,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        ViewState::new_mut(self)
+        ViewState::new_mut(self, (Q::default_query(),), ())
     }
 
     /// Creates new view with single sub-query.
@@ -89,7 +89,7 @@ impl World {
     where
         Q: DefaultQuery,
     {
-        unsafe { ViewState::new_unchecked(self) }
+        unsafe { ViewState::new_unchecked(self, (Q::default_query(),), ()) }
     }
 
     /// Creates new view with single sub-query.
@@ -104,7 +104,7 @@ impl World {
     where
         Q: IntoQuery,
     {
-        ViewState::with_query(self, query)
+        ViewState::new(self, (query.into_query(),), ())
     }
 
     /// Creates new view with single sub-query.
@@ -119,7 +119,7 @@ impl World {
     where
         Q: IntoQuery,
     {
-        ViewState::with_query_mut(self, query)
+        ViewState::new_mut(self, (query.into_query(),), ())
     }
 
     /// Creates new view with single sub-query.
@@ -139,6 +139,6 @@ impl World {
     where
         Q: IntoQuery,
     {
-        unsafe { ViewState::with_query_unchecked(self, query) }
+        unsafe { ViewState::new_unchecked(self, (query.into_query(),), ()) }
     }
 }

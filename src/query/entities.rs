@@ -62,7 +62,7 @@ unsafe impl PhantomQuery for Entities {
     }
 
     #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    unsafe fn access_archetype(_archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline]
     unsafe fn fetch<'a>(

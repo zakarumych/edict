@@ -53,21 +53,19 @@ fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
         F: Query,
     {
         fn drop(&mut self) {
-            let len = self.query_len.max(self.filter_len);
-
             for archetype in self.archetypes {
                 unsafe {
                     if self.query.visit_archetype(archetype)
                         && self.filter.visit_archetype(archetype)
                     {
-                        self.query.access_archetype(archetype, &|id, access| {
+                        self.query.access_archetype(archetype, |id, access| {
                             if self.query_len > 0 {
                                 archetype.component(id).unwrap_unchecked().release(access);
                                 self.query_len -= 1;
                             }
                         });
 
-                        self.filter.access_archetype(archetype, &|id, access| {
+                        self.filter.access_archetype(archetype, |id, access| {
                             if self.filter_len > 0 {
                                 archetype.component(id).unwrap_unchecked().release(access);
                                 self.filter_len -= 1;
@@ -90,12 +88,12 @@ fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
     for archetype in archetypes {
         unsafe {
             if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
-                query.access_archetype(archetype, &|id, access| {
+                query.access_archetype(archetype, |id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
                     assert!(success, "Failed to lock '{:?}' from archetype", id);
                     guard.query_len += 1;
                 });
-                filter.access_archetype(archetype, &|id, access| {
+                filter.access_archetype(archetype, |id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
                     assert!(success, "Failed to lock '{:?}' from archetype", id);
                     guard.filter_len += 1;
@@ -141,7 +139,7 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
         fn drop(&mut self) {
             if self.query_len > 0 || self.filter_len > 0 {
                 unsafe {
-                    self.query.access_archetype(self.archetype, &|id, access| {
+                    self.query.access_archetype(self.archetype, |id, access| {
                         if self.query_len > 0 {
                             self.archetype
                                 .component(id)
@@ -151,7 +149,7 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
                         }
                     });
 
-                    self.filter.access_archetype(self.archetype, &|id, access| {
+                    self.filter.access_archetype(self.archetype, |id, access| {
                         if self.filter_len > 0 {
                             self.archetype
                                 .component(id)
@@ -175,12 +173,12 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
 
     unsafe {
         if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
-            query.access_archetype(archetype, &|id, access| {
+            query.access_archetype(archetype, |id, access| {
                 let success = archetype.component(id).unwrap_unchecked().borrow(access);
                 assert!(success, "Failed to lock '{:?}' from archetype", id);
                 guard.query_len += 1;
             });
-            filter.access_archetype(archetype, &|id, access| {
+            filter.access_archetype(archetype, |id, access| {
                 let success = archetype.component(id).unwrap_unchecked().borrow(access);
                 assert!(success, "Failed to lock '{:?}' from archetype", id);
                 guard.filter_len += 1;

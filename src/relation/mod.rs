@@ -141,7 +141,7 @@ where
         match R::EXCLUSIVE {
             false => {
                 let relations = unsafe { &mut *self.non_exclusive };
-                for r in relations {
+                for r in relations.iter_mut() {
                     if r.target == target {
                         Self::set_one(&mut r.relation, relation, target, target, origin, encoder);
                         return;
@@ -198,9 +198,10 @@ where
                 encoder.drop::<Self>(origin);
             }
         } else {
-            encoder.closure(|world| {
-                let Ok(origin) = world.lookup(origin) else { return; };
-                let Some(comp) = world.get_mut::<&mut Self>(origin) else { return; };
+            encoder.closure(move |world| {
+                let Ok(mut origin) = world.entity(origin) else { return; };
+
+                let Some(comp) = origin.get::<&mut Self>() else { return; };
 
                 let origins = unsafe { &mut *comp.non_exclusive };
 
@@ -213,9 +214,9 @@ where
 
                 if origins.is_empty() {
                     if R::OWNED {
-                        world.despawn(origin);
+                        origin.despawn();
                     } else {
-                        world.drop::<Self>(origin);
+                        origin.drop::<Self>();
                     }
                 }
             });
@@ -349,9 +350,9 @@ where
     /// Called when relation is removed from origin entity.
     /// Or origin entity is dropped.
     fn on_origin_drop(origin: EntityId, target: EntityId, mut encoder: ActionEncoder) {
-        encoder.closure(|world| {
-            let Ok(target) = world.lookup(target) else { return; };
-            let Some(comp) = world.get_mut::<&mut Self>(target) else { return; };
+        encoder.closure(move |world| {
+            let Ok(mut target) = world.entity(target) else { return; };
+            let Some(comp) = target.get::<&mut Self>() else { return; };
 
             for idx in 0..comp.origins.len() {
                 if comp.origins[idx] == origin {
@@ -361,7 +362,7 @@ where
             }
 
             if comp.origins.is_empty() {
-                world.drop::<Self>(target);
+                target.drop::<Self>();
             }
         })
     }
@@ -375,7 +376,7 @@ where
     fn on_drop(&mut self, target: EntityId, mut encoder: ActionEncoder) {
         for &origin in &self.origins {
             R::on_target_drop(origin, target, encoder.reborrow());
-            OriginComponent::<R>::on_target_drop(origin, target, encoder);
+            OriginComponent::<R>::on_target_drop(origin, target, encoder.reborrow());
         }
     }
 

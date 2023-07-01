@@ -253,7 +253,7 @@ impl<'a> ActionEncoder<'a> {
         fun: impl FnOnce(&World, ActionEncoder) + Send + 'static,
     ) {
         self.push_fn(|world, buffer| {
-            let encoder = ActionEncoder::new(buffer, world.entity_set());
+            let encoder = ActionEncoder::new(buffer, world.entities());
             fun(world, encoder);
         });
     }
@@ -298,19 +298,19 @@ where
     I: Iterator<Item = B>,
     B: Bundle + Send + 'static,
 {
-    type Item = EntityLoc<'a>;
+    type Item = EntityId;
 
     #[inline]
-    fn next(&mut self) -> Option<EntityLoc<'a>> {
+    fn next(&mut self) -> Option<EntityId> {
         let bundle = self.bundles.next()?;
-        Some(self.encoder.spawn_external(bundle))
+        Some(self.encoder.spawn_external(bundle).id())
     }
 
     #[inline]
-    fn nth(&mut self, n: usize) -> Option<EntityLoc<'a>> {
+    fn nth(&mut self, n: usize) -> Option<EntityId> {
         // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
-        Some(self.encoder.spawn_external(bundle))
+        Some(self.encoder.spawn_external(bundle).id())
     }
 
     #[inline]
@@ -321,7 +321,7 @@ where
     #[inline]
     fn fold<T, F>(mut self, init: T, mut f: F) -> T
     where
-        F: FnMut(T, EntityLoc<'a>) -> T,
+        F: FnMut(T, EntityId) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
         self.encoder.push_fn(move |world, _| {
@@ -329,14 +329,14 @@ where
         });
 
         self.bundles.fold(init, |acc, bundle| {
-            f(acc, self.encoder.spawn_external(bundle))
+            f(acc, self.encoder.spawn_external(bundle).id())
         })
     }
 
     #[inline]
     fn collect<T>(mut self) -> T
     where
-        T: FromIterator<EntityLoc<'a>>,
+        T: FromIterator<EntityId>,
     {
         // `FromIterator::from_iter` would probably just call `fn next()`
         // until the end of the iterator.
@@ -369,23 +369,23 @@ where
     B: Bundle + Send + 'static,
 {
     #[inline]
-    fn next_back(&mut self) -> Option<EntityLoc<'a>> {
+    fn next_back(&mut self) -> Option<EntityId> {
         let bundle = self.bundles.next_back()?;
-        Some(self.encoder.spawn_external(bundle))
+        Some(self.encoder.spawn_external(bundle).id())
     }
 
     #[inline]
-    fn nth_back(&mut self, n: usize) -> Option<EntityLoc<'a>> {
+    fn nth_back(&mut self, n: usize) -> Option<EntityId> {
         // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth_back(n)?;
-        Some(self.encoder.spawn_external(bundle))
+        Some(self.encoder.spawn_external(bundle).id())
     }
 
     #[inline]
     fn rfold<T, F>(mut self, init: T, mut f: F) -> T
     where
         Self: Sized,
-        F: FnMut(T, EntityLoc<'a>) -> T,
+        F: FnMut(T, EntityId) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
         self.encoder.push_fn(move |world, _| {
@@ -393,7 +393,7 @@ where
         });
 
         self.bundles.rfold(init, |acc, bundle| {
-            f(acc, self.encoder.spawn_external(bundle))
+            f(acc, self.encoder.spawn_external(bundle).id())
         })
     }
 }

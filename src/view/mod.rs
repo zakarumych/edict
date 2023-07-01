@@ -33,109 +33,17 @@ pub struct ViewState<'a, Q: Query, F: Query, B> {
     epochs: &'a EpochCounter,
 }
 
+/// View over entities that match query and filter, restricted to
+/// components that match the query.
 pub type View<'a, Q, F = (), B = RuntimeBorrowState> =
     ViewState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
 
+/// View over entities that match query and filter, restricted to
+/// components that match the query.
 pub type ViewMut<'a, Q, F = ()> =
     ViewState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
 
 impl<'a, Q, F> ViewState<'a, Q, F, StaticallyBorrowed>
-where
-    Q: Query + Default,
-    F: Query + Default,
-{
-    /// Creates a new view over the world.
-    /// Borrows the world mutably, so no other views can be created.
-    /// In exchange it does not require runtime borrow checks.
-    ///
-    /// Uses default-constructed query and filter.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use edict::{component::Component, view::ViewMut, world::World};
-    ///
-    /// #[derive(Component)]
-    /// struct Foo;
-    ///
-    /// let mut world = World::new();
-    /// world.spawn((Foo,));
-    ///
-    /// let view = ViewMut::<&Foo>::new_mut(&mut world);
-    ///
-    /// for (foo,) in view.iter() {
-    ///     println!("Found Foo!");
-    /// }
-    /// ```
-    #[inline(always)]
-    pub fn new_mut(world: &'a mut World) -> Self {
-        ViewState {
-            query: Q::default(),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: StaticallyBorrowed,
-            epochs: world.epoch_counter(),
-        }
-    }
-
-    /// Creates a new view over the world.
-    /// This is unsafe because it does not perform runtime borrow checks.
-    ///
-    /// Uses default-constructed query and filter.
-    #[inline(always)]
-    pub unsafe fn new_unchecked(world: &'a World) -> Self {
-        ViewState {
-            query: Q::default(),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: StaticallyBorrowed,
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewState<'a, (Q,), F, StaticallyBorrowed>
-where
-    Q: Query,
-    F: Query + Default,
-{
-    /// Creates a new view over the world.
-    /// Borrows the world mutably, so no other views can be created.
-    /// In exchange it does not require runtime borrow checks.
-    ///
-    /// Uses user-provided query and default-constructed filter.
-    #[inline(always)]
-    pub fn with_query_mut(world: &'a mut World, query: impl IntoQuery<Query = Q>) -> Self {
-        ViewState {
-            query: (query.into_query(),),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: StaticallyBorrowed,
-            epochs: world.epoch_counter(),
-        }
-    }
-
-    /// Creates a new view over the world.
-    /// This is unsafe because it does not perform runtime borrow checks.
-    ///
-    /// Uses user-provided query and default-constructed filter.
-    #[inline(always)]
-    pub unsafe fn with_query_unchecked(world: &'a World, query: impl IntoQuery<Query = Q>) -> Self {
-        ViewState {
-            query: (query.into_query(),),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: StaticallyBorrowed,
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewState<'a, (Q,), (F,), StaticallyBorrowed>
 where
     Q: Query,
     F: Query,
@@ -146,16 +54,12 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn with_query_filter_mut(
-        world: &'a mut World,
-        query: impl IntoQuery<Query = Q>,
-        filter: impl IntoQuery<Query = F>,
-    ) -> Self {
+    pub fn new_mut(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewState {
-            query: (query.into_query(),),
-            filter: (filter.into_query(),),
+            query: query.into_query(),
+            filter: filter.into_query(),
             archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
+            entity_set: world.entities(),
             borrow: StaticallyBorrowed,
             epochs: world.epoch_counter(),
         }
@@ -166,16 +70,12 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub unsafe fn with_query_filter_unchecked(
-        world: &'a World,
-        query: impl IntoQuery<Query = Q>,
-        filter: impl IntoQuery<Query = F>,
-    ) -> Self {
+    pub unsafe fn new_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         ViewState {
-            query: (query.into_query(),),
-            filter: (filter.into_query(),),
+            query: query.into_query(),
+            filter: filter.into_query(),
             archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
+            entity_set: world.entities(),
             borrow: StaticallyBorrowed,
             epochs: world.epoch_counter(),
         }
@@ -184,50 +84,6 @@ where
 
 impl<'a, Q, F> ViewState<'a, Q, F, RuntimeBorrowState>
 where
-    Q: Query + Default,
-    F: Query + Default,
-{
-    /// Creates a new view over the world.
-    /// Performs runtime borrow checks.
-    ///
-    /// Uses default-constructed query and filter.
-    #[inline(always)]
-    pub fn new(world: &'a World) -> Self {
-        ViewState {
-            query: Q::default(),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: RuntimeBorrowState::new(),
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewState<'a, (Q,), F, RuntimeBorrowState>
-where
-    Q: Query,
-    F: Query + Default,
-{
-    /// Creates a new view over the world.
-    /// Performs runtime borrow checks.
-    ///
-    /// Uses user-provided query and default-constructed filter.
-    #[inline(always)]
-    pub fn with_query(world: &'a World, query: impl IntoQuery<Query = Q>) -> Self {
-        ViewState {
-            query: (query.into_query(),),
-            filter: F::default(),
-            archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
-            borrow: RuntimeBorrowState::new(),
-            epochs: world.epoch_counter(),
-        }
-    }
-}
-
-impl<'a, Q, F> ViewState<'a, (Q,), (F,), RuntimeBorrowState>
-where
     Q: Query,
     F: Query,
 {
@@ -236,16 +92,12 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn with_query_filter(
-        world: &'a mut World,
-        query: impl IntoQuery<Query = Q>,
-        filter: impl IntoQuery<Query = F>,
-    ) -> Self {
+    pub fn new(world: &'a World, query: Q, filter: F) -> Self {
         ViewState {
-            query: (query.into_query(),),
-            filter: (filter.into_query(),),
+            query: query.into_query(),
+            filter: filter.into_query(),
             archetypes: world.archetypes(),
-            entity_set: world.entity_set(),
+            entity_set: world.entities(),
             borrow: RuntimeBorrowState::new(),
             epochs: world.epoch_counter(),
         }

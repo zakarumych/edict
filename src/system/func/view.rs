@@ -2,29 +2,19 @@ use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    query::{merge_access, Access, IntoQuery, Query},
+    query::{merge_access, Access, Query},
     system::ActionQueue,
-    view::View,
+    view::{View, ViewValue},
     world::World,
 };
 
-use super::{FnArg, FnArgCache, FnArgGet};
+use super::{FnArg, FnArgState};
 
-/// Cache for an argument that is stored between calls to function-system.
-pub trait QueryArgGet<'a> {
+/// State for an argument that is stored between calls to function-system.
+pub trait QueryArgState: Send + 'static {
     /// Argument specified in [`View`]
-    type Arg: QueryArg<Cache = Self, Query = Self::Query>;
+    type Arg<'a>: QueryArg<State = Self>;
 
-    /// Constructed query type.
-    type Query: Query;
-
-    /// Returns query for an argument.
-    #[must_use]
-    fn get(&'a mut self, world: &'a World) -> Self::Query;
-}
-
-/// Cache for an argument that is stored between calls to function-system.
-pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + 'static {
     /// Constructs new cache instance.
     #[must_use]
     fn new() -> Self;
@@ -36,50 +26,35 @@ pub trait QueryArgCache: for<'a> QueryArgGet<'a> + Send + 'static {
     /// Returns some access type performed by the query.
     #[must_use]
     fn access_component(&self, id: TypeId) -> Option<Access>;
+
+    /// Returns query for an argument.
+    #[must_use]
+    fn get<'a>(&'a mut self, world: &'a World) -> Self::Arg<'a>;
 }
 
-/// Types that can be used as queries with [`QueryRef`] for function-systems.
-pub trait QueryArg: IntoQuery {
-    /// Cache for an argument that is stored between calls to function-system.
-    type Cache: QueryArgCache;
+/// Types that can be used as queries within [`View`] args for function-systems.
+pub trait QueryArg: Query {
+    /// State for the query that is stored between calls to function-system.
+    type State: QueryArgState;
 }
 
-/// Cache type used by corresponding [`QueryRef`].
+/// State type used by corresponding [`QueryRef`].
 #[derive(Default)]
-pub struct ViewCache<Q, F> {
+pub struct ViewState<Q, F> {
     query: Q,
     filter: F,
 }
 
-unsafe impl<'a, Q, F> FnArgGet<'a> for ViewCache<Q, F>
+unsafe impl<Q, F> FnArgState for ViewState<Q, F>
 where
-    Q: QueryArgCache,
-    F: QueryArgCache,
+    Q: QueryArgState,
+    F: QueryArgState,
 {
-    type Arg = View<'a, <Q as QueryArgGet<'a>>::Arg, <F as QueryArgGet<'a>>::Arg>;
+    type Arg<'a> = View<'a, Q::Arg<'a>, F::Arg<'a>>;
 
-    #[inline(always)]
-    unsafe fn get_unchecked(
-        &'a mut self,
-        world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
-    ) -> Self::Arg {
-        // Safety: Declares read access.
-        let world = unsafe { world.as_ref() };
-        let query = self.query.get(world);
-        let filter = self.filter.get(world);
-        View::with_query_filter(world, query, filter)
-    }
-}
-
-impl<Q, F> FnArgCache for ViewCache<Q, F>
-where
-    Q: QueryArgCache,
-    F: QueryArgCache,
-{
     #[inline(always)]
     fn new() -> Self {
-        ViewCache {
+        ViewState {
             query: Q::new(),
             filter: F::new(),
         }
@@ -112,40 +87,39 @@ where
     fn access_resource(&self, _id: TypeId) -> Option<Access> {
         None
     }
+
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
+        &'a mut self,
+        world: NonNull<World>,
+        _queue: &mut dyn ActionQueue,
+    ) -> View<'a, Q::Arg<'a>, F::Arg<'a>> {
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
+        let query = self.query.get(world);
+        let filter = self.filter.get(world);
+        ViewValue::new(world, query, filter)
+    }
 }
 
-impl<'a, Q, F> FnArg for QueryRef<'a, Q, F>
+impl<'a, Q, F, B> FnArg for ViewValue<'a, Q, F, B>
 where
     Q: QueryArg,
     F: QueryArg,
 {
-    type Cache = ViewCache<Q::Cache, F::Cache>;
+    type State = ViewState<Q::State, F::State>;
 }
 
 macro_rules! impl_query {
     ($($a:ident)*) => {
         #[allow(non_snake_case)]
-        #[allow(unused_parens, unused_variables)]
-        impl<'a $(, $a)*> QueryArgGet<'a> for ($($a,)*)
-        where
-            $($a: QueryArgGet<'a>,)*
-        {
-            type Arg = ($($a::Arg,)*);
-            type Query = ($($a::Query,)*);
-
-            #[inline(always)]
-            fn get(&'a mut self, world: &'a World) -> Self::Query {
-                let ($($a,)*) = self;
-                ($($a::get($a, world),)*)
-            }
-        }
-
-        #[allow(non_snake_case)]
         #[allow(unused_parens, unused_variables, unused_mut)]
-        impl<$($a,)*> QueryArgCache for ($($a,)*)
+        impl<$($a,)*> QueryArgState for ($($a,)*)
         where
-            $($a: QueryArgCache,)*
+            $($a: QueryArgState,)*
         {
+            type Arg<'a> = ($($a::Arg<'a>,)*);
+
             #[inline(always)]
             fn new() -> Self {
                 ($($a::new(),)*)
@@ -162,9 +136,15 @@ macro_rules! impl_query {
                 let ($($a,)*) = self;
                 let mut access = None;
                 $({
-                    access = merge_access(access, $a.access_component(_id));
+                    access = merge_access::<Self>(access, $a.access_component(_id));
                 })*
                 access
+            }
+
+            #[inline(always)]
+            fn get<'a>(&'a mut self, world: &'a World) -> Self::Arg<'a> {
+                let ($($a,)*) = self;
+                ($($a::get($a, world),)*)
             }
         }
 
@@ -174,9 +154,14 @@ macro_rules! impl_query {
         where
             $($a: QueryArg,)*
         {
-            type Cache = ($($a::Cache,)*);
+            type State = ($($a::State,)*);
         }
     };
 }
 
 for_tuple!(impl_query);
+
+#[test]
+fn test_system() {
+    fn foo(_: View<&u32>) {}
+}

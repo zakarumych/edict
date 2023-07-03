@@ -115,7 +115,7 @@ struct Queue<T> {
 }
 
 impl<T> Clone for Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn clone(&self) -> Self {
         Queue {
             inner: self.inner.clone(),
@@ -124,7 +124,7 @@ impl<T> Clone for Queue<T> {
 }
 
 impl<T> Drop for Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn drop(&mut self) {
         if Arc::strong_count(&self.inner) == 2 {
             self.inner.thread.unpark();
@@ -133,7 +133,7 @@ impl<T> Drop for Queue<T> {
 }
 
 impl<T> Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn new() -> Self {
         Queue {
             inner: Arc::new(QueueInner {
@@ -143,18 +143,18 @@ impl<T> Queue<T> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn enqueue(&self, item: T) {
         self.inner.items.lock().push_back(item);
         self.inner.thread.unpark();
     }
 
-    #[inline]
+    #[inline(always)]
     fn try_deque(&self) -> Option<T> {
         self.inner.items.lock().pop_front()
     }
 
-    #[inline]
+    #[inline(always)]
     fn deque(&self) -> Result<T, ()> {
         loop {
             if let Some(item) = self.try_deque() {
@@ -169,7 +169,7 @@ impl<T> Queue<T> {
 }
 
 impl ActionQueue for Queue<ActionBuffer> {
-    #[inline]
+    #[inline(always)]
     fn get<'a>(&self) -> ActionBuffer {
         match self.try_deque() {
             Some(buffer) => buffer,
@@ -177,7 +177,7 @@ impl ActionQueue for Queue<ActionBuffer> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn flush(&mut self, buffer: ActionBuffer) {
         self.enqueue(buffer);
     }

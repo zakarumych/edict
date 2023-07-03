@@ -8,54 +8,52 @@ use crate::{
     world::World,
 };
 
-use super::{FnArg, FnArgCache, FnArgGet};
+use super::{FnArg, FnArgState};
 
 impl FnArg for ActionEncoder<'_> {
-    type Cache = ActionEncoderCache;
+    type State = ActionEncoderState;
 }
 
 /// [`FnArgCache`] for `ActionEncoder` argument.
 #[derive(Default)]
-pub struct ActionEncoderCache {
+pub struct ActionEncoderState {
     buffer: Option<ActionBuffer>,
 }
 
-impl FnArgCache for ActionEncoderCache {
+unsafe impl FnArgState for ActionEncoderState {
+    type Arg<'a> = ActionEncoder<'a>;
+
     fn new() -> Self {
-        ActionEncoderCache { buffer: None }
+        ActionEncoderState { buffer: None }
     }
 
-    #[inline]
+    #[inline(always)]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline]
+    #[inline(always)]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline]
+    #[inline(always)]
     fn access_component(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline]
+    #[inline(always)]
     fn access_resource(&self, _id: TypeId) -> Option<Access> {
         None
     }
-}
 
-unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
-    type Arg = ActionEncoder<'a>;
-
-    #[inline]
-    unsafe fn get_unchecked(
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
         queue: &mut dyn ActionQueue,
@@ -64,8 +62,8 @@ unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
         ActionEncoder::new(buffer, unsafe { world.as_ref() }.entities())
     }
 
-    #[inline]
-    unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
+    #[inline(always)]
+    unsafe fn flush_unchecked(&mut self, queue: &mut dyn ActionQueue) {
         if let Some(buffer) = self.buffer.take() {
             queue.flush(buffer);
         }

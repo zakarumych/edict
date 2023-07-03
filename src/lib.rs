@@ -124,13 +124,19 @@ macro_rules! for_tuple_2 {
 }
 
 macro_rules! impl_copy {
-    ($type:ident < $( $a:ident ),+ >) => {
-        impl< $( $a ),+ > Copy for $type < $( $a ),+ > {}
-        impl< $( $a ),+ > Clone for $type < $( $a ),+ > {
+    ($type:ident $(< $( $a:ident ),+ >)? $(where $($b:path: $b0:ident $(+ $bt:ident)*),+ $(,)?)?) => {
+        impl $(< $( $a ),+ >)? Copy for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {}
+
+        impl $(< $( $a ),+ >)? Clone for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {
             #[inline(always)]
             fn clone(&self) -> Self {
                 *self
             }
+
             #[inline(always)]
             fn clone_from(&mut self, source: &Self) {
                 *self = *source
@@ -140,8 +146,10 @@ macro_rules! impl_copy {
 }
 
 macro_rules! impl_debug {
-    ($type:ident < $( $a:ident ),+ > { $($fname:ident)* }) => {
-        impl< $( $a ),+ > core::fmt::Debug for $type < $( $a ),+ > {
+    ($type:ident $(< $( $a:ident ),+ >)? { $($fname:ident)* } $(where $($b:path: $b0:ident $(+ $bt:ident)*),+ $(,)?)?) => {
+        impl $(< $( $a ),+ >)? core::fmt::Debug for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 f.debug_struct(stringify!($type))
                     $(.field(stringify!($fname), &self.$fname))*
@@ -151,42 +159,107 @@ macro_rules! impl_debug {
     };
 }
 
-macro_rules! phantom_newtype {
+macro_rules! marker_type_impls {
     (
         $(#[$meta:meta])*
-        $vis:vis struct $type:ident < $a:ident >
+        $vis:vis struct $type:ident $(< $($a:ident),+ >)?;
     ) => {
-        $(#[$meta])*
-        $vis struct $type < $a > {
-            marker: core::marker::PhantomData< $a >,
-        }
-
-        impl< $a > $type < $a > {
-            /// Constructs new phantom wrapper instance.
+        impl $(< $($a),+ >)? $type $(< $($a),+ >)? {
+            /// Constructs new marker instance.
             /// This function is noop as it returns ZST and have no side-effects.
             #[must_use]
             pub const fn new() -> Self {
-                $type {
-                    marker: core::marker::PhantomData,
-                }
+                $type
             }
         }
 
-        impl_copy!($type < $a >);
+        impl $(< $($a),+ >)? core::marker::Copy for $type $(< $($a),+ >)? {}
+        impl $(< $($a),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                $type
+            }
 
-        impl< $a > core::fmt::Debug for $type < $a >
-        where
-            $a : 'static
+            #[inline(always)]
+            fn clone_from(&mut self, _source: &Self) {}
+        }
+
+        impl $(< $($a),+ >)? core::fmt::Debug for $type $(< $($a),+ >)?
+        $(where $($a : 'static,)+)?
         {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                write!(f, core::concat!(core::stringify!($type), "<{}>"), core::any::type_name::<$a>())
+                write!(f, core::stringify!($type))?;
+                $(
+                    write!(f, "<")?;
+                    $(write!(f, "{}", core::any::type_name::<$a>())?;)+
+                    write!(f, ">")?;
+                )?
+                Ok(())
             }
         }
 
-        impl< $a > Default for $type < $a > {
+        impl $(< $($a),+ >)? Default for $type $(< $($a),+ >)? {
+            #[inline(always)]
             fn default() -> Self {
-                Self::new()
+                $type
             }
+        }
+    };
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[doc(hidden)]
+pub enum MarkerVoid {}
+
+#[doc(hidden)]
+pub struct TypeParam<T: ?Sized>([*const T; 0]);
+
+unsafe impl<T: Send> Send for TypeParam<T> {}
+unsafe impl<T: Sync> Sync for TypeParam<T> {}
+
+impl<T: ?Sized> Copy for TypeParam<T> {}
+impl<T: ?Sized> Clone for TypeParam<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        TypeParam([])
+    }
+
+    #[inline(always)]
+    fn clone_from(&mut self, _source: &Self) {}
+}
+
+macro_rules! marker_type {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $type:ident;
+    ) => {
+        $(#[$meta])*
+        $vis struct $type;
+
+        marker_type_impls!{
+            $(#[$meta])*
+            $vis struct $type;
+        }
+    };
+
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $type:ident < $($a:ident),+ >;
+    ) => {
+        $(#[$meta])*
+        $vis enum $type < $($a: ?Sized,)+ > {
+            /// Instance of this type.
+            $type,
+            #[doc(hidden)]
+            __Void($crate::MarkerVoid, $($crate::TypeParam<$a>,)+),
+        }
+
+        /// Imports $type as value symbol.
+        pub use self::$type::*;
+
+        marker_type_impls!{
+            $(#[$meta])*
+            $vis struct $type < $($a),+ >;
         }
     };
 }
@@ -388,10 +461,10 @@ mod res;
 #[cfg(test)]
 mod test;
 
-// #[doc(hidden)]
-// pub mod private {
-//     pub use alloc::vec::Vec;
-// }
+#[doc(hidden)]
+pub mod private {
+    pub use alloc::vec::Vec;
+}
 
 #[doc(hidden)]
 pub struct ExampleComponent;

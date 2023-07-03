@@ -23,7 +23,7 @@ impl World {
     /// If relation is symmetric then it is added in both directions.
     /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
     /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
-    #[inline]
+    #[inline(always)]
     pub fn add_relation<R>(
         &mut self,
         origin: impl Entity,
@@ -38,7 +38,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn add_relation_with_buffer<R>(
         &mut self,
         origin: impl Entity,
@@ -111,7 +111,7 @@ impl World {
     ///
     /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
     /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
-    #[inline]
+    #[inline(always)]
     pub fn remove_relation<R>(
         &mut self,
         origin: impl Entity,
@@ -125,7 +125,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn remove_relation_with_buffer<R>(
         &mut self,
         origin: impl Entity,

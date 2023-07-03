@@ -23,7 +23,7 @@ where
 {
     type Item = (&'a T, EpochId);
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         WithEpochFetchRead {
             ptr: NonNull::dangling(),
@@ -32,7 +32,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: usize) -> (&'a T, EpochId) {
         let epoch = *self.entity_epochs.as_ptr().add(idx);
         (&*self.ptr.as_ptr().add(idx), epoch)
@@ -45,7 +45,7 @@ where
 {
     type Query = PhantomData<fn() -> Self>;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self::Query {
         PhantomData
     }
@@ -58,12 +58,12 @@ where
     type Item<'a> = (&'a T, EpochId);
     type Fetch<'a> = WithEpochFetchRead<'a, T>;
 
-    #[inline]
+    #[inline(always)]
     fn access(ty: TypeId) -> Option<Access> {
         <&T as PhantomQuery>::access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
@@ -77,12 +77,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(_archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> WithEpochFetchRead<'a, T> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
@@ -115,12 +115,12 @@ where
     type Item<'a> = Option<(&'a T, EpochId)>;
     type Fetch<'a> = Option<WithEpochFetchRead<'a, T>>;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <&T as PhantomQuery>::access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
@@ -134,7 +134,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
             debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
@@ -147,7 +147,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &mut self,
         archetype: &'a Archetype,
@@ -176,14 +176,14 @@ where
 
 unsafe impl<T> ImmutableQuery for WithEpoch<Option<&T>> where T: Sync + 'static {}
 
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<&'static T>>
+impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<&T>>
 where
     T: Sync + 'static,
 {
     type Arg = WithEpoch<Option<&'a T>>;
     type Query = WithEpoch<Option<&'a T>>;
 
-    #[inline]
+    #[inline(always)]
     fn get(&mut self, world: &'a World) -> WithEpoch<Option<&T>> {
         let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
 
@@ -194,7 +194,7 @@ where
     }
 }
 
-impl<T> QueryArgCache for ModifiedCache<Option<&'static T>>
+impl<T> QueryArgCache for ModifiedCache<Option<&T>>
 where
     T: Sync + 'static,
 {

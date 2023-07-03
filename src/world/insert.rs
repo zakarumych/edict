@@ -31,7 +31,7 @@ impl World {
     /// world.insert(entity, ExampleComponent).unwrap();
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn insert<T>(&mut self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -41,7 +41,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn insert_with_buffer<T>(
         &mut self,
         entity: impl Entity,
@@ -74,7 +74,7 @@ impl World {
     /// world.insert_external(entity, 42u32).unwrap();
     /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn insert_external<T>(
         &mut self,
         entity: impl Entity,
@@ -88,7 +88,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn insert_external_with_buffer<T>(
         &mut self,
         entity: impl Entity,
@@ -188,7 +188,7 @@ impl World {
     /// world.insert_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn insert_bundle<B>(&mut self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
@@ -198,7 +198,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn insert_bundle_with_buffer<B>(
         &mut self,
         entity: impl Entity,
@@ -240,7 +240,7 @@ impl World {
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn insert_external_bundle<B>(
         &mut self,
         entity: impl Entity,
@@ -254,7 +254,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn insert_external_bundle_with_buffer<B>(
         &mut self,
         entity: impl Entity,

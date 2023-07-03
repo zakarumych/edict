@@ -87,7 +87,7 @@ impl<F> Mark for F
 where
     F: Fn(&mut World, EntityId) + Copy + Send + 'static,
 {
-    #[inline]
+    #[inline(always)]
     fn mark(&self, world: &mut World, id: EntityId) {
         self(world, id)
     }
@@ -98,7 +98,7 @@ where
 pub struct NoMark;
 
 impl Mark for NoMark {
-    #[inline]
+    #[inline(always)]
     fn mark(&self, _: &mut World, _: EntityId) {}
 }
 
@@ -202,7 +202,7 @@ macro_rules! set {
         {
             type DumpSlots<'a> = ($(DumpSlot<'a, $a>,)+);
 
-            #[inline]
+            #[inline(always)]
             fn dump_world<Fi, Du, Er>(world: &World, filter: Fi, after_epoch: EpochId, dumper: &mut Du) -> Result<(), Er>
             where
                 Fi: ImmutableQuery,

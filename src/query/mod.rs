@@ -50,18 +50,17 @@ pub use self::{
         FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
         FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
     },
-    copied::{copied, Copied, FetchCopied},
-    entities::{Entities, EntitiesFetch, EntitiesQuery},
+    copied::{Cpy, FetchCopied},
+    entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{FilteredFetch, FilteredQuery, Not, With, Without},
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
         ModifiedFetchWrite,
     },
-    phantom::{ImmutablePhantomQuery, PhantomQuery},
-    read::{read, FetchRead, Read},
+    read::{FetchRead, Read},
     with_epoch::{EpochOf, FetchEpoch},
-    write::{write, FetchWrite, Write},
+    write::{FetchWrite, Write},
 };
 
 mod alt;
@@ -74,7 +73,7 @@ mod fetch;
 mod filter;
 mod modified;
 mod option;
-mod phantom;
+// mod phantom;
 mod read;
 mod tuple;
 mod with_epoch;
@@ -114,7 +113,7 @@ pub trait DefaultQuery: IntoQuery {
 /// references to the components and optionally [`EntityId`] to address same components later.
 ///
 /// [`EntityId`]: edict::entity::EntityId
-pub unsafe trait Query: IntoQuery<Query = Self> {
+pub unsafe trait Query: IntoQuery<Query = Self> + 'static {
     /// Item type this query type yields.
     type Item<'a>: 'a;
 
@@ -161,7 +160,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> {
     /// Returns item for reserved entity if reserved entity satisfies the query.
     /// Otherwise returns `None`.
     #[must_use]
-    #[inline]
+    #[inline(always)]
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         drop(id);
         drop(idx);
@@ -211,12 +210,4 @@ pub fn merge_access<T: ?Sized>(lhs: Option<Access>, rhs: Option<Access>) -> Opti
         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
         _ => panic!("Write aliasing detected in query: {}", type_name::<T>()),
     }
-}
-
-/// Helps to assert that type implements [`Query`] in compile time.
-const fn assert_query<Q: Query>() {}
-
-/// Helps to assert that type implements [`ImmutableQuery`] in compile time.
-const fn assert_immutable_query<Q: ImmutableQuery>() {
-    let () = Q::CHECK_VALID;
 }

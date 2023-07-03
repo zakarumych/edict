@@ -3,9 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{
-        copied::Copied, phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query,
-    },
+    query::{copied::Cpy, Access, Fetch, ImmutableQuery, IntoQuery, Query},
 };
 
 use super::Modified;
@@ -25,7 +23,7 @@ where
 {
     type Item = T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchCopied {
             after_epoch: EpochId::start(),
@@ -36,25 +34,25 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> T {
         *self.ptr.as_ptr().add(idx as usize)
     }
 }
 
-impl<T> IntoQuery for Modified<Copied<T>>
+impl<T> IntoQuery for Modified<Cpy<T>>
 where
     T: Copy + Sync + 'static,
 {
@@ -65,7 +63,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Copied<T>>
+unsafe impl<T> Query for Modified<Cpy<T>>
 where
     T: Copy + Sync + 'static,
 {
@@ -74,20 +72,17 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(ty)
+        Cpy::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(
-                    <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                    true
-                );
+                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -96,12 +91,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -123,9 +118,9 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Copied<T>> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Cpy<T>> where T: Copy + Sync + 'static {}
 
-impl<T> IntoQuery for Modified<Option<Copied<T>>>
+impl<T> IntoQuery for Modified<Option<Cpy<T>>>
 where
     T: Copy + Sync + 'static,
 {
@@ -136,7 +131,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Option<Copied<T>>>
+unsafe impl<T> Query for Modified<Option<Cpy<T>>>
 where
     T: Copy + Sync + 'static,
 {
@@ -145,20 +140,17 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(ty)
+        Cpy::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(
-                    <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                    true
-                );
+                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -167,13 +159,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(
-                <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                true
-            );
+            debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -183,7 +172,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -211,4 +200,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Option<Copied<T>>> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Option<Cpy<T>>> where T: Copy + Sync + 'static {}

@@ -185,7 +185,7 @@ impl World {
     /// Returns unique identified of archetype set.
     /// This ID changes each time new archetype is added or removed.
     /// IDs of different worlds are never equal within the same process.
-    #[inline]
+    #[inline(always)]
     pub fn archetype_set_id(&self) -> u64 {
         self.archetypes.id()
     }
@@ -212,13 +212,13 @@ impl World {
     /// As it increases monotonically, returned value can be safely assumed as a lower bound.
     ///
     /// [`&World`]: World
-    #[inline]
+    #[inline(always)]
     pub fn epoch(&self) -> EpochId {
         self.epoch.current()
     }
 
     /// Returns atomic reference to epoch counter.
-    #[inline]
+    #[inline(always)]
     pub fn epoch_counter(&self) -> &EpochCounter {
         &self.epoch
     }
@@ -226,7 +226,7 @@ impl World {
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline]
+    #[inline(always)]
     pub fn has_component<T: 'static>(&self, entity: impl AliveEntity) -> bool {
         let loc = entity.locate(&self.entities);
         if loc.arch == u32::MAX {
@@ -236,7 +236,7 @@ impl World {
     }
 
     /// Checks if entity is alive.
-    #[inline]
+    #[inline(always)]
     pub fn is_alive(&self, id: EntityId) -> bool {
         self.entities.get_location(id).is_some()
     }
@@ -331,7 +331,7 @@ impl World {
     ///
     /// The only observable effect of manual call to this method
     /// is execution of actions encoded with [`ActionSender`].
-    #[inline]
+    #[inline(always)]
     fn maintenance(&mut self) {
         let epoch = self.epoch.current_mut();
         let archetype = &mut self.archetypes[0];

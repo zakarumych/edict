@@ -6,9 +6,9 @@ use crate::{
     view::get_at,
 };
 
-use super::{expect_alive, expect_match, BorrowState, ViewState};
+use super::{expect_alive, expect_match, BorrowState, ViewValue};
 
-impl<Q, F, B> ViewState<'_, Q, F, B>
+impl<Q, F, B> ViewValue<'_, Q, F, B>
 where
     Q: Query,
     F: Query,
@@ -81,7 +81,7 @@ where
         })
     }
 
-    #[inline]
+    #[inline(always)]
     fn _get(&self, loc: Location) -> Option<QueryItem<Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
@@ -90,7 +90,7 @@ where
     }
 }
 
-impl<E, T, F, B> Index<E> for ViewState<'_, Read<T>, F, B>
+impl<E, T, F, B> Index<E> for ViewValue<'_, Read<T>, F, B>
 where
     E: Entity,
     T: 'static + Sync,
@@ -109,7 +109,7 @@ where
     }
 }
 
-impl<E, T, F, B> Index<E> for ViewState<'_, Write<T>, F, B>
+impl<E, T, F, B> Index<E> for ViewValue<'_, Write<T>, F, B>
 where
     E: Entity,
     T: 'static + Send,
@@ -128,7 +128,7 @@ where
     }
 }
 
-impl<E, T, F, B> IndexMut<E> for ViewState<'_, Write<T>, F, B>
+impl<E, T, F, B> IndexMut<E> for ViewValue<'_, Write<T>, F, B>
 where
     E: Entity,
     T: 'static + Send,

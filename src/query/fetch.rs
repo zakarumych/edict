@@ -22,7 +22,7 @@ pub struct VerifyFetch {
 impl VerifyFetch {
     /// Returns new `VerifyFetch` instance flagged as dangling.
     /// Any method call will panic. Dangling fetches must not be used.
-    #[inline]
+    #[inline(always)]
     pub fn dangling() -> Self {
         VerifyFetch {
             dangling: true,
@@ -33,7 +33,7 @@ impl VerifyFetch {
     }
 
     /// Returns new `VerifyFetch` instance.
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         VerifyFetch {
             dangling: false,
@@ -49,7 +49,7 @@ impl VerifyFetch {
     /// # Panics
     ///
     /// If dangling.
-    #[inline]
+    #[inline(always)]
     pub fn visit_chunk(&mut self, chunk_idx: u32, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: skip_chunk called for dangling fetch");
@@ -65,7 +65,7 @@ impl VerifyFetch {
     ///
     /// If dangling.
     /// If `visit_chunk` was not called with `visiting = true` for the same chunk just before this call.
-    #[inline]
+    #[inline(always)]
     pub fn touch_chunk(&mut self, chunk_idx: u32) {
         if self.dangling {
             panic!("FetchVerify: visit_chunk called for dangling fetch");
@@ -92,7 +92,7 @@ impl VerifyFetch {
     ///
     /// If dangling.
     /// if `touch_chunk` was not called for the corresponding chunk before this call.
-    #[inline]
+    #[inline(always)]
     pub fn visit_item(&mut self, idx: u32, visiting: bool) {
         if self.dangling {
             panic!("FetchVerify: visit_item called for dangling fetch");
@@ -116,7 +116,7 @@ impl VerifyFetch {
     ///
     /// If dangling.
     /// If `visit_item` was not called with `visiting = true` for the same item just before this call.
-    #[inline]
+    #[inline(always)]
     pub fn get_item(&mut self, idx: u32) {
         if self.dangling {
             panic!("FetchVerify: get_item called for dangling fetch");
@@ -189,7 +189,7 @@ pub unsafe trait Fetch<'a> {
     /// Chunk index must in range `0..=chunk_count`,
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         drop(chunk_idx);
@@ -203,7 +203,7 @@ pub unsafe trait Fetch<'a> {
     /// Entity index must in range `0..=entity_count`,
     /// where `entity_count` is the number of entities in the archetype
     /// from which query produced this instance.
-    #[inline]
+    #[inline(always)]
     #[must_use]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         drop(idx);
@@ -221,7 +221,7 @@ pub unsafe trait Fetch<'a> {
     ///
     /// `visit_chunk` must have been called just before this method.
     /// If `visit_chunk` returned `false`, this method must not be called.
-    #[inline]
+    #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         drop(chunk_idx);
     }
@@ -265,7 +265,7 @@ impl UnitFetch {
 unsafe impl<'a> Fetch<'a> for UnitFetch {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         UnitFetch {
             #[cfg(debug_assertions)]
@@ -273,7 +273,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
@@ -281,14 +281,14 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         true
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let _ = chunk_idx;
         #[cfg(debug_assertions)]
         self.verify.touch_chunk(chunk_idx)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let _ = idx;
         #[cfg(debug_assertions)]
@@ -296,7 +296,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         true
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> () {
         let _ = idx;
         #[cfg(debug_assertions)]

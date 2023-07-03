@@ -6,7 +6,7 @@ use core::{
 
 use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::World};
 
-use super::{FnArg, FnArgCache, FnArgGet};
+use super::{FnArg, FnArgState};
 
 /// State for function systems.
 /// Value inside [`State`] is preserved between system runs.
@@ -25,23 +25,24 @@ pub struct State<'a, T> {
     value: &'a mut T,
 }
 
-/// [`FnArgCache`] for [`State`] argument.
+/// [`FnArgState`] for [`State`] argument.
 #[derive(Default)]
-pub struct StateCache<T> {
+#[repr(transparent)]
+pub struct StateState<T> {
     value: T,
 }
 
 impl<T> Deref for State<'_, T> {
     type Target = T;
 
-    #[inline]
+    #[inline(always)]
     fn deref(&self) -> &T {
         &self.value
     }
 }
 
 impl<T> DerefMut for State<'_, T> {
-    #[inline]
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut T {
         &mut self.value
     }
@@ -51,17 +52,47 @@ impl<T> FnArg for State<'_, T>
 where
     T: Default + Send + 'static,
 {
-    type Cache = StateCache<T>;
+    type State = StateState<T>;
 }
 
-unsafe impl<'a, T> FnArgGet<'a> for StateCache<T>
+unsafe impl<T> FnArgState for StateState<T>
 where
     T: Default + Send + 'static,
 {
-    type Arg = State<'a, T>;
+    type Arg<'a> = State<'a, T>;
 
-    #[inline]
-    unsafe fn get_unchecked(
+    #[inline(always)]
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[inline(always)]
+    fn is_local(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn world_access(&self) -> Option<Access> {
+        None
+    }
+
+    #[inline(always)]
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn access_component(&self, _id: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline(always)]
+    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
         &'a mut self,
         _world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
@@ -69,41 +100,6 @@ where
         State {
             value: &mut self.value,
         }
-    }
-}
-
-impl<T> FnArgCache for StateCache<T>
-where
-    T: Default + Send + 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        Self::default()
-    }
-
-    #[inline]
-    fn is_local(&self) -> bool {
-        false
-    }
-
-    #[inline]
-    fn world_access(&self) -> Option<Access> {
-        None
-    }
-
-    #[inline]
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-        false
-    }
-
-    #[inline]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
-        None
-    }
-
-    #[inline]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
-        None
     }
 }
 

@@ -8,9 +8,8 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{action::ActionBuffer, archetype::Archetype, query::Access, world::World};
 
 pub use self::func::{
-    ActionEncoderCache, FnArg, FnArgCache, FnArgGet, FromWorld, IsFunctionSystem, Res, ResCache,
-    ResMut, ResMutCache, ResMutNoSend, ResMutNoSendCache, ResNoSync, ResNoSyncCache, State,
-    StateCache,
+    ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, Res, ResMut, ResMutNoSend,
+    ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState, State, StateState,
 };
 
 /// A queue of `ActionEncoder` instances.

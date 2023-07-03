@@ -13,11 +13,15 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     const MUTABLE: bool;
 
     /// Item type this query type yields.
-    type Item<'a>: 'a;
+    type Item<'a>: 'a
+    where
+        Self: 'a;
 
     /// Fetch value type for this query type.
     /// Contains data from one archetype.
-    type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
+    type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a
+    where
+        Self: 'a;
 
     /// Constructs the query instance.
     #[must_use]
@@ -55,7 +59,7 @@ pub unsafe trait PhantomQuery: IntoQuery<Query = PhantomData<fn() -> Self>> {
     /// Returns item for reserved entity if reserved entity satisfies the query.
     /// Otherwise returns `None`.
     #[must_use]
-    #[inline]
+    #[inline(always)]
     fn reserved_entity_item<'a>(id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         drop(id);
         drop(idx);
@@ -69,7 +73,7 @@ where
 {
     type Query = Self;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
@@ -81,7 +85,7 @@ where
 {
     type Query = PhantomData<fn() -> Q>;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self::Query {
         PhantomData
     }
@@ -91,27 +95,27 @@ unsafe impl<Q> Query for PhantomData<fn() -> Q>
 where
     Q: PhantomQuery,
 {
-    type Item<'a> = Q::Item<'a>;
-    type Fetch<'a> = Q::Fetch<'a>;
+    type Item<'a> = Q::Item<'a> where Q: 'a;
+    type Fetch<'a> = Q::Fetch<'a> where Q: 'a;
 
     const MUTABLE: bool = Q::MUTABLE;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
         <Q as PhantomQuery>::access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         <Q as PhantomQuery>::visit_archetype(archetype)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         <Q as PhantomQuery>::access_archetype(archetype, f)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         arch_idx: u32,
@@ -121,7 +125,7 @@ where
         <Q as PhantomQuery>::fetch(arch_idx, archetype, epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         <Q as PhantomQuery>::reserved_entity_item(id, idx)
     }

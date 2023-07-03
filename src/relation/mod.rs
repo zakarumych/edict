@@ -32,29 +32,51 @@ pub use self::{
 mod child_of;
 mod query;
 
-/// Trait that must be implemented for relations.
+/// Trait that must be implemented for types to be
+/// used as relation components.
+///
+/// Relation components are special in a way that they are bound to
+/// a pair of entities, not just one.
+/// One entity is called "origin" and the other is called "target".
+///
+/// Relation components are used to connect two entities together.
+/// For example [`ChildOf`] relation component is used to connect
+/// child entity ("origin") to parent entity ("target").
+///
+/// Relation components are dropped when either of the "origin" or "target"
+/// is dropped. Appropriate hook method is called when this happens.
+/// `on_drop` is called when relation is dropped from "origin" entity.
+/// `on_target_drop` is called when "target" entity is dropped.
 pub trait Relation: Send + Sync + Copy + 'static {
     /// If `true` then relation can be added only once to an entity.
+    /// If another exclusive relation is added to the same entity,
+    /// then the old one is removed.
+    /// `on_replace` is called when this happens.
+    ///
+    /// Non-exclusive relations is replaced only if re-added
+    /// with same target.
     const EXCLUSIVE: bool = false;
 
     /// If `true` then when relation is added to an entity
-    /// it is also added to the target.
+    /// it is also added to the target in reverse direction.
     const SYMMETRIC: bool = false;
 
-    /// If `true` then entity in relation is "owned" by the target.
-    /// This means that when last target is dropped, entity is also dropped, not just relation.
+    /// If `true` then origin entity in relation is "owned" by the target.
+    /// This means that when last target is dropped, entity is despawned.
     const OWNED: bool = false;
 
     /// Returns name of the relation type.
-    #[inline]
+    ///
+    /// Can be overriden to provide custom name.
+    #[inline(always)]
     #[must_use]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
     }
 
-    /// Method that is called when relation is removed from origin entity.
+    /// Method that is called when relation is dropped on origin entity.
     /// Does nothing by default.
-    #[inline]
+    #[inline(always)]
     fn on_drop(&mut self, origin: EntityId, target: EntityId, encoder: ActionEncoder) {
         drop(origin);
         drop(target);
@@ -62,8 +84,15 @@ pub trait Relation: Send + Sync + Copy + 'static {
     }
 
     /// Method that is called when relation is re-inserted.
-    /// Does nothing by default and returns `true`, causing `on_origin_drop` to be called.
-    #[inline]
+    /// For non-exclusive relations this happens when relation is re-inserted with the same
+    /// origin-target entity pair.
+    /// For exclusive relations this happens when relation is re-inserted with
+    /// origin that has relation of this type with any target.
+    ///
+    /// If returns `true`, `on_drop` will be called.
+    ///
+    /// Does nothing by default and returns `true`, causing `on_drop` to be called.
+    #[inline(always)]
     fn on_replace(
         &mut self,
         value: &Self,
@@ -82,8 +111,9 @@ pub trait Relation: Send + Sync + Copy + 'static {
     }
 
     /// Method that is called when target entity of the relation is dropped.
+    ///
     /// Does nothing by default.
-    #[inline]
+    #[inline(always)]
     fn on_target_drop(origin: EntityId, target: EntityId, encoder: ActionEncoder) {
         drop(origin);
         drop(target);
@@ -285,19 +315,19 @@ impl<R> Component for OriginComponent<R>
 where
     R: Relation,
 {
-    #[inline]
+    #[inline(always)]
     fn on_drop(&mut self, origin: EntityId, mut encoder: ActionEncoder) {
         for r in self.relations_mut() {
             Self::drop_one(&mut r.relation, origin, r.target, encoder.reborrow());
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn on_replace(&mut self, _value: &Self, _origin: EntityId, _encoder: ActionEncoder) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 
-    #[inline]
+    #[inline(always)]
     #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         Vec::new()
@@ -372,7 +402,7 @@ impl<R> Component for TargetComponent<R>
 where
     R: Relation,
 {
-    #[inline]
+    #[inline(always)]
     fn on_drop(&mut self, target: EntityId, mut encoder: ActionEncoder) {
         for &origin in &self.origins {
             R::on_target_drop(origin, target, encoder.reborrow());
@@ -380,12 +410,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn on_replace(&mut self, _value: &Self, _entity: EntityId, _encoder: ActionEncoder) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 
-    #[inline]
+    #[inline(always)]
     #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         Vec::new()

@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{assert_query, phantom::PhantomQuery, Access, Fetch};
+use super::{Access, DefaultQuery, Fetch, IntoQuery, Query};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -19,7 +19,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchWrite {
             ptr: NonNull::dangling(),
@@ -30,13 +30,13 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_epoch.bump(self.epoch);
@@ -45,7 +45,56 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for &'static mut T
+marker_type! {
+    /// Query for writing a component.
+    pub struct Write<T>;
+}
+
+impl<T> IntoQuery for &mut T
+where
+    T: Send + 'static,
+{
+    type Query = Write<T>;
+
+    #[inline(always)]
+    fn into_query(self) -> Write<T> {
+        Write
+    }
+}
+
+impl<T> DefaultQuery for &mut T
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Write<T> {
+        Write
+    }
+}
+
+impl<T> IntoQuery for Write<T>
+where
+    T: Send + 'static,
+{
+    type Query = Write<T>;
+
+    #[inline(always)]
+    fn into_query(self) -> Write<T> {
+        Write
+    }
+}
+
+impl<T> DefaultQuery for Write<T>
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Write<T> {
+        Write
+    }
+}
+
+unsafe impl<T> Query for Write<T>
 where
     T: Send + 'static,
 {
@@ -54,8 +103,8 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
             Some(Access::Write)
         } else {
@@ -63,18 +112,19 @@ where
         }
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
@@ -93,19 +143,4 @@ where
             marker: PhantomData,
         }
     }
-}
-
-/// Phantom data for the `&mut T` phantom query.
-pub type Write<T> = PhantomData<fn() -> &'static mut T>;
-
-/// Returns query that yields mutable reference to specified component
-/// for each entity that has that component.
-///
-/// Skips entities that don't have the component.
-pub fn write<T>() -> Write<T>
-where
-    T: Send,
-{
-    assert_query::<Write<T>>();
-    PhantomData
 }

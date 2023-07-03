@@ -5,22 +5,12 @@ use alloc::vec::Vec;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
+    query::{read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query},
 };
 
-phantom_newtype! {
+marker_type! {
     /// [`PhantomQuery`] that borrows from components.
-    pub struct QueryBorrowAll<T>
-}
-
-impl<T> QueryBorrowAll<&T>
-where
-    T: Sync + ?Sized + 'static,
-{
-    /// Creates a new [`QueryBorrowAll`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
+    pub struct QueryBorrowAll<T>;
 }
 
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
@@ -41,7 +31,7 @@ where
 {
     type Item = Vec<&'a T>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowAllRead {
             components: Vec::new(),
@@ -49,7 +39,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> Vec<&'a T> {
         self.components
             .iter()
@@ -63,7 +53,51 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAll<&'static T>
+impl<T> IntoQuery for QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = QueryBorrowAll<Read<T>>;
+
+    #[inline(always)]
+    fn into_query(self) -> QueryBorrowAll<Read<T>> {
+        QueryBorrowAll
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> QueryBorrowAll<Read<T>> {
+        QueryBorrowAll
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        QueryBorrowAll::new()
+    }
+}
+
+unsafe impl<T> Query for QueryBorrowAll<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -72,18 +106,18 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
-    fn access(_ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let indices = unsafe {
             archetype
                 .borrow_indices(TypeId::of::<T>())
@@ -94,8 +128,9 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
@@ -128,4 +163,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&'static T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}

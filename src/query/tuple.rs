@@ -116,8 +116,8 @@ macro_rules! impl_fetch {
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
-            type Item<'a> = ($($a::Item<'a>),+);
-            type Fetch<'a> = ($($a::Fetch<'a>),+);
+            type Item<'a> = ($($a::Item<'a>),+) where $($a: 'a,)+;
+            type Fetch<'a> = ($($a::Fetch<'a>),+) where $($a: 'a,)+;
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;

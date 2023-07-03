@@ -24,7 +24,7 @@ mod one;
 
 /// A view over [`World`] that may be used to access specific components.
 #[must_use]
-pub struct ViewState<'a, Q: Query, F: Query, B> {
+pub struct ViewValue<'a, Q: Query, F: Query, B> {
     query: Q,
     filter: F,
     archetypes: &'a [Archetype],
@@ -36,14 +36,14 @@ pub struct ViewState<'a, Q: Query, F: Query, B> {
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
 pub type View<'a, Q, F = (), B = RuntimeBorrowState> =
-    ViewState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
+    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
 pub type ViewMut<'a, Q, F = ()> =
-    ViewState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
+    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
 
-impl<'a, Q, F> ViewState<'a, Q, F, StaticallyBorrowed>
+impl<'a, Q, F> ViewValue<'a, Q, F, StaticallyBorrowed>
 where
     Q: Query,
     F: Query,
@@ -55,7 +55,7 @@ where
     /// Uses user-provided query and filter.
     #[inline(always)]
     pub fn new_mut(world: &'a mut World, query: Q, filter: F) -> Self {
-        ViewState {
+        ViewValue {
             query: query.into_query(),
             filter: filter.into_query(),
             archetypes: world.archetypes(),
@@ -71,7 +71,7 @@ where
     /// Uses user-provided query and filter.
     #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World, query: Q, filter: F) -> Self {
-        ViewState {
+        ViewValue {
             query: query.into_query(),
             filter: filter.into_query(),
             archetypes: world.archetypes(),
@@ -82,7 +82,7 @@ where
     }
 }
 
-impl<'a, Q, F> ViewState<'a, Q, F, RuntimeBorrowState>
+impl<'a, Q, F> ViewValue<'a, Q, F, RuntimeBorrowState>
 where
     Q: Query,
     F: Query,
@@ -93,7 +93,7 @@ where
     /// Uses user-provided query and filter.
     #[inline(always)]
     pub fn new(world: &'a World, query: Q, filter: F) -> Self {
-        ViewState {
+        ViewValue {
             query: query.into_query(),
             filter: filter.into_query(),
             archetypes: world.archetypes(),
@@ -116,7 +116,7 @@ fn expect_alive<T>(value: Option<T>) -> T {
     value.expect("Entity is not alive")
 }
 
-#[inline]
+#[inline(always)]
 fn get_at<'a, Q, F>(
     query: &Q,
     filter: &F,

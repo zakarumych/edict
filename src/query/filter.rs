@@ -1,13 +1,10 @@
-use core::{
-    any::{type_name, TypeId},
-    marker::PhantomData,
-};
+use core::any::{type_name, TypeId};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
 use super::{
-    fetch::UnitFetch, try_merge_access, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery,
-    IntoQuery, PhantomQuery, Query,
+    fetch::UnitFetch, try_merge_access, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
+    Query,
 };
 
 /// Combines fetch from query and filter.
@@ -84,8 +81,8 @@ where
     F: Query,
     Q: Query,
 {
-    type Item<'a> = Q::Item<'a>;
-    type Fetch<'a> = FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>>;
+    type Item<'a> = Q::Item<'a> where Q: 'a;
+    type Fetch<'a> = FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>> where F: 'a, Q: 'a;
 
     const MUTABLE: bool = F::MUTABLE || Q::MUTABLE;
 
@@ -137,7 +134,10 @@ where
 #[derive(Clone, Copy)]
 pub struct Not<T>(pub T);
 
-pub struct NotFetch<T>(T, bool);
+pub enum NotFetch<T> {
+    Fetch { fetch: T, visit_chunk: bool },
+    None,
+}
 
 unsafe impl<'a, T> Fetch<'a> for NotFetch<T>
 where
@@ -147,12 +147,15 @@ where
 
     #[inline(always)]
     fn dangling() -> Self {
-        NotFetch(T::dangling(), false)
+        NotFetch::None
     }
 
     #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
-        self.1 = self.0.visit_chunk(chunk_idx);
+        match self {
+            NotFetch::Fetch { fetch, visit_chunk } => *visit_chunk = fetch.visit_chunk(chunk_idx),
+            NotFetch::None => {}
+        }
         true
     }
 
@@ -161,10 +164,9 @@ where
 
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        if self.1 {
-            !self.0.visit_item(idx)
-        } else {
-            true
+        match self {
+            NotFetch::Fetch { fetch, visit_chunk } if *visit_chunk => fetch.visit_item(idx),
+            _ => true,
         }
     }
 
@@ -189,7 +191,7 @@ where
     T: Query,
 {
     type Item<'a> = ();
-    type Fetch<'a> = NotFetch<T::Fetch<'a>>;
+    type Fetch<'a> = NotFetch<T::Fetch<'a>> where T: 'a;
 
     const MUTABLE: bool = T::MUTABLE;
 
@@ -199,8 +201,12 @@ where
     }
 
     #[inline(always)]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        !self.0.visit_archetype(archetype)
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+        if T::FILTERS_ENTITIES {
+            true
+        } else {
+            !self.0.visit_archetype(_archetype)
+        }
     }
 
     #[inline(always)]
@@ -213,26 +219,44 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> NotFetch<T::Fetch<'a>> {
-        NotFetch(self.0.fetch(arch_idx, archetype, epoch), false)
+        if self.0.visit_archetype(archetype) {
+            NotFetch::Fetch {
+                fetch: self.0.fetch(arch_idx, archetype, epoch),
+                visit_chunk: false,
+            }
+        } else {
+            NotFetch::None
+        }
     }
 }
 
-phantom_newtype! {
+marker_type! {
     /// [`Filter`] that allows only archetypes with specified component.
-    pub struct With<T>
+    pub struct With<T>;
 }
 
-impl<T> With<T>
+impl<T> IntoQuery for With<T>
 where
     T: 'static,
 {
-    /// Creates a new [`Entities`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
     }
 }
 
-unsafe impl<T> PhantomQuery for With<T>
+impl<T> DefaultQuery for With<T>
+where
+    T: 'static,
+{
+    fn default_query() -> Self {
+        With
+    }
+}
+
+unsafe impl<T> Query for With<T>
 where
     T: 'static,
 {
@@ -242,25 +266,25 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(_: TypeId) -> Option<Access> {
+    fn access(&self, _: TypeId) -> Option<Access> {
         None
     }
 
     #[inline(always)]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<T>())
     }
 
     #[inline(always)]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
     #[inline(always)]
-    unsafe fn fetch(_: u32, _: &Archetype, _: EpochId) -> UnitFetch {
+    unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for With<T> where T: 'static {}
+unsafe impl<T> ImmutableQuery for With<T> where T: 'static {}
 
 /// [`Filter`] that allows only archetypes without specified component.
 /// Inverse of [`With`].

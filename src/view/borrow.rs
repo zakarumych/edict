@@ -37,7 +37,7 @@ impl RuntimeBorrowState {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetypes: &'a [Archetype],
@@ -105,7 +105,7 @@ fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
     core::mem::forget(guard);
 }
 
-#[inline]
+#[inline(always)]
 fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
     for archetype in archetypes {
         unsafe {
@@ -121,7 +121,7 @@ fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
     }
 }
 
-#[inline]
+#[inline(always)]
 fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetype: &'a Archetype,
@@ -189,7 +189,7 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
     core::mem::forget(guard);
 }
 
-#[inline]
+#[inline(always)]
 fn release_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype) {
     unsafe {
         if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
@@ -204,7 +204,7 @@ fn release_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
 }
 
 impl BorrowState for RuntimeBorrowState {
-    #[inline]
+    #[inline(always)]
     fn acquire<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]) {
         if !self.borrowed.get() {
             acquire(query, filter, archetypes);
@@ -212,7 +212,7 @@ impl BorrowState for RuntimeBorrowState {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn release<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]) {
         if !self.borrowed.take() {
             return;
@@ -221,7 +221,7 @@ impl BorrowState for RuntimeBorrowState {
         release(query, filter, archetypes);
     }
 
-    #[inline]
+    #[inline(always)]
     fn with<Q: Query, F: Query, R>(
         &self,
         query: &Q,

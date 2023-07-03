@@ -13,7 +13,7 @@ pub struct ActionBuffer {
 
 impl ActionBuffer {
     /// Returns new empty action buffer.
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         Self {
             actions: VecDeque::new(),
@@ -28,7 +28,7 @@ impl ActionBuffer {
     ///
     /// Actions should be executed on the same [`World`],
     /// otherwise entity ids will not refer to the correct entities.
-    #[inline]
+    #[inline(always)]
     pub fn encoder<'a>(&'a mut self, world: &'a World) -> ActionEncoder<'a> {
         ActionEncoder::new(self, world.entities())
     }
@@ -45,7 +45,7 @@ impl ActionBuffer {
     /// transitively triggers the same hook again.
     ///
     /// Returns `true` if at least one action was executed.
-    #[inline]
+    #[inline(always)]
     pub fn execute(&mut self, world: &mut World) -> bool {
         if self.actions.is_empty() {
             return false;

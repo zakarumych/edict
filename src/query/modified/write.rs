@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{phantom::PhantomQuery, Access, Fetch, IntoQuery, Query},
+    query::{write::Write, Access, Fetch, IntoQuery, Query},
 };
 
 use super::Modified;
@@ -24,7 +24,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchWrite {
             after_epoch: EpochId::start(),
@@ -36,25 +36,25 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_epoch.bump(self.epoch);
@@ -67,6 +67,20 @@ impl<T> IntoQuery for Modified<&mut T>
 where
     T: Send + 'static,
 {
+    type Query = Modified<Write<T>>;
+
+    fn into_query(self) -> Modified<Write<T>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Write<T>>
+where
+    T: Send + 'static,
+{
     type Query = Self;
 
     fn into_query(self) -> Self {
@@ -74,7 +88,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<&mut T>
+unsafe impl<T> Query for Modified<Write<T>>
 where
     T: Send + 'static,
 {
@@ -83,17 +97,17 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(ty)
+        Write::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data_mut();
@@ -102,12 +116,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -135,6 +149,20 @@ impl<T> IntoQuery for Modified<Option<&mut T>>
 where
     T: Send + 'static,
 {
+    type Query = Modified<Option<Write<T>>>;
+
+    fn into_query(self) -> Modified<Option<Write<T>>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Option<Write<T>>>
+where
+    T: Send + 'static,
+{
     type Query = Self;
 
     fn into_query(self) -> Self {
@@ -142,7 +170,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Option<&mut T>>
+unsafe impl<T> Query for Modified<Option<Write<T>>>
 where
     T: Send + 'static,
 {
@@ -151,17 +179,17 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(ty)
+        Write::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -170,10 +198,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+            debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -183,7 +211,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

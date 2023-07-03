@@ -93,14 +93,14 @@ impl WorldBuilder {
 impl World {
     /// Returns new instance of [`World`].
     /// Created [`World`] instance contains no entities.
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         Self::builder().build()
     }
 
     /// Returns new instance of [`WorldBuilder`].
     /// This allows pre-register component types and override their behavior.
-    #[inline]
+    #[inline(always)]
     pub const fn builder() -> WorldBuilder {
         WorldBuilder::new()
     }

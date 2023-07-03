@@ -20,6 +20,7 @@ pub trait BooleanFetchOp: Send + 'static {
 pub enum AndOp {}
 
 impl BooleanFetchOp for AndOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a && b {
             ControlFlow::Continue(true)
@@ -28,6 +29,7 @@ impl BooleanFetchOp for AndOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, count: usize) -> bool {
         mask == (1 << count) - 1
     }
@@ -36,6 +38,7 @@ impl BooleanFetchOp for AndOp {
 pub enum OrOp {}
 
 impl BooleanFetchOp for OrOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a || b {
             ControlFlow::Break(true)
@@ -44,6 +47,7 @@ impl BooleanFetchOp for OrOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, _count: usize) -> bool {
         mask != 0
     }
@@ -52,6 +56,7 @@ impl BooleanFetchOp for OrOp {
 pub enum XorOp {}
 
 impl BooleanFetchOp for XorOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         match (a, b) {
             (false, false) => ControlFlow::Continue(false),
@@ -60,6 +65,7 @@ impl BooleanFetchOp for XorOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, _count: usize) -> bool {
         mask.is_power_of_two()
     }
@@ -77,6 +83,7 @@ impl<T, Op> Clone for BooleanQuery<T, Op>
 where
     T: Clone,
 {
+    #[inline(always)]
     fn clone(&self) -> Self {
         BooleanQuery {
             tuple: self.tuple.clone(),
@@ -89,6 +96,7 @@ impl<T, Op> Copy for BooleanQuery<T, Op> where T: Copy {}
 
 impl<T, Op> BooleanQuery<T, Op> {
     /// Creates a new [`BooleanQuery`].
+    #[inline(always)]
     pub fn from_tuple(tuple: T) -> Self {
         BooleanQuery {
             tuple,
@@ -241,8 +249,8 @@ macro_rules! impl_boolean {
             $($a: Query,)+
             Op: BooleanFetchOp,
         {
-            type Item<'a> = ($(Option<$a::Item<'a>>,)+);
-            type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op>;
+            type Item<'a> = ($(Option<$a::Item<'a>>,)+) where $($a: 'a,)+;
+            type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op> where $($a: 'a,)+;
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
 
@@ -294,7 +302,7 @@ macro_rules! impl_boolean {
                 }
             }
 
-            #[inline]
+            #[inline(always)]
             fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;

@@ -21,7 +21,7 @@ where
 {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FilterFetchRelatesTo {
             target: EntityId::dangling(),
@@ -30,7 +30,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         origin_component
@@ -39,7 +39,7 @@ where
             .any(|origin| origin.target == self.target)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, _: u32) -> () {}
 }
 
@@ -83,7 +83,7 @@ where
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
             Some(Access::Read)
@@ -92,17 +92,17 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

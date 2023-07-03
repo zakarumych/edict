@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{read::Read, Access, Fetch, ImmutableQuery, IntoQuery, Query},
 };
 
 use super::Modified;
@@ -23,7 +23,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchRead {
             after_epoch: EpochId::start(),
@@ -34,19 +34,19 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         &*self.ptr.as_ptr().add(idx as usize)
     }
@@ -56,15 +56,30 @@ impl<T> IntoQuery for Modified<&T>
 where
     T: Sync + 'static,
 {
+    type Query = Modified<Read<T>>;
+
+    #[inline(always)]
+    fn into_query(self) -> Modified<Read<T>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Read<T>>
+where
+    T: Sync + 'static,
+{
     type Query = Self;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
 }
 
-unsafe impl<T> Query for Modified<&T>
+unsafe impl<T> Query for Modified<Read<T>>
 where
     T: Sync + 'static,
 {
@@ -73,17 +88,17 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(ty)
+        Read::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -92,12 +107,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -119,9 +134,23 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<&T> where T: Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Read<T>> where T: Sync + 'static {}
 
 impl<T> IntoQuery for Modified<Option<&T>>
+where
+    T: Sync + 'static,
+{
+    type Query = Modified<Option<Read<T>>>;
+
+    fn into_query(self) -> Modified<Option<Read<T>>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Option<Read<T>>>
 where
     T: Sync + 'static,
 {
@@ -132,7 +161,7 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Option<&T>>
+unsafe impl<T> Query for Modified<Option<Read<T>>>
 where
     T: Sync + 'static,
 {
@@ -141,17 +170,17 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(ty)
+        Read::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -160,10 +189,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
+            debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -173,7 +202,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -201,4 +230,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Option<&T>> where T: Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Option<Read<T>>> where T: Sync + 'static {}

@@ -14,7 +14,7 @@ impl World {
     /// Returns `Ok(Some(comp))` if component was removed.
     /// Returns `Ok(None)` if entity does not have component of this type.
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline]
+    #[inline(always)]
     pub fn remove<T>(&mut self, entity: impl Entity) -> Result<Option<T>, NoSuchEntity>
     where
         T: 'static,
@@ -59,7 +59,7 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline]
+    #[inline(always)]
     pub fn drop<T>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -70,14 +70,14 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline]
+    #[inline(always)]
     pub fn drop_erased(&mut self, entity: impl Entity, tid: TypeId) -> Result<(), NoSuchEntity> {
         with_buffer!(self, buffer => {
             self.drop_erased_with_buffer(entity, tid, buffer)
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn drop_erased_with_buffer(
         &mut self,
         entity: impl Entity,
@@ -153,7 +153,7 @@ impl World {
     ///
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn drop_bundle<B>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
@@ -163,7 +163,7 @@ impl World {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn drop_bundle_with_buffer<B>(
         &mut self,
         entity: impl Entity,

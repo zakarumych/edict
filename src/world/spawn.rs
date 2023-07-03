@@ -38,7 +38,7 @@ impl World {
     /// world.try_despawn(entity).unwrap();
     /// assert_eq!(world.is_alive(entity), false);
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn allocate(&self) -> EntityLoc<'_> {
         self.entities.alloc()
     }
@@ -62,7 +62,7 @@ impl World {
     /// let ExampleComponent = world.remove(entity).unwrap();
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn spawn<B>(&mut self, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
@@ -91,7 +91,7 @@ impl World {
     /// let ExampleComponent = world.remove(entity).unwrap();
     /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn spawn_with<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
@@ -129,7 +129,7 @@ impl World {
     /// assert_eq!(world.remove(entity), Ok(42u32));
     /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn spawn_external<B>(&mut self, bundle: B) -> EntityRef<'_>
     where
         B: DynamicBundle,
@@ -165,7 +165,7 @@ impl World {
     /// assert_eq!(world.remove(entity), Ok(42u32));
     /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn spawn_external_with_id<B>(&mut self, id: EntityId, bundle: B)
     where
         B: DynamicBundle,
@@ -255,7 +255,7 @@ impl World {
     ///
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -288,7 +288,7 @@ impl World {
     /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
     /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
-    #[inline]
+    #[inline(always)]
     pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -370,7 +370,7 @@ impl World {
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn despawn(&mut self, entity: impl AliveEntity) {
         with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
             .expect("Entity should be alive");
@@ -388,12 +388,12 @@ impl World {
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
-    #[inline]
+    #[inline(always)]
     pub fn try_despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
         with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn despawn_with_buffer(
         &mut self,
         entity: impl Entity,

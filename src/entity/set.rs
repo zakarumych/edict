@@ -43,10 +43,7 @@ impl Location {
     }
 }
 
-/// Collection of entities with mapping to location.
-/// Unlike maps, this collection allocates entity IDs.
-/// User may affect this process by providing custom [`IdRangeAllocator`].
-/// By default allocates IDs from range `1..u64::MAX` sequentially.
+/// Collection of entities with mapping to their location.
 ///
 /// User typically interacts with `World` that contains `EntitySet` internally.
 /// When API needs `EntitySet`, `World::entities()` method is used to get it.

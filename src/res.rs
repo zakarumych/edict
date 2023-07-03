@@ -55,7 +55,7 @@ impl Debug for Res {
 
 impl Res {
     /// Returns a new empty resource container.
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         Res {
             resources: HashMap::new(),
@@ -115,7 +115,7 @@ impl Res {
 
     /// Returns some reference to `Sync` resource.
     /// Returns none if resource is not found.
-    #[inline]
+    #[inline(always)]
     pub fn get<T: Sync + 'static>(&self) -> Option<Ref<T>> {
         unsafe {
             // # Safety
@@ -127,7 +127,7 @@ impl Res {
 
     /// Returns some mutable reference to `Send` resource.
     /// Returns none if resource is not found.
-    #[inline]
+    #[inline(always)]
     pub fn get_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
         unsafe {
             // # Safety
@@ -147,7 +147,7 @@ impl Res {
     ///
     /// If `T` is `Sync` then this method is always safe.
     /// In this case prefer to use [`get`] method instead.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
         let id = TypeId::of::<T>();
 
@@ -172,7 +172,7 @@ impl Res {
     ///
     /// If `T` is `Send` then this method is always safe.
     /// In this case prefer to use [`get_mut`] method instead.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
         let id = TypeId::of::<T>();
 
@@ -196,7 +196,7 @@ impl Res {
     }
 
     /// Returns iterator over resource types.
-    #[inline]
+    #[inline(always)]
     pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
         self.resources.keys().copied()
     }

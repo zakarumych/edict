@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{filter::With, phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{filter::With, Access, Fetch, ImmutableQuery, IntoQuery, Query},
 };
 
 use super::Modified;
@@ -22,7 +22,7 @@ where
 {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchWith {
             after_epoch: EpochId::start(),
@@ -32,19 +32,19 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, _: u32) {}
 }
 
@@ -68,17 +68,17 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <With<T> as PhantomQuery>::access(ty)
+        With::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<With<T> as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(With::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -87,12 +87,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

@@ -6,9 +6,9 @@ use crate::{
     query::{Fetch, Query, QueryItem},
 };
 
-use super::{BorrowState, StaticallyBorrowed, ViewState};
+use super::{BorrowState, StaticallyBorrowed, ViewValue};
 
-impl<'a, Q, F, B> ViewState<'a, Q, F, B>
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
     Q: Query,
     F: Query,
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> IntoIterator for ViewState<'a, Q, F, B>
+impl<'a, Q, F, B> IntoIterator for ViewValue<'a, Q, F, B>
 where
     Q: Query,
     F: Query,
@@ -103,7 +103,7 @@ where
 {
     type Item = QueryItem<'a, Q>;
 
-    #[inline]
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let upper = self
             .archetypes_iter
@@ -121,7 +121,7 @@ where
         (0, Some(upper))
     }
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<QueryItem<'a, Q>> {
         loop {
             match self.indices.next() {

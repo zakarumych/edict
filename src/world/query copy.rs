@@ -36,7 +36,7 @@ macro_rules! impl_extend {
         {
             type Output = ($($a,)* Add,);
 
-            #[inline]
+            #[inline(always)]
             fn extend_tuple(self, add: Add) -> Self::Output {
                 #![allow(non_snake_case)]
                 let ($($a,)*) = self;
@@ -90,7 +90,7 @@ where
     F: IntoQuery,
 {
     /// Constructs query from query part, filter part and world.
-    #[inline]
+    #[inline(always)]
     pub fn new(world: &'a World, query: Q::Query, filter: F::Query) -> Self {
         QueryRef {
             archetypes: world.archetypes(),
@@ -102,7 +102,7 @@ where
     }
 
     /// Constructs query from query part, filter part and world.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World, query: Q::Query, filter: F::Query) -> Self {
         QueryRef {
             archetypes: world.archetypes(),
@@ -113,7 +113,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn deconstruct(self) -> QueryRefParts<'a, Q, F> {
         let mut me = ManuallyDrop::new(self);
         me.release();
@@ -128,7 +128,7 @@ where
     }
 
     /// Creates new layer of tuples of mutable query.
-    #[inline]
+    #[inline(always)]
     pub fn layer(self) -> QueryRef<'a, (Q,), F> {
         let parts = self.deconstruct();
 
@@ -145,7 +145,7 @@ where
     }
 
     /// Adds specified query.
-    #[inline]
+    #[inline(always)]
     pub fn extend_query<T>(self, query: T) -> QueryRef<'a, TuplePlus<Q, T::Query>, F>
     where
         T: IntoQuery,
@@ -168,7 +168,7 @@ where
     }
 
     /// Adds filter that skips entities that don't have specified component.
-    #[inline]
+    #[inline(always)]
     pub fn with<T>(self) -> QueryRef<'a, Q, (With<T>, F)>
     where
         T: 'static,
@@ -188,7 +188,7 @@ where
     }
 
     /// Adds filter that skips entities that have specified component.
-    #[inline]
+    #[inline(always)]
     pub fn without<T>(self) -> QueryRef<'a, Q, (Without<T>, F)>
     where
         T: 'static,
@@ -208,7 +208,7 @@ where
     }
 
     /// Adds filter to the query.
-    #[inline]
+    #[inline(always)]
     pub fn filter<T>(self, filter: T) -> QueryRef<'a, Q, (T, F)>
     where
         T: ImmutableQuery,
@@ -228,7 +228,7 @@ where
     }
 
     /// Adds query to fetch modified components.
-    #[inline]
+    #[inline(always)]
     pub fn modified<T>(self, after_epoch: EpochId) -> QueryRef<'a, TuplePlus<Q, Modified<T>>, F>
     where
         Modified<T>: Query,
@@ -254,7 +254,7 @@ where
     }
 
     /// Adds query to fetch modified components.
-    #[inline]
+    #[inline(always)]
     pub fn filter_modified<T>(self, after_epoch: EpochId) -> QueryRef<'a, Q, (Modified<With<T>>, F)>
     where
         T: 'static,
@@ -274,7 +274,7 @@ where
     }
 
     /// Adds query to fetch copy of component.
-    #[inline]
+    #[inline(always)]
     pub fn copied<T>(self) -> QueryRef<'a, TuplePlus<Q, Copied<T>>, F>
     where
         Copied<T>: PhantomQuery,
@@ -298,7 +298,7 @@ where
     }
 
     /// Extends query to borrow from components.
-    #[inline]
+    #[inline(always)]
     pub fn borrow_any<T>(self) -> QueryRef<'a, TuplePlus<Q, QueryBorrowAny<T>>, F>
     where
         QueryBorrowAny<T>: PhantomQuery,
@@ -322,7 +322,7 @@ where
     }
 
     /// Extends query to borrow from components.
-    #[inline]
+    #[inline(always)]
     pub fn borrow_one<T>(self, id: TypeId) -> QueryRef<'a, TuplePlus<Q, QueryBorrowOne<T>>, F>
     where
         QueryBorrowOne<T>: Query,
@@ -348,7 +348,7 @@ where
     }
 
     /// Extends query to borrow from components.
-    #[inline]
+    #[inline(always)]
     pub fn borrow_all<T>(self) -> QueryRef<'a, TuplePlus<Q, QueryBorrowAll<T>>, F>
     where
         QueryBorrowAll<T>: PhantomQuery,
@@ -372,7 +372,7 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[inline]
+    #[inline(always)]
     pub fn relates<R>(self) -> QueryRef<'a, TuplePlus<Q, Relates<R>>, F>
     where
         Relates<R>: PhantomQuery,
@@ -396,7 +396,7 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[inline]
+    #[inline(always)]
     pub fn relates_exclusive<R>(self) -> QueryRef<'a, TuplePlus<Q, RelatesExclusive<R>>, F>
     where
         RelatesExclusive<R>: PhantomQuery,
@@ -420,7 +420,7 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[inline]
+    #[inline(always)]
     pub fn relates_to<R>(self, id: EntityId) -> QueryRef<'a, TuplePlus<Q, RelatesTo<R>>, F>
     where
         RelatesTo<R>: Query,
@@ -443,7 +443,7 @@ where
     }
 
     /// Adds query to fetch relation.
-    #[inline]
+    #[inline(always)]
     pub fn related<R>(self) -> QueryRef<'a, TuplePlus<Q, Related<R>>, F>
     where
         Related<R>: PhantomQuery,
@@ -619,7 +619,7 @@ where
     /// Returns iterator over query results.
     ///
     /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
-    #[inline]
+    #[inline(always)]
     pub fn iter(&self) -> QueryIter<'_, FilteredQuery<F::Query, Q::Query>>
     where
         Q::Query: ImmutableQuery + Clone,
@@ -635,7 +635,7 @@ where
     /// Returns iterator over query results.
     ///
     /// Returned iterator borrows lifetime from this [`QueryRef`] instance.
-    #[inline]
+    #[inline(always)]
     pub fn iter_mut(&mut self) -> QueryIter<'_, MutQuery<FilteredQuery<F::Query, Q::Query>>> {
         self.ensure_borrow();
 
@@ -658,7 +658,7 @@ where
     /// and closure receives `None` for some entity,
     /// A query with `&mut Component` can be used inside the closure.
     /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
-    #[inline]
+    #[inline(always)]
     pub fn for_each<Fun>(&mut self, mut f: Fun)
     where
         Fun: for<'b> FnMut(QueryItem<'b, Q>),
@@ -677,7 +677,7 @@ where
     /// and closure receives `None` for some entity,
     /// A query with `&mut Component` can be used inside the closure.
     /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
-    #[inline]
+    #[inline(always)]
     pub fn try_for_each<E, Fun>(&mut self, mut f: Fun) -> Result<(), E>
     where
         Fun: for<'b> FnMut(QueryItem<'b, Q>) -> Result<(), E>,
@@ -695,7 +695,7 @@ where
     /// and closure receives `None` for some entity,
     /// A query with `&mut Component` can be used inside the closure.
     /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
-    #[inline]
+    #[inline(always)]
     pub fn fold<T, Fun>(&mut self, acc: T, mut f: Fun) -> T
     where
         Fun: for<'b> FnMut(T, QueryItem<'b, Q>) -> T,
@@ -719,7 +719,7 @@ where
     /// and closure receives `None` for some entity,
     /// A query with `&mut Component` can be used inside the closure.
     /// This is not possible with iterator returned by `QueryRef` and `Iterator::for_each` method.
-    #[inline]
+    #[inline(always)]
     pub fn try_fold<T, E, Fun>(&mut self, acc: T, f: Fun) -> Result<T, E>
     where
         Fun: for<'b> FnMut(T, QueryItem<'b, Q>) -> Result<T, E>,
@@ -746,7 +746,7 @@ where
     type Item = QueryItem<'a, Q>;
     type IntoIter = QueryIter<'a, MutQuery<'a, FilteredQuery<F::Query, Q::Query>>>;
 
-    #[inline]
+    #[inline(always)]
     fn into_iter(self) -> QueryIter<'a, MutQuery<'a, FilteredQuery<F::Query, Q::Query>>> {
         self.iter_mut()
     }
@@ -762,7 +762,7 @@ where
     type Item = QueryItem<'a, Q>;
     type IntoIter = QueryIter<'a, FilteredQuery<F::Query, Q::Query>>;
 
-    #[inline]
+    #[inline(always)]
     fn into_iter(self) -> QueryIter<'a, FilteredQuery<F::Query, Q::Query>> {
         self.iter()
     }
@@ -1096,7 +1096,7 @@ impl<'a, Q> Drop for QueryOne<'a, Q>
 where
     Q: IntoQuery,
 {
-    #[inline]
+    #[inline(always)]
     fn drop(&mut self) {
         if *self.borrowed.get_mut() {
             if let QueryOneState::Existing(archetype, _) = self.state {
@@ -1199,7 +1199,7 @@ where
     where
         Q: Query,
     {
-        #[inline]
+        #[inline(always)]
         fn drop(&mut self) {
             unsafe {
                 self.query.access_archetype(self.archetype, &|id, access| {

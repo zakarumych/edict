@@ -37,7 +37,7 @@ pub(super) struct DumpQuery<T> {
 }
 
 impl<T> DumpQuery<T> {
-    #[inline]
+    #[inline(always)]
     pub fn new(after_epoch: EpochId) -> Self {
         DumpQuery {
             after_epoch,
@@ -59,7 +59,7 @@ where
 {
     type Item = DumpItem<'a, T>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         DumpFetch {
             after_epoch: EpochId::start(),
@@ -69,7 +69,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> DumpItem<'a, T> {
         match self.ptr {
             None => DumpItem::Missing,
@@ -112,24 +112,24 @@ macro_rules! impl_dump_query {
 
             const MUTABLE: bool = false;
 
-            #[inline]
+            #[inline(always)]
             fn access(&self, ty: TypeId) -> Option<Access> {
                 let mut result = None;
                 $(result = merge_access::<Self>(result, <&$a as PhantomQuery>::access(ty));)*
                 result
             }
 
-            #[inline]
+            #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 false $(|| archetype.has_component(TypeId::of::<$a>()))*
             }
 
-            #[inline]
+            #[inline(always)]
             unsafe fn access_archetype(&self, _archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
                 $(f(TypeId::of::<$a>(), Access::Read);)*
             }
 
-            #[inline]
+            #[inline(always)]
             unsafe fn fetch<'a>(
                 &self,
                 arch_idx: u32,

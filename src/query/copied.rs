@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId};
 
-use super::{phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery, ImmutableQuery};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -17,7 +17,7 @@ where
 {
     type Item = T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchCopied {
             ptr: NonNull::dangling(),
@@ -25,28 +25,42 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> T {
         *self.ptr.as_ptr().add(idx as usize)
     }
 }
 
-/// Query to yield copies of specified component.
-///
-/// Skips entities that don't have the component.
-pub struct Copied<T>(T);
+marker_type! {
+    /// Query for fetching a copy of a component.
+    /// Borrows component immutably and yields a copy.
+    /// Prefer this over [`&T`] or [`Read<T>`] for small `Copy` types.
+    pub struct Cpy<T>;
+}
 
-impl<T> Copied<T>
+impl<T> IntoQuery for Cpy<T>
 where
     T: Copy + Sync + 'static,
 {
-    /// Creates a new [`Copied`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
     }
 }
 
-unsafe impl<T> PhantomQuery for Copied<T>
+impl<T> DefaultQuery for Cpy<T>
+where
+    T: Copy + Sync + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        Cpy
+    }
+}
+
+unsafe impl<T> Query for Cpy<T>
 where
     T: Copy + Sync + 'static,
 {
@@ -55,8 +69,8 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<T>() {
             Some(Access::Read)
         } else {
@@ -64,18 +78,19 @@ where
         }
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
@@ -92,16 +107,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for Copied<T> where T: Copy + Sync + 'static {}
-
-/// Returns query that yields copies of specified component
-/// for each entity that has that component.
-///
-/// Skips entities that don't have the component.
-pub fn copied<T>() -> PhantomData<fn() -> Copied<T>>
-where
-    T: Sync,
-    for<'a> PhantomData<fn() -> Copied<T>>: ImmutableQuery,
-{
-    PhantomData
-}
+unsafe impl<T> ImmutableQuery for Cpy<T> where T: Copy + Sync + 'static {}

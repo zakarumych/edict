@@ -5,7 +5,6 @@ use crate::{
     epoch::EpochId,
     query::{
         alt::{Alt, RefMut},
-        phantom::PhantomQuery,
         Access, Fetch, IntoQuery, Query,
     },
 };
@@ -29,7 +28,7 @@ where
 {
     type Item = RefMut<'a, T>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchAlt {
             after_epoch: EpochId::start(),
@@ -42,19 +41,19 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let epoch = &*self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         epoch.get().after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> RefMut<'a, T> {
         let archetype_epoch = &mut *self.archetype_epoch.as_ptr();
         let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx) as usize);
@@ -78,7 +77,7 @@ where
 {
     type Query = Self;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
     }
@@ -93,17 +92,17 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <Alt<T> as PhantomQuery>::access(ty)
+        Alt::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Alt::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data_mut();
@@ -112,12 +111,12 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -150,7 +149,7 @@ where
 {
     type Query = Self;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
     }
@@ -165,17 +164,17 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
+    #[inline(always)]
     fn access(&self, ty: TypeId) -> Option<Access> {
-        <Alt<T> as PhantomQuery>::access(ty)
+        Alt::<T>.access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Alt::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -184,10 +183,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(<Alt<T> as PhantomQuery>::visit_archetype(archetype), true);
+            debug_assert_eq!(Alt::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -197,7 +196,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

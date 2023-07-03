@@ -4,35 +4,15 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
+    query::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write},
     relation::{OriginComponent, Relation},
 };
 
-phantom_newtype! {
+marker_type! {
     /// Query for origins of relation.
     ///
     /// Yields relation instance and target.
-    pub struct RelatesExclusive<R>
-}
-
-impl<R> RelatesExclusive<&R>
-where
-    R: Relation + Sync,
-{
-    /// Creates a new [`RelatesExclusive`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
-}
-
-impl<R> RelatesExclusive<&mut R>
-where
-    R: Relation + Send,
-{
-    /// Creates a new [`RelatesExclusive`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
+    pub struct RelatesExclusive<R>;
 }
 
 /// Fetch for the [`RelatesExclusive<&R>`] query.
@@ -47,7 +27,7 @@ where
 {
     type Item = (&'a R, EntityId);
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRelatesExclusiveRead {
             ptr: NonNull::dangling(),
@@ -55,7 +35,7 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a R, EntityId) {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let origin = &origin_component.relations()[0];
@@ -63,7 +43,51 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for RelatesExclusive<&'static R>
+impl<R> IntoQuery for RelatesExclusive<&R>
+where
+    R: Relation + Sync,
+{
+    type Query = RelatesExclusive<Read<R>>;
+
+    #[inline(always)]
+    fn into_query(self) -> RelatesExclusive<Read<R>> {
+        RelatesExclusive
+    }
+}
+
+impl<R> DefaultQuery for RelatesExclusive<&R>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn default_query() -> RelatesExclusive<Read<R>> {
+        RelatesExclusive
+    }
+}
+
+impl<R> IntoQuery for RelatesExclusive<Read<R>>
+where
+    R: Relation + Sync,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for RelatesExclusive<Read<R>>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        RelatesExclusive
+    }
+}
+
+unsafe impl<R> Query for RelatesExclusive<Read<R>>
 where
     R: Relation + Sync,
 {
@@ -72,8 +96,8 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
             Some(Access::Read)
         } else {
@@ -81,17 +105,18 @@ where
         }
     }
 
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
@@ -118,7 +143,7 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for RelatesExclusive<&'static R> where R: Relation + Sync {}
+unsafe impl<R> ImmutableQuery for RelatesExclusive<Read<R>> where R: Relation + Sync {}
 
 /// Fetch for the [`RelatesExclusive<&mut R>`] query.
 pub struct FetchRelatesExclusiveWrite<'a, R: Relation> {
@@ -135,7 +160,7 @@ where
 {
     type Item = (&'a mut R, EntityId);
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRelatesExclusiveWrite {
             epoch: EpochId::start(),
@@ -146,13 +171,13 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a mut R, EntityId) {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -163,7 +188,51 @@ where
     }
 }
 
-unsafe impl<R> PhantomQuery for RelatesExclusive<&'static mut R>
+impl<R> IntoQuery for RelatesExclusive<&mut R>
+where
+    R: Relation + Send,
+{
+    type Query = RelatesExclusive<Write<R>>;
+
+    #[inline(always)]
+    fn into_query(self) -> RelatesExclusive<Write<R>> {
+        RelatesExclusive
+    }
+}
+
+impl<R> DefaultQuery for RelatesExclusive<&mut R>
+where
+    R: Relation + Send,
+{
+    #[inline(always)]
+    fn default_query() -> RelatesExclusive<Write<R>> {
+        RelatesExclusive
+    }
+}
+
+impl<R> IntoQuery for RelatesExclusive<Write<R>>
+where
+    R: Relation + Send,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for RelatesExclusive<Write<R>>
+where
+    R: Relation + Send,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        RelatesExclusive
+    }
+}
+
+unsafe impl<R> Query for RelatesExclusive<Write<R>>
 where
     R: Relation + Send,
 {
@@ -172,8 +241,8 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<OriginComponent<R>>() {
             Some(Access::Write)
         } else {
@@ -181,18 +250,19 @@ where
         }
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,

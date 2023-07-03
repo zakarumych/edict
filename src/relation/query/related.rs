@@ -4,24 +4,36 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
+    query::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query},
     relation::{Relation, TargetComponent},
 };
 
-phantom_newtype! {
+marker_type! {
     /// Query for target of relation.
     ///
     /// Yields slices of origin ids for each target.
-    pub struct Related<R>
+    pub struct Related<R>;
 }
 
-impl<R> Related<R>
+impl<R> IntoQuery for Related<R>
 where
     R: Relation,
 {
-    /// Creates a new [`Related`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Related<R>
+where
+    R: Relation,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        Related
     }
 }
 
@@ -37,7 +49,7 @@ where
 {
     type Item = &'a [EntityId];
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRelated {
             ptr: NonNull::dangling(),
@@ -45,14 +57,14 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a [EntityId] {
         let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         &component.origins[..]
     }
 }
 
-unsafe impl<R> PhantomQuery for Related<R>
+unsafe impl<R> Query for Related<R>
 where
     R: Relation,
 {
@@ -61,8 +73,8 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn access(&self, ty: TypeId) -> Option<Access> {
         if ty == TypeId::of::<TargetComponent<R>>() {
             Some(Access::Read)
         } else {
@@ -70,18 +82,19 @@ where
         }
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<TargetComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<TargetComponent<R>>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
@@ -102,4 +115,4 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for Related<R> where R: Relation {}
+unsafe impl<R> ImmutableQuery for Related<R> where R: Relation {}

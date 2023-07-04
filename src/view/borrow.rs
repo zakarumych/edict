@@ -37,8 +37,9 @@ impl RuntimeBorrowState {
     }
 }
 
+/// Acquire borrow on archetypes.
 #[inline(always)]
-fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
+pub fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetypes: &'a [Archetype],
         query: &'a Q,
@@ -105,8 +106,9 @@ fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) 
     core::mem::forget(guard);
 }
 
+/// Release borrow on archetypes.
 #[inline(always)]
-fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
+pub fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
     for archetype in archetypes {
         unsafe {
             if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {

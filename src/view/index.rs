@@ -86,7 +86,7 @@ where
         debug_assert_ne!(loc.arch, u32::MAX);
 
         let archetype = &self.archetypes[loc.arch as usize];
-        get_at(&self.query, &self.filter, self.epochs, archetype, loc)
+        get_at(self.query, self.filter, self.epochs, archetype, loc)
     }
 }
 

@@ -20,6 +20,7 @@ pub use self::{
         ResState,
     },
     state::{State, StateState},
+    view::QueryArg,
     world::{WorldReadState, WorldWriteState},
 };
 
@@ -92,12 +93,11 @@ pub unsafe trait FnArgState: Send + 'static {
         queue: &mut dyn ActionQueue,
     ) -> Self::Arg<'a>;
 
-    /// Flushes state to the world.
-    /// This method provides an opportunity for argument state to do a cleanup of flushing.
-    ///
-    /// For instance `ActionEncoderState` - a state type for `ActionEncoder` argument - flushes `ActionEncoder` to `ActionQueue`.
+    /// Flushes the argument state.
+    /// This method is called after system execution, when `Arg` is already dropped.
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
+        drop(world);
         drop(queue);
     }
 }
@@ -171,7 +171,7 @@ macro_rules! impl_func {
                 }
 
                 $(
-                    unsafe { $a.flush_unchecked(queue) };
+                    unsafe { $a.flush_unchecked(world, queue) };
                 )*
             }
         }

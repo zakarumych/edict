@@ -214,8 +214,8 @@ pub enum MarkerVoid {}
 #[doc(hidden)]
 pub struct TypeParam<T: ?Sized>([*const T; 0]);
 
-unsafe impl<T: Send> Send for TypeParam<T> {}
-unsafe impl<T: Sync> Sync for TypeParam<T> {}
+unsafe impl<T: ?Sized> Send for TypeParam<T> {}
+unsafe impl<T: ?Sized> Sync for TypeParam<T> {}
 
 impl<T: ?Sized> Copy for TypeParam<T> {}
 impl<T: ?Sized> Clone for TypeParam<T> {

@@ -6,6 +6,7 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query},
+    system::QueryArg,
 };
 
 marker_type! {
@@ -94,6 +95,16 @@ where
     #[inline(always)]
     fn default_query() -> Self {
         QueryBorrowAll::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAll
     }
 }
 

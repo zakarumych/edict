@@ -1,6 +1,6 @@
 use core::any::{type_name, TypeId};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{
     fetch::UnitFetch, try_merge_access, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
@@ -181,8 +181,28 @@ where
     type Query = Not<T::Query>;
 
     #[inline(always)]
-    fn into_query(self) -> Self::Query {
+    fn into_query(self) -> Not<T::Query> {
         Not(self.0.into_query())
+    }
+}
+
+impl<T> DefaultQuery for Not<T>
+where
+    T: DefaultQuery,
+{
+    #[inline(always)]
+    fn default_query() -> Not<T::Query> {
+        Not(T::default_query())
+    }
+}
+
+impl<T> QueryArg for Not<T>
+where
+    T: QueryArg,
+{
+    #[inline(always)]
+    fn new() -> Not<T::Query> {
+        Not(T::new())
     }
 }
 

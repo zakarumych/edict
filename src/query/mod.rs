@@ -113,7 +113,7 @@ pub trait DefaultQuery: IntoQuery {
 /// references to the components and optionally [`EntityId`] to address same components later.
 ///
 /// [`EntityId`]: edict::entity::EntityId
-pub unsafe trait Query: IntoQuery<Query = Self> + 'static {
+pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Item type this query type yields.
     type Item<'a>: 'a;
 

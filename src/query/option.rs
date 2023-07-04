@@ -1,8 +1,8 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, Fetch, ImmutableQuery, IntoQuery, Query};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -61,6 +61,26 @@ where
     #[inline(always)]
     fn into_query(self) -> Self::Query {
         self.map(IntoQuery::into_query)
+    }
+}
+
+impl<T> DefaultQuery for Option<T>
+where
+    T: DefaultQuery,
+{
+    #[inline(always)]
+    fn default_query() -> Self::Query {
+        Some(T::default_query())
+    }
+}
+
+impl<T> QueryArg for Option<T>
+where
+    T: QueryArg,
+{
+    #[inline(always)]
+    fn new() -> Self::Query {
+        Some(T::new())
     }
 }
 

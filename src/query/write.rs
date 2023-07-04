@@ -1,6 +1,6 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{Access, DefaultQuery, Fetch, IntoQuery, Query};
 
@@ -90,6 +90,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Write<T> {
+        Write
+    }
+}
+
+impl<T> QueryArg for Write<T>
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn new() -> Write<T> {
         Write
     }
 }

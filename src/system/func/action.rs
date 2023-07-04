@@ -63,7 +63,7 @@ unsafe impl FnArgState for ActionEncoderState {
     }
 
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(&mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
         if let Some(buffer) = self.buffer.take() {
             queue.flush(buffer);
         }

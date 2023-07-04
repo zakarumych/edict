@@ -4,6 +4,8 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{copied::Cpy, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    system::QueryArg,
+    world::World,
 };
 
 use super::Modified;
@@ -60,6 +62,24 @@ where
 
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> QueryArg for Modified<Cpy<T>>
+where
+    T: Copy + Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
     }
 }
 

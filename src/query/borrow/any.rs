@@ -6,6 +6,7 @@ use crate::{
     query::{
         read::Read, write::Write, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
     },
+    system::QueryArg,
 };
 
 marker_type! {
@@ -87,6 +88,16 @@ where
     #[inline(always)]
     fn default_query() -> Self {
         QueryBorrowAny::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAny<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAny
     }
 }
 
@@ -233,6 +244,16 @@ where
     #[inline(always)]
     fn default_query() -> Self {
         QueryBorrowAny::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAny<Write<T>>
+where
+    T: Send + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAny
     }
 }
 

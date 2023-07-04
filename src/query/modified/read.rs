@@ -4,6 +4,8 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{read::Read, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    system::QueryArg,
+    world::World,
 };
 
 use super::Modified;
@@ -79,6 +81,24 @@ where
     }
 }
 
+impl<T> QueryArg for Modified<Read<T>>
+where
+    T: Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
+    }
+}
+
 unsafe impl<T> Query for Modified<Read<T>>
 where
     T: Sync + 'static,
@@ -142,6 +162,7 @@ where
 {
     type Query = Modified<Option<Read<T>>>;
 
+    #[inline(always)]
     fn into_query(self) -> Modified<Option<Read<T>>> {
         Modified {
             after_epoch: self.after_epoch,
@@ -156,6 +177,7 @@ where
 {
     type Query = Self;
 
+    #[inline(always)]
     fn into_query(self) -> Self {
         self
     }

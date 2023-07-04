@@ -122,8 +122,8 @@ where
     #[inline(always)]
     fn _get(&self) -> Option<QueryItem<Q>> {
         get_at(
-            &self.query,
-            &self.filter,
+            self.query,
+            self.filter,
             self.epochs,
             self.archetype,
             self.loc,

@@ -7,6 +7,7 @@ use crate::{
         alt::{Alt, RefMut},
         Access, Fetch, IntoQuery, Query,
     },
+    system::QueryArg,
 };
 
 use super::Modified;
@@ -80,6 +81,24 @@ where
     #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
+    }
+}
+
+impl<T> QueryArg for Modified<Alt<T>>
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &crate::world::World) {
+        self.after_epoch = world.epoch();
     }
 }
 

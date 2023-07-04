@@ -9,6 +9,7 @@ use core::{
 use crate::{
     archetype::{chunk_idx, Archetype},
     epoch::EpochId,
+    system::QueryArg,
 };
 
 use super::{Access, DefaultQuery, Fetch, IntoQuery, Query};
@@ -126,6 +127,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        Alt
+    }
+}
+
+impl<T> QueryArg for Alt<T>
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
         Alt
     }
 }

@@ -1,62 +1,62 @@
-use core::{any::TypeId, ptr::NonNull};
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
     query::{merge_access, Access, Query},
     system::ActionQueue,
-    view::{View, ViewValue},
+    view::{acquire, release, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
 };
 
 use super::{FnArg, FnArgState};
 
-/// State for an argument that is stored between calls to function-system.
-pub trait QueryArgState: Send + 'static {
-    /// Argument specified in [`View`]
-    type Arg<'a>: QueryArg<State = Self>;
-
-    /// Constructs new cache instance.
-    #[must_use]
+/// Query suitable for [`View`] args for function-systems.
+pub trait QueryArg: Query {
+    /// Creates new query state.
     fn new() -> Self;
 
-    /// Returns true if the query visits archetype.
-    #[must_use]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool;
+    /// Hook called before function-system runs to update the state.
+    #[inline(always)]
+    fn before(&mut self, world: &World) {
+        drop(world);
+    }
 
-    /// Returns some access type performed by the query.
-    #[must_use]
-    fn access_component(&self, id: TypeId) -> Option<Access>;
-
-    /// Returns query for an argument.
-    #[must_use]
-    fn get<'a>(&'a mut self, world: &'a World) -> Self::Arg<'a>;
-}
-
-/// Types that can be used as queries within [`View`] args for function-systems.
-pub trait QueryArg: Query {
-    /// State for the query that is stored between calls to function-system.
-    type State: QueryArgState;
+    /// Hook called after function-system runs to update the state.
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        drop(world);
+    }
 }
 
 /// State type used by corresponding [`QueryRef`].
 #[derive(Default)]
-pub struct ViewState<Q, F> {
+pub struct ViewState<Q, F, B> {
     query: Q,
     filter: F,
+    marker: PhantomData<B>,
 }
 
-unsafe impl<Q, F> FnArgState for ViewState<Q, F>
+impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, RuntimeBorrowState>
 where
-    Q: QueryArgState,
-    F: QueryArgState,
+    Q: QueryArg,
+    F: QueryArg,
 {
-    type Arg<'a> = View<'a, Q::Arg<'a>, F::Arg<'a>>;
+    type State = ViewState<Q, F, RuntimeBorrowState>;
+}
+
+unsafe impl<Q, F> FnArgState for ViewState<Q, F, RuntimeBorrowState>
+where
+    Q: QueryArg,
+    F: QueryArg,
+{
+    type Arg<'a> = ViewCell<'a, Q, F>;
 
     #[inline(always)]
     fn new() -> Self {
         ViewState {
             query: Q::new(),
             filter: F::new(),
+            marker: PhantomData,
         }
     }
 
@@ -77,10 +77,7 @@ where
 
     #[inline(always)]
     fn access_component(&self, id: TypeId) -> Option<Access> {
-        merge_access::<Self>(
-            self.query.access_component(id),
-            self.filter.access_component(id),
-        )
+        merge_access::<Self>(self.query.access(id), self.filter.access(id))
     }
 
     #[inline(always)]
@@ -93,75 +90,104 @@ where
         &'a mut self,
         world: NonNull<World>,
         _queue: &mut dyn ActionQueue,
-    ) -> View<'a, Q::Arg<'a>, F::Arg<'a>> {
+    ) -> ViewCell<'a, Q, F> {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
-        let query = self.query.get(world);
-        let filter = self.filter.get(world);
-        ViewValue::new(world, query, filter)
+        self.query.before(world);
+        self.filter.before(world);
+        ViewValue::new_cell(world, self.query, self.filter)
+    }
+
+    #[inline(always)]
+    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
+        self.query.after(world);
+        self.filter.after(world);
     }
 }
 
-impl<'a, Q, F, B> FnArg for ViewValue<'a, Q, F, B>
+impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, StaticallyBorrowed>
 where
     Q: QueryArg,
     F: QueryArg,
 {
-    type State = ViewState<Q::State, F::State>;
+    type State = ViewState<Q, F, StaticallyBorrowed>;
 }
 
-macro_rules! impl_query {
-    ($($a:ident)*) => {
-        #[allow(non_snake_case)]
-        #[allow(unused_parens, unused_variables, unused_mut)]
-        impl<$($a,)*> QueryArgState for ($($a,)*)
-        where
-            $($a: QueryArgState,)*
-        {
-            type Arg<'a> = ($($a::Arg<'a>,)*);
+unsafe impl<Q, F> FnArgState for ViewState<Q, F, StaticallyBorrowed>
+where
+    Q: QueryArg,
+    F: QueryArg,
+{
+    type Arg<'a> = ViewValue<'a, Q, F, StaticallyBorrowed>;
 
-            #[inline(always)]
-            fn new() -> Self {
-                ($($a::new(),)*)
-            }
-
-            #[inline(always)]
-            fn visit_archetype(&self, archetype: &Archetype) -> bool {
-                let ($($a,)*) = self;
-                true $(&& $a.visit_archetype(archetype))*
-            }
-
-            #[inline(always)]
-            fn access_component(&self, _id: TypeId) -> Option<Access> {
-                let ($($a,)*) = self;
-                let mut access = None;
-                $({
-                    access = merge_access::<Self>(access, $a.access_component(_id));
-                })*
-                access
-            }
-
-            #[inline(always)]
-            fn get<'a>(&'a mut self, world: &'a World) -> Self::Arg<'a> {
-                let ($($a,)*) = self;
-                ($($a::get($a, world),)*)
-            }
+    #[inline(always)]
+    fn new() -> Self {
+        ViewState {
+            query: Q::new(),
+            filter: F::new(),
+            marker: PhantomData,
         }
+    }
 
-        #[allow(non_snake_case)]
-        #[allow(unused_parens)]
-        impl<$($a),*> QueryArg for ($($a,)*)
-        where
-            $($a: QueryArg,)*
-        {
-            type State = ($($a::State,)*);
-        }
-    };
+    #[inline(always)]
+    fn is_local(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn world_access(&self) -> Option<Access> {
+        Some(Access::Read)
+    }
+
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.query.visit_archetype(archetype) && self.filter.visit_archetype(archetype)
+    }
+
+    #[inline(always)]
+    fn access_component(&self, id: TypeId) -> Option<Access> {
+        merge_access::<Self>(self.query.access(id), self.filter.access(id))
+    }
+
+    #[inline(always)]
+    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+        None
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
+        &'a mut self,
+        world: NonNull<World>,
+        _queue: &mut dyn ActionQueue,
+    ) -> View<'a, Q, F> {
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
+
+        #[cfg(debug_assertions)]
+        acquire(&self.query, &self.filter, world.archetypes());
+
+        self.query.before(world);
+        self.filter.before(world);
+
+        // Safety: Declares access for these queries.
+        unsafe { ViewValue::new_unchecked(world, self.query, self.filter) }
+    }
+
+    #[inline(always)]
+    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+        // Safety: Declares read access.
+        let world = unsafe { world.as_ref() };
+        self.query.after(world);
+        self.filter.after(world);
+
+        #[cfg(debug_assertions)]
+        release(&self.query, &self.filter, world.archetypes());
+    }
 }
-
-for_tuple!(impl_query);
 
 #[test]
 fn test_system() {
-    fn foo(_: View<&u32>) {}
+    fn foo(_: ViewCell<&u32>) {}
 }

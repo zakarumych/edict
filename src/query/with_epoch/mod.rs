@@ -1,6 +1,6 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
@@ -50,6 +50,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        EpochOf
+    }
+}
+
+impl<T> QueryArg for EpochOf<T>
+where
+    T: 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
         EpochOf
     }
 }

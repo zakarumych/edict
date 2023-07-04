@@ -3,6 +3,7 @@ use core::any::TypeId;
 use crate::{
     archetype::Archetype,
     entity::{EntityId, EntityLoc, Location},
+    system::QueryArg,
 };
 
 use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
@@ -48,7 +49,14 @@ impl IntoQuery for Entities {
 impl DefaultQuery for Entities {
     #[inline(always)]
     fn default_query() -> Self {
-        Entities::new()
+        Entities
+    }
+}
+
+impl QueryArg for Entities {
+    #[inline(always)]
+    fn new() -> Self {
+        Entities
     }
 }
 

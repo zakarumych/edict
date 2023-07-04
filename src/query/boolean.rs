@@ -1,11 +1,11 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, merge_access, Access, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
 /// Binary operator for [`BooleanQuery`].
-pub trait BooleanFetchOp: Send + 'static {
+pub trait BooleanFetchOp: 'static {
     /// Applies binary operator to two values.
     /// Returns `ControlFlow::Continue` if the operation should continue.
     /// Returns `ControlFlow::Break` if applying anything else would not change the result.
@@ -76,7 +76,7 @@ impl BooleanFetchOp for XorOp {
 /// Yields tuple of query items wrapper in `Option`.
 pub struct BooleanQuery<T, Op> {
     tuple: T,
-    op: PhantomData<Op>,
+    op: PhantomData<fn() -> Op>,
 }
 
 impl<T, Op> Clone for BooleanQuery<T, Op>
@@ -241,6 +241,33 @@ macro_rules! impl_boolean {
             }
         }
 
+        impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: DefaultQuery,)+
+            Op: BooleanFetchOp,
+        {
+            #[inline(always)]
+            fn default_query() -> Self::Query {
+                BooleanQuery {
+                    tuple: ($($a::default_query(),)+),
+                    op: PhantomData,
+                }
+            }
+        }
+
+        impl<Op $(, $a)+> QueryArg for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: QueryArg,)+
+            Op: BooleanFetchOp,
+        {
+            #[inline(always)]
+            fn new() -> Self {
+                BooleanQuery {
+                    tuple: ($($a::new(),)+),
+                    op: PhantomData,
+                }
+            }
+        }
 
         #[allow(non_snake_case)]
         #[allow(unused_variables, unused_mut, unused_assignments)]

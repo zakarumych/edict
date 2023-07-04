@@ -48,17 +48,3 @@ impl<T> Modified<T> {
         self.after_epoch
     }
 }
-
-pub struct ModifiedCache<T> {
-    after_epoch: EpochId,
-    marker: PhantomData<fn() -> T>,
-}
-
-impl<T> Default for ModifiedCache<T> {
-    fn default() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-}

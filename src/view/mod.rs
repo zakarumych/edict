@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub use self::{
-    borrow::{BorrowState, RuntimeBorrowState, StaticallyBorrowed},
+    borrow::{acquire, release, BorrowState, RuntimeBorrowState, StaticallyBorrowed},
     one::{ViewOne, ViewOneState},
 };
 
@@ -35,12 +35,12 @@ pub struct ViewValue<'a, Q: Query, F: Query, B> {
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
-pub type View<'a, Q, F = (), B = RuntimeBorrowState> =
+pub type ViewCell<'a, Q, F = (), B = RuntimeBorrowState> =
     ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
-pub type ViewMut<'a, Q, F = ()> =
+pub type View<'a, Q, F = ()> =
     ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
 
 impl<'a, Q, F> ViewValue<'a, Q, F, StaticallyBorrowed>
@@ -54,7 +54,7 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn new_mut(world: &'a mut World, query: Q, filter: F) -> Self {
+    pub fn new(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewValue {
             query: query.into_query(),
             filter: filter.into_query(),
@@ -92,7 +92,7 @@ where
     ///
     /// Uses user-provided query and filter.
     #[inline(always)]
-    pub fn new(world: &'a World, query: Q, filter: F) -> Self {
+    pub fn new_cell(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
             query: query.into_query(),
             filter: filter.into_query(),
@@ -118,8 +118,8 @@ fn expect_alive<T>(value: Option<T>) -> T {
 
 #[inline(always)]
 fn get_at<'a, Q, F>(
-    query: &Q,
-    filter: &F,
+    query: Q,
+    filter: F,
     epochs: &EpochCounter,
     archetype: &'a Archetype,
     loc: Location,
@@ -131,17 +131,17 @@ where
     let Location { arch, idx } = loc;
     assert!(idx < archetype.len() as u32, "Wrong location");
 
-    if !unsafe { Query::visit_archetype(query, archetype) } {
+    if !unsafe { query.visit_archetype(archetype) } {
         return None;
     }
 
-    if !unsafe { Query::visit_archetype(filter, archetype) } {
+    if !unsafe { filter.visit_archetype(archetype) } {
         return None;
     }
 
     let epoch = epochs.next_if(Q::Query::MUTABLE || F::Query::MUTABLE);
 
-    let mut query_fetch = unsafe { Query::fetch(query, arch, archetype, epoch) };
+    let mut query_fetch = unsafe { query.fetch(arch, archetype, epoch) };
 
     if !unsafe { Fetch::visit_chunk(&mut query_fetch, chunk_idx(idx)) } {
         return None;
@@ -153,7 +153,7 @@ where
         return None;
     }
 
-    let mut filter_fetch = unsafe { Query::fetch(filter, arch, archetype, epoch) };
+    let mut filter_fetch = unsafe { filter.fetch(arch, archetype, epoch) };
 
     if !unsafe { Fetch::visit_chunk(&mut filter_fetch, chunk_idx(idx)) } {
         return None;

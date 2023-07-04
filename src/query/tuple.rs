@@ -1,6 +1,8 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{
+    archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg, world::World,
+};
 
 use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
 
@@ -27,6 +29,13 @@ macro_rules! impl_fetch {
         impl DefaultQuery for () {
             #[inline(always)]
             fn default_query() -> () {
+                ()
+            }
+        }
+
+        impl QueryArg for () {
+            #[inline(always)]
+            fn new() -> () {
                 ()
             }
         }
@@ -110,6 +119,27 @@ macro_rules! impl_fetch {
             #[inline(always)]
             fn default_query() -> ($($a::Query,)+) {
                 ($($a::default_query(),)+)
+            }
+        }
+
+        #[allow(non_snake_case)]
+        #[allow(unused_parens)]
+        impl<$($a),+> QueryArg for ($($a,)+) where $($a: QueryArg,)+ {
+            #[inline(always)]
+            fn new() -> ($($a::Query,)+) {
+                ($($a::new(),)+)
+            }
+
+            #[inline(always)]
+            fn before(&mut self, world: &World) {
+                let ($($a,)*) = self;
+                $($a.before(world);)*
+            }
+
+            #[inline(always)]
+            fn after(&mut self, world: &World) {
+                let ($($a,)*) = self;
+                $($a.after(world);)*
             }
         }
 

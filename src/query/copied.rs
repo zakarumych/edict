@@ -1,6 +1,6 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
 
@@ -56,6 +56,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        Cpy
+    }
+}
+
+impl<T> QueryArg for Cpy<T>
+where
+    T: Copy + Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
         Cpy
     }
 }

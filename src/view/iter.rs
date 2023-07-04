@@ -16,18 +16,14 @@ where
 {
     /// Returns an iterator over entities with a query `Q` and filter `F`.
     #[inline(always)]
-    pub fn iter(&self) -> ViewIter<'_, Q, F>
-    where
-        Q: Clone,
-        F: Clone,
-    {
+    pub fn iter(&self) -> ViewIter<'_, Q, F> {
         self.borrow
             .acquire(&self.query, &self.filter, self.archetypes);
 
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
         ViewIter::new(
-            self.query.clone(),
-            self.filter.clone(),
+            self.query,
+            self.filter,
             epoch,
             self.archetypes,
             StaticallyBorrowed, // Borrowed in `ViewState` for the duration of returned lifetime.

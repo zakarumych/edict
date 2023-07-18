@@ -31,18 +31,18 @@ fn main() {
     let mut world = World::new();
 
     // Spawn pair of entities.
-    let a = world.spawn((A,));
-    let b = world.spawn((B,));
+    let _a = world.spawn((A,));
+    let _b = world.spawn((B,));
 
     // Spawn entity with both.
-    let c = world.spawn((A, B));
+    let _c = world.spawn((A, B));
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
     for display in world
-        .new_query()
-        .borrow_any::<&mut (dyn Display + Send)>()
-        .iter_mut()
+        .new_view()
+        .borrow_any_mut::<dyn Display + Send>()
+        .iter()
     {
         println!("{}", display);
     }
@@ -51,7 +51,7 @@ fn main() {
     // Current behavior is to panic if component with that type id is found
     // and it doesn't exposes `Any` trait.
     for a in world
-        .new_query()
+        .new_view()
         .borrow_one::<&(dyn Any + Sync)>(TypeId::of::<A>())
         .iter()
     {
@@ -62,7 +62,7 @@ fn main() {
     // This query yields vector of `&dyn Display` trait objects for each entity.
     // Current behavior is to skip entities with no such components.
     for (e, a) in world
-        .query::<Entities>()
+        .view::<Entities>()
         .borrow_all::<&(dyn Display + Sync)>()
         .iter()
     {
@@ -72,6 +72,4 @@ fn main() {
         }
         println!();
     }
-
-    drop((a, b, c));
 }

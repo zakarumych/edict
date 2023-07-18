@@ -1,10 +1,11 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, UnitFetch},
+    query::{DefaultQuery, ImmutableQuery, IntoQuery, Query, UnitFetch, WriteAlias},
     relation::{OriginComponent, Relation},
+    Access,
 };
 
 marker_type! {
@@ -44,8 +45,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, _: TypeId) -> Option<Access> {
-        None
+    fn component_type_access(&self, _: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(None)
     }
 
     #[inline(always)]
@@ -63,8 +64,3 @@ where
 }
 
 unsafe impl<R> ImmutableQuery for FilterRelates<R> where R: Relation {}
-
-/// Returns a filter to filter origins of relation.
-pub fn relates<R: Relation>() -> PhantomData<FilterRelates<R>> {
-    PhantomData
-}

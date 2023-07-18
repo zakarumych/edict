@@ -3,8 +3,9 @@ use core::any::TypeId;
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     component::Component,
-    entity::{Entity, EntityId, Location, NoSuchEntity},
+    entity::{Entity, EntityId, Location},
     relation::{OriginComponent, Relation, TargetComponent},
+    NoSuchEntity,
 };
 
 use super::World;
@@ -104,10 +105,10 @@ impl World {
         Ok(())
     }
 
-    /// Drops relation between two entities in the [`World`].
+    /// Removes relation between two entities in the [`World`].
     ///
     /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// If relation does not exist, does nothing.
+    /// If relation does not exist, removes `None`.
     ///
     /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
     /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
@@ -135,23 +136,78 @@ impl World {
     where
         R: Relation,
     {
+        self._remove_relation(origin, target, buffer, |_, _, _, _| {})
+    }
+
+    /// Drops relation between two entities in the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// If relation does not exist, does nothing.
+    ///
+    /// When relation is dropped, [`Relation::on_drop`] behavior is executed.
+    #[inline(always)]
+    pub fn drop_relation<R>(
+        &mut self,
+        origin: impl Entity,
+        target: impl Entity,
+    ) -> Result<(), NoSuchEntity>
+    where
+        R: Relation,
+    {
+        with_buffer!(self, buffer => {
+            self.drop_relation_with_buffer::<R>(origin, target, buffer)
+        })
+    }
+
+    #[inline(always)]
+    pub(crate) fn drop_relation_with_buffer<R>(
+        &mut self,
+        origin: impl Entity,
+        target: impl Entity,
+        buffer: &mut ActionBuffer,
+    ) -> Result<(), NoSuchEntity>
+    where
+        R: Relation,
+    {
+        self._remove_relation(origin, target, buffer, R::on_drop)?;
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub(crate) fn _remove_relation<R>(
+        &mut self,
+        origin: impl Entity,
+        target: impl Entity,
+        buffer: &mut ActionBuffer,
+        on_drop: impl FnOnce(&mut R, EntityId, EntityId, ActionEncoder<'_>),
+    ) -> Result<Option<R>, NoSuchEntity>
+    where
+        R: Relation,
+    {
         self.maintenance();
 
         let origin = origin.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
         let target = target.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
 
         unsafe {
-            if let Some(comp) = self.get_unchecked::<&mut OriginComponent<R>>(origin) {
-                if let Some(relation) = comp.remove_relation(
+            if let Ok(comp) = self.get_unchecked::<&mut OriginComponent<R>>(origin) {
+                if let Some(mut relation) = comp.remove_relation(
                     origin.id(),
                     target.id(),
                     ActionEncoder::new(buffer, &self.entities),
                 ) {
+                    on_drop(
+                        &mut relation,
+                        origin.id(),
+                        target.id(),
+                        ActionEncoder::new(buffer, &self.entities),
+                    );
+
                     if R::SYMMETRIC {
                         if origin.id() != target.id() {
                             let comp = self
                                 .get_unchecked::<&mut OriginComponent<R>>(target)
-                                .unwrap();
+                                .unwrap_unchecked();
 
                             comp.remove_relation(
                                 target.id(),
@@ -162,7 +218,7 @@ impl World {
                     } else {
                         let comp = self
                             .get_unchecked::<&mut TargetComponent<R>>(target)
-                            .unwrap();
+                            .unwrap_unchecked();
 
                         comp.remove_relation(
                             origin.id(),

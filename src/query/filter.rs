@@ -1,10 +1,9 @@
-use core::any::{type_name, TypeId};
+use core::any::TypeId;
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{
-    fetch::UnitFetch, try_merge_access, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
-    Query,
+    fetch::UnitFetch, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
 };
 
 /// Combines fetch from query and filter.
@@ -52,80 +51,86 @@ where
     }
 }
 
-/// Combines query and filter.
-/// Skips using both and yields using query.
-#[derive(Clone, Copy, Debug)]
-pub struct FilteredQuery<F, Q> {
-    pub(crate) filter: F,
-    pub(crate) query: Q,
-}
+// /// Combines query and filter.
+// /// Skips using both and yields using query.
+// #[derive(Clone, Copy, Debug)]
+// pub struct FilteredQuery<F, Q> {
+//     pub(crate) filter: F,
+//     pub(crate) query: Q,
+// }
 
-impl<F, Q> IntoQuery for FilteredQuery<F, Q>
-where
-    F: IntoQuery,
-    Q: IntoQuery,
-{
-    type Query = FilteredQuery<F::Query, Q::Query>;
+// impl<F, Q> IntoQuery for FilteredQuery<F, Q>
+// where
+//     F: IntoQuery,
+//     Q: IntoQuery,
+// {
+//     type Query = FilteredQuery<F::Query, Q::Query>;
 
-    #[inline(always)]
-    fn into_query(self) -> Self::Query {
-        FilteredQuery {
-            filter: self.filter.into_query(),
-            query: self.query.into_query(),
-        }
-    }
-}
+//     #[inline(always)]
+//     fn into_query(self) -> Self::Query {
+//         FilteredQuery {
+//             filter: self.filter.into_query(),
+//             query: self.query.into_query(),
+//         }
+//     }
+// }
 
-unsafe impl<F, Q> Query for FilteredQuery<F, Q>
-where
-    F: Query,
-    Q: Query,
-{
-    type Item<'a> = Q::Item<'a> where Q: 'a;
-    type Fetch<'a> = FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>> where F: 'a, Q: 'a;
+// unsafe impl<F, Q> Query for FilteredQuery<F, Q>
+// where
+//     F: Query,
+//     Q: Query,
+// {
+//     type Item<'a> = Q::Item<'a> where Q: 'a;
+//     type Fetch<'a> = FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>> where F: 'a, Q: 'a;
 
-    const MUTABLE: bool = F::MUTABLE || Q::MUTABLE;
+//     const MUTABLE: bool = F::MUTABLE || Q::MUTABLE;
 
-    #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        match try_merge_access(self.filter.access(ty), self.query.access(ty)) {
-            Ok(access) => access,
-            Err(_) => panic!(
-                "Query '{}' and filter '{}' access conflict",
-                type_name::<Q>(),
-                type_name::<F>(),
-            ),
-        }
-    }
+//     #[inline(always)]
+//     fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+//         match (
+//             self.filter.component_type_access(ty),
+//             self.query.component_type_access(ty),
+//         ) {
+//             (None, one) | (one, None) => one,
+//             (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+//             (Some(Access::Write), _) | (_, Some(Access::Write)) => {
+//                 panic!(
+//                     "Conflicting query and filter in `{}`.
+//                         A component is aliased mutably.",
+//                     core::any::type_name::<Self>()
+//                 );
+//             }
+//         }
+//     }
 
-    #[inline(always)]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        self.filter.visit_archetype(archetype) && self.query.visit_archetype(archetype)
-    }
+//     #[inline(always)]
+//     fn visit_archetype(&self, archetype: &Archetype) -> bool {
+//         self.filter.visit_archetype(archetype) && self.query.visit_archetype(archetype)
+//     }
 
-    #[inline(always)]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
+//     #[inline(always)]
+//     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline(always)]
-    unsafe fn fetch<'a>(
-        &self,
-        arch_idx: u32,
-        archetype: &'a Archetype,
-        index: EpochId,
-    ) -> FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>> {
-        FilteredFetch {
-            filter: self.filter.fetch(arch_idx, archetype, index),
-            query: self.query.fetch(arch_idx, archetype, index),
-        }
-    }
-}
+//     #[inline(always)]
+//     unsafe fn fetch<'a>(
+//         &self,
+//         arch_idx: u32,
+//         archetype: &'a Archetype,
+//         index: EpochId,
+//     ) -> FilteredFetch<F::Fetch<'a>, Q::Fetch<'a>> {
+//         FilteredFetch {
+//             filter: self.filter.fetch(arch_idx, archetype, index),
+//             query: self.query.fetch(arch_idx, archetype, index),
+//         }
+//     }
+// }
 
-unsafe impl<F, Q> ImmutableQuery for FilteredQuery<F, Q>
-where
-    Q: ImmutableQuery,
-    F: ImmutableQuery,
-{
-}
+// unsafe impl<F, Q> ImmutableQuery for FilteredQuery<F, Q>
+// where
+//     Q: ImmutableQuery,
+//     F: ImmutableQuery,
+// {
+// }
 
 /// Inverse of a filter.
 /// Entities that match the filter are skipped.
@@ -216,8 +221,8 @@ where
     const MUTABLE: bool = T::MUTABLE;
 
     #[inline(always)]
-    fn access(&self, _: TypeId) -> Option<Access> {
-        None
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(None)
     }
 
     #[inline(always)]
@@ -271,7 +276,18 @@ impl<T> DefaultQuery for With<T>
 where
     T: 'static,
 {
+    #[inline(always)]
     fn default_query() -> Self {
+        With
+    }
+}
+
+impl<T> QueryArg for With<T>
+where
+    T: 'static,
+{
+    #[inline(always)]
+    fn new() -> With<T> {
         With
     }
 }
@@ -286,8 +302,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, _: TypeId) -> Option<Access> {
-        None
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(None)
     }
 
     #[inline(always)]

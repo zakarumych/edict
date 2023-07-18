@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// Fetch for [`EpochOf`] epochs.
 pub struct FetchEpoch<'a> {
@@ -74,12 +74,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<T>(ty))
     }
 
     #[inline(always)]

@@ -34,9 +34,9 @@ use parking_lot::Mutex;
 use crate::{
     action::ActionBuffer,
     executor::{MockExecutor, ScopedExecutor},
-    query::Access,
     system::{ActionQueue, IntoSystem, System},
     world::World,
+    Access,
 };
 
 /// Scheduler that starts systems in order of their registration.
@@ -416,7 +416,10 @@ impl Scheduler {
                 }
 
                 for id in world.resource_types() {
-                    if conflicts(system_a.access_resource(id), system_b.access_resource(id)) {
+                    if conflicts(
+                        system_a.component_type_access(id),
+                        system_b.component_type_access(id),
+                    ) {
                         // Conflicts on this resource.
                         // Add a dependency.
                         self.systems[j].dependents.push(i);
@@ -450,8 +453,8 @@ impl Scheduler {
 
                     for info in archetype.infos() {
                         if conflicts(
-                            system_a.access_component(info.id()),
-                            system_b.access_component(info.id()),
+                            system_a.component_type_access(info.id()),
+                            system_b.component_type_access(info.id()),
                         ) {
                             // Conflicts on this archetype.
                             // Add a dependency.

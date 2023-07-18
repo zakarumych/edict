@@ -12,7 +12,7 @@ use crate::{
     system::QueryArg,
 };
 
-use super::{Access, DefaultQuery, Fetch, IntoQuery, Query};
+use super::{Access, DefaultQuery, Fetch, IntoQuery, Query, WriteAlias};
 
 /// Item type that [`Alt`] yields.
 /// Wraps `&mut T` and implements [`DerefMut`] to `T`.
@@ -151,12 +151,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::write_type::<T>(ty))
     }
 
     #[inline(always)]

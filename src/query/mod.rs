@@ -35,9 +35,9 @@
 //! a specific entity.
 //!
 
-use core::any::{type_name, TypeId};
+use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, Access};
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -53,7 +53,7 @@ pub use self::{
     copied::{Cpy, FetchCopied},
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
-    filter::{FilteredFetch, FilteredQuery, Not, With, Without},
+    filter::{FilteredFetch, Not, With, Without},
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
         ModifiedFetchWrite,
@@ -79,20 +79,6 @@ mod tuple;
 mod with_epoch;
 mod write;
 
-/// Specifies kind of access query performs for particular component.
-#[derive(Clone, Copy, Debug)]
-pub enum Access {
-    /// Cannot be aliased with any other access.
-    Write,
-
-    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
-    Read,
-    // /// Temporary access to component. Can be aliased with any other in the same query.
-    // /// For different queries acts like [`Access::Read`].
-    // /// Queries with this access type produce output not tied to component borrow.
-    // Touch,
-}
-
 /// Types associated with a query type.
 pub trait IntoQuery {
     /// Associated query type.
@@ -107,6 +93,10 @@ pub trait DefaultQuery: IntoQuery {
     /// Returns default query instance.
     fn default_query() -> Self::Query;
 }
+
+/// Detected write aliasing.
+/// Should be either resolved at runtime or reported with panic.
+pub struct WriteAlias;
 
 /// Trait to query components from entities in the world.
 /// Queries implement efficient iteration over entities while yielding
@@ -128,8 +118,10 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     const FILTERS_ENTITIES: bool = false;
 
     /// Returns what kind of access the query performs on the component type.
+    /// This method may return stronger access type if it is impossible to know
+    /// weaker access with only type-info.
     #[must_use]
-    fn access(&self, ty: TypeId) -> Option<Access>;
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias>;
 
     /// Checks if archetype must be visited or skipped.
     ///
@@ -185,29 +177,3 @@ pub unsafe trait ImmutableQuery: Query {
 
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as Query>::Item<'a>;
-
-/// Error type returned by try_merge_access if write aliasing is detected.
-pub struct WriteAliasing;
-
-/// Merge two optional access values.
-#[inline(always)]
-pub const fn try_merge_access(
-    lhs: Option<Access>,
-    rhs: Option<Access>,
-) -> Result<Option<Access>, WriteAliasing> {
-    match (lhs, rhs) {
-        (None, one) | (one, None) => Ok(one),
-        (Some(Access::Read), Some(Access::Read)) => Ok(Some(Access::Read)),
-        _ => Err(WriteAliasing),
-    }
-}
-
-/// Merge two optional access values.
-#[inline(always)]
-pub fn merge_access<T: ?Sized>(lhs: Option<Access>, rhs: Option<Access>) -> Option<Access> {
-    match (lhs, rhs) {
-        (None, one) | (one, None) => one,
-        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-        _ => panic!("Write aliasing detected in query: {}", type_name::<T>()),
-    }
-}

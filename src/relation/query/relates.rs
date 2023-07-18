@@ -2,10 +2,11 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    entity::EntityId,
+    entity::{EntityBound, EntityId},
     epoch::EpochId,
-    query::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write},
+    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
     relation::{OriginComponent, Relation, RelationTarget},
+    Access,
 };
 
 marker_type! {
@@ -22,7 +23,7 @@ pub struct RelatesReadIter<'a, R> {
 }
 
 impl<'a, R> Iterator for RelatesReadIter<'a, R> {
-    type Item = (&'a R, EntityId);
+    type Item = (&'a R, EntityBound<'a>);
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -30,15 +31,15 @@ impl<'a, R> Iterator for RelatesReadIter<'a, R> {
     }
 
     #[inline(always)]
-    fn next(&mut self) -> Option<(&'a R, EntityId)> {
+    fn next(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next()?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
     #[inline(always)]
-    fn nth(&mut self, n: usize) -> Option<(&'a R, EntityId)> {
+    fn nth(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth(n)?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
     #[inline(always)]
@@ -48,22 +49,22 @@ impl<'a, R> Iterator for RelatesReadIter<'a, R> {
         F: FnMut(B, Self::Item) -> B,
     {
         self.iter.fold(init, |acc, origin| {
-            f(acc, (&origin.relation, origin.target))
+            f(acc, (&origin.relation, EntityBound::new(origin.target)))
         })
     }
 }
 
 impl<'a, R> DoubleEndedIterator for RelatesReadIter<'a, R> {
     #[inline(always)]
-    fn next_back(&mut self) -> Option<(&'a R, EntityId)> {
+    fn next_back(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next_back()?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
     #[inline(always)]
-    fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityId)> {
+    fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth_back(n)?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
     #[inline(always)]
@@ -73,7 +74,7 @@ impl<'a, R> DoubleEndedIterator for RelatesReadIter<'a, R> {
         F: FnMut(B, Self::Item) -> B,
     {
         self.iter.rfold(init, |acc, origin| {
-            f(acc, (&origin.relation, origin.target))
+            f(acc, (&origin.relation, EntityBound::new(origin.target)))
         })
     }
 }
@@ -169,12 +170,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<OriginComponent<R>>(ty))
     }
 
     #[inline(always)]
@@ -381,12 +378,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::write_type::<OriginComponent<R>>(ty))
     }
 
     #[inline(always)]

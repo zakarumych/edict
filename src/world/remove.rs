@@ -3,7 +3,8 @@ use core::any::{type_name, TypeId};
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     bundle::Bundle,
-    entity::{Entity, Location, NoSuchEntity},
+    entity::{Entity, Location},
+    NoSuchEntity,
 };
 
 use super::World;

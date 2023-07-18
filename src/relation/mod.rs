@@ -21,11 +21,10 @@ pub use edict_proc::Relation;
 pub use self::{
     child_of::ChildOf,
     query::{
-        related, related_by, relates, relates_to, FetchFilterRelatedBy, FetchRelated,
-        FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, FetchRelatesRead,
-        FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite, FilterFetchRelatesTo,
-        FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related, Relates,
-        RelatesExclusive, RelatesReadIter, RelatesTo, RelatesWriteIter,
+        FetchFilterRelatedBy, FetchRelated, FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite,
+        FetchRelatesRead, FetchRelatesToRead, FetchRelatesToWrite, FetchRelatesWrite,
+        FilterFetchRelatesTo, FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo,
+        Related, Relates, RelatesExclusive, RelatesReadIter, RelatesTo, RelatesWriteIter,
     },
 };
 
@@ -119,6 +118,18 @@ pub trait Relation: Send + Sync + Copy + 'static {
         drop(target);
         drop(encoder);
     }
+}
+
+/// Sub-trait for exclusive relations.
+/// It should be implemented for relations that specify `EXCLUSIVE = true`,
+/// to enable use of `RelatesExclusive` query.
+/// Implementing it for relation with `EXCLUSIVE = false` will cause
+/// compilation error or runtime panic.
+///
+/// `Relation` derive macro implements this trait automatically.
+pub trait ExclusiveRelation: Relation {
+    #[doc(hidden)]
+    const ASSERT_EXCLUSIVE: () = assert!(Self::EXCLUSIVE);
 }
 
 pub(crate) struct RelationTarget<R> {

@@ -3,7 +3,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{filter::With, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{filter::With, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
     system::QueryArg,
     world::World,
 };
@@ -89,8 +89,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        With::<T>.access(ty)
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        With::<T>.component_type_access(ty)
     }
 
     #[inline(always)]

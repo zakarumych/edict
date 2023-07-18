@@ -5,6 +5,7 @@ use crate::{
     epoch::EpochId,
     query::{
         read::Read, write::Write, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        WriteAlias,
     },
     system::QueryArg,
 };
@@ -111,8 +112,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, _ty: TypeId) -> Option<Access> {
-        Some(Access::Read)
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Read))
     }
 
     #[inline(always)]
@@ -267,8 +268,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, _ty: TypeId) -> Option<Access> {
-        Some(Access::Write)
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Write))
     }
 
     #[inline(always)]

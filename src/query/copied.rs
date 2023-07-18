@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -80,12 +80,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<T>(ty))
     }
 
     #[inline(always)]

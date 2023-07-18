@@ -4,10 +4,7 @@
 
 pub use self::{
     allocator::{IdRange, IdRangeAllocator, OneRangeAllocator},
-    entity::{
-        AliveEntity, Entity, EntityBound, EntityId, EntityLoc, EntityRef, LocatedEntity,
-        NoSuchEntity,
-    },
+    entity::{AliveEntity, Entity, EntityBound, EntityId, EntityLoc, EntityRef, LocatedEntity},
     set::{EntitySet, Location},
 };
 

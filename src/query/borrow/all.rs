@@ -5,7 +5,9 @@ use alloc::vec::Vec;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{
+        read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+    },
     system::QueryArg,
 };
 
@@ -118,8 +120,8 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, _ty: TypeId) -> Option<Access> {
-        Some(Access::Read)
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Read))
     }
 
     #[inline(always)]

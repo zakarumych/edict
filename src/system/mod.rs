@@ -5,7 +5,7 @@ mod func;
 use alloc::vec::Vec;
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{action::ActionBuffer, archetype::Archetype, query::Access, world::World};
+use crate::{action::ActionBuffer, archetype::Archetype, world::World, Access};
 
 pub use self::func::{
     ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, Res, ResMut,
@@ -66,11 +66,11 @@ pub unsafe trait System {
 
     /// Returns access type to the specified component type this system may perform.
     #[must_use]
-    fn access_component(&self, id: TypeId) -> Option<Access>;
+    fn component_type_access(&self, ty: TypeId) -> Option<Access>;
 
     /// Returns access type to the specified resource type this system may perform.
     #[must_use]
-    fn access_resource(&self, id: TypeId) -> Option<Access>;
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access>;
 
     /// Runs the system with given context instance.
     ///
@@ -113,14 +113,14 @@ where
 
 //     /// Returns access type to the specified component type this system may perform.
 //     #[must_use]
-//     fn access_component(&self, id: TypeId) -> Option<Access> {
+//     fn access_component(&self, ty: TypeId) -> Access {
 //         let _ = id;
 //         None
 //     }
 
 //     /// Returns access type to the specified resource type this system may perform.
 //     #[must_use]
-//     fn access_resource(&self, id: TypeId) -> Option<Access> {
+//     fn access_resource(&self, ty: TypeId) -> Access {
 //         let _ = id;
 //         None
 //     }
@@ -147,7 +147,7 @@ where
 //         false
 //     }
 
-//     fn world_access(&self) -> Option<Access> {
+//     fn world_access(&self) -> Access {
 //         Some(Access::Read)
 //     }
 
@@ -155,11 +155,11 @@ where
 //         self.system.visit_archetype(archetype)
 //     }
 
-//     fn access_component(&self, id: TypeId) -> Option<Access> {
+//     fn access_component(&self, ty: TypeId) -> Access {
 //         self.system.access_component(id)
 //     }
 
-//     fn access_resource(&self, id: TypeId) -> Option<Access> {
+//     fn access_resource(&self, ty: TypeId) -> Access {
 //         self.system.access_resource(id)
 //     }
 
@@ -213,11 +213,11 @@ where
         true
     }
 
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 

@@ -205,7 +205,7 @@ where
         }
     }
 
-    fn access_component(&self, id: TypeId) -> Option<Access> {
+    fn access_component(&self, ty: TypeId) -> Option<Access> {
         <&T as PhantomQuery>::access(id)
     }
 

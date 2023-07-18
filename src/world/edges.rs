@@ -135,7 +135,7 @@ impl Edges {
     #[must_use]
     pub fn insert<F>(
         &mut self,
-        id: TypeId,
+        ty: TypeId,
         registry: &mut ComponentRegistry,
         archetypes: &mut ArchetypeSet,
         src: u32,
@@ -147,7 +147,7 @@ impl Edges {
         let slow = || {
             cold();
             match archetypes.iter().position(|a| {
-                let ids = archetypes[src as usize].ids().chain(Some(id));
+                let ids = archetypes[src as usize].ids().chain(Some(ty));
                 a.matches(ids)
             }) {
                 None => {
@@ -161,7 +161,7 @@ impl Edges {
             }
         };
 
-        match self.add_one.entry((src, id)) {
+        match self.add_one.entry((src, ty)) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let idx = slow();
@@ -252,11 +252,11 @@ impl Edges {
     }
 
     #[must_use]
-    pub fn remove(&mut self, archetypes: &mut ArchetypeSet, src: u32, id: TypeId) -> u32 {
+    pub fn remove(&mut self, archetypes: &mut ArchetypeSet, src: u32, ty: TypeId) -> u32 {
         let mut slow = || {
             cold();
             match archetypes.iter().position(|a| {
-                let ids = archetypes[src as usize].ids().filter(|t| *t != id);
+                let ids = archetypes[src as usize].ids().filter(|id| *id != ty);
                 a.matches(ids)
             }) {
                 None => {
@@ -265,7 +265,7 @@ impl Edges {
                         Archetype::new(
                             archetypes[src as usize]
                                 .infos()
-                                .filter(|info| info.id() != id),
+                                .filter(|info| info.id() != ty),
                         )
                     })
                 }
@@ -273,7 +273,7 @@ impl Edges {
             }
         };
 
-        match self.sub_one.entry((src, id)) {
+        match self.sub_one.entry((src, ty)) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
                 let idx = slow();

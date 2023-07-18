@@ -5,7 +5,7 @@ use crate::{
     epoch::EpochId,
     query::{
         alt::{Alt, RefMut},
-        Access, Fetch, IntoQuery, Query,
+        Access, Fetch, IntoQuery, Query, WriteAlias,
     },
     system::QueryArg,
 };
@@ -112,8 +112,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        Alt::<T>.access(ty)
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Alt::<T>.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -184,8 +184,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        Alt::<T>.access(ty)
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Some(Alt::<T>).component_type_access(ty)
     }
 
     #[inline(always)]

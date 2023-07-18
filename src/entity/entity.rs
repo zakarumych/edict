@@ -1,26 +1,15 @@
 use core::{fmt, marker::PhantomData, num::NonZeroU64};
 
 use crate::{
+    bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     query::{DefaultQuery, IntoQuery, QueryItem},
     view::ViewOne,
     world::World,
+    NoSuchEntity, ResultEntityError,
 };
 
 use super::{EntitySet, Location};
-
-/// Error when an entity is not found in the world.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NoSuchEntity;
-
-impl fmt::Display for NoSuchEntity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Specified entity is not found")
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for NoSuchEntity {}
 
 /// General entity reference.
 pub trait Entity {
@@ -101,9 +90,36 @@ pub struct EntityId {
     id: NonZeroU64,
 }
 
+impl PartialEq<EntityBound<'_>> for EntityId {
+    #[inline(always)]
+    fn eq(&self, other: &EntityBound<'_>) -> bool {
+        *self == other.id
+    }
+}
+
+impl PartialEq<EntityLoc<'_>> for EntityId {
+    #[inline(always)]
+    fn eq(&self, other: &EntityLoc<'_>) -> bool {
+        *self == other.id
+    }
+}
+
+impl PartialEq<EntityRef<'_>> for EntityId {
+    #[inline(always)]
+    fn eq(&self, other: &EntityRef<'_>) -> bool {
+        *self == other.id
+    }
+}
+
 impl fmt::Debug for EntityId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("EntityId").field(&self.id).finish()
+    }
+}
+
+impl fmt::Display for EntityId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
     }
 }
 
@@ -164,13 +180,58 @@ pub struct EntityBound<'a> {
     world: PhantomData<&'a World>,
 }
 
+impl PartialEq<EntityId> for EntityBound<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityId) -> bool {
+        self.id == *other
+    }
+}
+
+impl PartialEq<EntityLoc<'_>> for EntityBound<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityLoc<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl PartialEq<EntityRef<'_>> for EntityBound<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityRef<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl fmt::Debug for EntityBound<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("EntityBound").field(&self.id).finish()
+    }
+}
+
+impl fmt::Display for EntityBound<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 impl EntityBound<'_> {
+    /// Returns entity id.
+    #[inline(always)]
+    pub fn id(&self) -> EntityId {
+        self.id
+    }
+
     #[inline(always)]
     pub(crate) fn new(id: EntityId) -> Self {
         EntityBound {
             id,
             world: PhantomData,
         }
+    }
+
+    #[inline(always)]
+    pub(crate) fn wrap_slice(ids: &[EntityId]) -> &[Self] {
+        // Safety: `Self` is transparent wrapper over `EntityId`.
+        unsafe { &*(ids as *const [EntityId] as *const [Self]) }
     }
 }
 
@@ -204,6 +265,42 @@ pub struct EntityLoc<'a> {
     world: PhantomData<&'a World>,
 }
 
+impl PartialEq<EntityId> for EntityLoc<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityId) -> bool {
+        self.id == *other
+    }
+}
+
+impl PartialEq<EntityBound<'_>> for EntityLoc<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityBound<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl PartialEq<EntityRef<'_>> for EntityLoc<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityRef<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl fmt::Debug for EntityLoc<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EntityLoc")
+            .field("id", &self.id)
+            .field("loc", &self.loc)
+            .finish()
+    }
+}
+
+impl fmt::Display for EntityLoc<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 impl EntityLoc<'_> {
     #[inline(always)]
     pub(crate) fn new(id: EntityId, loc: Location) -> Self {
@@ -212,6 +309,12 @@ impl EntityLoc<'_> {
             loc,
             world: PhantomData,
         }
+    }
+
+    /// Returns entity id.
+    #[inline(always)]
+    pub fn id(&self) -> EntityId {
+        self.id
     }
 }
 
@@ -249,6 +352,42 @@ pub struct EntityRef<'a> {
     world: &'a mut World,
 }
 
+impl PartialEq<EntityId> for EntityRef<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityId) -> bool {
+        self.id == *other
+    }
+}
+
+impl PartialEq<EntityBound<'_>> for EntityRef<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityBound<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl PartialEq<EntityLoc<'_>> for EntityRef<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityLoc<'_>) -> bool {
+        self.id == other.id
+    }
+}
+
+impl fmt::Debug for EntityRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EntityRef")
+            .field("id", &self.id)
+            .field("loc", &self.loc)
+            .finish()
+    }
+}
+
+impl fmt::Display for EntityRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 impl<'a> EntityRef<'a> {
     /// Returns entity reference if it is alive.
     #[inline(always)]
@@ -258,7 +397,8 @@ impl<'a> EntityRef<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_parts(id: EntityId, loc: Location, world: &'a mut World) -> Self {
+    pub(crate) unsafe fn from_parts(id: EntityId, loc: Location, world: &'a mut World) -> Self {
+        debug_assert_eq!(world.entities().get_location(id), Some(loc));
         EntityRef { id, loc, world }
     }
 
@@ -297,12 +437,7 @@ impl<'a> EntityRef<'a> {
     where
         Q: IntoQuery,
     {
-        let loc = EntityLoc {
-            id: self.id,
-            loc: self.loc,
-            world: PhantomData,
-        };
-        self.world.get_with(loc, query)
+        unsafe { self.get_with_unchecked(query) }
     }
 
     /// Queries components from specified entity.
@@ -349,7 +484,11 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.get_with_unchecked(loc, query) }
+        unsafe {
+            self.world
+                .get_with_unchecked(loc, query)
+                .assume_entity_exists()
+        }
     }
 
     /// Queries components from specified entity.
@@ -422,6 +561,123 @@ impl<'a> EntityRef<'a> {
         unsafe { self.world.insert(loc, component).unwrap_unchecked() }
     }
 
+    /// Attempts to inserts component to the entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// let mut entity = world.spawn(());
+    ///
+    /// assert_eq!(!entity.has_component::<u32>());
+    /// entity.insert_external(42u32);
+    /// assert!(entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn insert_external<T>(&mut self, component: T)
+    where
+        T: 'static,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe {
+            self.world
+                .insert_external(loc, component)
+                .unwrap_unchecked()
+        }
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn(());
+    /// assert_eq!(!entity.has_component::<ExampleComponent>());
+    /// entity.insert_bundle((ExampleComponent,));
+    /// assert_eq!(entity.has_component::<ExampleComponent>(entity));
+    /// ```
+    #[inline(always)]
+    pub fn insert_bundle<B>(&mut self, bundle: B)
+    where
+        B: DynamicComponentBundle,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe { self.world.insert_bundle(loc, bundle).unwrap_unchecked() }
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// let mut entity = world.spawn(());
+    ///
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// assert!(!entity.has_component::<u32>());
+    ///
+    /// entity.insert_external_bundle((ExampleComponent, 42u32));
+    ///
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// assert!(entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn insert_external_bundle<B>(&mut self, bundle: B)
+    where
+        B: DynamicBundle,
+    {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        unsafe {
+            self.world
+                .insert_external_bundle(loc, bundle)
+                .unwrap_unchecked()
+        }
+    }
+
     /// Removes a component from the entity.
     /// Returns the component if it was present.
     #[inline(always)]
@@ -451,15 +707,81 @@ impl<'a> EntityRef<'a> {
         unsafe { self.world.drop::<T>(loc).unwrap_unchecked() }
     }
 
-    /// Despawns the referenced entity.
+    /// Drops entity's components that are found in the specified bundle.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// Unlike other methods that use `Bundle` trait, this method does not require
+    /// all components from bundle to be registered in the world.
+    /// Entity can't have components that are not registered in the world,
+    /// so no need to drop them.
+    ///
+    /// For this reason there's no separate method that uses `ComponentBundle` trait.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    ///
+    /// struct OtherComponent;
+    ///
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn((ExampleComponent,));
+    ///
+    /// assert!(entity.has_component::<ExampleComponent>());
+    ///
+    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
+    ///
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
     #[inline(always)]
-    pub fn despawn(self) {
+    pub fn drop_bundle<B>(&mut self)
+    where
+        B: Bundle,
+    {
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.despawn(loc) }
+        unsafe { self.world.drop_bundle::<B>(loc).unwrap_unchecked() }
+    }
+
+    /// Despawns the referenced entity.
+    #[inline(always)]
+    pub fn despawn(self) {
+        unsafe { self.world.despawn_ref(self.id, self.loc) }
+    }
+
+    /// Checks if entity has component of specified type.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    #[inline(always)]
+    pub fn has_component<T: 'static>(&self) -> bool {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.world.has_component::<T>(loc)
+    }
+
+    /// Splits entity reference into two parts: entity with location and world.
+    /// This allows using `World` to access other entities,
+    /// without loosing entity reference entirely.
+    pub fn split(self) -> (EntityLoc<'a>, &'a World) {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        (loc, self.world)
+    }
+
+    /// Returns entity id.
+    #[inline(always)]
+    pub fn id(&self) -> EntityId {
+        self.id
     }
 }
 

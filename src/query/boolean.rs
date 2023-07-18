@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// Binary operator for [`BooleanQuery`].
 pub trait BooleanFetchOp: 'static {
@@ -282,11 +282,17 @@ macro_rules! impl_boolean {
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
 
             #[inline(always)]
-            fn access(&self, ty: TypeId) -> Option<Access> {
+            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = &self.tuple;
                 let mut result = None;
-                $(result = merge_access::<Self>(result, $a.access(ty));)+
-                result
+                $(
+                    result = match (result, $a.component_type_access(ty)?) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => return Err(WriteAlias),
+                    };
+                )*
+                Ok(result)
             }
 
             #[inline(always)]

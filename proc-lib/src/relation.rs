@@ -84,7 +84,7 @@ pub fn derive(
         }
     });
 
-    let output = quote::quote! {
+    let mut output = quote::quote! {
         impl #impl_generics #edict_path::relation::Relation for #ident #ty_generics
         #where_clause
         {
@@ -103,6 +103,14 @@ pub fn derive(
             #on_target_drop
         }
     };
+
+    if attributes.exclusive.is_some() {
+        output.extend(quote::quote! {
+            impl #impl_generics #edict_path::relation::ExclusiveRelation for #ident #ty_generics
+            #where_clause
+            {}
+        });
+    }
 
     Ok(output)
 }

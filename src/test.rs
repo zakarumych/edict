@@ -1,8 +1,8 @@
 use crate::{
     component::Component,
     query::{Entities, ImmutableQuery, With},
-    relation::{ChildOf, Relation, RelationOrigin, RelationTarget},
-    world::{QueryOneError, World},
+    relation::{ChildOf, Relation},
+    world::World,
 };
 
 use alloc::{vec, vec::Vec};
@@ -24,13 +24,10 @@ impl Component for Bool {}
 fn world_spawn() {
     let mut world = World::new();
 
-    let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(e), Ok(true));
-    assert_eq!(world.has_component::<Str>(e), Ok(true));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
-    );
+    let mut e = world.spawn((U32(42), Str("qwe")));
+    assert_eq!(e.has_component::<U32>(), true);
+    assert_eq!(e.has_component::<Str>(), true);
+    assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 }
 
 /// Tests that entity does not have a component that wasn't in spawn bundle
@@ -39,20 +36,14 @@ fn world_spawn() {
 fn world_insert() {
     let mut world = World::new();
 
-    let e = world.spawn((U32(42),));
-    assert_eq!(world.has_component::<U32>(e), Ok(true));
-    assert_eq!(world.has_component::<Str>(e), Ok(false));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
-    );
+    let mut e = world.spawn((U32(42),));
+    assert_eq!(e.has_component::<U32>(), true);
+    assert_eq!(e.has_component::<Str>(), false);
+    assert_eq!(e.get::<(&U32, &Str)>(), None);
 
-    assert_eq!(world.insert(e, Str("qwe")), Ok(()));
-    assert_eq!(world.has_component::<Str>(e), Ok(true));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
-    );
+    e.insert(Str("qwe"));
+    assert_eq!(e.has_component::<Str>(), true);
+    assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 }
 
 /// Tests that entity does not have a component that was removed.
@@ -60,20 +51,14 @@ fn world_insert() {
 fn world_remove() {
     let mut world = World::new();
 
-    let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(e), Ok(true));
-    assert_eq!(world.has_component::<Str>(e), Ok(true));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
-    );
+    let mut e = world.spawn((U32(42), Str("qwe")));
+    assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
+    assert_eq!(e.has_component::<U32>(), true);
+    assert_eq!(e.has_component::<Str>(), true);
 
-    assert_eq!(world.remove::<Str>(e), Ok(Str("qwe")));
-    assert_eq!(world.has_component::<Str>(e), Ok(false));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
-    );
+    assert_eq!(e.remove::<Str>(), Some(Str("qwe")));
+    assert_eq!(e.has_component::<Str>(), false);
+    assert_eq!(e.get::<(&U32, &Str)>(), None);
 }
 
 /// Insertion test. Bundle version
@@ -81,20 +66,17 @@ fn world_remove() {
 fn world_insert_bundle() {
     let mut world = World::new();
 
-    let e = world.spawn((U32(42),));
-    assert_eq!(world.has_component::<U32>(e), Ok(true));
-    assert_eq!(world.has_component::<Str>(e), Ok(false));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
-    );
+    let mut e = world.spawn((U32(42),));
+    assert!(e.has_component::<U32>());
+    assert!(!e.has_component::<Str>());
+    assert_eq!(e.get::<(&U32, &Str)>(), None);
 
-    assert_eq!(world.insert_bundle(e, (Str("qwe"), Bool(true))), Ok(()));
-    assert_eq!(world.has_component::<Str>(e), Ok(true));
-    assert_eq!(world.has_component::<Bool>(e), Ok(true));
+    e.insert_bundle((Str("qwe"), Bool(true)));
+    assert!(e.has_component::<Str>());
+    assert!(e.has_component::<Bool>());
     assert_eq!(
-        world.query_one_mut::<(&U32, &Str, &Bool)>(e),
-        Ok((&U32(42), &Str("qwe"), &Bool(true)))
+        e.get::<(&U32, &Str, &Bool)>(),
+        Some((&U32(42), &Str("qwe"), &Bool(true)))
     );
 }
 
@@ -103,21 +85,15 @@ fn world_insert_bundle() {
 fn world_remove_bundle() {
     let mut world = World::new();
 
-    let e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(world.has_component::<U32>(e), Ok(true));
-    assert_eq!(world.has_component::<Str>(e), Ok(true));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Ok((&U32(42), &Str("qwe")))
-    );
+    let mut e = world.spawn((U32(42), Str("qwe")));
+    assert!(e.has_component::<U32>());
+    assert!(e.has_component::<Str>());
+    assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 
     // When removing a bundle, any missing component is simply ignored.
-    assert_eq!(world.drop_bundle::<(Str, Bool)>(e), Ok(()));
-    assert_eq!(world.has_component::<Str>(e), Ok(false));
-    assert_eq!(
-        world.query_one_mut::<(&U32, &Str)>(e),
-        Err(QueryOneError::NotSatisfied)
-    );
+    e.drop_bundle::<(Str, Bool)>();
+    assert!(!e.has_component::<Str>());
+    assert_eq!(e.get::<(&U32, &Str)>(), None);
 }
 
 #[test]
@@ -126,12 +102,12 @@ fn version_test() {
 
     let mut epoch = world.epoch();
 
-    let e = world.spawn((U32(42), Str("qwe")));
+    let (e, world) = world.spawn((U32(42), Str("qwe"))).split();
 
     assert_eq!(
         world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
+            .view::<Entities>()
+            .modified::<U32>(epoch)
             .iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
@@ -141,19 +117,19 @@ fn version_test() {
 
     assert_eq!(
         world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
+            .view::<Entities>()
+            .modified::<U32>(epoch)
             .iter()
-            .collect::<Vec<_>>(),
-        vec![]
+            .count(),
+        0
     );
 
-    *world.query_one_mut::<&mut U32>(e).unwrap() = U32(42);
+    *world.view_one::<&mut U32>(e).get().unwrap() = U32(42);
 
     assert_eq!(
         world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
+            .view::<Entities>()
+            .modified::<U32>(epoch)
             .iter()
             .collect::<Vec<_>>(),
         vec![(e, &U32(42))]
@@ -165,13 +141,15 @@ fn version_despawn_test() {
     let mut world = World::new();
 
     let mut epoch = world.epoch();
-    let e1 = world.spawn((U32(42), Str("qwe")));
-    let e2 = world.spawn((U32(23), Str("rty")));
+    let e1 = world.spawn((U32(42), Str("qwe"))).id();
+    let e2 = world.spawn((U32(23), Str("rty"))).id();
+    let e1 = world.lookup(e1).unwrap();
+    let e2 = world.lookup(e2).unwrap();
 
     assert_eq!(
         world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
+            .view::<Entities>()
+            .modified::<U32>(epoch)
             .iter()
             .collect::<Vec<_>>(),
         vec![(e1, &U32(42)), (e2, &U32(23))]
@@ -181,24 +159,28 @@ fn version_despawn_test() {
 
     assert_eq!(
         world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
+            .view::<Entities>()
+            .modified::<U32>(epoch)
             .iter()
             .collect::<Vec<_>>(),
         vec![]
     );
 
-    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(50);
-    assert_eq!(world.despawn(e1), Ok(()));
+    *world.view_one::<&mut U32>(e2).get().unwrap() = U32(50);
+    let e1 = e1.id();
+    let e2 = e2.id();
 
-    assert_eq!(
-        world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e2, &U32(50))]
-    );
+    world.despawn(e1).unwrap();
+
+    let result = world
+        .view::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].0, e2);
+    assert_eq!(result[0].1, &U32(50));
 }
 
 #[test]
@@ -206,49 +188,53 @@ fn version_insert_test() {
     let mut world = World::new();
 
     let mut epoch = world.epoch();
-    let e1 = world.spawn((U32(42), Str("qwe")));
-    let e2 = world.spawn((U32(23), Str("rty")));
+    let e1 = world.spawn((U32(42), Str("qwe"))).id();
+    let e2 = world.spawn((U32(23), Str("rty"))).id();
 
-    assert_eq!(
-        world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e1, &U32(42)), (e2, &U32(23))]
-    );
+    let result = world
+        .view::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(result[0].0, e1);
+    assert_eq!(*result[0].1, U32(42));
+    assert_eq!(result[1].0, e2);
+    assert_eq!(*result[1].1, U32(23));
 
     epoch = world.epoch();
 
     assert_eq!(
         world
-            .query::<Entities>()
+            .view::<Entities>()
             .modified::<&U32>(epoch)
             .iter()
-            .collect::<Vec<_>>(),
-        vec![]
+            .count(),
+        0
     );
 
-    *world.query_one_mut::<&mut U32>(e1).unwrap() = U32(50);
-    *world.query_one_mut::<&mut U32>(e2).unwrap() = U32(100);
+    *world.get::<&mut U32>(e1).unwrap() = U32(50);
+    *world.get::<&mut U32>(e2).unwrap() = U32(100);
 
     assert_eq!(world.insert(e1, Bool(true)), Ok(()));
 
-    assert_eq!(
-        world
-            .query::<Entities>()
-            .modified::<&U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e2, &U32(100)), (e1, &U32(50))]
-    );
+    let result = world
+        .view::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(result[0].0, e1);
+    assert_eq!(*result[0].1, U32(50));
+    assert_eq!(result[1].0, e2);
+    assert_eq!(*result[1].1, U32(100));
 }
 
 #[test]
 fn test_relation() {
     let mut world = World::new();
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct A;
 
     impl Relation for A {
@@ -256,98 +242,57 @@ fn test_relation() {
         const SYMMETRIC: bool = false;
     }
 
-    let a = world.spawn(());
-    let b = world.spawn(());
-
-    for _origins in world
-        .new_view()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    let a = world.spawn(()).id();
+    let b = world.spawn(()).id();
 
     world.add_relation(a, A, a).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], a);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 1);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.add_relation(a, A, b).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 2);
-        assert_eq!(origins[0].targets()[0], a);
-        assert_eq!(origins[0].targets()[1], b);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert!(a == e || b == e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 2);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    let second = a_s[0].1.next().unwrap();
+    assert_eq!(second.0, &A);
+    assert_eq!(second.1, b);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.despawn(a).unwrap();
 
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
 }
 
 #[test]
 fn test_exclusive_relation() {
     let mut world = World::new();
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct A;
 
     impl Relation for A {
@@ -355,121 +300,53 @@ fn test_exclusive_relation() {
         const SYMMETRIC: bool = false;
     }
 
-    let a = world.spawn(());
-    let b = world.spawn(());
-
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    let a = world.spawn(()).id();
+    let b = world.spawn(()).id();
 
     world.add_relation(a, A, a).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], a);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 1);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.add_relation(a, A, b).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], b);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(b, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 2);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, b);
 
-    world.add_relation(a, A, a).unwrap();
-
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], a);
-    }
-
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.despawn(a).unwrap();
 
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
 }
 
 #[test]
 fn test_symmetric_relation() {
     let mut world = World::new();
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct A;
 
     impl Relation for A {
@@ -477,117 +354,65 @@ fn test_symmetric_relation() {
         const SYMMETRIC: bool = true;
     }
 
-    let a = world.spawn(());
-    let b = world.spawn(());
-
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    let a = world.spawn(()).id();
+    let b = world.spawn(()).id();
 
     world.add_relation(a, A, a).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], a);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 1);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
 
-    world.despawn(a).unwrap();
-
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    let a = world.spawn(());
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.add_relation(a, A, b).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert!(a == e || b == e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], if a == e { b } else { a });
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert!(a == e || b == e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], if a == e { b } else { a });
-    }
+    assert_eq!(a_s.len(), 2);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 2);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    let second = a_s[0].1.next().unwrap();
+    assert_eq!(second.0, &A);
+    assert_eq!(second.1, b);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
+
+    assert_eq!(a_s[1].0, b);
+    assert_eq!(a_s[1].1.len(), 1);
+    let first = a_s[1].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    assert_eq!(a_s[1].1.by_ref().count(), 0);
 
     world.despawn(a).unwrap();
 
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
 }
 
 #[test]
 fn test_symmetric_exclusive_relation() {
     let mut world = World::new();
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct A;
 
     impl Relation for A {
@@ -595,90 +420,62 @@ fn test_symmetric_exclusive_relation() {
         const SYMMETRIC: bool = true;
     }
 
-    let a = world.spawn(());
-    let b = world.spawn(());
-
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    let a = world.spawn(()).id();
+    let b = world.spawn(()).id();
 
     world.add_relation(a, A, a).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], a);
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert_eq!(a, e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], a);
-    }
+    assert_eq!(a_s.len(), 1);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 1);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
 
     world.add_relation(a, A, b).unwrap();
 
-    for (e, origins) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        assert!(a == e || b == e);
-        assert_eq!(origins.len(), 1);
-        assert_eq!(origins[0].targets().len(), 1);
-        assert_eq!(origins[0].targets()[0], if a == e { b } else { a });
-    }
+    let mut a_s = world
+        .view::<Entities>()
+        .relates::<A>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for (e, targets) in world
-        .query::<Entities>()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        assert!(a == e || b == e);
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].origins().len(), 1);
-        assert_eq!(targets[0].origins()[0], if a == e { b } else { a });
-    }
+    assert_eq!(a_s.len(), 2);
+    assert_eq!(a_s[0].0, a);
+    assert_eq!(a_s[0].1.len(), 2);
+    let first = a_s[0].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    let second = a_s[0].1.next().unwrap();
+    assert_eq!(second.0, &A);
+    assert_eq!(second.1, b);
+
+    assert_eq!(a_s[0].1.by_ref().count(), 0);
+
+    assert_eq!(a_s[1].0, b);
+    assert_eq!(a_s[1].1.len(), 1);
+    let first = a_s[1].1.next().unwrap();
+    assert_eq!(first.0, &A);
+    assert_eq!(first.1, a);
+
+    let second = a_s[1].1.next().unwrap();
+    assert_eq!(second.0, &A);
+    assert_eq!(second.1, b);
+
+    assert_eq!(a_s[1].1.by_ref().count(), 0);
 
     world.despawn(a).unwrap();
 
-    for _origins in world
-        .new_query()
-        .borrow_all::<&(dyn RelationOrigin + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
-
-    for _targets in world
-        .new_query()
-        .borrow_all::<&(dyn RelationTarget + Sync)>()
-        .iter()
-    {
-        panic!()
-    }
+    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
 }
 
 #[test]
@@ -701,8 +498,8 @@ fn test_filters() {
 fn add_relation() {
     let mut world = World::new();
 
-    let target = world.allocate();
-    let origin = world.allocate();
+    let target = world.allocate().id();
+    let origin = world.allocate().id();
 
     #[derive(Component)]
     struct Foo;

@@ -18,9 +18,10 @@ use crate::{
     archetype::Archetype,
     bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet, NoSuchEntity},
+    entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
     res::Res,
+    NoSuchEntity,
 };
 
 use self::edges::Edges;
@@ -224,8 +225,6 @@ impl World {
     }
 
     /// Checks if entity has component of specified type.
-    ///
-    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
     pub fn has_component<T: 'static>(&self, entity: impl AliveEntity) -> bool {
         let loc = entity.locate(&self.entities);
@@ -233,6 +232,18 @@ impl World {
             return false;
         }
         self.archetypes[loc.arch as usize].has_component(TypeId::of::<T>())
+    }
+
+    /// Checks if entity has component of specified type.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    #[inline(always)]
+    pub fn try_has_component<T: 'static>(&self, entity: impl Entity) -> Result<bool, NoSuchEntity> {
+        let loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        if loc.arch == u32::MAX {
+            return Ok(false);
+        }
+        Ok(self.archetypes[loc.arch as usize].has_component(TypeId::of::<T>()))
     }
 
     /// Checks if entity is alive.

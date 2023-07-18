@@ -2,10 +2,11 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    entity::EntityId,
+    entity::{EntityBound, EntityId},
     epoch::EpochId,
-    query::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write},
-    relation::{OriginComponent, Relation},
+    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
+    relation::{ExclusiveRelation, OriginComponent},
+    Access,
 };
 
 marker_type! {
@@ -16,16 +17,16 @@ marker_type! {
 }
 
 /// Fetch for the [`RelatesExclusive<&R>`] query.
-pub struct FetchRelatesExclusiveRead<'a, R: Relation> {
+pub struct FetchRelatesExclusiveRead<'a, R: ExclusiveRelation> {
     ptr: NonNull<OriginComponent<R>>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesExclusiveRead<'a, R>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
-    type Item = (&'a R, EntityId);
+    type Item = (&'a R, EntityBound<'a>);
 
     #[inline(always)]
     fn dangling() -> Self {
@@ -36,16 +37,16 @@ where
     }
 
     #[inline(always)]
-    unsafe fn get_item(&mut self, idx: u32) -> (&'a R, EntityId) {
+    unsafe fn get_item(&mut self, idx: u32) -> (&'a R, EntityBound<'a>) {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let origin = &origin_component.relations()[0];
-        (&origin.relation, origin.target)
+        (&origin.relation, EntityBound::new(origin.target))
     }
 }
 
 impl<R> IntoQuery for RelatesExclusive<&R>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
     type Query = RelatesExclusive<Read<R>>;
 
@@ -57,7 +58,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<&R>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
     #[inline(always)]
     fn default_query() -> RelatesExclusive<Read<R>> {
@@ -67,7 +68,7 @@ where
 
 impl<R> IntoQuery for RelatesExclusive<Read<R>>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
     type Query = Self;
 
@@ -79,7 +80,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<Read<R>>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -89,20 +90,16 @@ where
 
 unsafe impl<R> Query for RelatesExclusive<Read<R>>
 where
-    R: Relation + Sync,
+    R: ExclusiveRelation + Sync,
 {
-    type Item<'a> = (&'a R, EntityId);
+    type Item<'a> = (&'a R, EntityBound<'a>);
     type Fetch<'a> = FetchRelatesExclusiveRead<'a, R>;
 
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<OriginComponent<R>>(ty))
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
@@ -121,10 +118,7 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRelatesExclusiveRead<'a, R> {
-        assert!(
-            R::EXCLUSIVE,
-            "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
-        );
+        let () = R::ASSERT_EXCLUSIVE;
 
         let component = unsafe {
             archetype
@@ -143,10 +137,10 @@ where
     }
 }
 
-unsafe impl<R> ImmutableQuery for RelatesExclusive<Read<R>> where R: Relation + Sync {}
+unsafe impl<R> ImmutableQuery for RelatesExclusive<Read<R>> where R: ExclusiveRelation + Sync {}
 
 /// Fetch for the [`RelatesExclusive<&mut R>`] query.
-pub struct FetchRelatesExclusiveWrite<'a, R: Relation> {
+pub struct FetchRelatesExclusiveWrite<'a, R: ExclusiveRelation> {
     epoch: EpochId,
     ptr: NonNull<OriginComponent<R>>,
     entity_epochs: NonNull<EpochId>,
@@ -156,7 +150,7 @@ pub struct FetchRelatesExclusiveWrite<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesExclusiveWrite<'a, R>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     type Item = (&'a mut R, EntityId);
 
@@ -190,7 +184,7 @@ where
 
 impl<R> IntoQuery for RelatesExclusive<&mut R>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     type Query = RelatesExclusive<Write<R>>;
 
@@ -202,7 +196,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<&mut R>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     #[inline(always)]
     fn default_query() -> RelatesExclusive<Write<R>> {
@@ -212,7 +206,7 @@ where
 
 impl<R> IntoQuery for RelatesExclusive<Write<R>>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     type Query = Self;
 
@@ -224,7 +218,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<Write<R>>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -234,7 +228,7 @@ where
 
 unsafe impl<R> Query for RelatesExclusive<Write<R>>
 where
-    R: Relation + Send,
+    R: ExclusiveRelation + Send,
 {
     type Item<'a> = (&'a mut R, EntityId);
     type Fetch<'a> = FetchRelatesExclusiveWrite<'a, R>;
@@ -242,12 +236,8 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::write_type::<OriginComponent<R>>(ty))
     }
 
     #[inline(always)]
@@ -267,10 +257,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchRelatesExclusiveWrite<'a, R> {
-        assert!(
-            R::EXCLUSIVE,
-            "QueryExclusiveRelation can be used only with EXCLUSIVE relations"
-        );
+        let () = R::ASSERT_EXCLUSIVE;
 
         let component = unsafe {
             archetype

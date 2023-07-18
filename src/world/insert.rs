@@ -4,7 +4,8 @@ use crate::{
     action::{ActionBuffer, ActionEncoder},
     bundle::{DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entity, Location, NoSuchEntity},
+    entity::{Entity, Location},
+    NoSuchEntity,
 };
 
 use super::{

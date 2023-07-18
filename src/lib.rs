@@ -79,6 +79,8 @@
 extern crate alloc;
 extern crate self as edict;
 
+use core::{any::TypeId, fmt};
+
 pub use atomicell;
 
 macro_rules! indexed_tuple {
@@ -460,6 +462,94 @@ mod res;
 
 #[cfg(test)]
 mod test;
+
+/// Error that may be returned when an entity is not found in the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NoSuchEntity;
+
+impl fmt::Display for NoSuchEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Specified entity is not found")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for NoSuchEntity {}
+
+/// Error that may be returned when fetching query from entity that
+/// may be despawned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EntityError {
+    /// Error returned when an entity is not found in the world.
+    NoSuchEntity,
+
+    /// Entity alive but does not match query.
+    QueryMismatch,
+}
+
+unsafe trait ResultEntityError<T> {
+    unsafe fn assume_entity_exists(self) -> Option<T>;
+}
+
+unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
+    #[inline(always)]
+    unsafe fn assume_entity_exists(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(EntityError::QueryMismatch) => None,
+            Err(EntityError::NoSuchEntity) => unsafe { core::hint::unreachable_unchecked() },
+        }
+    }
+}
+
+impl From<NoSuchEntity> for EntityError {
+    #[inline(always)]
+    fn from(_: NoSuchEntity) -> Self {
+        EntityError::NoSuchEntity
+    }
+}
+
+impl fmt::Display for EntityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityError::NoSuchEntity => f.write_str("Specified entity is not found"),
+            EntityError::QueryMismatch => f.write_str("Entity does not match query"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for EntityError {}
+
+/// Specifies kind of access query performs for particular component.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Access {
+    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
+    Read,
+
+    /// Cannot be aliased with any other access.
+    Write,
+}
+
+impl Access {
+    #[inline(always)]
+    fn read_type<T: 'static>(ty: TypeId) -> Option<Self> {
+        if ty == TypeId::of::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    fn write_type<T: 'static>(ty: TypeId) -> Option<Self> {
+        if ty == TypeId::of::<T>() {
+            Some(Access::Write)
+        } else {
+            None
+        }
+    }
+}
 
 #[doc(hidden)]
 pub mod private {

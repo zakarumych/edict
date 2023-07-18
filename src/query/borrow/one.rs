@@ -3,12 +3,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{read::Read, write::Write, Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{
+        read::Read, write::Write, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+    },
 };
 
 /// [`Query`] that fetches components with specific `TypeId` as specified borrow.
 pub struct QueryBorrowOne<T> {
-    id: TypeId,
+    ty: TypeId,
     marker: PhantomData<T>,
 }
 
@@ -20,16 +22,16 @@ impl<T> Clone for QueryBorrowOne<T> {
     }
 
     fn clone_from(&mut self, source: &Self) {
-        self.id = source.id;
+        self.ty = source.ty;
     }
 }
 
 impl<T> QueryBorrowOne<T> {
     /// Construct a new query that fetches component with specified id.
     /// Borrowing it as `T`.
-    pub fn new(id: TypeId) -> Self {
+    pub fn new(ty: TypeId) -> Self {
         QueryBorrowOne {
-            id,
+            ty,
             marker: PhantomData,
         }
     }
@@ -74,7 +76,7 @@ where
 
     fn into_query(self) -> Self::Query {
         QueryBorrowOne {
-            id: self.id,
+            ty: self.ty,
             marker: PhantomData,
         }
     }
@@ -101,22 +103,22 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == self.id {
-            Some(Access::Read)
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        if ty == self.ty {
+            Ok(Some(Access::Read))
         } else {
-            None
+            Ok(None)
         }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(self.id)
+        archetype.has_component(self.ty)
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(self.id, Access::Read)
+        f(self.ty, Access::Read)
     }
 
     #[inline(always)]
@@ -126,7 +128,7 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchBorrowOneRead<'a, T> {
-        let component = archetype.component(self.id).unwrap_unchecked();
+        let component = archetype.component(self.ty).unwrap_unchecked();
 
         let cb = component
             .borrows()
@@ -202,7 +204,7 @@ where
 
     fn into_query(self) -> Self::Query {
         QueryBorrowOne {
-            id: self.id,
+            ty: self.ty,
             marker: PhantomData,
         }
     }
@@ -229,22 +231,22 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == self.id {
-            Some(Access::Write)
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        if ty == self.ty {
+            Ok(Some(Access::Write))
         } else {
-            None
+            Ok(None)
         }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(self.id)
+        archetype.has_component(self.ty)
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(self.id, Access::Read)
+        f(self.ty, Access::Read)
     }
 
     #[inline(always)]
@@ -254,7 +256,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchBorrowOneWrite<'a, T> {
-        let component = archetype.component(self.id).unwrap_unchecked();
+        let component = archetype.component(self.ty).unwrap_unchecked();
 
         let cb = component
             .borrows()

@@ -2,10 +2,11 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    entity::EntityId,
+    entity::EntityBound,
     epoch::EpochId,
-    query::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
     relation::{Relation, TargetComponent},
+    Access,
 };
 
 marker_type! {
@@ -47,7 +48,7 @@ unsafe impl<'a, R> Fetch<'a> for FetchRelated<'a, R>
 where
     R: Relation,
 {
-    type Item = &'a [EntityId];
+    type Item = &'a [EntityBound<'a>];
 
     #[inline(always)]
     fn dangling() -> Self {
@@ -58,9 +59,9 @@ where
     }
 
     #[inline(always)]
-    unsafe fn get_item(&mut self, idx: u32) -> &'a [EntityId] {
+    unsafe fn get_item(&mut self, idx: u32) -> &'a [EntityBound<'a>] {
         let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
-        &component.origins[..]
+        EntityBound::wrap_slice(&component.origins[..])
     }
 }
 
@@ -68,18 +69,14 @@ unsafe impl<R> Query for Related<R>
 where
     R: Relation,
 {
-    type Item<'a> = &'a [EntityId];
+    type Item<'a> = &'a [EntityBound<'a>];
     type Fetch<'a> = FetchRelated<'a, R>;
 
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<TargetComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<TargetComponent<R>>(ty))
     }
 
     #[inline(always)]

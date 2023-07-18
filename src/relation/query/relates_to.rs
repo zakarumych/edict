@@ -4,8 +4,9 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write},
+    query::{Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
     relation::{OriginComponent, Relation},
+    Access,
 };
 
 /// Query for origins of relation with specified target.
@@ -115,12 +116,8 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<OriginComponent<R>>(ty))
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
@@ -260,12 +257,8 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::write_type::<OriginComponent<R>>(ty))
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {

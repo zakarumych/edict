@@ -4,14 +4,14 @@ mod state;
 mod view;
 mod world;
 
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
-
-use super::{ActionQueue, IntoSystem, System};
-use crate::{
-    archetype::Archetype,
-    query::{merge_access, Access},
-    world::World,
+use core::{
+    any::{type_name, TypeId},
+    marker::PhantomData,
+    ptr::NonNull,
 };
+
+use super::{Access, ActionQueue, IntoSystem, System};
+use crate::{archetype::Archetype, world::World};
 
 pub use self::{
     action::ActionEncoderState,
@@ -61,20 +61,26 @@ pub unsafe trait FnArgState: Send + 'static {
     #[must_use]
     fn world_access(&self) -> Option<Access>;
 
-    /// Checks if this argument will skip specified archetype.
+    /// Checks if this argument will visit specified archetype.
     /// Called only for scheduling purposes.
     #[must_use]
     fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
+    /// Returns true if components accessed by the argument are borrowed at runtime,
+    /// allowing other args that conflict with it run if they too
+    /// borrow components at runtime.
+    #[must_use]
+    fn borrows_components_at_runtime(&self) -> bool;
+
     /// Returns access type to the specified component type this argument may perform.
     /// Called only for scheduling purposes.
     #[must_use]
-    fn access_component(&self, id: TypeId) -> Option<Access>;
+    fn component_type_access(&self, ty: TypeId) -> Option<Access>;
 
     /// Returns access type to the specified resource type this argument may perform.
     /// Called only for scheduling purposes.
     #[must_use]
-    fn access_resource(&self, id: TypeId) -> Option<Access>;
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access>;
 
     /// Extracts argument from the world.
     /// This method is called with synchronization guarantees provided
@@ -132,7 +138,15 @@ macro_rules! impl_func {
             fn world_access(&self) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
-                $(result = merge_access::<Func>(result, $a.world_access());)*
+                $(
+                    result = match (result, $a.world_access()) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => {
+                            panic!("Mutable `World` aliasing in system `{}`", type_name::<Self>());
+                        }
+                    };
+                )*
                 result
             }
 
@@ -143,18 +157,51 @@ macro_rules! impl_func {
             }
 
             #[inline(always)]
-            fn access_component(&self, id: TypeId) -> Option<Access> {
+            fn component_type_access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
-                $(result = merge_access::<Func>(result, $a.world_access());)*
+                let mut runtime_borrow = true;
+                $(
+                    runtime_borrow &= $a.borrows_components_at_runtime();
+                    if let Some(access) = $a.component_type_access(ty) {
+                        runtime_borrow &= $a.borrows_components_at_runtime();
+                        result = match (result, access) {
+                            (None, one) => Some(one),
+                            (Some(Access::Read), Access::Read) => Some(Access::Read),
+                            _ => {
+                                if runtime_borrow {
+                                    // All args that access this component use runtime borrow.
+                                    // Conflict will be resolved at runtime.
+                                    Some(Access::Write)
+                                } else {
+                                    panic!("Conflicting args in system `{}`.
+A component is aliased mutably.
+If arguments require mutable aliasing, all arguments that access a type must use runtime borrow check.
+For example `View` type does not use runtime borrow check and should be replaced with `ViewCell`.",
+                                        type_name::<Func>());
+                                }
+                            }
+                        };
+                    }
+                )*
                 result
             }
 
             #[inline(always)]
-            fn access_resource(&self, id: TypeId) -> Option<Access> {
+            fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
-                $(result = merge_access::<Func>(result, $a.access_resource(id));)*
+                $(
+                    result = match (result, $a.resource_type_access(ty)) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => {
+                            panic!("Conflicting args in system `{}`.
+                                A resource is aliased mutably.",
+                                type_name::<$a>());
+                        }
+                    };
+                )*
                 result
             }
 

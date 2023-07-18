@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg, world::World,
 };
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 macro_rules! impl_fetch {
     () => {
@@ -47,8 +47,8 @@ macro_rules! impl_fetch {
             const MUTABLE: bool = false;
 
             #[inline(always)]
-            fn access(&self, _ty: TypeId) -> Option<Access> {
-                None
+            fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+                Ok(None)
             }
 
             #[inline(always)]
@@ -153,11 +153,17 @@ macro_rules! impl_fetch {
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
 
             #[inline(always)]
-            fn access(&self, ty: TypeId) -> Option<Access> {
+            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = self;
                 let mut result = None;
-                $(result = merge_access::<Self>(result, <$a as Query>::access($a, ty));)+
-                result
+                $(
+                    result = match (result, $a.component_type_access(ty)?) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => return Err(WriteAlias),
+                    };
+                )*
+                Ok(result)
             }
 
             #[inline(always)]

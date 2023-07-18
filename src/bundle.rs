@@ -40,7 +40,7 @@ pub unsafe trait DynamicBundle {
     }
 
     /// Returns true if bundle has specified type id.
-    fn contains_id(&self, id: TypeId) -> bool;
+    fn contains_id(&self, ty: TypeId) -> bool;
 
     /// Calls provided closure with slice of ids of types that this bundle contains.
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R;
@@ -80,7 +80,7 @@ pub unsafe trait Bundle: DynamicBundle {
     fn static_key() -> TypeId;
 
     /// Returns true if bundle has specified type id.
-    fn static_contains_id(id: TypeId) -> bool;
+    fn static_contains_id(ty: TypeId) -> bool;
 
     /// Calls provided closure with slice of ids of types that this bundle contains.
     fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R;
@@ -109,8 +109,8 @@ macro_rules! impl_bundle {
             }
 
             #[inline(always)]
-            fn contains_id(&self, id: TypeId) -> bool {
-                Self::static_contains_id(id)
+            fn contains_id(&self, ty: TypeId) -> bool {
+                Self::static_contains_id(ty)
             }
 
             #[inline(always)]
@@ -171,8 +171,8 @@ macro_rules! impl_bundle {
             }
 
             #[inline(always)]
-            fn contains_id(&self, id: TypeId) -> bool {
-                <Self as Bundle>::static_contains_id(id)
+            fn contains_id(&self, ty: TypeId) -> bool {
+                <Self as Bundle>::static_contains_id(ty)
             }
 
             #[inline(always)]
@@ -225,8 +225,8 @@ macro_rules! impl_bundle {
             }
 
             #[inline(always)]
-            fn static_contains_id(id: TypeId) -> bool {
-                $( TypeId::of::<$a>() == id )|| *
+            fn static_contains_id(ty: TypeId) -> bool {
+                $( TypeId::of::<$a>() == ty )|| *
             }
 
             #[inline(always)]

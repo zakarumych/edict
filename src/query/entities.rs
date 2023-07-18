@@ -6,7 +6,7 @@ use crate::{
     system::QueryArg,
 };
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// [`Fetch`] type for the [`Entities`] query.
 pub struct EntitiesFetch<'a> {
@@ -67,8 +67,8 @@ unsafe impl Query for Entities {
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn access(&self, _ty: TypeId) -> Option<Access> {
-        None
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(None)
     }
 
     #[inline(always)]

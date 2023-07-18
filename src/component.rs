@@ -201,7 +201,7 @@ pub trait Component: Sized + 'static {
 #[derive(Clone)]
 pub struct ComponentInfo {
     /// [`TypeId`] of the component.
-    id: TypeId,
+    ty: TypeId,
 
     /// [`Layout`] of the component.
     layout: Layout,
@@ -239,7 +239,7 @@ impl ComponentInfo {
         T: Component,
     {
         ComponentInfo {
-            id: TypeId::of::<T>(),
+            ty: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
             name: T::name(),
             drop_one: drop_one::<T, DefaultDropHook>,
@@ -258,7 +258,7 @@ impl ComponentInfo {
         T: 'static,
     {
         ComponentInfo {
-            id: TypeId::of::<T>(),
+            ty: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
             name: type_name::<T>(),
             drop_one: drop_one::<T, ExternalDropHook>,
@@ -272,7 +272,7 @@ impl ComponentInfo {
 
     #[inline(always)]
     pub(crate) fn id(&self) -> TypeId {
-        self.id
+        self.ty
     }
 
     #[inline(always)]
@@ -634,8 +634,8 @@ impl ComponentRegistry {
         }
     }
 
-    pub fn get_info(&self, id: TypeId) -> Option<&ComponentInfo> {
-        self.components.get(&id)
+    pub fn get_info(&self, ty: TypeId) -> Option<&ComponentInfo> {
+        self.components.get(&ty)
     }
 
     pub fn iter_info(&self) -> impl Iterator<Item = &ComponentInfo> {

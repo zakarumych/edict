@@ -7,7 +7,11 @@ use core::{
 
 use atomicell::{Ref, RefMut};
 
-use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::World};
+use crate::{
+    archetype::Archetype,
+    system::{Access, ActionQueue},
+    world::World,
+};
 
 use super::{FnArg, FnArgState};
 
@@ -87,20 +91,21 @@ where
         false
     }
 
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
-    fn access_resource(&self, id: TypeId) -> Option<Access> {
-        if id == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
+        Access::read_type::<T>(ty)
     }
 
     #[inline(always)]
@@ -202,20 +207,21 @@ where
         false
     }
 
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
-    fn access_resource(&self, id: TypeId) -> Option<Access> {
-        if id == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
+        Access::write_type::<T>(ty)
     }
 
     #[inline(always)]
@@ -309,20 +315,21 @@ where
         false
     }
 
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
-    fn access_resource(&self, id: TypeId) -> Option<Access> {
-        if id == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
+        Access::read_type::<T>(ty)
     }
 
     #[inline(always)]
@@ -429,20 +436,21 @@ where
         false
     }
 
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
-    fn access_resource(&self, id: TypeId) -> Option<Access> {
-        if id == TypeId::of::<T>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
+        Access::write_type::<T>(ty)
     }
 
     #[inline(always)]

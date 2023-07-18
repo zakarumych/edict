@@ -4,7 +4,11 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::{archetype::Archetype, query::Access, system::ActionQueue, world::World};
+use crate::{
+    archetype::Archetype,
+    system::{Access, ActionQueue},
+    world::World,
+};
 
 use super::{FnArg, FnArgState};
 
@@ -82,12 +86,17 @@ where
     }
 
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     #[inline(always)]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 

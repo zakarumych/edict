@@ -1,10 +1,15 @@
 use core::any::TypeId;
 
 use crate::{
+    entity::Entity,
     epoch::EpochId,
     query::{
-        DefaultQuery, IntoQuery, Modified, Not, Query, QueryBorrowAll, QueryBorrowAny,
-        QueryBorrowOne, With, Without,
+        IntoQuery, Modified, Not, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, With,
+        Without,
+    },
+    relation::{
+        ExclusiveRelation, FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related,
+        Relates, RelatesExclusive, RelatesTo, Relation,
     },
 };
 
@@ -82,12 +87,24 @@ where
     pub fn modified<T>(
         self,
         after_epoch: EpochId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a T>>, F, B>
     where
-        T: DefaultQuery,
-        Modified<T>: Query,
+        T: Sync + 'static,
     {
-        self.extend(Modified::new(after_epoch))
+        self.extend(Modified::<&T>::new(after_epoch))
+    }
+
+    /// Extends query tuple with a query element that fetches the component,
+    /// filtering entities with the component and it was modified after the `after_epoch`.
+    #[inline(always)]
+    pub fn modified_mut<T>(
+        self,
+        after_epoch: EpochId,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a mut T>>, F, B>
+    where
+        T: Send + 'static,
+    {
+        self.extend(Modified::<&mut T>::new(after_epoch))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -95,12 +112,27 @@ where
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
     #[inline(always)]
-    pub fn borrow_any<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAny<T>>, F, B>
+    pub fn borrow_any<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAny<&'a T>>, F, B>
     where
-        QueryBorrowAny<T>: Query,
+        T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAny)
+        self.extend(QueryBorrowAny::<&T>.into_query())
     }
+
+    /// Extends query tuple with a query element that fetches borrows `T`
+    /// from a component of the entity.
+    /// First component of entity that provide `T` borrowing is used.
+    /// If no component provides `T` borrowing, the entity is filtered out.
+    #[inline(always)]
+    pub fn borrow_any_mut<T>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAny<&'a mut T>>, F, B>
+    where
+        T: Send + ?Sized + 'static,
+    {
+        self.extend(QueryBorrowAny::<&mut T>.into_query())
+    }
+
     /// Extends query tuple with a query element that fetches borrows `T`
     /// from a component of the entity.
     /// Component with user-specified `TypeId` is used.
@@ -112,12 +144,12 @@ where
     #[inline(always)]
     pub fn borrow_one<T>(
         self,
-        id: TypeId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowOne<T>>, F, B>
+        ty: TypeId,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowOne<&'a T>>, F, B>
     where
-        QueryBorrowOne<T>: Query,
+        T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowOne::new(id))
+        self.extend(QueryBorrowOne::<&T>::new(ty))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -129,11 +161,97 @@ where
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
     #[inline(always)]
-    pub fn borrow_all<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAll<T>>, F, B>
+    pub fn borrow_one_mut<T>(
+        self,
+        ty: TypeId,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowOne<&'a mut T>>, F, B>
     where
-        QueryBorrowAll<T>: Query,
+        T: Send + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAll)
+        self.extend(QueryBorrowOne::<&mut T>::new(ty))
+    }
+
+    /// Extends query tuple with a query element that fetches borrows `T`
+    /// from a component of the entity.
+    /// Component with user-specified `TypeId` is used.
+    /// If component with the `TypeId` is not found, the entity is filtered out.
+    ///
+    /// # Panicking
+    ///
+    /// If component with the `TypeId` does not provide `T` borrowing, it panics.
+    #[inline(always)]
+    pub fn borrow_all<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAll<&'a T>>, F, B>
+    where
+        T: Sync + ?Sized + 'static,
+    {
+        self.extend(QueryBorrowAll::<&T>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain shared reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates<R: Relation>(self) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B> {
+        self.extend(Relates::<&R>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain mutable reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_mut<R: Relation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a mut R>>, F, B> {
+        self.extend(Relates::<&mut R>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain shared reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_to<R: Relation>(
+        self,
+        target: impl Entity,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a R>>, F, B> {
+        self.extend(RelatesTo::<&R>::new(target.id()))
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain mutable reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_to_mut<R: Relation>(
+        self,
+        target: impl Entity,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a mut R>>, F, B> {
+        self.extend(RelatesTo::<&mut R>::new(target.id()))
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain shared reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_exclusive<R: ExclusiveRelation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B> {
+        self.extend(RelatesExclusive::<&R>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain mutable reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_exclusive_mut<R: ExclusiveRelation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a mut R>>, F, B> {
+        self.extend(RelatesExclusive::<&mut R>)
+    }
+
+    /// Queries for target entities in relation of type `R`.
+    /// The view will contain origins of the relation.
+    #[inline(always)]
+    pub fn related<R: Relation>(self) -> ViewValue<'a, TupleQueryAdd<Q, Related<R>>, F, B> {
+        self.extend(Related)
     }
 }
 
@@ -145,13 +263,13 @@ where
 {
     /// Extends filter tuple with an additional filter element.
     #[inline(always)]
-    pub fn filter<E>(self, filter: E::Query) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
+    pub fn filter<E>(self, filter: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
     where
         E: IntoQuery,
     {
         ViewValue {
             query: self.query,
-            filter: F::extend_query(self.filter, filter),
+            filter: F::extend_query(self.filter, filter.into_query()),
             archetypes: self.archetypes,
             entity_set: self.entity_set,
             borrow: self.borrow,
@@ -166,7 +284,7 @@ where
     where
         T: 'static,
     {
-        self.filter::<With<T>>(With)
+        self.filter(With)
     }
 
     /// Extends filter tuple with a filter element that\
@@ -176,7 +294,7 @@ where
     where
         T: 'static,
     {
-        self.filter::<Without<T>>(Not(With))
+        self.filter(Not(With))
     }
 
     /// Extends filter tuple with a filter element that
@@ -189,6 +307,42 @@ where
     where
         T: 'static,
     {
-        self.filter::<Modified<With<T>>>(Modified::new(after_epoch))
+        self.filter(Modified::<With<T>>::new(after_epoch))
+    }
+
+    /// Filters target entities in relation of type `R`.
+    #[inline(always)]
+    pub fn filter_related<R: Relation>(
+        self,
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelated<R>>, B> {
+        self.filter(FilterRelated)
+    }
+
+    /// Filters target entities in relation of type `R`
+    /// with specified origin entity.
+    #[inline(always)]
+    pub fn filter_related_by<R: Relation>(
+        self,
+        origin: impl Entity,
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatedBy<R>>, B> {
+        self.filter(FilterRelatedBy::new(origin.id()))
+    }
+
+    /// Filters origin entities in relation of type `R`.
+    #[inline(always)]
+    pub fn filter_relates<R: Relation>(
+        self,
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelates<R>>, B> {
+        self.filter(FilterRelates)
+    }
+
+    /// Filters origin entities in relation of type `R`
+    /// with specified target entity.
+    #[inline(always)]
+    pub fn filter_relates_to<R: Relation>(
+        self,
+        target: impl Entity,
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatesTo<R>>, B> {
+        self.filter(FilterRelatesTo::new(target.id()))
     }
 }

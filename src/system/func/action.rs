@@ -3,8 +3,7 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     archetype::Archetype,
-    query::Access,
-    system::ActionQueue,
+    system::{Access, ActionQueue},
     world::World,
 };
 
@@ -34,7 +33,7 @@ unsafe impl FnArgState for ActionEncoderState {
 
     #[inline(always)]
     fn world_access(&self) -> Option<Access> {
-        Some(Access::Read)
+        None
     }
 
     #[inline(always)]
@@ -43,12 +42,17 @@ unsafe impl FnArgState for ActionEncoderState {
     }
 
     #[inline(always)]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
     #[inline(always)]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 

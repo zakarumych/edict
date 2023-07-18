@@ -5,10 +5,9 @@ use crate::{
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::ComponentRegistry,
-    entity::{
-        AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location, NoSuchEntity,
-    },
+    entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
+    NoSuchEntity,
 };
 
 use super::{assert_registered_bundle, register_bundle, World};
@@ -199,7 +198,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        EntityRef::from_parts(id, loc, self)
+        unsafe { EntityRef::from_parts(id, loc, self) }
     }
 
     /// Umbrella method for spawning entity with existing ID.
@@ -236,7 +235,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        (spawned, EntityRef::from_parts(id, loc, self))
+        (spawned, unsafe { EntityRef::from_parts(id, loc, self) })
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -371,25 +370,7 @@ impl World {
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
     #[inline(always)]
-    pub fn despawn(&mut self, entity: impl AliveEntity) {
-        with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
-            .expect("Entity should be alive");
-    }
-
-    /// Despawns an entity with specified id.
-    /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{world::World, ExampleComponent};
-    /// let mut world = World::new();
-    /// let entity = world.spawn((ExampleComponent,));
-    /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
-    /// assert!(world.despawn(entity).is_err(), "Already despawned");
-    /// ```
-    #[inline(always)]
-    pub fn try_despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
+    pub fn despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
         with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
     }
 
@@ -415,6 +396,27 @@ impl World {
 
         Ok(())
     }
+
+    /// Special-case despawn method for [`EntityRef::despawn`].
+    /// This method uses branch elimination for non-existent entity case
+    /// and prevents data dependencies between removing entity from
+    /// `EntitySet` and `Archetype`.
+    #[inline(always)]
+    pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
+        with_buffer!(self, buffer => {
+            let real_loc = self.entities.despawn(id).unwrap_unchecked();
+            debug_assert_eq!(real_loc, loc, "Entity location mismatch");
+
+            let opt_id = unsafe {
+                self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, ActionEncoder::new(buffer, &self.entities))
+            };
+
+            if let Some(id) = opt_id {
+                self.entities
+                    .set_location(id, Location::new(loc.arch, loc.idx))
+            }
+        })
+    }
 }
 
 /// Spawning iterator. Produced by [`World::spawn_batch`].
@@ -431,8 +433,14 @@ where
     I: Iterator<Item = B>,
     B: Bundle,
 {
-    /// Spawns the rest of the entities, dropping their ids.
-    pub fn spawn_all(mut self) {
+    /// Spawns the rest of the entities.
+    /// The bundles iterator will be exhausted.
+    /// If bundles iterator is fused, calling this method again will
+    /// never spawn entities.
+    ///
+    /// This method won't return IDs of spawned entities.
+    #[inline]
+    pub fn spawn_all(&mut self) {
         let additional = iter_reserve_hint(&self.bundles);
         self.entities.reserve(additional);
         self.archetype.reserve(additional);
@@ -442,46 +450,50 @@ where
         let arch_idx = self.arch_idx;
         let epoch = self.epoch;
 
-        self.bundles.for_each(|bundle| {
+        self.bundles.by_ref().for_each(|bundle| {
             entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
         })
     }
 }
 
-impl<B, I> Iterator for SpawnBatch<'_, I>
+impl<'a, B, I> Iterator for SpawnBatch<'a, I>
 where
     I: Iterator<Item = B>,
     B: Bundle,
 {
-    type Item = EntityId;
+    type Item = EntityLoc<'a>;
 
-    fn next(&mut self) -> Option<EntityId> {
+    #[inline(always)]
+    fn next(&mut self) -> Option<EntityLoc<'a>> {
         let bundle = self.bundles.next()?;
 
-        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+        let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(id)
+        Some(EntityLoc::new(id, loc))
     }
 
-    fn nth(&mut self, n: usize) -> Option<EntityId> {
+    #[inline(always)]
+    fn nth(&mut self, n: usize) -> Option<EntityLoc<'a>> {
         // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
 
-        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+        let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
 
-        Some(id)
+        Some(EntityLoc::new(id, loc))
     }
 
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.bundles.size_hint()
     }
 
+    #[inline]
     fn fold<T, F>(mut self, init: T, mut f: F) -> T
     where
-        F: FnMut(T, EntityId) -> T,
+        F: FnMut(T, EntityLoc<'a>) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
         self.entities.reserve(additional);
@@ -493,14 +505,15 @@ where
         let epoch = self.epoch;
 
         self.bundles.fold(init, |acc, bundle| {
-            let (id, _) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, id)
+            let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
+            f(acc, EntityLoc::new(id, loc))
         })
     }
 
+    #[inline(always)]
     fn collect<T>(self) -> T
     where
-        T: FromIterator<EntityId>,
+        T: FromIterator<EntityLoc<'a>>,
     {
         // `FromIterator::from_iter` would probably just call `fn next()`
         // until the end of the iterator.
@@ -519,40 +532,41 @@ where
     I: ExactSizeIterator<Item = B>,
     B: Bundle,
 {
+    #[inline(always)]
     fn len(&self) -> usize {
         self.bundles.len()
     }
 }
 
-impl<B, I> DoubleEndedIterator for SpawnBatch<'_, I>
+impl<'a, B, I> DoubleEndedIterator for SpawnBatch<'a, I>
 where
     I: DoubleEndedIterator<Item = B>,
     B: Bundle,
 {
-    fn next_back(&mut self) -> Option<EntityId> {
+    fn next_back(&mut self) -> Option<EntityLoc<'a>> {
         let bundle = self.bundles.next_back()?;
 
-        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+        let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(id)
+        Some(EntityLoc::new(id, loc))
     }
 
-    fn nth_back(&mut self, n: usize) -> Option<EntityId> {
+    fn nth_back(&mut self, n: usize) -> Option<EntityLoc<'a>> {
         // No reason to create entities
         // for which the only reference is immediately dropped
         let bundle = self.bundles.nth_back(n)?;
 
-        let (id, _) = self.entities.spawn(self.arch_idx, |id| {
+        let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(id)
+        Some(EntityLoc::new(id, loc))
     }
 
     fn rfold<T, F>(mut self, init: T, mut f: F) -> T
     where
         Self: Sized,
-        F: FnMut(T, EntityId) -> T,
+        F: FnMut(T, EntityLoc<'a>) -> T,
     {
         self.archetype.reserve(iter_reserve_hint(&self.bundles));
 
@@ -562,8 +576,8 @@ where
         let epoch = self.epoch;
 
         self.bundles.rfold(init, |acc, bundle| {
-            let (id, _) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, id)
+            let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
+            f(acc, EntityLoc::new(id, loc))
         })
     }
 }

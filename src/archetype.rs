@@ -24,7 +24,7 @@ use hashbrown::HashMap;
 
 use crate::{
     action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, query::Access,
+    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, Access,
 };
 
 pub(crate) struct ComponentData {
@@ -741,8 +741,8 @@ impl Archetype {
 
     /// Returns archetype component
     #[inline(always)]
-    pub(crate) fn component(&self, id: TypeId) -> Option<&ArchetypeComponent> {
-        self.components.get(&id)
+    pub(crate) fn component(&self, ty: TypeId) -> Option<&ArchetypeComponent> {
+        self.components.get(&ty)
     }
 
     #[inline(always)]

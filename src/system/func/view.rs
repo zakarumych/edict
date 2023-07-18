@@ -1,11 +1,16 @@
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
+use core::{
+    any::{type_name, TypeId},
+    marker::PhantomData,
+    ptr::NonNull,
+};
 
 use crate::{
     archetype::Archetype,
-    query::{merge_access, Access, Query},
+    query::Query,
     system::ActionQueue,
     view::{acquire, release, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
+    Access,
 };
 
 use super::{FnArg, FnArgState};
@@ -76,12 +81,33 @@ where
     }
 
     #[inline(always)]
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        merge_access::<Self>(self.query.access(id), self.filter.access(id))
+    fn borrows_components_at_runtime(&self) -> bool {
+        true
     }
 
     #[inline(always)]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+        let q = self
+            .query
+            .component_type_access(ty)
+            .unwrap_or(Some(Access::Write));
+        let f = self
+            .filter
+            .component_type_access(ty)
+            .unwrap_or(Some(Access::Write));
+
+        match (q, f) {
+            (None, one) | (one, None) => one,
+            (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+            _ => {
+                // This view uses runtime borrow, so conflict can be resolved at runtime.
+                Some(Access::Write)
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
@@ -147,12 +173,34 @@ where
     }
 
     #[inline(always)]
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        merge_access::<Self>(self.query.access(id), self.filter.access(id))
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
     }
 
     #[inline(always)]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+        let Ok(q) = self.query.component_type_access(ty) else {
+            panic!("Mutable alias in query of `{}`", type_name::<Self>());
+        };
+        let Ok(f) = self.filter.component_type_access(ty) else {
+            panic!("Mutable alias in filter of `{}`", type_name::<Self>());
+        };
+
+        match (q, f) {
+            (None, one) | (one, None) => one,
+            (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+            _ => {
+                panic!(
+                    "Conflicting query and filter in `{}`.
+                        A component is aliased mutably.",
+                    core::any::type_name::<Self>()
+                );
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 

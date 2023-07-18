@@ -2,7 +2,7 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -94,10 +94,10 @@ where
     const MUTABLE: bool = T::MUTABLE;
 
     #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
         match self {
-            None => None,
-            Some(t) => t.access(ty),
+            None => Ok(None),
+            Some(t) => t.component_type_access(ty),
         }
     }
 

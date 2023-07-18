@@ -34,33 +34,27 @@ fn main() {
     //
     // Take care to now try to add duplicate components in one bundle
     // as method will surely panic.
-    let e = world.spawn((Foo, Bar, Baz));
+    let mut e = world.spawn((Foo, Bar, Baz));
 
     // Entity can be used to access components in the `World`.
     // Note that query returns `Result` because entity may be already despawned
     // or not have a component.
-    assert!(matches!(world.query_one_mut::<&Foo>(e), Ok(&Foo)));
+    assert!(matches!(e.get::<&Foo>(), Some(&Foo)));
 
-    // To add another component to the entity call `World::insert`.
-    world.insert(e, Value(0u32)).unwrap();
-    assert!(matches!(
-        world.query_one_mut::<&Value<u32>>(e),
-        Ok(&Value(0))
-    ));
+    // To add another component to the entity call `EntityRef::insert`.
+    e.insert(Value(0u32));
+    assert!(matches!(e.get::<&Value<u32>>(), Some(&Value(0))));
 
     // If the component is already present in entity, the value is simply replaced.
-    world.insert(e, Value(1u32)).unwrap();
-    assert!(matches!(
-        world.query_one_mut::<&Value<u32>>(e),
-        Ok(&Value(1))
-    ));
+    e.insert(Value(1u32));
+    assert!(matches!(e.get::<&Value<u32>>(), Some(&Value(1))));
 
     // To add few components at once user should call `World::insert_bundle`.
-    // This is much more efficient than adding components once by one.
-    world.insert_bundle(e, (Value(1u8), Value(2u16))).unwrap();
+    // This is much more efficient than adding components one by one.
+    e.insert_bundle((Value(1u8), Value(2u16)));
 
     // Spawned entities are despawned using [`World::despawn`] methods.
-    world.despawn(e).unwrap();
+    e.despawn();
 
     let _e = world.spawn((Foo, Bar));
 

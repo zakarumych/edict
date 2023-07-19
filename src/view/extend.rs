@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{BorrowState, ViewValue};
+use super::{BorrowState, ViewBorrow, ViewValue};
 
 /// A helper trait to extend tuples of queries to produce a new query.
 pub trait TupleQuery: Query + Sized {
@@ -67,16 +67,20 @@ where
 {
     /// Extends query tuple with an additional query element.
     #[inline(always)]
-    pub fn extend<E>(self, query: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B>
+    pub fn extend<E>(self, ext: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B>
     where
         E: IntoQuery,
     {
+        let (archetypes, query, filter, state) = self.borrow.split();
+
         ViewValue {
-            query: Q::extend_query(self.query, query.into_query()),
-            filter: self.filter,
-            archetypes: self.archetypes,
+            borrow: ViewBorrow {
+                query: Q::extend_query(query, ext.into_query()),
+                filter,
+                archetypes,
+                state,
+            },
             entity_set: self.entity_set,
-            borrow: self.borrow,
             epochs: self.epochs,
         }
     }
@@ -263,16 +267,20 @@ where
 {
     /// Extends filter tuple with an additional filter element.
     #[inline(always)]
-    pub fn filter<E>(self, filter: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
+    pub fn filter<E>(self, ext: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
     where
         E: IntoQuery,
     {
+        let (archetypes, query, filter, state) = self.borrow.split();
+
         ViewValue {
-            query: self.query,
-            filter: F::extend_query(self.filter, filter.into_query()),
-            archetypes: self.archetypes,
+            borrow: ViewBorrow {
+                query,
+                filter: F::extend_query(filter, ext.into_query()),
+                archetypes,
+                state,
+            },
             entity_set: self.entity_set,
-            borrow: self.borrow,
             epochs: self.epochs,
         }
     }

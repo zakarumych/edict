@@ -440,11 +440,11 @@ pub mod action;
 pub mod archetype;
 pub mod bundle;
 pub mod component;
-// pub mod dump;
+pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;
-// pub mod prelude;
+pub mod prelude;
 pub mod query;
 pub mod relation;
 pub mod system;
@@ -561,8 +561,8 @@ pub struct ExampleComponent;
 
 impl component::Component for ExampleComponent {}
 
-// #[doc(inline)]
-// pub use self::prelude::*;
+#[doc(inline)]
+pub use self::prelude::*;
 
 #[cold]
 #[inline(always)]

@@ -238,4 +238,6 @@ where
 #[test]
 fn test_system() {
     fn foo(_: ViewCell<&u32>) {}
+    fn is_system<M, T: super::IntoSystem<M>>(_: T) {}
+    is_system(foo);
 }

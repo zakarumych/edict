@@ -25,8 +25,8 @@ fn world_spawn() {
     let mut world = World::new();
 
     let mut e = world.spawn((U32(42), Str("qwe")));
-    assert_eq!(e.has_component::<U32>(), true);
-    assert_eq!(e.has_component::<Str>(), true);
+    assert!(e.has_component::<U32>());
+    assert!(e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 }
 
@@ -37,12 +37,12 @@ fn world_insert() {
     let mut world = World::new();
 
     let mut e = world.spawn((U32(42),));
-    assert_eq!(e.has_component::<U32>(), true);
-    assert_eq!(e.has_component::<Str>(), false);
+    assert!(e.has_component::<U32>());
+    assert!(!e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), None);
 
     e.insert(Str("qwe"));
-    assert_eq!(e.has_component::<Str>(), true);
+    assert!(e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 }
 
@@ -53,11 +53,11 @@ fn world_remove() {
 
     let mut e = world.spawn((U32(42), Str("qwe")));
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
-    assert_eq!(e.has_component::<U32>(), true);
-    assert_eq!(e.has_component::<Str>(), true);
+    assert!(e.has_component::<U32>());
+    assert!(e.has_component::<Str>());
 
     assert_eq!(e.remove::<Str>(), Some(Str("qwe")));
-    assert_eq!(e.has_component::<Str>(), false);
+    assert!(!e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), None);
 }
 
@@ -102,38 +102,40 @@ fn version_test() {
 
     let mut epoch = world.epoch();
 
-    let (e, world) = world.spawn((U32(42), Str("qwe"))).split();
+    let e = world.spawn((U32(42), Str("qwe"))).id();
 
-    assert_eq!(
-        world
-            .view::<Entities>()
-            .modified::<U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e, &U32(42))]
-    );
+    let view = world
+        .view_mut::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(view.len(), 1);
+    assert_eq!(view[0].0, e);
+    assert_eq!(view[0].1, &U32(42));
 
     epoch = world.epoch();
 
     assert_eq!(
         world
-            .view::<Entities>()
+            .view_mut::<Entities>()
             .modified::<U32>(epoch)
-            .iter()
+            .into_iter()
             .count(),
         0
     );
 
-    *world.view_one::<&mut U32>(e).get().unwrap() = U32(42);
+    *world.try_view_one::<&mut U32>(e).unwrap().get().unwrap() = U32(42);
 
-    assert_eq!(
-        world
-            .view::<Entities>()
-            .modified::<U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e, &U32(42))]
-    );
+    let view = world
+        .view_mut::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(view.len(), 1);
+    assert_eq!(view[0].0, e);
+    assert_eq!(view[0].1, &U32(42));
 }
 
 #[test]
@@ -143,44 +145,43 @@ fn version_despawn_test() {
     let mut epoch = world.epoch();
     let e1 = world.spawn((U32(42), Str("qwe"))).id();
     let e2 = world.spawn((U32(23), Str("rty"))).id();
-    let e1 = world.lookup(e1).unwrap();
-    let e2 = world.lookup(e2).unwrap();
 
-    assert_eq!(
-        world
-            .view::<Entities>()
-            .modified::<U32>(epoch)
-            .iter()
-            .collect::<Vec<_>>(),
-        vec![(e1, &U32(42)), (e2, &U32(23))]
-    );
+    let view = world
+        .view_mut::<Entities>()
+        .modified::<U32>(epoch)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    assert_eq!(view.len(), 2);
+    assert_eq!(view[0].0, e1);
+    assert_eq!(view[0].1, &U32(42));
+    assert_eq!(view[1].0, e2);
+    assert_eq!(view[1].1, &U32(23));
 
     epoch = world.epoch();
 
     assert_eq!(
         world
-            .view::<Entities>()
+            .view_mut::<Entities>()
             .modified::<U32>(epoch)
-            .iter()
+            .into_iter()
             .collect::<Vec<_>>(),
         vec![]
     );
 
-    *world.view_one::<&mut U32>(e2).get().unwrap() = U32(50);
-    let e1 = e1.id();
-    let e2 = e2.id();
+    *world.try_view_one::<&mut U32>(e2).unwrap().get().unwrap() = U32(50);
 
     world.despawn(e1).unwrap();
 
-    let result = world
-        .view::<Entities>()
+    let view = world
+        .view_mut::<Entities>()
         .modified::<U32>(epoch)
         .into_iter()
         .collect::<Vec<_>>();
 
-    assert_eq!(result.len(), 1);
-    assert_eq!(result[0].0, e2);
-    assert_eq!(result[0].1, &U32(50));
+    assert_eq!(view.len(), 1);
+    assert_eq!(view[0].0, e2);
+    assert_eq!(view[0].1, &U32(50));
 }
 
 #[test]
@@ -191,24 +192,24 @@ fn version_insert_test() {
     let e1 = world.spawn((U32(42), Str("qwe"))).id();
     let e2 = world.spawn((U32(23), Str("rty"))).id();
 
-    let result = world
-        .view::<Entities>()
+    let view = world
+        .view_mut::<Entities>()
         .modified::<U32>(epoch)
         .into_iter()
         .collect::<Vec<_>>();
 
-    assert_eq!(result[0].0, e1);
-    assert_eq!(*result[0].1, U32(42));
-    assert_eq!(result[1].0, e2);
-    assert_eq!(*result[1].1, U32(23));
+    assert_eq!(view[0].0, e1);
+    assert_eq!(*view[0].1, U32(42));
+    assert_eq!(view[1].0, e2);
+    assert_eq!(*view[1].1, U32(23));
 
     epoch = world.epoch();
 
     assert_eq!(
         world
-            .view::<Entities>()
+            .view_mut::<Entities>()
             .modified::<&U32>(epoch)
-            .iter()
+            .into_iter()
             .count(),
         0
     );
@@ -218,16 +219,16 @@ fn version_insert_test() {
 
     assert_eq!(world.insert(e1, Bool(true)), Ok(()));
 
-    let result = world
-        .view::<Entities>()
+    let view = world
+        .view_mut::<Entities>()
         .modified::<U32>(epoch)
         .into_iter()
         .collect::<Vec<_>>();
 
-    assert_eq!(result[0].0, e1);
-    assert_eq!(*result[0].1, U32(50));
-    assert_eq!(result[1].0, e2);
-    assert_eq!(*result[1].1, U32(100));
+    assert_eq!(view[0].0, e2);
+    assert_eq!(*view[0].1, U32(100));
+    assert_eq!(view[1].0, e1);
+    assert_eq!(*view[1].1, U32(50));
 }
 
 #[test]
@@ -248,7 +249,7 @@ fn test_relation() {
     world.add_relation(a, A, a).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -265,7 +266,7 @@ fn test_relation() {
     world.add_relation(a, A, b).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -285,7 +286,14 @@ fn test_relation() {
 
     world.despawn(a).unwrap();
 
-    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
+    assert_eq!(
+        world
+            .view_mut::<Entities>()
+            .relates::<A>()
+            .into_iter()
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -306,7 +314,7 @@ fn test_exclusive_relation() {
     world.add_relation(a, A, a).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -323,14 +331,14 @@ fn test_exclusive_relation() {
     world.add_relation(a, A, b).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
     assert_eq!(a_s.len(), 1);
     assert_eq!(a_s[0].0, a);
-    assert_eq!(a_s[0].1.len(), 2);
+    assert_eq!(a_s[0].1.len(), 1);
     let first = a_s[0].1.next().unwrap();
     assert_eq!(first.0, &A);
     assert_eq!(first.1, b);
@@ -339,7 +347,14 @@ fn test_exclusive_relation() {
 
     world.despawn(a).unwrap();
 
-    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
+    assert_eq!(
+        world
+            .view_mut::<Entities>()
+            .relates::<A>()
+            .into_iter()
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -360,7 +375,7 @@ fn test_symmetric_relation() {
     world.add_relation(a, A, a).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -377,7 +392,7 @@ fn test_symmetric_relation() {
     world.add_relation(a, A, b).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -405,7 +420,14 @@ fn test_symmetric_relation() {
 
     world.despawn(a).unwrap();
 
-    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
+    assert_eq!(
+        world
+            .view_mut::<Entities>()
+            .relates::<A>()
+            .into_iter()
+            .count(),
+        0
+    );
 }
 
 #[test]
@@ -426,7 +448,7 @@ fn test_symmetric_exclusive_relation() {
     world.add_relation(a, A, a).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
@@ -443,21 +465,17 @@ fn test_symmetric_exclusive_relation() {
     world.add_relation(a, A, b).unwrap();
 
     let mut a_s = world
-        .view::<Entities>()
+        .view_mut::<Entities>()
         .relates::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
     assert_eq!(a_s.len(), 2);
     assert_eq!(a_s[0].0, a);
-    assert_eq!(a_s[0].1.len(), 2);
+    assert_eq!(a_s[0].1.len(), 1);
     let first = a_s[0].1.next().unwrap();
     assert_eq!(first.0, &A);
-    assert_eq!(first.1, a);
-
-    let second = a_s[0].1.next().unwrap();
-    assert_eq!(second.0, &A);
-    assert_eq!(second.1, b);
+    assert_eq!(first.1, b);
 
     assert_eq!(a_s[0].1.by_ref().count(), 0);
 
@@ -467,15 +485,18 @@ fn test_symmetric_exclusive_relation() {
     assert_eq!(first.0, &A);
     assert_eq!(first.1, a);
 
-    let second = a_s[1].1.next().unwrap();
-    assert_eq!(second.0, &A);
-    assert_eq!(second.1, b);
-
     assert_eq!(a_s[1].1.by_ref().count(), 0);
 
     world.despawn(a).unwrap();
 
-    assert_eq!(world.view::<Entities>().relates::<A>().iter().count(), 0);
+    assert_eq!(
+        world
+            .view_mut::<Entities>()
+            .relates::<A>()
+            .into_iter()
+            .count(),
+        0
+    );
 }
 
 #[test]

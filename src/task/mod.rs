@@ -207,14 +207,14 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
 
     for archetype in world.archetypes() {
         let Some(indices) = archetype.borrow_mut_indices(TypeId::of::<dyn AnyTask>()) else { continue };
-        for &(tid, idx) in indices {
+        for &(tid, borrow_idx) in indices {
             let component = unsafe { archetype.component(tid).unwrap_unchecked() };
             let data = unsafe { component.data_mut() };
 
             if !data.epoch.after(after_epoch) {
                 continue;
             }
-            let borrow = component.borrows()[idx];
+            let borrow = component.borrows()[borrow_idx];
 
             let mut indices = 0..archetype.len() as u32;
 
@@ -225,19 +225,23 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
                         continue;
                     }
                 }
-                if !data.entity_epochs[idx].after(after_epoch) {
+                if !data.entity_epochs[entity_idx as usize].after(after_epoch) {
                     continue;
                 }
 
                 let ptr = unsafe {
-                    NonNull::new_unchecked(data.ptr.as_ptr().add(component.layout().size() * idx))
+                    NonNull::new_unchecked(
+                        data.ptr
+                            .as_ptr()
+                            .add(component.layout().size() * (entity_idx as usize)),
+                    )
                 };
 
                 let task = unsafe {
                     borrow.borrow_mut::<dyn AnyTask>().unwrap_unchecked()(ptr, PhantomData)
                 };
 
-                let id = archetype.entities()[idx];
+                let id = archetype.entities()[entity_idx as usize];
                 match task.poll(id, state.queue.clone()) {
                     Poll::Pending => {}
                     Poll::Ready(()) => {

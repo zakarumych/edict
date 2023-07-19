@@ -4,10 +4,8 @@ use crate::{
     archetype::Archetype,
     entity::EntityLoc,
     epoch::EpochId,
-    query::{
-        merge_access, Access, Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery,
-        PhantomQuery, Query,
-    },
+    query::{Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    Access,
 };
 
 /// Query result per component.
@@ -35,6 +33,15 @@ pub(super) struct DumpQuery<T> {
     after_epoch: EpochId,
     marker: PhantomData<fn() -> T>,
 }
+
+impl<T> Clone for DumpQuery<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for DumpQuery<T> {}
 
 impl<T> DumpQuery<T> {
     #[inline(always)]
@@ -111,12 +118,14 @@ macro_rules! impl_dump_query {
             type Fetch<'a> = (EntitiesFetch<'a>, ($(DumpFetch<'a, $a>),*));
 
             const MUTABLE: bool = false;
+            const FILTERS_ENTITIES: bool = true;
 
             #[inline(always)]
-            fn access(&self, ty: TypeId) -> Option<Access> {
-                let mut result = None;
-                $(result = merge_access::<Self>(result, <&$a as PhantomQuery>::access(ty));)*
-                result
+            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+                if [$(TypeId::of::<$a>(),)*].contains(&ty) {
+                    return Ok(Some(Access::Read))
+                }
+                Ok(None)
             }
 
             #[inline(always)]
@@ -125,7 +134,7 @@ macro_rules! impl_dump_query {
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, _archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
+            unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 $(f(TypeId::of::<$a>(), Access::Read);)*
             }
 
@@ -154,7 +163,7 @@ macro_rules! impl_dump_query {
                             }
                         }
                     },)*);
-                (unsafe { Entities::fetch(arch_idx, archetype, epoch) }, ($($a),*))
+                (unsafe { Entities.fetch(arch_idx, archetype, epoch) }, ($($a),*))
             }
         }
 

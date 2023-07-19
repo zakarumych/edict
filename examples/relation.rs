@@ -89,7 +89,7 @@ fn main() {
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.view::<Entities>().relates::<Enemy>() {
+    for (e, enemies) in world.view_mut::<Entities>().relates::<Enemy>() {
         println!(
             "{} is enemy of {:?}",
             e,
@@ -100,7 +100,7 @@ fn main() {
     let since = EpochId::start();
 
     let view = world
-        .view::<(Entities, &A)>()
+        .view_mut::<(Entities, &A)>()
         .with::<B>()
         .modified::<&C>(since)
         .relates_to::<ChildOf>(b)

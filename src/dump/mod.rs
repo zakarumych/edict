@@ -13,7 +13,7 @@ use core::marker::PhantomData;
 
 use crate::{
     action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
-    query::ImmutableQuery, world::World,
+    query::ImmutableQuery, world::World, EntityError,
 };
 
 pub use self::query::DumpItem;
@@ -208,9 +208,10 @@ macro_rules! set {
                 Fi: ImmutableQuery,
                 Du: for<'a> Dumper<($($a,)+), Error = Er>,
             {
-                let mut view = world.view_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
+                let view = world.view_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
+                let mut iter = view.iter();
 
-                view.try_for_each(|(id, ($($a),+))| {
+                iter.try_for_each(|(e, ($($a),+))| {
                     let mut present = 0;
                     let mut modified = 0;
 
@@ -225,7 +226,7 @@ macro_rules! set {
                             DumpSlot::Skipped
                         }
                     }),+);
-                    let bits = id.bits();
+                    let bits = e.id().bits();
                     dumper.dump(EntityDump([bits, present | modified, modified]), slots)
                 })
             }
@@ -250,7 +251,7 @@ macro_rules! set {
                 Lo: for<'a> Loader<($($a,)+), Error = Er>,
                 Ma: Mark,
             {
-                let mut view = world.view::<($(Option<&mut $a>,)+)>();
+                let view = world.view::<($(Option<&mut $a>,)+)>();
 
                 while let Some(next) = loader.next()? {
                     let EntityDump([bits, present, modified]) = next;
@@ -258,7 +259,7 @@ macro_rules! set {
                         continue;
                     };
 
-                    let mut slots = match view.get(id) {
+                    let mut slots = match view.try_get(id) {
                         Ok(($($a),+)) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) == 0 {
@@ -271,8 +272,8 @@ macro_rules! set {
                                 }
                             ),+)
                         }
-                        Err(QueryOneError::NotSatisfied) => unreachable!("Tuple of options is always satisfied"),
-                        Err(QueryOneError::NoSuchEntity) => {
+                        Err(EntityError::QueryMismatch) => unreachable!("Tuple of options is always satisfied"),
+                        Err(EntityError::NoSuchEntity) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) != 0 {
                                     LoadSlot::<$a>::Missing
@@ -299,7 +300,7 @@ macro_rules! set {
 
                     let marker = marker.clone();
                     actions.closure(move |world| {
-                        world.spawn_if_missing(id);
+                        world.spawn_or_insert(id, ());
                         marker.mark(world, id);
                         indexed_tuple!(idx => $(match $a {
                             Some(comp) => { let _ = world.insert(id, comp); }

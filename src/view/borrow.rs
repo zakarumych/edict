@@ -39,6 +39,7 @@ impl RuntimeBorrowState {
 
 /// Acquire borrow on archetypes.
 #[inline(always)]
+#[track_caller]
 pub fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetypes: &'a [Archetype],
@@ -124,6 +125,7 @@ pub fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetyp
 }
 
 #[inline(always)]
+#[track_caller]
 fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetype: &'a Archetype,
@@ -245,6 +247,7 @@ impl BorrowState for RuntimeBorrowState {
 /// Borrow state for statically borrowed views.
 /// These can be created from [`&mut World`](World)
 /// or unsafely from [`&World`](World).
+#[derive(Copy, Clone, Debug)]
 pub struct StaticallyBorrowed;
 
 impl BorrowState for StaticallyBorrowed {

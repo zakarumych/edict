@@ -1,6 +1,7 @@
-use core::{fmt, marker::PhantomData, num::NonZeroU64};
+use core::{any::TypeId, fmt, marker::PhantomData, num::NonZeroU64};
 
 use crate::{
+    action::ActionBuffer,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     query::{DefaultQuery, IntoQuery, QueryItem},
@@ -42,6 +43,7 @@ pub trait Entity {
             id: self.id(),
             loc,
             world,
+            buffer: ActionBuffer::new(),
         })
     }
 }
@@ -71,6 +73,7 @@ pub trait AliveEntity: Entity {
             id: self.id(),
             loc,
             world,
+            buffer: ActionBuffer::new(),
         }
     }
 }
@@ -350,6 +353,7 @@ pub struct EntityRef<'a> {
     id: EntityId,
     loc: Location,
     world: &'a mut World,
+    buffer: ActionBuffer,
 }
 
 impl PartialEq<EntityId> for EntityRef<'_> {
@@ -388,18 +392,41 @@ impl fmt::Display for EntityRef<'_> {
     }
 }
 
+impl Drop for EntityRef<'_> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        self.buffer.execute(self.world);
+    }
+}
+
 impl<'a> EntityRef<'a> {
     /// Returns entity reference if it is alive.
     #[inline(always)]
     pub fn new(id: EntityId, world: &'a mut World) -> Result<Self, NoSuchEntity> {
         let loc = world.entities().get_location(id).ok_or(NoSuchEntity)?;
-        Ok(EntityRef { id, loc, world })
+        Ok(EntityRef {
+            id,
+            loc,
+            world,
+            buffer: ActionBuffer::new(),
+        })
     }
 
     #[inline(always)]
     pub(crate) unsafe fn from_parts(id: EntityId, loc: Location, world: &'a mut World) -> Self {
         debug_assert_eq!(world.entities().get_location(id), Some(loc));
-        EntityRef { id, loc, world }
+        EntityRef {
+            id,
+            loc,
+            world,
+            buffer: ActionBuffer::new(),
+        }
+    }
+
+    /// Returns entity id.
+    #[inline(always)]
+    pub fn id(&self) -> EntityId {
+        self.id
     }
 
     /// Queries components from specified entity.
@@ -558,7 +585,12 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.insert(loc, component).unwrap_unchecked() }
+        self.loc = unsafe {
+            self.world
+                .insert_with_buffer(loc, component, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
     }
 
     /// Attempts to inserts component to the entity.
@@ -576,7 +608,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// let mut entity = world.spawn(());
     ///
-    /// assert_eq!(!entity.has_component::<u32>());
+    /// assert!(!entity.has_component::<u32>());
     /// entity.insert_external(42u32);
     /// assert!(entity.has_component::<u32>());
     /// ```
@@ -590,11 +622,12 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe {
+        self.loc = unsafe {
             self.world
-                .insert_external(loc, component)
+                .insert_external_with_buffer(loc, component, &mut self.buffer)
                 .unwrap_unchecked()
         }
+        .loc;
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -614,9 +647,9 @@ impl<'a> EntityRef<'a> {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
-    /// assert_eq!(!entity.has_component::<ExampleComponent>());
+    /// assert!(!entity.has_component::<ExampleComponent>());
     /// entity.insert_bundle((ExampleComponent,));
-    /// assert_eq!(entity.has_component::<ExampleComponent>(entity));
+    /// assert!(entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
     pub fn insert_bundle<B>(&mut self, bundle: B)
@@ -628,7 +661,12 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.insert_bundle(loc, bundle).unwrap_unchecked() }
+        self.loc = unsafe {
+            self.world
+                .insert_bundle_with_buffer(loc, bundle, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -671,11 +709,12 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe {
+        self.loc = unsafe {
             self.world
-                .insert_external_bundle(loc, bundle)
+                .insert_external_bundle_with_buffer(loc, bundle, &mut self.buffer)
                 .unwrap_unchecked()
         }
+        .loc;
     }
 
     /// Removes a component from the entity.
@@ -690,7 +729,9 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.remove(loc).unwrap_unchecked() }
+        let (c, e) = unsafe { self.world.remove(loc).unwrap_unchecked() };
+        self.loc = e.loc;
+        c
     }
 
     /// Drops a component from the referenced entity.
@@ -704,7 +745,28 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.drop::<T>(loc).unwrap_unchecked() }
+        self.loc = unsafe {
+            self.world
+                .drop_with_buffer::<T>(loc, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
+    }
+
+    /// Drops a component from the referenced entity.
+    #[inline(always)]
+    pub fn drop_erased(&mut self, ty: TypeId) {
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.loc = unsafe {
+            self.world
+                .drop_erased_with_buffer(loc, ty, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -744,7 +806,12 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        unsafe { self.world.drop_bundle::<B>(loc).unwrap_unchecked() }
+        self.loc = unsafe {
+            self.world
+                .drop_bundle_with_buffer::<B>(loc, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
     }
 
     /// Despawns the referenced entity.
@@ -764,24 +831,6 @@ impl<'a> EntityRef<'a> {
             world: PhantomData,
         };
         self.world.has_component::<T>(loc)
-    }
-
-    /// Splits entity reference into two parts: entity with location and world.
-    /// This allows using `World` to access other entities,
-    /// without loosing entity reference entirely.
-    pub fn split(self) -> (EntityLoc<'a>, &'a World) {
-        let loc = EntityLoc {
-            id: self.id,
-            loc: self.loc,
-            world: PhantomData,
-        };
-        (loc, self.world)
-    }
-
-    /// Returns entity id.
-    #[inline(always)]
-    pub fn id(&self) -> EntityId {
-        self.id
     }
 }
 

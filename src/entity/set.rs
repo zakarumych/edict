@@ -103,7 +103,7 @@ impl EntitySet {
     /// Otherwise calls provided closure to place entity into archetype and acquire index.
     /// And then returns `true` and entity location.
     #[inline(always)]
-    pub fn spawn_with(
+    pub fn spawn_at(
         &mut self,
         id: EntityId,
         arch: u32,

@@ -184,7 +184,7 @@ where
                 let relations = unsafe { &mut *self.non_exclusive };
                 for r in relations.iter_mut() {
                     if r.target == target {
-                        Self::set_one(&mut r.relation, relation, target, target, origin, encoder);
+                        Self::set_one(&mut r.relation, relation, origin, target, target, encoder);
                         return;
                     }
                 }
@@ -192,7 +192,8 @@ where
             }
             true => {
                 let r = unsafe { &mut *self.exclusive };
-                Self::set_one(&mut r.relation, relation, r.target, target, origin, encoder);
+                Self::set_one(&mut r.relation, relation, origin, r.target, target, encoder);
+                r.target = target;
             }
         }
     }

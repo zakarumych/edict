@@ -33,9 +33,9 @@ impl World {
     /// # use edict::world::World;
     /// let mut world = World::new();
     /// let entity = world.allocate().id();
-    /// assert_eq!(world.is_alive(entity), true);
-    /// world.try_despawn(entity).unwrap();
-    /// assert_eq!(world.is_alive(entity), false);
+    /// assert!(world.is_alive(entity));
+    /// world.despawn(entity).unwrap();
+    /// assert!(!world.is_alive(entity));
     /// ```
     #[inline(always)]
     pub fn allocate(&self) -> EntityLoc<'_> {
@@ -54,12 +54,12 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn((ExampleComponent,));
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
-    /// let ExampleComponent = world.remove(entity).unwrap();
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// let mut entity = world.spawn((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
     pub fn spawn<B>(&mut self, bundle: B) -> EntityRef<'_>
@@ -82,22 +82,52 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{World, ExampleComponent, EntityId};
     /// let mut world = World::new();
-    /// let id = EntityId::from_bits(42);
-    /// let entity = world.spawn_with(id, (ExampleComponent,));
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
-    /// let ExampleComponent = world.remove(entity).unwrap();
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// let id = EntityId::from_bits(42).unwrap();
+    /// let mut entity = world.spawn_at(id, (ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
-    pub fn spawn_with<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
+    pub fn spawn_at<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
     {
         self.maintenance();
-        let (spawned, entity) = self._spawn_with(id, bundle, register_bundle::<B>);
+        let (spawned, entity) = self._spawn_at(id, bundle, register_bundle::<B>);
         assert!(spawned);
+        entity
+    }
+
+    /// Spawns a new entity in this world with specific ID and bundle of components.
+    /// The `World` must be configured to never allocate this ID.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the id is already used by the world.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent, EntityId};
+    /// let mut world = World::new();
+    /// let id = EntityId::from_bits(42).unwrap();
+    /// let mut entity = world.spawn_or_insert(id, (ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_or_insert<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
+    where
+        B: DynamicComponentBundle,
+    {
+        self.maintenance();
+        let (_spawned, entity) = self._spawn_at(id, bundle, register_bundle::<B>);
         entity
     }
 
@@ -119,14 +149,14 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
     /// world.ensure_external_registered::<u32>();
     /// world.ensure_component_registered::<ExampleComponent>();
-    /// let entity = world.spawn_external((42u32, ExampleComponent));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
-    /// assert_eq!(world.remove(entity), Ok(42u32));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert!(entity.has_component::<u32>());
+    /// assert_eq!(entity.remove(), Some(42u32));
+    /// assert!(!entity.has_component::<u32>());
     /// ```
     #[inline(always)]
     pub fn spawn_external<B>(&mut self, bundle: B) -> EntityRef<'_>
@@ -155,22 +185,24 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
     /// world.ensure_external_registered::<u32>();
     /// world.ensure_component_registered::<ExampleComponent>();
-    /// let entity = world.spawn_external((42u32, ExampleComponent));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
-    /// assert_eq!(world.remove(entity), Ok(42u32));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert!(entity.has_component::<u32>());
+    /// assert_eq!(entity.remove(), Some(42u32));
+    /// assert!(!entity.has_component::<u32>());
     /// ```
     #[inline(always)]
-    pub fn spawn_external_with_id<B>(&mut self, id: EntityId, bundle: B)
+    pub fn spawn_external_at<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicBundle,
     {
         self.maintenance();
-        self._spawn_with(id, bundle, assert_registered_bundle::<B>);
+        let (spawned, entity) = self._spawn_at(id, bundle, assert_registered_bundle::<B>);
+        assert!(spawned);
+        entity
     }
 
     /// Umbrella method for spawning entity with new ID.
@@ -206,7 +238,7 @@ impl World {
     /// and [`EntityRef`] handle to the newly spawned entity.
     ///
     /// If entity is not spawned, bundle is dropped.
-    fn _spawn_with<B, F>(
+    fn _spawn_at<B, F>(
         &mut self,
         id: EntityId,
         bundle: B,
@@ -231,7 +263,7 @@ impl World {
         );
 
         let epoch = self.epoch.next_mut();
-        let (spawned, loc) = self.entities.spawn_with(id, arch_idx, || {
+        let (spawned, loc) = self.entities.spawn_at(id, arch_idx, || {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
@@ -363,9 +395,9 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn((ExampleComponent,));
+    /// let entity = world.spawn((ExampleComponent,)).id();
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
@@ -390,8 +422,7 @@ impl World {
         };
 
         if let Some(id) = opt_id {
-            self.entities
-                .set_location(id, Location::new(loc.arch, loc.idx))
+            self.entities.set_location(id, loc)
         }
 
         Ok(())
@@ -413,7 +444,7 @@ impl World {
 
             if let Some(id) = opt_id {
                 self.entities
-                    .set_location(id, Location::new(loc.arch, loc.idx))
+                    .set_location(id, loc)
             }
         })
     }

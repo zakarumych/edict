@@ -20,8 +20,14 @@ impl ActionBuffer {
         }
     }
 
+    #[inline(always)]
     pub(super) fn actions(&mut self) -> &mut VecDeque<ActionFn<'static>> {
         &mut self.actions
+    }
+
+    #[inline(always)]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.actions.is_empty()
     }
 
     /// Returns an encoder that records actions into this buffer.
@@ -67,6 +73,7 @@ pub trait ActionBufferSliceExt {
 }
 
 impl ActionBufferSliceExt for [ActionBuffer] {
+    #[inline(always)]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut().any(|encoder| encoder.execute(world))
     }

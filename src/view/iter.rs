@@ -6,7 +6,7 @@ use crate::{
     query::{Fetch, Query, QueryItem},
 };
 
-use super::{BorrowState, StaticallyBorrowed, ViewValue};
+use super::{BorrowState, StaticallyBorrowed, ViewBorrow, ViewValue};
 
 impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
@@ -17,82 +17,64 @@ where
     /// Returns an iterator over entities with a query `Q` and filter `F`.
     #[inline(always)]
     pub fn iter(&self) -> ViewIter<'_, Q, F> {
-        self.borrow
-            .acquire(&self.query, &self.filter, self.archetypes);
-
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
-        ViewIter::new(
-            self.query,
-            self.filter,
-            epoch,
-            self.archetypes,
-            StaticallyBorrowed, // Borrowed in `ViewState` for the duration of returned lifetime.
-        )
+        ViewIter::new(epoch, &self.borrow)
     }
 }
 
-impl<'a, Q, F, B> IntoIterator for ViewValue<'a, Q, F, B>
+impl<'a, Q, F> IntoIterator for ViewValue<'a, Q, F, StaticallyBorrowed>
 where
     Q: Query,
     F: Query,
-    B: BorrowState,
 {
     type Item = QueryItem<'a, Q>;
-
-    type IntoIter = ViewIter<'a, Q, F, B>;
+    type IntoIter = ViewIter<'a, Q, F>;
 
     #[inline(always)]
-    fn into_iter(self) -> ViewIter<'a, Q, F, B> {
-        self.borrow
-            .acquire(&self.query, &self.filter, self.archetypes);
-
+    fn into_iter(self) -> ViewIter<'a, Q, F> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
-        ViewIter::new(self.query, self.filter, epoch, self.archetypes, self.borrow)
+        ViewIter::new(epoch, &self.borrow)
     }
 }
 
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
-pub struct ViewIter<'a, Q: Query, F: Query, B = StaticallyBorrowed> {
+pub struct ViewIter<'a, Q: Query, F: Query> {
     query: Q,
-    query_fetch: Q::Fetch<'a>,
     filter: F,
+    query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
     archetypes_iter: core::iter::Enumerate<core::slice::Iter<'a, Archetype>>,
     indices: Range<u32>,
     touch_chunk: bool,
-    #[allow(dead_code)]
-    borrow: B,
 }
 
-impl<'a, Q, F, B> ViewIter<'a, Q, F, B>
+impl<'a, Q, F> ViewIter<'a, Q, F>
 where
     Q: Query,
     F: Query,
 {
-    pub(crate) fn new(
-        query: Q,
-        filter: F,
-        epoch: EpochId,
-        archetypes: &'a [Archetype],
-        borrow: B,
-    ) -> Self {
+    fn new<B>(epoch: EpochId, borrow: &ViewBorrow<'a, Q, F, B>) -> Self
+    where
+        B: BorrowState,
+    {
+        borrow.acquire();
+
         ViewIter {
-            query,
+            query: borrow.query,
+            filter: borrow.filter,
             query_fetch: Fetch::dangling(),
-            filter,
             filter_fetch: Fetch::dangling(),
             epoch,
-            archetypes_iter: archetypes.iter().enumerate(),
+            archetypes_iter: borrow.archetypes.iter().enumerate(),
             indices: 0..0,
             touch_chunk: false,
-            borrow,
         }
     }
 }
 
-impl<'a, Q, F, B> Iterator for ViewIter<'a, Q, F, B>
+impl<'a, Q, F> Iterator for ViewIter<'a, Q, F>
 where
     Q: Query,
     F: Query,

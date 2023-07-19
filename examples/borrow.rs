@@ -31,11 +31,11 @@ fn main() {
     let mut world = World::new();
 
     // Spawn pair of entities.
-    let _a = world.spawn((A,));
-    let _b = world.spawn((B,));
+    let _ = world.spawn((A,));
+    let _ = world.spawn((B,));
 
     // Spawn entity with both.
-    let _c = world.spawn((A, B));
+    let _ = world.spawn((A, B));
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.

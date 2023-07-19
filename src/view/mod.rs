@@ -13,6 +13,7 @@ use crate::{
 
 pub use self::{
     borrow::{acquire, release, BorrowState, RuntimeBorrowState, StaticallyBorrowed},
+    iter::ViewIter,
     one::{ViewOne, ViewOneState},
 };
 
@@ -22,15 +23,94 @@ mod index;
 mod iter;
 mod one;
 
-/// A view over [`World`] that may be used to access specific components.
-#[must_use]
-pub struct ViewValue<'a, Q: Query, F: Query, B> {
+#[derive(Clone)]
+struct ViewBorrow<'a, Q: Query, F: Query, B: BorrowState> {
+    archetypes: &'a [Archetype],
     query: Q,
     filter: F,
-    archetypes: &'a [Archetype],
+    state: B,
+}
+
+impl<'a, Q, F, B> Drop for ViewBorrow<'a, Q, F, B>
+where
+    Q: Query,
+    F: Query,
+    B: BorrowState,
+{
+    #[inline(always)]
+    fn drop(&mut self) {
+        self.state
+            .release(&self.query, &self.filter, self.archetypes);
+    }
+}
+
+impl<'a, Q, F, B> ViewBorrow<'a, Q, F, B>
+where
+    Q: Query,
+    F: Query,
+    B: BorrowState,
+{
+    #[inline(always)]
+    fn acquire(&self) {
+        self.state
+            .acquire(&self.query, &self.filter, self.archetypes);
+    }
+
+    #[inline(always)]
+    fn release(&self) {
+        self.state
+            .release(&self.query, &self.filter, self.archetypes);
+    }
+
+    #[inline(always)]
+    fn with<R>(&self, arch_idx: u32, f: impl FnOnce() -> R) -> R {
+        self.state.with(
+            &self.query,
+            &self.filter,
+            &self.archetypes[arch_idx as usize],
+            f,
+        )
+    }
+
+    #[inline(always)]
+    fn split(self) -> (&'a [Archetype], Q, F, B) {
+        self.state
+            .release(&self.query, &self.filter, self.archetypes);
+
+        unsafe {
+            let me = std::mem::ManuallyDrop::new(self);
+            let archetypes = std::ptr::read(&me.archetypes);
+            let query = std::ptr::read(&me.query);
+            let filter = std::ptr::read(&me.filter);
+            let state = std::ptr::read(&me.state);
+            (archetypes, query, filter, state)
+        }
+    }
+}
+
+/// A view over [`World`] that may be used to access specific components.
+#[derive(Clone)]
+#[must_use]
+pub struct ViewValue<'a, Q: Query, F: Query, B: BorrowState> {
     entity_set: &'a EntitySet,
-    borrow: B,
     epochs: &'a EpochCounter,
+    borrow: ViewBorrow<'a, Q, F, B>,
+}
+
+impl<'a, Q, F> ViewValue<'a, Q, F, RuntimeBorrowState>
+where
+    Q: Query,
+    F: Query,
+{
+    /// Unlocks runtime borrows.
+    /// Allows usage of conflicting views.
+    ///
+    /// Borrows are automatically unlocked when the view is dropped.
+    /// This method is necessary only if caller wants to keep the view
+    /// to reuse it later.
+    pub fn unlock(&self) {
+        self.borrow.release()
+    }
 }
 
 /// View over entities that match query and filter, restricted to
@@ -56,11 +136,13 @@ where
     #[inline(always)]
     pub fn new(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
-            archetypes: world.archetypes(),
+            borrow: ViewBorrow {
+                archetypes: world.archetypes(),
+                query: query.into_query(),
+                filter: filter.into_query(),
+                state: StaticallyBorrowed,
+            },
             entity_set: world.entities(),
-            borrow: StaticallyBorrowed,
             epochs: world.epoch_counter(),
         }
     }
@@ -72,11 +154,13 @@ where
     #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
-            archetypes: world.archetypes(),
+            borrow: ViewBorrow {
+                query: query.into_query(),
+                filter: filter.into_query(),
+                archetypes: world.archetypes(),
+                state: StaticallyBorrowed,
+            },
             entity_set: world.entities(),
-            borrow: StaticallyBorrowed,
             epochs: world.epoch_counter(),
         }
     }
@@ -94,11 +178,13 @@ where
     #[inline(always)]
     pub fn new_cell(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
-            archetypes: world.archetypes(),
+            borrow: ViewBorrow {
+                query: query.into_query(),
+                filter: filter.into_query(),
+                archetypes: world.archetypes(),
+                state: RuntimeBorrowState::new(),
+            },
             entity_set: world.entities(),
-            borrow: RuntimeBorrowState::new(),
             epochs: world.epoch_counter(),
         }
     }

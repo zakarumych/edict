@@ -56,7 +56,7 @@ fn main() {
     // Spawned entities are despawned using [`World::despawn`] methods.
     e.despawn();
 
-    let _e = world.spawn((Foo, Bar));
+    let _ = world.spawn((Foo, Bar));
 
     // Entities can be spawned in batches using iterators over bundles.
     // Each iterator element is treated as bundle of components

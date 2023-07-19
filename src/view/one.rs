@@ -21,6 +21,30 @@ pub struct ViewOneState<'a, Q: Query, F: Query> {
     epochs: &'a EpochCounter,
 }
 
+impl<'a, Q: Query, F: Query> Drop for ViewOneState<'a, Q, F> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        self.unlock()
+    }
+}
+
+impl<'a, Q: Query, F: Query> ViewOneState<'a, Q, F> {
+    /// Unlocks runtime borrows.
+    /// Allows usage of conflicting views.
+    ///
+    /// Borrows are automatically unlocked when the view is dropped.
+    /// This method is necessary only if caller wants to keep the view
+    /// to reuse it later.
+    #[inline(always)]
+    pub fn unlock(&self) {
+        self.borrow.release(
+            &self.query,
+            &self.filter,
+            core::slice::from_ref(self.archetype),
+        )
+    }
+}
+
 /// View for single entity.
 pub type ViewOne<'a, Q, F = ()> =
     ViewOneState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query>;

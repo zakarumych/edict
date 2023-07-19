@@ -36,7 +36,7 @@ fn main() {
 
     assert_eq!(
         world
-            .new_view()
+            .new_view_mut()
             .borrow_any::<&(dyn Debug + Sync)>()
             .into_iter()
             .count(),
@@ -45,7 +45,7 @@ fn main() {
 
     assert_eq!(
         world
-            .new_view()
+            .new_view_mut()
             .borrow_any::<&(dyn Debug + Send + Sync)>()
             .into_iter()
             .count(),
@@ -54,7 +54,7 @@ fn main() {
 
     assert_eq!(
         world
-            .new_view()
+            .new_view_mut()
             .borrow_any_mut::<dyn Debug + Send>()
             .into_iter()
             .count(),
@@ -63,24 +63,38 @@ fn main() {
 
     assert_eq!(
         world
-            .new_view()
+            .new_view_mut()
             .borrow_any_mut::<dyn Debug + Send + Sync>()
             .into_iter()
             .count(),
         1
     );
 
-    assert_eq!(world.new_view().borrow_any::<u32>().into_iter().count(), 1);
+    assert_eq!(
+        world.new_view_mut().borrow_any::<u32>().into_iter().count(),
+        1
+    );
 
     assert_eq!(
-        world.new_view().borrow_any_mut::<u32>().into_iter().count(),
+        world
+            .new_view_mut()
+            .borrow_any_mut::<u32>()
+            .into_iter()
+            .count(),
         0
     );
 
-    assert_eq!(world.new_view().borrow_any::<f32>().into_iter().count(), 1);
+    assert_eq!(
+        world.new_view_mut().borrow_any::<f32>().into_iter().count(),
+        1
+    );
 
     assert_eq!(
-        world.new_view().borrow_any_mut::<f32>().into_iter().count(),
+        world
+            .new_view_mut()
+            .borrow_any_mut::<f32>()
+            .into_iter()
+            .count(),
         1
     );
 

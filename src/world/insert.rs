@@ -4,7 +4,7 @@ use crate::{
     action::{ActionBuffer, ActionEncoder},
     bundle::{DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entity, Location},
+    entity::{Entity, EntityRef, Location},
     NoSuchEntity,
 };
 
@@ -26,11 +26,11 @@ impl World {
     /// ```
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn(());
+    /// let entity = world.spawn(()).id();
     ///
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
     /// world.insert(entity, ExampleComponent).unwrap();
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
     #[inline(always)]
     pub fn insert<T>(&mut self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
@@ -38,8 +38,9 @@ impl World {
         T: Component,
     {
         with_buffer!(self, buffer => {
-            self.insert_with_buffer(entity, component, buffer)
-        })
+            self.insert_with_buffer(entity, component, buffer)?;
+        });
+        Ok(())
     }
 
     #[inline(always)]
@@ -48,7 +49,7 @@ impl World {
         entity: impl Entity,
         component: T,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         T: Component,
     {
@@ -68,12 +69,12 @@ impl World {
     /// ```
     /// # use edict::world::World;
     /// let mut world = World::new();
-    /// let entity = world.spawn(());
+    /// let entity = world.spawn(()).id();
     ///
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
     /// world.ensure_external_registered::<u32>();
     /// world.insert_external(entity, 42u32).unwrap();
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
     #[inline(always)]
     pub fn insert_external<T>(
@@ -85,8 +86,9 @@ impl World {
         T: 'static,
     {
         with_buffer!(self, buffer => {
-            self.insert_external_with_buffer(entity, component, buffer)
-        })
+            self.insert_external_with_buffer(entity, component, buffer)?;
+        });
+        Ok(())
     }
 
     #[inline(always)]
@@ -95,7 +97,7 @@ impl World {
         entity: impl Entity,
         component: T,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         T: 'static,
     {
@@ -108,7 +110,7 @@ impl World {
         component: T,
         get_or_register: F,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
@@ -133,7 +135,8 @@ impl World {
                 );
             }
 
-            return Ok(());
+            // Safety: The location is valid for entity id in this world.
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
         }
 
         let dst_arch = self.edges.insert(
@@ -158,14 +161,15 @@ impl World {
         let (dst_idx, opt_src_id) =
             unsafe { src.insert(entity.id(), dst, src_loc.idx, component, epoch) };
 
-        self.entities
-            .set_location(entity.id(), Location::new(dst_arch, dst_idx));
+        let dst_loc = Location::new(dst_arch, dst_idx);
+
+        self.entities.set_location(entity.id(), dst_loc);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_loc);
         }
 
-        Ok(())
+        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -184,10 +188,10 @@ impl World {
     /// ```
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn(());
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
     /// world.insert_bundle(entity, (ExampleComponent,));
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
     #[inline(always)]
     pub fn insert_bundle<B>(&mut self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
@@ -195,8 +199,9 @@ impl World {
         B: DynamicComponentBundle,
     {
         with_buffer!(self, buffer => {
-            self.insert_bundle_with_buffer(entity, bundle, buffer)
-        })
+            self.insert_bundle_with_buffer(entity, bundle, buffer)?;
+        });
+        Ok(())
     }
 
     #[inline(always)]
@@ -205,7 +210,7 @@ impl World {
         entity: impl Entity,
         bundle: B,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         B: DynamicComponentBundle,
     {
@@ -228,18 +233,18 @@ impl World {
     /// ```
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
-    /// let entity = world.spawn(());
+    /// let entity = world.spawn(()).id();
     ///
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(false));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
     ///
     /// world.ensure_component_registered::<ExampleComponent>();
     /// world.ensure_external_registered::<u32>();
     ///
     /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
     ///
-    /// assert_eq!(world.has_component::<ExampleComponent>(entity), Ok(true));
-    /// assert_eq!(world.has_component::<u32>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
     #[inline(always)]
     pub fn insert_external_bundle<B>(
@@ -251,8 +256,9 @@ impl World {
         B: DynamicBundle,
     {
         with_buffer!(self, buffer => {
-            self.insert_external_bundle_with_buffer(entity, bundle, buffer)
-        })
+            self.insert_external_bundle_with_buffer(entity, bundle, buffer)?;
+        });
+        Ok(())
     }
 
     #[inline(always)]
@@ -261,7 +267,7 @@ impl World {
         entity: impl Entity,
         bundle: B,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         B: DynamicBundle,
     {
@@ -274,7 +280,7 @@ impl World {
         bundle: B,
         register_bundle: F,
         buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -293,7 +299,9 @@ impl World {
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         if bundle.with_ids(|ids| ids.is_empty()) {
-            return Ok(());
+            // Safety: bundle is empty, so entity is not moved
+            // Reference is created with correct location of entity in this world.
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
         }
 
         let epoch = self.epoch.next_mut();
@@ -316,7 +324,10 @@ impl World {
                     ActionEncoder::new(buffer, &self.entities),
                 )
             }
-            return Ok(());
+
+            // Safety: entity is not moved
+            // Reference is created with correct location of entity in this world.
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
         }
 
         let (before, after) = self
@@ -339,13 +350,16 @@ impl World {
             )
         };
 
-        self.entities
-            .set_location(entity.id(), Location::new(dst_arch, dst_idx));
+        let dst_loc = Location::new(dst_arch, dst_idx);
+
+        self.entities.set_location(entity.id(), dst_loc);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_loc);
         }
 
-        Ok(())
+        // Safety: entity is moved
+        // Reference is created with correct location of entity in this world.
+        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
     }
 }

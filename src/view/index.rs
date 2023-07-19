@@ -24,12 +24,11 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx);
+            return Query::reserved_entity_item(&self.borrow.query, entity.id(), loc.idx);
         }
 
         // Ensure to borrow view's data.
-        self.borrow
-            .acquire(&self.query, &self.filter, self.archetypes);
+        self.borrow.acquire();
 
         self._get(loc)
     }
@@ -44,13 +43,12 @@ where
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return Query::reserved_entity_item(&self.borrow.query, entity.id(), loc.idx)
                 .ok_or(EntityError::QueryMismatch);
         }
 
         // Ensure to borrow view's data.
-        self.borrow
-            .acquire(&self.query, &self.filter, self.archetypes);
+        self.borrow.acquire();
 
         self._get(loc).ok_or(EntityError::QueryMismatch)
     }
@@ -66,15 +64,14 @@ where
 
         if loc.arch == u32::MAX {
             return expect_match(Query::reserved_entity_item(
-                &self.query,
+                &self.borrow.query,
                 entity.id(),
                 loc.idx,
             ));
         }
 
         // Ensure to borrow view's data.
-        self.borrow
-            .acquire(&self.query, &self.filter, self.archetypes);
+        self.borrow.acquire();
 
         expect_match(self._get(loc))
     }
@@ -93,15 +90,11 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx).map(f);
+            return Query::reserved_entity_item(&self.borrow.query, entity.id(), loc.idx).map(f);
         }
 
-        let archetype = &self.archetypes[loc.arch as usize];
-
         // Ensure to borrow view's data.
-        self.borrow.with(&self.query, &self.filter, archetype, || {
-            self._get(loc).map(f)
-        })
+        self.borrow.with(loc.arch, || self._get(loc).map(f))
     }
 
     /// Fetches data that matches the view's query and filter
@@ -120,18 +113,14 @@ where
             .ok_or(EntityError::NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return Query::reserved_entity_item(&self.borrow.query, entity.id(), loc.idx)
                 .map(f)
                 .ok_or(EntityError::QueryMismatch);
         }
 
-        let archetype = &self.archetypes[loc.arch as usize];
-
         // Ensure to borrow view's data.
         self.borrow
-            .with(&self.query, &self.filter, archetype, || {
-                self._get(loc).map(f)
-            })
+            .with(loc.arch, || self._get(loc).map(f))
             .ok_or(EntityError::QueryMismatch)
     }
 
@@ -139,8 +128,14 @@ where
     fn _get(&self, loc: Location) -> Option<QueryItem<Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
-        let archetype = &self.archetypes[loc.arch as usize];
-        get_at(self.query, self.filter, self.epochs, archetype, loc)
+        let archetype = &self.borrow.archetypes[loc.arch as usize];
+        get_at(
+            self.borrow.query,
+            self.borrow.filter,
+            self.epochs,
+            archetype,
+            loc,
+        )
     }
 }
 

@@ -48,7 +48,7 @@ macro_rules! with_buffer {
                 let $buffer = &mut buffer;
                 $expr
             };
-            if $world.execute_action_buffer {
+            if $world.execute_action_buffer && !buffer.is_empty() {
                 ActionBuffer::execute(&mut buffer, $world);
             }
             $world.action_buffer = Some(buffer);
@@ -358,11 +358,9 @@ impl World {
         let old_action_buffer = self.action_buffer.replace(core::mem::take(buffer));
         let execute_action_buffer = std::mem::take(&mut self.execute_action_buffer);
         let r = f(self);
-        let action_buffer = self
-            .action_buffer
-            .replace(old_action_buffer.unwrap_unchecked());
+        *buffer = self.action_buffer.take().unwrap_unchecked();
+        self.action_buffer = old_action_buffer;
         self.execute_action_buffer = execute_action_buffer;
-        *buffer = action_buffer.unwrap_unchecked();
         r
     }
 

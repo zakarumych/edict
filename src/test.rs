@@ -1,7 +1,7 @@
 use crate::{
     component::Component,
-    query::{DefaultQuery, Entities, ImmutableQuery, Not, With, Without},
-    relation::{related_by, ChildOf, Relation, RelationOrigin, RelationTarget},
+    query::{Entities, ImmutableQuery, Not, With, Without},
+    relation::{ChildOf, Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
 

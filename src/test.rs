@@ -1,7 +1,7 @@
 use crate::{
     component::Component,
-    query::{Entities, ImmutableQuery, With},
-    relation::{ChildOf, Relation, RelationOrigin, RelationTarget},
+    query::{DefaultQuery, Entities, ImmutableQuery, Not, With, Without},
+    relation::{related_by, ChildOf, Relation, RelationOrigin, RelationTarget},
     world::{QueryOneError, World},
 };
 
@@ -695,6 +695,44 @@ fn test_filters() {
 
     struct A;
     is_filter::<With<A>>();
+    is_filter::<Without<A>>();
+}
+
+#[test]
+fn with_without() {
+    let mut world = World::new();
+
+    #[derive(Debug, Component, PartialEq)]
+    struct A;
+    #[derive(Component, PartialEq)]
+    struct B;
+
+    let e = world.spawn((A {},));
+    let query_filter = Not(With::<B>::query());
+    assert_eq!(
+        world
+            .query_one_with(e, query_filter)
+            .unwrap()
+            .get()
+            .unwrap(),
+        ()
+    );
+
+    world
+        .spawn_batch(vec![(A {}, B {}), (A {}, B {})])
+        .spawn_all();
+    world.spawn_batch(vec![(A {},), (A {},)]).spawn_all();
+
+    assert_eq!(5, world.query::<(Entities,)>().with::<A>().iter().count());
+    assert_eq!(2, world.query::<(Entities,)>().with::<B>().iter().count());
+    assert_eq!(
+        3,
+        world.query::<(Entities,)>().without::<B>().iter().count()
+    );
+    assert_eq!(
+        0,
+        world.query::<(Entities,)>().without::<A>().iter().count()
+    );
 }
 
 #[test]

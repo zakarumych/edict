@@ -171,7 +171,10 @@ where
 /// Entities that match the filter are skipped.
 ///
 /// The `Not` filter will NOT cause side effects of the inner filter.
+#[derive(Clone)]
 pub struct Not<T>(pub T);
+
+unsafe impl<T> ImmutableQuery for Not<T> where T: Query {}
 
 pub struct NotFetch<T>(T, bool);
 
@@ -197,7 +200,7 @@ where
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: usize) -> bool {
         if self.1 {
-            !self.0.visit_item(idx)
+            self.0.visit_item(idx)
         } else {
             true
         }

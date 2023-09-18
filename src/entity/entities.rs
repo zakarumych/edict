@@ -3,6 +3,8 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use alloc::boxed::Box;
+
 use hashbrown::{hash_map::Entry, HashMap};
 
 use crate::world::NoSuchEntity;

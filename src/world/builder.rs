@@ -9,6 +9,7 @@ use crate::{
 };
 
 use super::{ArchetypeSet, Edges, EpochCounter, World};
+use alloc::boxed::Box;
 
 /// Builder for [`World`] value.
 ///

@@ -1,5 +1,7 @@
 use core::num::NonZeroU64;
 
+use alloc::boxed::Box;
+
 /// Range of raw entity IDs.
 /// `start` is inclusive, `end` is exclusive.
 ///

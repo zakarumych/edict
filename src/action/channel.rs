@@ -1,10 +1,10 @@
+use alloc::{collections::VecDeque, sync::Arc};
 use core::{
     any::TypeId,
     iter::FusedIterator,
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use alloc::{collections::VecDeque, sync::Arc};
 use parking_lot::Mutex;
 
 use crate::{

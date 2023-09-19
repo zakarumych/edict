@@ -19,11 +19,14 @@ default = ["std"]
 [dependencies]
 edict-proc = { version = "=0.5.0", path = "proc" }
 hashbrown = { version = "0.13", features = ["ahash"], default-features = false }
-smallvec = { version ="1.10", features = ["union"], default-features = false }
+smallvec = { version = "1.10", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
 atomicell = "0.1.9"
 rayon = { version = "1.7", optional = true }
-alkahest = { version = "0.3.0", optional = true, features = ["alloc", "fixed32"], default-features = false }
+alkahest = { version = "0.3.0", optional = true, features = [
+    "alloc",
+    "fixed32",
+], default-features = false }
 nanoserde = { version = "0.1.32", optional = true, default-features = false }
 serde = { version = "1.0", optional = true, default-features = false }
 parking_lot = "0.12"
@@ -33,3 +36,11 @@ alkahest-proc = { version = "0.3.0" }
 
 [workspace]
 members = ["proc-lib", "proc"]
+
+[[example]]
+name = "allocate"
+required-features = ["std"]
+
+[[example]]
+name = "schedule"
+required-features = ["std"]

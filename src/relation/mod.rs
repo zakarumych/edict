@@ -6,9 +6,8 @@
 //!
 //! [`Component`]: ../component/trait.Component.html
 
-use core::{marker::PhantomData, mem::ManuallyDrop};
-
 use alloc::{vec, vec::Vec};
+use core::{marker::PhantomData, mem::ManuallyDrop};
 
 use crate::{
     action::ActionEncoder,

@@ -114,10 +114,13 @@ where
 
 #[test]
 fn test_state_system() {
+    use alloc::vec::Vec;
+
     use super::{IntoSystem, System};
 
     fn bar(mut state: State<u32>) {
         *state = *state + 1;
+        #[cfg(feature = "std")]
         println!("{}", *state);
     }
 

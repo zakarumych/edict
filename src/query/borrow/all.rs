@@ -1,6 +1,5 @@
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
-
 use alloc::vec::Vec;
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,

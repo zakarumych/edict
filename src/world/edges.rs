@@ -1,9 +1,8 @@
+use alloc::vec::Vec;
 use core::{
     any::TypeId,
     hash::{BuildHasher, Hash, Hasher},
 };
-
-use alloc::vec::Vec;
 
 use hashbrown::hash_map::{Entry, HashMap, RawEntryMut};
 

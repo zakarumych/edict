@@ -78,11 +78,11 @@ where
             .release(&self.query, &self.filter, self.archetypes);
 
         unsafe {
-            let me = std::mem::ManuallyDrop::new(self);
-            let archetypes = std::ptr::read(&me.archetypes);
-            let query = std::ptr::read(&me.query);
-            let filter = std::ptr::read(&me.filter);
-            let state = std::ptr::read(&me.state);
+            let me = core::mem::ManuallyDrop::new(self);
+            let archetypes = core::ptr::read(&me.archetypes);
+            let query = core::ptr::read(&me.query);
+            let filter = core::ptr::read(&me.filter);
+            let state = core::ptr::read(&me.state);
             (archetypes, query, filter, state)
         }
     }

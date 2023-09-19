@@ -1,5 +1,10 @@
 //! This module contains `Archetype` type definition.
 
+use alloc::{
+    alloc::{alloc, dealloc},
+    boxed::Box,
+    vec::Vec,
+};
 use core::{
     alloc::Layout,
     any::TypeId,
@@ -12,11 +17,6 @@ use core::{
     ptr::{self, NonNull},
 };
 
-use alloc::{
-    alloc::{alloc, dealloc},
-    boxed::Box,
-    vec::Vec,
-};
 use atomicell::borrow::{
     new_lock, release_borrow, release_borrow_mut, try_borrow, try_borrow_mut, Lock,
 };

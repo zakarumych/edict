@@ -11,7 +11,7 @@ pub struct VerifyFetch {
     /// contains index of the last `visit_chunk` call and whether it returns true.
     visit_chunk: Option<(u32, bool)>,
 
-    /// contains `Some` after `visit_chunk` is called.
+    /// contains `Some` after `touch_chunk` is called.
     /// cleared in `visit_chunk` call.
     touch_chunk: Option<u32>,
 
@@ -55,7 +55,7 @@ impl VerifyFetch {
             panic!("FetchVerify: skip_chunk called for dangling fetch");
         }
         self.visit_item = None;
-        self.visit_chunk = None;
+        self.touch_chunk = None;
         self.visit_chunk = Some((chunk_idx, visiting));
     }
 
@@ -97,13 +97,16 @@ impl VerifyFetch {
         if self.dangling {
             panic!("FetchVerify: visit_item called for dangling fetch");
         }
-        match self.touch_chunk {
+        match self.visit_chunk {
             None => {
                 panic!("FetchVerify: visit_item called without visit_chunk");
             }
-            Some(visit_chunk_idx) => {
+            Some((visit_chunk_idx, visiting_chunk)) => {
                 if chunk_idx(idx) != visit_chunk_idx {
                     panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `touch_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
+                }
+                if !visiting_chunk {
+                    panic!("FetchVerify: visit_item called with idx {}, but `visit_chunk` returned false for this idx", idx);
                 }
                 self.visit_item = Some((idx, visiting));
             }

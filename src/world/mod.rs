@@ -356,7 +356,7 @@ impl World {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let old_action_buffer = self.action_buffer.replace(core::mem::take(buffer));
-        let execute_action_buffer = std::mem::take(&mut self.execute_action_buffer);
+        let execute_action_buffer = core::mem::take(&mut self.execute_action_buffer);
         let r = f(self);
         *buffer = self.action_buffer.take().unwrap_unchecked();
         self.action_buffer = old_action_buffer;

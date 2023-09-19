@@ -255,6 +255,8 @@ where
     }
 }
 
+unsafe impl<T> ImmutableQuery for Not<T> where T: ImmutableQuery {}
+
 marker_type! {
     /// [`Filter`] that allows only archetypes with specified component.
     pub struct With<T>;

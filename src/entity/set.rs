@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{
     fmt,
     sync::atomic::{AtomicU64, Ordering},

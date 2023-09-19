@@ -1,11 +1,11 @@
+use alloc::{vec, vec::Vec};
+
 use crate::{
     component::Component,
-    query::{Entities, ImmutableQuery, With},
+    query::{Entities, ImmutableQuery, Not, With, Without},
     relation::{ChildOf, Relation},
     world::World,
 };
-
-use alloc::{vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Str(&'static str);
@@ -513,6 +513,38 @@ fn test_filters() {
 
     struct A;
     is_filter::<With<A>>();
+    is_filter::<Without<A>>();
+}
+
+#[test]
+fn with_without() {
+    let mut world = World::new();
+
+    #[derive(Debug, Component, PartialEq)]
+    struct A;
+    #[derive(Component, PartialEq)]
+    struct B;
+
+    let e = world.spawn((A {},)).id();
+    let query_filter = Not(With::<B>);
+    assert_eq!(
+        world
+            .try_view_one_with(e, query_filter)
+            .unwrap()
+            .get()
+            .unwrap(),
+        ()
+    );
+
+    world
+        .spawn_batch(vec![(A {}, B {}), (A {}, B {})])
+        .spawn_all();
+    world.spawn_batch(vec![(A {},), (A {},)]).spawn_all();
+
+    assert_eq!(5, world.view::<(Entities,)>().with::<A>().iter().count());
+    assert_eq!(2, world.view::<(Entities,)>().with::<B>().iter().count());
+    assert_eq!(3, world.view::<(Entities,)>().without::<B>().iter().count());
+    assert_eq!(0, world.view::<(Entities,)>().without::<A>().iter().count());
 }
 
 #[test]

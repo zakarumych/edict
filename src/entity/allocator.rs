@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::num::NonZeroU64;
 
 /// Range of raw entity IDs.

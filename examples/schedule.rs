@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use std::fmt::Debug;
 
 use edict::{
     query::{Modified, QueryBorrowAll, With, Without},

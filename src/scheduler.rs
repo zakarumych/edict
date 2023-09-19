@@ -19,13 +19,14 @@
 
 #![allow(missing_docs)]
 
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec::Vec};
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
+
 use std::thread::Thread;
 
 use hashbrown::HashSet;
@@ -281,7 +282,6 @@ impl Scheduler {
         self.schedule_cache_id = None;
     }
 
-    #[cfg(feature = "std")]
     pub fn run_threaded(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         let buffers = std::thread::scope(|scope| self.run_with(world, &scope));

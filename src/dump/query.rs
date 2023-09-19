@@ -134,8 +134,12 @@ macro_rules! impl_dump_query {
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-                $(f(TypeId::of::<$a>(), Access::Read);)*
+            unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+                $(
+                    if archetype.has_component(TypeId::of::<$a>()) {
+                        f(TypeId::of::<$a>(), Access::Read);
+                    }
+                )*
             }
 
             #[inline(always)]

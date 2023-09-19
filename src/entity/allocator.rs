@@ -145,8 +145,8 @@ impl IdAllocator {
     /// Caller SHOULD use `idx` values in order from 0 to not
     /// waste IDs.
     pub fn reserve(&self, idx: u64) -> Option<NonZeroU64> {
-        if idx < self.current.count() {
-            return Some(unsafe { self.current.get(idx).unwrap_unchecked() });
+        if let Some(id) = self.current.get(idx) {
+            return Some(id);
         }
 
         let idx2 = idx - self.current.count();

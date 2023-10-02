@@ -76,9 +76,9 @@ pub trait Relation: Send + Sync + Copy + 'static {
     /// Does nothing by default.
     #[inline(always)]
     fn on_drop(&mut self, origin: EntityId, target: EntityId, encoder: ActionEncoder) {
-        drop(origin);
-        drop(target);
-        drop(encoder);
+        let _ = origin;
+        let _ = target;
+        let _ = encoder;
     }
 
     /// Method that is called when relation is re-inserted.
@@ -99,11 +99,11 @@ pub trait Relation: Send + Sync + Copy + 'static {
         new_target: EntityId,
         encoder: ActionEncoder,
     ) -> bool {
-        drop(value);
-        drop(origin);
-        drop(target);
-        drop(new_target);
-        drop(encoder);
+        let _ = value;
+        let _ = origin;
+        let _ = target;
+        let _ = new_target;
+        let _ = encoder;
 
         true
     }
@@ -113,9 +113,9 @@ pub trait Relation: Send + Sync + Copy + 'static {
     /// Does nothing by default.
     #[inline(always)]
     fn on_target_drop(origin: EntityId, target: EntityId, encoder: ActionEncoder) {
-        drop(origin);
-        drop(target);
-        drop(encoder);
+        let _ = origin;
+        let _ = target;
+        let _ = encoder;
     }
 }
 

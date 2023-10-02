@@ -103,8 +103,8 @@ pub unsafe trait FnArgState: Send + 'static {
     /// This method is called after system execution, when `Arg` is already dropped.
     #[inline(always)]
     unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
-        drop(world);
-        drop(queue);
+        let _ = world;
+        let _ = queue;
     }
 }
 

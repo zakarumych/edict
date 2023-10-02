@@ -176,17 +176,17 @@ pub trait Component: Sized + 'static {
     /// Hook that is executed when entity with component is dropped.
     #[inline(always)]
     fn on_drop(&mut self, id: EntityId, encoder: ActionEncoder) {
-        drop(id);
-        drop(encoder);
+        let _ = id;
+        let _ = encoder;
     }
 
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
     #[inline(always)]
     fn on_replace(&mut self, value: &Self, id: EntityId, encoder: ActionEncoder) -> bool {
-        drop(value);
-        drop(id);
-        drop(encoder);
+        let _ = value;
+        let _ = id;
+        let _ = encoder;
         true
     }
 

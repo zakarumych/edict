@@ -154,8 +154,8 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     #[must_use]
     #[inline(always)]
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
-        drop(id);
-        drop(idx);
+        let _ = id;
+        let _ = idx;
         None
     }
 }

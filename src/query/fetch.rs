@@ -195,7 +195,7 @@ pub unsafe trait Fetch<'a> {
     #[inline(always)]
     #[must_use]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
-        drop(chunk_idx);
+        let _ = chunk_idx;
         true
     }
 
@@ -209,7 +209,7 @@ pub unsafe trait Fetch<'a> {
     #[inline(always)]
     #[must_use]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        drop(idx);
+        let _ = idx;
         true
     }
 
@@ -226,7 +226,7 @@ pub unsafe trait Fetch<'a> {
     /// If `visit_chunk` returned `false`, this method must not be called.
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        drop(chunk_idx);
+        let _ = chunk_idx;
     }
 
     /// Returns fetched item at specified index.

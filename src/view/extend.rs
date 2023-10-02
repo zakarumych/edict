@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{BorrowState, ViewBorrow, ViewValue};
+use super::{BorrowState, ViewValue};
 
 /// A helper trait to extend tuples of queries to produce a new query.
 pub trait TupleQuery: Query + Sized {
@@ -71,17 +71,13 @@ where
     where
         E: IntoQuery,
     {
-        let (archetypes, query, filter, state) = self.borrow.split();
-
         ViewValue {
-            borrow: ViewBorrow {
-                query: Q::extend_query(query, ext.into_query()),
-                filter,
-                archetypes,
-                state,
-            },
+            query: Q::extend_query(self.query, ext.into_query()),
+            filter: self.filter,
+            archetypes: self.archetypes,
             entity_set: self.entity_set,
             epochs: self.epochs,
+            state: self.extract_state(),
         }
     }
 
@@ -271,17 +267,13 @@ where
     where
         E: IntoQuery,
     {
-        let (archetypes, query, filter, state) = self.borrow.split();
-
         ViewValue {
-            borrow: ViewBorrow {
-                query,
-                filter: F::extend_query(filter, ext.into_query()),
-                archetypes,
-                state,
-            },
+            query: self.query,
+            filter: F::extend_query(self.filter, ext.into_query()),
+            archetypes: self.archetypes,
             entity_set: self.entity_set,
             epochs: self.epochs,
+            state: self.extract_state(),
         }
     }
 

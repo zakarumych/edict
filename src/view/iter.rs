@@ -6,7 +6,7 @@ use crate::{
     query::{Fetch, Query, QueryItem},
 };
 
-use super::{BorrowState, StaticallyBorrowed, ViewBorrow, ViewValue};
+use super::{BorrowState, StaticallyBorrowed, ViewValue};
 
 impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
@@ -18,7 +18,12 @@ where
     #[inline(always)]
     pub fn iter(&self) -> ViewIter<'_, Q, F> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
-        ViewIter::new(epoch, &self.borrow)
+
+        self.acquire_borrow();
+
+        // Safety: we just acquired the borrow. Releasing requires a mutable reference to self.
+        // This ensures that it can only happen after the iterator is dropped.
+        unsafe { ViewIter::new(epoch, self.query, self.filter, self.archetypes) }
     }
 }
 
@@ -33,7 +38,9 @@ where
     #[inline(always)]
     fn into_iter(self) -> ViewIter<'a, Q, F> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
-        ViewIter::new(epoch, &self.borrow)
+
+        // Safety: data is statically borrowed for 'a.
+        unsafe { ViewIter::new(epoch, self.query, self.filter, self.archetypes) }
     }
 }
 
@@ -55,19 +62,20 @@ where
     Q: Query,
     F: Query,
 {
-    fn new<B>(epoch: EpochId, borrow: &ViewBorrow<'a, Q, F, B>) -> Self
-    where
-        B: BorrowState,
-    {
-        borrow.acquire();
-
+    /// Creates a new iterator over entities with a query `Q` and filter `F`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that data for the query and filter is borrowed for the duration of the iterator,
+    /// i.e. lifetime 'a.
+    unsafe fn new(epoch: EpochId, query: Q, filter: F, archetypes: &'a [Archetype]) -> Self {
         ViewIter {
-            query: borrow.query,
-            filter: borrow.filter,
+            query,
+            filter,
             query_fetch: Fetch::dangling(),
             filter_fetch: Fetch::dangling(),
             epoch,
-            archetypes_iter: borrow.archetypes.iter().enumerate(),
+            archetypes_iter: archetypes.iter().enumerate(),
             indices: 0..0,
             touch_chunk: false,
         }

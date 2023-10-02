@@ -470,7 +470,7 @@ where
     /// never spawn entities.
     ///
     /// This method won't return IDs of spawned entities.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_all(&mut self) {
         let additional = iter_reserve_hint(&self.bundles);
         self.entities.reserve(additional);
@@ -521,7 +521,7 @@ where
         self.bundles.size_hint()
     }
 
-    #[inline]
+    #[inline(always)]
     fn fold<T, F>(mut self, init: T, mut f: F) -> T
     where
         F: FnMut(T, EntityLoc<'a>) -> T,

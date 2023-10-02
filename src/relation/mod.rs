@@ -240,9 +240,13 @@ where
             }
         } else {
             encoder.closure(move |world| {
-                let Ok(mut origin) = world.entity(origin) else { return; };
+                let Ok(mut origin) = world.entity(origin) else {
+                    return;
+                };
 
-                let Some(comp) = origin.get::<&mut Self>() else { return; };
+                let Some(comp) = origin.get::<&mut Self>() else {
+                    return;
+                };
 
                 let origins = unsafe { &mut *comp.non_exclusive };
 
@@ -392,8 +396,12 @@ where
     /// Or origin entity is dropped.
     fn on_origin_drop(origin: EntityId, target: EntityId, mut encoder: ActionEncoder) {
         encoder.closure(move |world| {
-            let Ok(mut target) = world.entity(target) else { return; };
-            let Some(comp) = target.get::<&mut Self>() else { return; };
+            let Ok(mut target) = world.entity(target) else {
+                return;
+            };
+            let Some(comp) = target.get::<&mut Self>() else {
+                return;
+            };
 
             for idx in 0..comp.origins.len() {
                 if comp.origins[idx] == origin {

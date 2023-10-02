@@ -9,7 +9,6 @@ use core::{
     alloc::Layout,
     any::TypeId,
     cell::UnsafeCell,
-    hint::unreachable_unchecked,
     intrinsics::copy_nonoverlapping,
     iter::FromIterator,
     mem::{self, size_of, MaybeUninit},
@@ -980,4 +979,17 @@ pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
     } else {
         None
     }
+}
+
+#[cfg(debug_assertions)]
+#[inline(always)]
+#[track_caller]
+fn unreachable_unchecked() -> ! {
+    unreachable!()
+}
+
+#[cfg(not(debug_assertions))]
+#[inline(always)]
+unsafe fn unreachable_unchecked() -> ! {
+    core::hint::unreachable_unchecked()
 }

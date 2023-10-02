@@ -206,7 +206,9 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
     let guard_tls = WorldTLS::new(world);
 
     for archetype in world.archetypes() {
-        let Some(indices) = archetype.borrow_mut_indices(TypeId::of::<dyn AnyTask>()) else { continue };
+        let Some(indices) = archetype.borrow_mut_indices(TypeId::of::<dyn AnyTask>()) else {
+            continue;
+        };
         for &(tid, borrow_idx) in indices {
             let component = unsafe { archetype.component(tid).unwrap_unchecked() };
             let data = unsafe { component.data_mut() };
@@ -255,9 +257,13 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
     core::mem::swap(&mut state.wakes, &mut state.queue.lock());
 
     for (id, tid) in state.wakes.drain(..) {
-        let Some(loc) = world.entities().get_location(id) else {continue;};
+        let Some(loc) = world.entities().get_location(id) else {
+            continue;
+        };
         let arch = &world.archetypes()[loc.arch as usize];
-        let Some(component) = arch.component(tid) else {continue;};
+        let Some(component) = arch.component(tid) else {
+            continue;
+        };
         let borrow = unsafe {
             component
                 .borrows()

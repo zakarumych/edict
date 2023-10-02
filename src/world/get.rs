@@ -65,7 +65,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -88,7 +88,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_with_unchecked<'a, Q>(
         &'a self,
         entity: impl Entity,

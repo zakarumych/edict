@@ -181,7 +181,7 @@ impl EntitySet {
             None => {
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
                 let Some(idx) = self.id_allocator.reserved(id.non_zero()) else {
-                    return None
+                    return None;
                 };
                 if idx >= reserved {
                     return None;

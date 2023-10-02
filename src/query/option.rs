@@ -108,10 +108,9 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        if let Some(t) = self {
-            if t.visit_archetype(archetype) {
-                t.access_archetype(archetype, f)
-            }
+        match self {
+            Some(t) if t.visit_archetype(archetype) => t.access_archetype(archetype, f),
+            _ => {}
         }
     }
 
@@ -123,8 +122,8 @@ where
         epoch: EpochId,
     ) -> Option<T::Fetch<'a>> {
         match self {
-            None => None,
-            Some(t) => Some(t.fetch(arch_idx, archetype, epoch)),
+            Some(t) if t.visit_archetype(archetype) => Some(t.fetch(arch_idx, archetype, epoch)),
+            _ => None,
         }
     }
 }

@@ -23,13 +23,13 @@ pub trait QueryArg: Query {
     /// Hook called before function-system runs to update the state.
     #[inline(always)]
     fn before(&mut self, world: &World) {
-        drop(world);
+        let _ = world;
     }
 
     /// Hook called after function-system runs to update the state.
     #[inline(always)]
     fn after(&mut self, world: &World) {
-        drop(world);
+        let _ = world;
     }
 }
 

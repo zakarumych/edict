@@ -194,17 +194,17 @@ impl World {
     /// Looks up entity location and returns entity with location and bound
     /// to the immutable world borrow, ensuring that entity stays alive
     /// and in the same location.
+    #[inline(always)]
     pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc<'_>, NoSuchEntity> {
-        let entity = entity.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
-        Ok(entity)
+        entity.entity_loc(&self.entities).ok_or(NoSuchEntity)
     }
 
     /// Returns entity reference
     /// that can be used to access entity's components,
     /// insert or remove components, despawn entity etc.
+    #[inline(always)]
     pub fn entity(&mut self, entity: impl Entity) -> Result<EntityRef<'_>, NoSuchEntity> {
-        let entity = entity.entity_ref(self).ok_or(NoSuchEntity)?;
-        Ok(entity)
+        entity.entity_ref(self).ok_or(NoSuchEntity)
     }
 
     /// Returns current world epoch.

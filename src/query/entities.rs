@@ -1,76 +1,104 @@
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId};
+use crate::{
+    archetype::Archetype,
+    entity::{EntityId, EntityLoc, Location},
+    system::QueryArg,
+};
 
-use super::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery};
+use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// [`Fetch`] type for the [`Entities`] query.
 pub struct EntitiesFetch<'a> {
+    archetype: u32,
     entities: &'a [EntityId],
 }
 
 unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
-    type Item = EntityId;
+    type Item = EntityLoc<'a>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
-        EntitiesFetch { entities: &[] }
+        EntitiesFetch {
+            archetype: u32::MAX,
+            entities: &[],
+        }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> EntityId {
-        *self.entities.get_unchecked(idx)
-    }
-}
-
-/// Queries entity ids.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Entities;
-
-/// Query type for the [`Entities`] phantom query.
-pub type EntitiesQuery = PhantomData<fn() -> Entities>;
-
-impl Entities {
-    /// Creates a new [`Entities`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
+        let id = *self.entities.get_unchecked(idx as usize);
+        EntityLoc::new(id, Location::new(self.archetype, idx))
     }
 }
 
-unsafe impl PhantomQuery for Entities {
+marker_type! {
+    /// Queries entity ids.
+    pub struct Entities;
+}
+
+impl IntoQuery for Entities {
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl DefaultQuery for Entities {
+    #[inline(always)]
+    fn default_query() -> Self {
+        Entities
+    }
+}
+
+impl QueryArg for Entities {
+    #[inline(always)]
+    fn new() -> Self {
+        Entities
+    }
+}
+
+unsafe impl Query for Entities {
     type Fetch<'a> = EntitiesFetch<'a>;
-    type Item<'a> = EntityId;
+    type Item<'a> = EntityLoc<'a>;
 
-    #[inline]
-    fn access(_ty: TypeId) -> Option<Access> {
-        None
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(None)
     }
 
-    #[inline]
-    fn visit_archetype(_archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, _f: &dyn Fn(TypeId, Access)) {}
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
+        &self,
+        arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: crate::epoch::EpochId,
     ) -> EntitiesFetch<'a> {
         EntitiesFetch {
+            archetype: arch_idx,
             entities: archetype.entities(),
         }
     }
 
-    #[inline]
-    fn reserved_entity_item<'a>(id: EntityId) -> Option<EntityId>
+    #[inline(always)]
+    fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<EntityLoc<'a>>
     where
         EntityId: 'a,
     {
-        Some(id)
+        Some(EntityLoc::new(id, Location::reserved(idx)))
     }
 }
 
-unsafe impl ImmutablePhantomQuery for Entities {}
+unsafe impl ImmutableQuery for Entities {}

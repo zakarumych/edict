@@ -1,8 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg, Access};
 
-use super::{assert_immutable_query, phantom::PhantomQuery, Access, Fetch, ImmutablePhantomQuery};
+use super::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -17,7 +17,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRead {
             ptr: NonNull::dangling(),
@@ -25,40 +25,102 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
-        &*self.ptr.as_ptr().add(idx)
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
+        &*self.ptr.as_ptr().add(idx as usize)
     }
 }
 
-unsafe impl<T> PhantomQuery for &T
+marker_type! {
+    /// Query for reading component.
+    pub struct Read<T>;
+}
+
+impl<T> IntoQuery for &T
+where
+    T: Sync + 'static,
+{
+    type Query = Read<T>;
+
+    #[inline(always)]
+    fn into_query(self) -> Read<T> {
+        Read
+    }
+}
+
+impl<T> DefaultQuery for &T
+where
+    T: Sync + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Read<T> {
+        Read
+    }
+}
+
+impl<T> IntoQuery for Read<T>
+where
+    T: Sync + 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for Read<T>
+where
+    T: Sync + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Read<T> {
+        Read
+    }
+}
+
+impl<T> QueryArg for Read<T>
+where
+    T: Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Read<T> {
+        Read
+    }
+}
+
+unsafe impl<T> Query for Read<T>
 where
     T: Sync + 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchRead<'a, T>;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<T>(ty))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRead<'a, T> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRead<'a, T> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         debug_assert_eq!(component.id(), TypeId::of::<T>());
 
@@ -71,20 +133,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for &T where T: Sync + 'static {}
-
-/// [`Query`] type for the `&T` phantom query.
-pub type Read<T> = PhantomData<fn() -> &'static T>;
-
-/// Returns query that yields reference to specified component
-/// for each entity that has that component.
-///
-/// Skips entities that don't have the component.
-pub fn read<T>() -> Read<T>
-where
-    T: Sync,
-{
-    assert_immutable_query::<Read<T>>();
-
-    PhantomData
-}
+unsafe impl<T> ImmutableQuery for Read<T> where T: Sync + 'static {}

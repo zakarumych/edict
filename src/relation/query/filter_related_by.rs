@@ -4,15 +4,16 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
-    relation::{Relation, TargetComponent},
+    query::{Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    relation::{OriginComponent, Relation, TargetComponent},
+    Access,
 };
 
 /// Fetch for the `FilterRelatedBy<R>` query.
 pub struct FetchFilterRelatedBy<'a, R: Relation> {
     origin: EntityId,
-    ptr: NonNull<TargetComponent<R>>,
-    marker: PhantomData<&'a TargetComponent<R>>,
+    ptr: NonNull<u8>,
+    marker: PhantomData<&'a R>,
 }
 
 unsafe impl<'a, R> Fetch<'a> for FetchFilterRelatedBy<'a, R>
@@ -21,7 +22,7 @@ where
 {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchFilterRelatedBy {
             origin: EntityId::dangling(),
@@ -30,14 +31,34 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let target_component = unsafe { &*self.ptr.as_ptr().add(idx) };
-        target_component.origins.contains(&self.origin)
+    #[inline(always)]
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        if R::SYMMETRIC {
+            let origin_component = unsafe {
+                &*self
+                    .ptr
+                    .cast::<OriginComponent<R>>()
+                    .as_ptr()
+                    .add(idx as usize)
+            };
+            origin_component
+                .relations()
+                .iter()
+                .any(|rt| rt.target == self.origin)
+        } else {
+            let target_component = unsafe {
+                &*self
+                    .ptr
+                    .cast::<TargetComponent<R>>()
+                    .as_ptr()
+                    .add(idx as usize)
+            };
+            target_component.origins.contains(&self.origin)
+        }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, _: usize) -> () {}
+    #[inline(always)]
+    unsafe fn get_item(&mut self, _: u32) -> () {}
 }
 
 /// Filters targets of relation with specified origin.
@@ -47,6 +68,7 @@ pub struct FilterRelatedBy<R> {
 }
 
 impl_debug!(FilterRelatedBy<R> { origin });
+impl_copy!(FilterRelatedBy<R>);
 
 impl<R> FilterRelatedBy<R> {
     /// Returns relation filter bound to one specific origin.
@@ -64,7 +86,7 @@ where
 {
     type Query = Self;
 
-    #[inline]
+    #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
     }
@@ -77,54 +99,75 @@ where
     type Item<'a> = ();
     type Fetch<'a> = FetchFilterRelatedBy<'a, R>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<TargetComponent<R>>() {
-            Some(Access::Read)
+    const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        if R::SYMMETRIC {
+            Ok(Access::read_type::<OriginComponent<R>>(ty))
         } else {
-            None
+            Ok(Access::read_type::<TargetComponent<R>>(ty))
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<TargetComponent<R>>())
+        if R::SYMMETRIC {
+            archetype.has_component(TypeId::of::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(TypeId::of::<TargetComponent<R>>())
+        }
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        f(TypeId::of::<TargetComponent<R>>(), Access::Read)
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+        if R::SYMMETRIC {
+            f(TypeId::of::<OriginComponent<R>>(), Access::Read)
+        } else {
+            f(TypeId::of::<TargetComponent<R>>(), Access::Read)
+        }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchFilterRelatedBy<'a, R> {
-        let component = unsafe {
-            archetype
-                .component(TypeId::of::<TargetComponent<R>>())
-                .unwrap_unchecked()
-        };
-        debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
+        if R::SYMMETRIC {
+            let component = unsafe {
+                archetype
+                    .component(TypeId::of::<OriginComponent<R>>())
+                    .unwrap_unchecked()
+            };
+            debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
 
-        let data = unsafe { component.data() };
+            let data = unsafe { component.data() };
 
-        FetchFilterRelatedBy {
-            origin: self.origin,
-            ptr: data.ptr.cast(),
-            marker: PhantomData,
+            FetchFilterRelatedBy {
+                origin: self.origin,
+                ptr: data.ptr.cast(),
+                marker: PhantomData,
+            }
+        } else {
+            let component = unsafe {
+                archetype
+                    .component(TypeId::of::<TargetComponent<R>>())
+                    .unwrap_unchecked()
+            };
+            debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
+
+            let data = unsafe { component.data() };
+
+            FetchFilterRelatedBy {
+                origin: self.origin,
+                ptr: data.ptr.cast(),
+                marker: PhantomData,
+            }
         }
     }
 }
 
 unsafe impl<R> ImmutableQuery for FilterRelatedBy<R> where R: Relation {}
-
-/// Returns a filter to filter targets of relation with specified origin.
-pub fn related_by<R: Relation>(origin: EntityId) -> FilterRelatedBy<R> {
-    FilterRelatedBy {
-        origin,
-        phantom: PhantomData,
-    }
-}

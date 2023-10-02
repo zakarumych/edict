@@ -2,104 +2,85 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    entity::EntityId,
+    entity::{EntityBound, EntityId},
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
-    relation::{Origin, OriginComponent, Relation},
+    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
+    relation::{OriginComponent, Relation, RelationTarget},
+    Access,
 };
 
-phantom_newtype! {
+marker_type! {
     /// Query for origins of relation.
     ///
     /// Yields iterator of pairs - relation instance and target.
-    pub struct Relates<R>
-}
-
-impl<R> Relates<&R>
-where
-    R: Relation + Sync,
-{
-    /// Creates a new [`Relates`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
-}
-
-impl<R> Relates<&mut R>
-where
-    R: Relation + Send,
-{
-    /// Creates a new [`Relates`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
+    pub struct Relates<R>;
 }
 
 /// Iterator over relations of a given type on one entity.
 #[derive(Clone)]
 pub struct RelatesReadIter<'a, R> {
-    iter: core::slice::Iter<'a, Origin<R>>,
+    iter: core::slice::Iter<'a, RelationTarget<R>>,
 }
 
 impl<'a, R> Iterator for RelatesReadIter<'a, R> {
-    type Item = (&'a R, EntityId);
+    type Item = (&'a R, EntityBound<'a>);
 
-    #[inline]
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 
-    #[inline]
-    fn next(&mut self) -> Option<(&'a R, EntityId)> {
+    #[inline(always)]
+    fn next(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next()?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
-    #[inline]
-    fn nth(&mut self, n: usize) -> Option<(&'a R, EntityId)> {
+    #[inline(always)]
+    fn nth(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth(n)?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
-    #[inline]
+    #[inline(always)]
     fn fold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
         F: FnMut(B, Self::Item) -> B,
     {
         self.iter.fold(init, |acc, origin| {
-            f(acc, (&origin.relation, origin.target))
+            f(acc, (&origin.relation, EntityBound::new(origin.target)))
         })
     }
 }
 
 impl<'a, R> DoubleEndedIterator for RelatesReadIter<'a, R> {
-    #[inline]
-    fn next_back(&mut self) -> Option<(&'a R, EntityId)> {
+    #[inline(always)]
+    fn next_back(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next_back()?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
-    #[inline]
-    fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityId)> {
+    #[inline(always)]
+    fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth_back(n)?;
-        Some((&origin.relation, origin.target))
+        Some((&origin.relation, EntityBound::new(origin.target)))
     }
 
-    #[inline]
+    #[inline(always)]
     fn rfold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
         F: FnMut(B, Self::Item) -> B,
     {
         self.iter.rfold(init, |acc, origin| {
-            f(acc, (&origin.relation, origin.target))
+            f(acc, (&origin.relation, EntityBound::new(origin.target)))
         })
     }
 }
 
 impl<'a, R> ExactSizeIterator for RelatesReadIter<'a, R> {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         self.iter.len()
     }
@@ -117,7 +98,7 @@ where
 {
     type Item = RelatesReadIter<'a, R>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRelatesRead {
             ptr: NonNull::dangling(),
@@ -125,44 +106,91 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> RelatesReadIter<'a, R> {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> RelatesReadIter<'a, R> {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
 
         RelatesReadIter {
-            iter: origin_component.origins().iter(),
+            iter: origin_component.relations().iter(),
         }
     }
 }
 
-unsafe impl<R> PhantomQuery for Relates<&R>
+impl<R> IntoQuery for Relates<&R>
+where
+    R: Relation + Sync,
+{
+    type Query = Relates<Read<R>>;
+
+    #[inline(always)]
+    fn into_query(self) -> Relates<Read<R>> {
+        Relates
+    }
+}
+
+impl<R> DefaultQuery for Relates<&R>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn default_query() -> Relates<Read<R>> {
+        Relates
+    }
+}
+
+impl<R> IntoQuery for Relates<Read<R>>
+where
+    R: Relation + Sync,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self::Query {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Relates<Read<R>>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        Relates
+    }
+}
+
+unsafe impl<R> Query for Relates<Read<R>>
 where
     R: Relation + Sync,
 {
     type Item<'a> = RelatesReadIter<'a, R>;
     type Fetch<'a> = FetchRelatesRead<'a, R>;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<OriginComponent<R>>(ty))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchRelatesRead<'a, R> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRelatesRead<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<OriginComponent<R>>())
@@ -180,34 +208,34 @@ where
     }
 }
 
-unsafe impl<R> ImmutablePhantomQuery for Relates<&R> where R: Relation + Sync {}
+unsafe impl<R> ImmutableQuery for Relates<Read<R>> where R: Relation + Sync {}
 
 /// Iterator over relations of a given type on one entity.
 pub struct RelatesWriteIter<'a, R> {
-    iter: core::slice::IterMut<'a, Origin<R>>,
+    iter: core::slice::IterMut<'a, RelationTarget<R>>,
 }
 
 impl<'a, R> Iterator for RelatesWriteIter<'a, R> {
     type Item = (&'a mut R, EntityId);
 
-    #[inline]
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<(&'a mut R, EntityId)> {
         let origin = self.iter.next()?;
         Some((&mut origin.relation, origin.target))
     }
 
-    #[inline]
+    #[inline(always)]
     fn nth(&mut self, n: usize) -> Option<(&'a mut R, EntityId)> {
         let origin = self.iter.nth(n)?;
         Some((&mut origin.relation, origin.target))
     }
 
-    #[inline]
+    #[inline(always)]
     fn fold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -220,19 +248,19 @@ impl<'a, R> Iterator for RelatesWriteIter<'a, R> {
 }
 
 impl<'a, R> DoubleEndedIterator for RelatesWriteIter<'a, R> {
-    #[inline]
+    #[inline(always)]
     fn next_back(&mut self) -> Option<(&'a mut R, EntityId)> {
         let origin = self.iter.next_back()?;
         Some((&mut origin.relation, origin.target))
     }
 
-    #[inline]
+    #[inline(always)]
     fn nth_back(&mut self, n: usize) -> Option<(&'a mut R, EntityId)> {
         let origin = self.iter.nth_back(n)?;
         Some((&mut origin.relation, origin.target))
     }
 
-    #[inline]
+    #[inline(always)]
     fn rfold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -245,7 +273,7 @@ impl<'a, R> DoubleEndedIterator for RelatesWriteIter<'a, R> {
 }
 
 impl<'a, R> ExactSizeIterator for RelatesWriteIter<'a, R> {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         self.iter.len()
     }
@@ -266,7 +294,7 @@ where
 {
     type Item = RelatesWriteIter<'a, R>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchRelatesWrite {
             epoch: EpochId::start(),
@@ -277,53 +305,100 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx) };
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> RelatesWriteIter<'a, R> {
-        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx) };
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> RelatesWriteIter<'a, R> {
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx) };
+        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
 
         RelatesWriteIter {
-            iter: origin_component.origins_mut().iter_mut(),
+            iter: origin_component.relations_mut().iter_mut(),
         }
     }
 }
 
-unsafe impl<R> PhantomQuery for Relates<&mut R>
+impl<R> IntoQuery for Relates<&mut R>
+where
+    R: Relation + Send,
+{
+    type Query = Relates<Write<R>>;
+
+    #[inline(always)]
+    fn into_query(self) -> Relates<Write<R>> {
+        Relates
+    }
+}
+
+impl<R> DefaultQuery for Relates<&mut R>
+where
+    R: Relation + Send,
+{
+    #[inline(always)]
+    fn default_query() -> Relates<Write<R>> {
+        Relates
+    }
+}
+
+impl<R> IntoQuery for Relates<Write<R>>
+where
+    R: Relation + Send,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Relates<Write<R>>
+where
+    R: Relation + Send,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        Relates
+    }
+}
+
+unsafe impl<R> Query for Relates<Write<R>>
 where
     R: Relation + Send,
 {
     type Item<'a> = RelatesWriteIter<'a, R>;
     type Fetch<'a> = FetchRelatesWrite<'a, R>;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
+    const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::write_type::<OriginComponent<R>>(ty))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Write)
     }
 
-    #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, epoch: EpochId) -> FetchRelatesWrite<'a, R> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchRelatesWrite<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<OriginComponent<R>>())

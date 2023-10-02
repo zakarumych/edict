@@ -79,6 +79,8 @@
 extern crate alloc;
 extern crate self as edict;
 
+use core::{any::TypeId, fmt};
+
 pub use atomicell;
 
 macro_rules! indexed_tuple {
@@ -124,19 +126,32 @@ macro_rules! for_tuple_2 {
 }
 
 macro_rules! impl_copy {
-    ($type:ident < $( $a:ident ),+ >) => {
-        impl< $( $a ),+ > Copy for $type < $( $a ),+ > {}
-        impl< $( $a ),+ > Clone for $type < $( $a ),+ > {
+    ($type:ident $(< $( $a:ident ),+ >)? $(where $($b:path: $b0:ident $(+ $bt:ident)*),+ $(,)?)?) => {
+        impl $(< $( $a ),+ >)? Copy for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {}
+
+        impl $(< $( $a ),+ >)? Clone for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {
+            #[inline(always)]
             fn clone(&self) -> Self {
                 *self
+            }
+
+            #[inline(always)]
+            fn clone_from(&mut self, source: &Self) {
+                *self = *source
             }
         }
     };
 }
 
 macro_rules! impl_debug {
-    ($type:ident < $( $a:ident ),+ > { $($fname:ident)* }) => {
-        impl< $( $a ),+ > core::fmt::Debug for $type < $( $a ),+ > {
+    ($type:ident $(< $( $a:ident ),+ >)? { $($fname:ident)* } $(where $($b:path: $b0:ident $(+ $bt:ident)*),+ $(,)?)?) => {
+        impl $(< $( $a ),+ >)? core::fmt::Debug for $type $(< $( $a ),+ >)?
+        $(where $($b: $b0 $(+$bt)*,)+)?
+        {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                 f.debug_struct(stringify!($type))
                     $(.field(stringify!($fname), &self.$fname))*
@@ -146,42 +161,107 @@ macro_rules! impl_debug {
     };
 }
 
-macro_rules! phantom_newtype {
+macro_rules! marker_type_impls {
     (
         $(#[$meta:meta])*
-        $vis:vis struct $type:ident < $a:ident >
+        $vis:vis struct $type:ident $(< $($a:ident),+ >)?;
     ) => {
-        $(#[$meta])*
-        $vis struct $type < $a > {
-            marker: core::marker::PhantomData< $a >,
-        }
-
-        impl< $a > $type < $a > {
-            /// Constructs new phantom wrapper instance.
+        impl $(< $($a),+ >)? $type $(< $($a),+ >)? {
+            /// Constructs new marker instance.
             /// This function is noop as it returns ZST and have no side-effects.
             #[must_use]
             pub const fn new() -> Self {
-                $type {
-                    marker: core::marker::PhantomData,
-                }
+                $type
             }
         }
 
-        impl_copy!($type < $a >);
+        impl $(< $($a),+ >)? core::marker::Copy for $type $(< $($a),+ >)? {}
+        impl $(< $($a),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                $type
+            }
 
-        impl< $a > core::fmt::Debug for $type < $a >
-        where
-            $a : 'static
+            #[inline(always)]
+            fn clone_from(&mut self, _source: &Self) {}
+        }
+
+        impl $(< $($a),+ >)? core::fmt::Debug for $type $(< $($a),+ >)?
+        $(where $($a : 'static,)+)?
         {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                write!(f, core::concat!(core::stringify!($type), "<{}>"), core::any::type_name::<$a>())
+                write!(f, core::stringify!($type))?;
+                $(
+                    write!(f, "<")?;
+                    $(write!(f, "{}", core::any::type_name::<$a>())?;)+
+                    write!(f, ">")?;
+                )?
+                Ok(())
             }
         }
 
-        impl< $a > Default for $type < $a > {
+        impl $(< $($a),+ >)? Default for $type $(< $($a),+ >)? {
+            #[inline(always)]
             fn default() -> Self {
-                Self::new()
+                $type
             }
+        }
+    };
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[doc(hidden)]
+pub enum MarkerVoid {}
+
+#[doc(hidden)]
+pub struct TypeParam<T: ?Sized>([*const T; 0]);
+
+unsafe impl<T: ?Sized> Send for TypeParam<T> {}
+unsafe impl<T: ?Sized> Sync for TypeParam<T> {}
+
+impl<T: ?Sized> Copy for TypeParam<T> {}
+impl<T: ?Sized> Clone for TypeParam<T> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        TypeParam([])
+    }
+
+    #[inline(always)]
+    fn clone_from(&mut self, _source: &Self) {}
+}
+
+macro_rules! marker_type {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $type:ident;
+    ) => {
+        $(#[$meta])*
+        $vis struct $type;
+
+        marker_type_impls!{
+            $(#[$meta])*
+            $vis struct $type;
+        }
+    };
+
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $type:ident < $($a:ident),+ >;
+    ) => {
+        $(#[$meta])*
+        $vis enum $type < $($a: ?Sized,)+ > {
+            /// Instance of this type.
+            $type,
+            #[doc(hidden)]
+            __Void($crate::MarkerVoid, $($crate::TypeParam<$a>,)+),
+        }
+
+        /// Imports $type as value symbol.
+        pub use self::$type::*;
+
+        marker_type_impls!{
+            $(#[$meta])*
+            $vis struct $type < $($a),+ >;
         }
     };
 }
@@ -368,6 +448,7 @@ pub mod prelude;
 pub mod query;
 pub mod relation;
 pub mod system;
+pub mod view;
 pub mod world;
 
 #[cfg(feature = "std")]
@@ -381,6 +462,94 @@ mod res;
 
 #[cfg(test)]
 mod test;
+
+/// Error that may be returned when an entity is not found in the world.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NoSuchEntity;
+
+impl fmt::Display for NoSuchEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Specified entity is not found")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for NoSuchEntity {}
+
+/// Error that may be returned when fetching query from entity that
+/// may be despawned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EntityError {
+    /// Error returned when an entity is not found in the world.
+    NoSuchEntity,
+
+    /// Entity alive but does not match query.
+    QueryMismatch,
+}
+
+unsafe trait ResultEntityError<T> {
+    unsafe fn assume_entity_exists(self) -> Option<T>;
+}
+
+unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
+    #[inline(always)]
+    unsafe fn assume_entity_exists(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(EntityError::QueryMismatch) => None,
+            Err(EntityError::NoSuchEntity) => unsafe { core::hint::unreachable_unchecked() },
+        }
+    }
+}
+
+impl From<NoSuchEntity> for EntityError {
+    #[inline(always)]
+    fn from(_: NoSuchEntity) -> Self {
+        EntityError::NoSuchEntity
+    }
+}
+
+impl fmt::Display for EntityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityError::NoSuchEntity => f.write_str("Specified entity is not found"),
+            EntityError::QueryMismatch => f.write_str("Entity does not match query"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for EntityError {}
+
+/// Specifies kind of access query performs for particular component.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Access {
+    /// Shared access to component. Can be aliased with other [`Access::Read`] accesses.
+    Read,
+
+    /// Cannot be aliased with any other access.
+    Write,
+}
+
+impl Access {
+    #[inline(always)]
+    fn read_type<T: 'static>(ty: TypeId) -> Option<Self> {
+        if ty == TypeId::of::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    fn write_type<T: 'static>(ty: TypeId) -> Option<Self> {
+        if ty == TypeId::of::<T>() {
+            Some(Access::Write)
+        } else {
+            None
+        }
+    }
+}
 
 #[doc(hidden)]
 pub mod private {

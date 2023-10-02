@@ -1,56 +1,59 @@
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{archetype::Archetype, query::Access, world::World};
+use crate::{archetype::Archetype, system::ActionQueue, world::World, Access};
 
-use super::{FnArg, FnArgCache, FnArgGet};
+use super::{FnArg, FnArgState};
 
 #[derive(Default)]
-pub struct WorldReadCache;
+pub struct WorldReadState;
 
 impl FnArg for &World {
-    type Cache = WorldReadCache;
+    type State = WorldReadState;
 }
 
-impl FnArgCache for WorldReadCache {
-    #[inline]
+unsafe impl FnArgState for WorldReadState {
+    type Arg<'a> = &'a World;
+
+    #[inline(always)]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline]
+    #[inline(always)]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline]
+    #[inline(always)]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        true
+    }
+
+    #[inline(always)]
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
-}
 
-unsafe impl<'a> FnArgGet<'a> for WorldReadCache {
-    type Arg = &'a World;
-
-    #[inline]
-    unsafe fn get_unchecked(
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn crate::system::ActionQueue,
+        _queue: &mut dyn ActionQueue,
     ) -> &'a World {
         // Safety: Declares read.
         unsafe { world.as_ref() }
@@ -58,52 +61,55 @@ unsafe impl<'a> FnArgGet<'a> for WorldReadCache {
 }
 
 #[derive(Default)]
-pub struct WorldWriteCache;
+pub struct WorldWriteState;
 
 impl FnArg for &mut World {
-    type Cache = WorldWriteCache;
+    type State = WorldWriteState;
 }
 
-impl FnArgCache for WorldWriteCache {
-    #[inline]
+unsafe impl FnArgState for WorldWriteState {
+    type Arg<'a> = &'a mut World;
+
+    #[inline(always)]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline]
+    #[inline(always)]
     fn is_local(&self) -> bool {
         true
     }
 
-    #[inline]
+    #[inline(always)]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
-}
 
-unsafe impl<'a> FnArgGet<'a> for WorldWriteCache {
-    type Arg = &'a mut World;
-
-    #[inline]
-    unsafe fn get_unchecked(
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
         &'a mut self,
         mut world: NonNull<World>,
-        _queue: &mut dyn crate::system::ActionQueue,
+        _queue: &mut dyn ActionQueue,
     ) -> &'a mut World {
         // Safety: Declares write.
         unsafe { world.as_mut() }

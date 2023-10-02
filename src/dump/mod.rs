@@ -12,12 +12,8 @@ mod query;
 use core::marker::PhantomData;
 
 use crate::{
-    action::ActionEncoder,
-    component::Component,
-    entity::EntityId,
-    epoch::EpochId,
-    query::ImmutableQuery,
-    world::{QueryOneError, World},
+    action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
+    query::ImmutableQuery, world::World, EntityError,
 };
 
 pub use self::query::DumpItem;
@@ -91,7 +87,7 @@ impl<F> Mark for F
 where
     F: Fn(&mut World, EntityId) + Copy + Send + 'static,
 {
-    #[inline]
+    #[inline(always)]
     fn mark(&self, world: &mut World, id: EntityId) {
         self(world, id)
     }
@@ -102,7 +98,7 @@ where
 pub struct NoMark;
 
 impl Mark for NoMark {
-    #[inline]
+    #[inline(always)]
     fn mark(&self, _: &mut World, _: EntityId) {}
 }
 
@@ -206,15 +202,16 @@ macro_rules! set {
         {
             type DumpSlots<'a> = ($(DumpSlot<'a, $a>,)+);
 
-            #[inline]
+            #[inline(always)]
             fn dump_world<Fi, Du, Er>(world: &World, filter: Fi, after_epoch: EpochId, dumper: &mut Du) -> Result<(), Er>
             where
                 Fi: ImmutableQuery,
                 Du: for<'a> Dumper<($($a,)+), Error = Er>,
             {
-                let mut query = world.query_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
+                let view = world.view_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
+                let mut iter = view.iter();
 
-                query.try_for_each(|(id, ($($a),+))| {
+                iter.try_for_each(|(e, ($($a),+))| {
                     let mut present = 0;
                     let mut modified = 0;
 
@@ -229,7 +226,7 @@ macro_rules! set {
                             DumpSlot::Skipped
                         }
                     }),+);
-                    let bits = id.bits();
+                    let bits = e.id().bits();
                     dumper.dump(EntityDump([bits, present | modified, modified]), slots)
                 })
             }
@@ -254,7 +251,7 @@ macro_rules! set {
                 Lo: for<'a> Loader<($($a,)+), Error = Er>,
                 Ma: Mark,
             {
-                let mut query = world.query::<($(Option<&mut $a>,)+)>();
+                let view = world.view::<($(Option<&mut $a>,)+)>();
 
                 while let Some(next) = loader.next()? {
                     let EntityDump([bits, present, modified]) = next;
@@ -262,7 +259,7 @@ macro_rules! set {
                         continue;
                     };
 
-                    let mut slots = match query.get_one(id) {
+                    let mut slots = match view.try_get(id) {
                         Ok(($($a),+)) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) == 0 {
@@ -275,8 +272,8 @@ macro_rules! set {
                                 }
                             ),+)
                         }
-                        Err(QueryOneError::NotSatisfied) => unreachable!("Tuple of options is always satisfied"),
-                        Err(QueryOneError::NoSuchEntity) => {
+                        Err(EntityError::QueryMismatch) => unreachable!("Tuple of options is always satisfied"),
+                        Err(EntityError::NoSuchEntity) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) != 0 {
                                     LoadSlot::<$a>::Missing
@@ -303,7 +300,7 @@ macro_rules! set {
 
                     let marker = marker.clone();
                     actions.closure(move |world| {
-                        world.spawn_if_missing(id);
+                        world.spawn_or_insert(id, ());
                         marker.mark(world, id);
                         indexed_tuple!(idx => $(match $a {
                             Some(comp) => { let _ = world.insert(id, comp); }

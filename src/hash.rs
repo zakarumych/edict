@@ -5,14 +5,14 @@ use core::hash::{BuildHasher, Hash, Hasher};
 // }
 
 // impl XorHasher {
-//     #[inline]
+//     #[inline(always)]
 //     pub fn new() -> Self {
 //         XorHasher { value: 0 }
 //     }
 // }
 
 // impl Hasher for XorHasher {
-//     #[inline]
+//     #[inline(always)]
 //     fn write(&mut self, bytes: &[u8]) {
 //         for chunk in bytes.chunks(8) {
 //             let mut b = [0; 8];
@@ -20,19 +20,19 @@ use core::hash::{BuildHasher, Hash, Hasher};
 //             self.value ^= u64::from_ne_bytes(b);
 //         }
 //     }
-//     #[inline]
+//     #[inline(always)]
 //     fn write_u64(&mut self, i: u64) {
 //         self.value ^= i;
 //     }
-//     #[inline]
+//     #[inline(always)]
 //     fn write_u128(&mut self, i: u128) {
 //         self.value ^= i as u64;
 //     }
-//     #[inline]
+//     #[inline(always)]
 //     fn write_usize(&mut self, i: usize) {
 //         self.value ^= i as u64;
 //     }
-//     #[inline]
+//     #[inline(always)]
 //     fn finish(&self) -> u64 {
 //         self.value
 //     }
@@ -43,7 +43,7 @@ use core::hash::{BuildHasher, Hash, Hasher};
 // impl BuildHasher for XorHasherBuilder {
 //     type Hasher = XorHasher;
 
-//     #[inline]
+//     #[inline(always)]
 //     fn build_hasher(&self) -> XorHasher {
 //         XorHasher::new()
 //     }
@@ -61,26 +61,26 @@ impl NoOpHasher {
 }
 
 impl Hasher for NoOpHasher {
-    #[inline]
+    #[inline(always)]
     fn write(&mut self, bytes: &[u8]) {
         let mut b = [0; 8];
         let c = 8.min(bytes.len());
         b[..c].copy_from_slice(&bytes[..c]);
         self.value = u64::from_ne_bytes(b);
     }
-    #[inline]
+    #[inline(always)]
     fn write_u64(&mut self, i: u64) {
         self.value = i;
     }
-    #[inline]
+    #[inline(always)]
     fn write_u128(&mut self, i: u128) {
         self.value = i as u64;
     }
-    #[inline]
+    #[inline(always)]
     fn write_usize(&mut self, i: usize) {
         self.value = i as u64;
     }
-    #[inline]
+    #[inline(always)]
     fn finish(&self) -> u64 {
         self.value
     }
@@ -92,7 +92,7 @@ pub struct NoOpHasherBuilder;
 impl BuildHasher for NoOpHasherBuilder {
     type Hasher = NoOpHasher;
 
-    #[inline]
+    #[inline(always)]
     fn build_hasher(&self) -> NoOpHasher {
         NoOpHasher::new()
     }
@@ -114,14 +114,14 @@ pub struct MulHasher {
 }
 
 impl MulHasher {
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         MulHasher { value: 0 }
     }
 }
 
 impl Hasher for MulHasher {
-    #[inline]
+    #[inline(always)]
     fn write(&mut self, bytes: &[u8]) {
         for chunk in bytes.chunks(8) {
             let mut b = [0; 8];
@@ -129,20 +129,20 @@ impl Hasher for MulHasher {
             self.value ^= u64::from_ne_bytes(b);
         }
     }
-    #[inline]
+    #[inline(always)]
     fn write_u64(&mut self, i: u64) {
         self.value = self.value.wrapping_mul(MUL_HASH_CONST_64).wrapping_add(i);
     }
-    #[inline]
+    #[inline(always)]
     fn write_u128(&mut self, i: u128) {
         self.write_u64(i as u64);
         self.write_u64((i >> 64) as u64);
     }
-    #[inline]
+    #[inline(always)]
     fn write_usize(&mut self, i: usize) {
         self.write_u64(i as u64);
     }
-    #[inline]
+    #[inline(always)]
     fn finish(&self) -> u64 {
         // Most significant bits are better than leas significant ones.
         self.value.wrapping_mul(MUL_HASH_CONST_64).swap_bytes()
@@ -159,7 +159,7 @@ impl BuildHasher for MulHasherBuilder {
     }
 }
 
-// #[inline]
+// #[inline(always)]
 // pub fn no_op_hash<T>(v: &T) -> u64
 // where
 //     T: Hash,
@@ -170,7 +170,7 @@ impl BuildHasher for MulHasherBuilder {
 // }
 
 #[allow(unused)]
-#[inline]
+#[inline(always)]
 pub fn mul_hash<T>(v: &T) -> u64
 where
     T: Hash,

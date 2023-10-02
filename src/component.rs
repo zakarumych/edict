@@ -168,13 +168,13 @@ impl ComponentBorrow {
 /// [`World::insert_external_bundle`]: edict::world::World::insert_external_bundle
 pub trait Component: Sized + 'static {
     /// Returns name of the component type.
-    #[inline]
+    #[inline(always)]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
     }
 
     /// Hook that is executed when entity with component is dropped.
-    #[inline]
+    #[inline(always)]
     fn on_drop(&mut self, id: EntityId, encoder: ActionEncoder) {
         drop(id);
         drop(encoder);
@@ -182,7 +182,7 @@ pub trait Component: Sized + 'static {
 
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
-    #[inline]
+    #[inline(always)]
     fn on_replace(&mut self, value: &Self, id: EntityId, encoder: ActionEncoder) -> bool {
         drop(value);
         drop(id);
@@ -191,7 +191,7 @@ pub trait Component: Sized + 'static {
     }
 
     /// Returns array of component borrows supported by the type.
-    #[inline]
+    #[inline(always)]
     fn borrows() -> Vec<ComponentBorrow> {
         vec![ComponentBorrow::auto::<Self>()]
     }
@@ -201,7 +201,7 @@ pub trait Component: Sized + 'static {
 #[derive(Clone)]
 pub struct ComponentInfo {
     /// [`TypeId`] of the component.
-    id: TypeId,
+    ty: TypeId,
 
     /// [`Layout`] of the component.
     layout: Layout,
@@ -239,7 +239,7 @@ impl ComponentInfo {
         T: Component,
     {
         ComponentInfo {
-            id: TypeId::of::<T>(),
+            ty: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
             name: T::name(),
             drop_one: drop_one::<T, DefaultDropHook>,
@@ -258,7 +258,7 @@ impl ComponentInfo {
         T: 'static,
     {
         ComponentInfo {
-            id: TypeId::of::<T>(),
+            ty: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
             name: type_name::<T>(),
             drop_one: drop_one::<T, ExternalDropHook>,
@@ -272,7 +272,7 @@ impl ComponentInfo {
 
     #[inline(always)]
     pub(crate) fn id(&self) -> TypeId {
-        self.id
+        self.ty
     }
 
     #[inline(always)]
@@ -319,7 +319,7 @@ impl ComponentInfo {
         self.name
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn borrows(&self) -> &[ComponentBorrow] {
         &self.borrows
     }
@@ -449,7 +449,7 @@ where
     D: DropHook<T>,
     S: SetHook<T>,
 {
-    #[inline]
+    #[inline(always)]
     fn drop(&mut self) {
         self.drop_impl();
     }
@@ -461,7 +461,7 @@ where
     D: DropHook<T>,
     S: SetHook<T>,
 {
-    #[inline]
+    #[inline(always)]
     fn drop_impl(&mut self) {
         let info = self.info.as_mut().unwrap();
         info.drop_one = drop_one::<T, D>;
@@ -634,8 +634,8 @@ impl ComponentRegistry {
         }
     }
 
-    pub fn get_info(&self, id: TypeId) -> Option<&ComponentInfo> {
-        self.components.get(&id)
+    pub fn get_info(&self, ty: TypeId) -> Option<&ComponentInfo> {
+        self.components.get(&ty)
     }
 
     pub fn iter_info(&self) -> impl Iterator<Item = &ComponentInfo> {

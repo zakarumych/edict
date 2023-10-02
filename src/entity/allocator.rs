@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::num::NonZeroU64;
 
 /// Range of raw entity IDs.
@@ -13,8 +14,12 @@ pub struct IdRange {
     pub end: NonZeroU64,
 }
 
-const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
-const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
+/// Start of the valid ID range.
+pub const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
+
+/// End of the valid ID range.
+/// This value is never allocated as valid ID.
+pub const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
 
 impl IdRange {
     /// Returns proper range with `start` less than or equal to `end`.
@@ -140,8 +145,8 @@ impl IdAllocator {
     /// Caller SHOULD use `idx` values in order from 0 to not
     /// waste IDs.
     pub fn reserve(&self, idx: u64) -> Option<NonZeroU64> {
-        if idx < self.current.count() {
-            return Some(unsafe { self.current.get(idx).unwrap_unchecked() });
+        if let Some(id) = self.current.get(idx) {
+            return Some(id);
         }
 
         let idx2 = idx - self.current.count();
@@ -150,7 +155,8 @@ impl IdAllocator {
 
     /// Returns reserve index of the ID.
     /// Returns `None` if ID is not reserved.
-    pub fn reserved(&self, id: u64) -> Option<u64> {
+    pub fn reserved(&self, id: NonZeroU64) -> Option<u64> {
+        let id = id.get();
         if id >= self.current.start.get() && id < self.current.end.get() {
             return Some(id - self.current.start.get());
         }
@@ -163,6 +169,7 @@ impl IdAllocator {
     /// Calls provided closure with reserved IDs.
     /// `count` must be larger than all `idx` values passed to `reserve` that
     /// returned `Some`
+    #[inline(always)]
     pub unsafe fn flush_reserved(&mut self, count: u64, mut f: impl FnMut(NonZeroU64)) {
         let mut advanced = self.current.advance(count, &mut f);
         if advanced < count {
@@ -217,11 +224,53 @@ pub struct OneRangeAllocator {
     range: IdRange,
 }
 
+const fn client_range() -> IdRange {
+    IdRange {
+        start: unsafe { NonZeroU64::new_unchecked(1) },
+        end: unsafe { NonZeroU64::new_unchecked(1 << 48) },
+    }
+}
+
+const fn server_range() -> IdRange {
+    IdRange {
+        start: unsafe { NonZeroU64::new_unchecked(1 << 48) },
+        end: unsafe { NonZeroU64::new_unchecked(u64::MAX) },
+    }
+}
+
 impl OneRangeAllocator {
     /// Creates new `OneRangeAllocator` that will allocate given range once.
     /// And then return empty range on subsequent allocations.
     pub const fn new(range: IdRange) -> Self {
         OneRangeAllocator { range }
+    }
+
+    /// Creates new `OneRangeAllocator` that will allocate
+    /// client's entity ID range once.
+    /// The client's ID range is pre-defined range `1..2^48`.
+    ///
+    /// The range is chosen to be large enough to not cause
+    /// overflow in years of continuous client activity.
+    pub const fn client() -> Self {
+        OneRangeAllocator {
+            range: client_range(),
+        }
+    }
+
+    /// Creates new `OneRangeAllocator` that will allocate
+    /// server's entity ID range once.
+    /// The server's ID range is pre-defined range `2^48..2^64-1`.
+    /// The range is chosen to be large enough to not cause
+    /// overflow in thousands of years of continuous server activity.
+    ///
+    /// This allocator should only be used for isolated server setup.
+    /// If servers are interconnected and share entities,
+    /// construct custom allocator that will distribute ID ranges
+    /// from common pool.
+    pub const fn server() -> Self {
+        OneRangeAllocator {
+            range: server_range(),
+        }
     }
 }
 

@@ -3,69 +3,71 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     archetype::Archetype,
-    query::Access,
-    system::ActionQueue,
+    system::{Access, ActionQueue},
     world::World,
 };
 
-use super::{FnArg, FnArgCache, FnArgGet};
+use super::{FnArg, FnArgState};
 
 impl FnArg for ActionEncoder<'_> {
-    type Cache = ActionEncoderCache;
+    type State = ActionEncoderState;
 }
 
 /// [`FnArgCache`] for `ActionEncoder` argument.
 #[derive(Default)]
-pub struct ActionEncoderCache {
+pub struct ActionEncoderState {
     buffer: Option<ActionBuffer>,
 }
 
-impl FnArgCache for ActionEncoderCache {
+unsafe impl FnArgState for ActionEncoderState {
+    type Arg<'a> = ActionEncoder<'a>;
+
     fn new() -> Self {
-        ActionEncoderCache { buffer: None }
+        ActionEncoderState { buffer: None }
     }
 
-    #[inline]
+    #[inline(always)]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline]
+    #[inline(always)]
     fn world_access(&self) -> Option<Access> {
-        Some(Access::Read)
+        None
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline]
-    fn access_component(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn borrows_components_at_runtime(&self) -> bool {
+        false
+    }
+
+    #[inline(always)]
+    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline]
-    fn access_resource(&self, _id: TypeId) -> Option<Access> {
+    #[inline(always)]
+    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
         None
     }
-}
 
-unsafe impl<'a> FnArgGet<'a> for ActionEncoderCache {
-    type Arg = ActionEncoder<'a>;
-
-    #[inline]
-    unsafe fn get_unchecked(
+    #[inline(always)]
+    unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
         queue: &mut dyn ActionQueue,
     ) -> ActionEncoder<'a> {
         let buffer = self.buffer.get_or_insert_with(|| queue.get());
-        ActionEncoder::new(buffer, unsafe { world.as_ref() }.entity_set())
+        ActionEncoder::new(buffer, unsafe { world.as_ref() }.entities())
     }
 
-    #[inline]
-    unsafe fn flush_unchecked(&'a mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
+    #[inline(always)]
+    unsafe fn flush_unchecked(&mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
         if let Some(buffer) = self.buffer.take() {
             queue.flush(buffer);
         }

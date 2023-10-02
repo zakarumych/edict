@@ -19,13 +19,14 @@
 
 #![allow(missing_docs)]
 
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec::Vec};
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
+
 use std::thread::Thread;
 
 use hashbrown::HashSet;
@@ -34,9 +35,9 @@ use parking_lot::Mutex;
 use crate::{
     action::ActionBuffer,
     executor::{MockExecutor, ScopedExecutor},
-    query::Access,
     system::{ActionQueue, IntoSystem, System},
     world::World,
+    Access,
 };
 
 /// Scheduler that starts systems in order of their registration.
@@ -115,7 +116,7 @@ struct Queue<T> {
 }
 
 impl<T> Clone for Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn clone(&self) -> Self {
         Queue {
             inner: self.inner.clone(),
@@ -124,7 +125,7 @@ impl<T> Clone for Queue<T> {
 }
 
 impl<T> Drop for Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn drop(&mut self) {
         if Arc::strong_count(&self.inner) == 2 {
             self.inner.thread.unpark();
@@ -133,7 +134,7 @@ impl<T> Drop for Queue<T> {
 }
 
 impl<T> Queue<T> {
-    #[inline]
+    #[inline(always)]
     fn new() -> Self {
         Queue {
             inner: Arc::new(QueueInner {
@@ -143,18 +144,18 @@ impl<T> Queue<T> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn enqueue(&self, item: T) {
         self.inner.items.lock().push_back(item);
         self.inner.thread.unpark();
     }
 
-    #[inline]
+    #[inline(always)]
     fn try_deque(&self) -> Option<T> {
         self.inner.items.lock().pop_front()
     }
 
-    #[inline]
+    #[inline(always)]
     fn deque(&self) -> Result<T, ()> {
         loop {
             if let Some(item) = self.try_deque() {
@@ -169,7 +170,7 @@ impl<T> Queue<T> {
 }
 
 impl ActionQueue for Queue<ActionBuffer> {
-    #[inline]
+    #[inline(always)]
     fn get<'a>(&self) -> ActionBuffer {
         match self.try_deque() {
             Some(buffer) => buffer,
@@ -177,7 +178,7 @@ impl ActionQueue for Queue<ActionBuffer> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn flush(&mut self, buffer: ActionBuffer) {
         self.enqueue(buffer);
     }
@@ -281,7 +282,6 @@ impl Scheduler {
         self.schedule_cache_id = None;
     }
 
-    #[cfg(feature = "std")]
     pub fn run_threaded(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         let buffers = std::thread::scope(|scope| self.run_with(world, &scope));
@@ -416,7 +416,10 @@ impl Scheduler {
                 }
 
                 for id in world.resource_types() {
-                    if conflicts(system_a.access_resource(id), system_b.access_resource(id)) {
+                    if conflicts(
+                        system_a.component_type_access(id),
+                        system_b.component_type_access(id),
+                    ) {
                         // Conflicts on this resource.
                         // Add a dependency.
                         self.systems[j].dependents.push(i);
@@ -450,8 +453,8 @@ impl Scheduler {
 
                     for info in archetype.infos() {
                         if conflicts(
-                            system_a.access_component(info.id()),
-                            system_b.access_component(info.id()),
+                            system_a.component_type_access(info.id()),
+                            system_b.component_type_access(info.id()),
                         ) {
                             // Conflicts on this archetype.
                             // Add a dependency.

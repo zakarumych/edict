@@ -1,10 +1,11 @@
-use core::fmt::Debug;
+use std::fmt::Debug;
 
 use edict::{
-    query::{Modified, QueryBorrowAll, With},
+    query::{Modified, QueryBorrowAll, With, Without},
     scheduler::Scheduler,
     system::State,
-    world::{QueryRef, World},
+    view::{View, ViewCell},
+    world::World,
 };
 use edict_proc::Component;
 
@@ -21,25 +22,25 @@ fn main() {
 
     world.spawn((A,));
     world.spawn((A, B));
-    let c = world.spawn((B,));
+    let c = world.spawn((B,)).id();
 
     schedule.add_system(system_a);
     schedule.add_system(system_b);
     schedule.add_system(system_c);
     schedule.add_system(system_d);
-    schedule.add_system(system_e);
 
     for i in 0..10 {
         println!("Loop: {i}");
 
-        world.query_one_mut::<&mut B>(c).unwrap();
+        world.get::<&mut B>(c).unwrap();
 
         schedule.run_threaded(&mut world);
     }
 }
 
 fn system_a(
-    mut q: QueryRef<(
+    // `ViewCell` is required because `&mut A` conflicts with `QueryBorrowAll`
+    view: ViewCell<(
         &mut A,
         Option<&B>,
         Option<QueryBorrowAll<&(dyn Debug + Sync + 'static)>>,
@@ -48,23 +49,23 @@ fn system_a(
 ) {
     *counter += 1;
     println!("Counter: {}", *counter);
-    for (&mut A, b, dbg) in q.iter_mut() {
+    for (&mut A, b, dbg) in view.iter() {
         println!("A + {:?} + {:?}", b, dbg);
     }
 }
 
-fn system_b(q: QueryRef<Modified<&B>>) {
+fn system_b(q: View<Modified<&B>>) {
     for &B in q.iter() {
         println!("Modified B");
     }
 }
 
-fn system_c(mut q: QueryRef<&mut A>) {
-    q.for_each(|_| {});
+fn system_c(v: View<&mut A>) {
+    v.into_iter().for_each(|_| {});
 }
-fn system_d(mut q: QueryRef<&mut A, With<B>>) {
-    q.for_each(|_| {});
-}
-fn system_e(mut q: QueryRef<&A, With<B>>) {
-    q.for_each(|_| {});
+
+// `ViewCell` is required because v1 conflicts with v2
+fn system_d(v1: View<&mut A, With<B>>, v2: View<&mut A, Without<B>>) {
+    v1.into_iter().for_each(|_| {});
+    v2.into_iter().for_each(|_| {});
 }

@@ -1,12 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId};
+use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{
-    fetch::Fetch,
-    phantom::{ImmutablePhantomQuery, PhantomQuery},
-    Access,
-};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// Fetch for [`EpochOf`] epochs.
 pub struct FetchEpoch<'a> {
@@ -17,7 +13,7 @@ pub struct FetchEpoch<'a> {
 unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
     type Item = EpochId;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchEpoch {
             entity_epochs: NonNull::dangling(),
@@ -25,43 +21,80 @@ unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> EpochId {
-        *self.entity_epochs.as_ptr().add(idx)
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> EpochId {
+        *self.entity_epochs.as_ptr().add(idx as usize)
     }
 }
 
-/// Query for fetching epochs of a component.
-pub struct EpochOf<T>(T);
+marker_type! {
+    /// Query for fetching epochs of a component.
+    pub struct EpochOf<T>;
+}
 
-unsafe impl<T> PhantomQuery for EpochOf<T>
+impl<T> IntoQuery for EpochOf<T>
+where
+    T: 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for EpochOf<T>
+where
+    T: 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        EpochOf
+    }
+}
+
+impl<T> QueryArg for EpochOf<T>
+where
+    T: 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        EpochOf
+    }
+}
+
+unsafe impl<T> Query for EpochOf<T>
 where
     T: 'static,
 {
     type Item<'a> = EpochId;
     type Fetch<'a> = FetchEpoch<'a>;
 
-    #[inline]
-    fn access(ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<T>(ty))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(_archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read);
     }
 
-    #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchEpoch<'a> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchEpoch<'a> {
         let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
         let data = component.data();
 
@@ -72,4 +105,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for EpochOf<T> where T: 'static {}
+unsafe impl<T> ImmutableQuery for EpochOf<T> where T: 'static {}

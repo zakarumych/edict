@@ -213,6 +213,7 @@ for_tuple_2!(dumper);
 #[test]
 fn test_dump() {
     use ::alkahest_proc::{Deserialize, Formula, SerializeRef};
+    use ::edict_proc::Component;
 
     use super::NoMark;
     use crate::{action::ActionBuffer, epoch::EpochId, world::World};
@@ -228,14 +229,14 @@ fn test_dump() {
     #[derive(Component, Debug, PartialEq, Eq, Formula, SerializeRef, Deserialize)]
     struct Baz(String);
 
-    let foo = world.spawn((Foo,));
-    let bar = world.spawn((Bar(42),));
-    let baz = world.spawn((Baz("qwerty".into()),));
+    let foo = world.spawn((Foo,)).id();
+    let bar = world.spawn((Bar(42),)).id();
+    let baz = world.spawn((Baz("qwerty".into()),)).id();
 
-    let foo_bar = world.spawn((Foo, Bar(11)));
-    let foo_baz = world.spawn((Foo, Baz("asdfgh".into())));
-    let bar_baz = world.spawn((Bar(23), Baz("zxcvbn".into())));
-    let foo_bar_baz = world.spawn((Foo, Bar(155), Baz("123456".into())));
+    let foo_bar = world.spawn((Foo, Bar(11))).id();
+    let foo_baz = world.spawn((Foo, Baz("asdfgh".into()))).id();
+    let bar_baz = world.spawn((Bar(23), Baz("zxcvbn".into()))).id();
+    let foo_bar_baz = world.spawn((Foo, Bar(155), Baz("123456".into()))).id();
 
     type Set = (Foo, Bar, Baz);
 
@@ -254,37 +255,37 @@ fn test_dump() {
     buffer.execute(&mut world2);
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo),
         Ok((Some(&Foo), None, None))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(bar),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(bar),
         Ok((None, Some(&Bar(42)), None))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(baz),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(baz),
         Ok((None, None, Some(&Baz("qwerty".into()))))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_bar),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_bar),
         Ok((Some(&Foo), Some(&Bar(11)), None))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_baz),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_baz),
         Ok((Some(&Foo), None, Some(&Baz("asdfgh".into()))))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(bar_baz),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(bar_baz),
         Ok((None, Some(&Bar(23)), Some(&Baz("zxcvbn".into()))))
     );
 
     assert_eq!(
-        world2.query_one_mut::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_bar_baz),
+        world2.get::<(Option<&Foo>, Option<&Bar>, Option<&Baz>)>(foo_bar_baz),
         Ok((Some(&Foo), Some(&Bar(155)), Some(&Baz("123456".into()))))
     );
 }

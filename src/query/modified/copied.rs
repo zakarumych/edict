@@ -3,14 +3,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{
-        copied::Copied, phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query,
-    },
-    system::{QueryArg, QueryArgCache, QueryArgGet},
+    query::{copied::Cpy, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    system::QueryArg,
     world::World,
 };
 
-use super::{Modified, ModifiedCache};
+use super::Modified;
 
 /// [`Fetch`] type for the [`Modified<Copied<T>>`] query.
 pub struct ModifiedFetchCopied<'a, T> {
@@ -27,7 +25,7 @@ where
 {
     type Item = T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchCopied {
             after_epoch: EpochId::start(),
@@ -38,25 +36,25 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
-        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
+    #[inline(always)]
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
+        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let epoch = *self.entity_epochs.as_ptr().add(idx);
+    #[inline(always)]
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> T {
-        *self.ptr.as_ptr().add(idx)
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> T {
+        *self.ptr.as_ptr().add(idx as usize)
     }
 }
 
-impl<T> IntoQuery for Modified<Copied<T>>
+impl<T> IntoQuery for Modified<Cpy<T>>
 where
     T: Copy + Sync + 'static,
 {
@@ -67,27 +65,44 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Copied<T>>
+impl<T> QueryArg for Modified<Cpy<T>>
+where
+    T: Copy + Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
+    }
+}
+
+unsafe impl<T> Query for Modified<Cpy<T>>
 where
     T: Copy + Sync + 'static,
 {
     type Item<'a> = T;
     type Fetch<'a> = ModifiedFetchCopied<'a, T>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(ty)
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Cpy::<T>.component_type_access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(
-                    <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                    true
-                );
+                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -96,14 +111,15 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchCopied<'a, T> {
@@ -122,54 +138,9 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Copied<T>> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Cpy<T>> where T: Copy + Sync + 'static {}
 
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Copied<T>>
-where
-    T: Copy + Sync + 'static,
-{
-    type Arg = Modified<Copied<T>>;
-    type Query = Modified<Copied<T>>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<Copied<T>> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<Copied<T>>
-where
-    T: Copy + Sync + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        <Copied<T> as PhantomQuery>::visit_archetype(archetype)
-    }
-}
-
-impl<'a, T> QueryArg for Modified<Copied<T>>
-where
-    T: Copy + Sync + 'static,
-{
-    type Cache = ModifiedCache<Copied<T>>;
-}
-
-impl<T> IntoQuery for Modified<Option<Copied<T>>>
+impl<T> IntoQuery for Modified<Option<Cpy<T>>>
 where
     T: Copy + Sync + 'static,
 {
@@ -180,27 +151,26 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<Option<Copied<T>>>
+unsafe impl<T> Query for Modified<Option<Cpy<T>>>
 where
     T: Copy + Sync + 'static,
 {
     type Item<'a> = Option<T>;
     type Fetch<'a> = Option<ModifiedFetchCopied<'a, T>>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(ty)
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Some(Cpy::<T>).component_type_access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(
-                    <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                    true
-                );
+                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -209,13 +179,10 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(
-                <Copied<T> as PhantomQuery>::visit_archetype(archetype),
-                true
-            );
+            debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -225,9 +192,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> Option<ModifiedFetchCopied<'a, T>> {
@@ -252,49 +220,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Option<Copied<T>>> where T: Copy + Sync + 'static {}
-
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<Copied<T>>>
-where
-    T: Copy + Sync + 'static,
-{
-    type Arg = Modified<Option<Copied<T>>>;
-    type Query = Modified<Option<Copied<T>>>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<Option<Copied<T>>> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<Option<Copied<T>>>
-where
-    T: Copy + Sync + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <Copied<T> as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-        true
-    }
-}
-
-impl<'a, T> QueryArg for Modified<Option<Copied<T>>>
-where
-    T: Copy + Sync + 'static,
-{
-    type Cache = ModifiedCache<Option<Copied<T>>>;
-}
+unsafe impl<T> ImmutableQuery for Modified<Option<Cpy<T>>> where T: Copy + Sync + 'static {}

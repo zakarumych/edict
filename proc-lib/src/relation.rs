@@ -43,7 +43,7 @@ pub fn derive(
     let fn_name = attributes.name.map(|name| {
         let name = name.literal;
         Some(quote::quote! {
-            #[inline]
+            #[inline(always)]
             fn name() -> &'static str {
                 #name
             }
@@ -54,7 +54,7 @@ pub fn derive(
             let on_drop = &on_drop.function;
             quote::quote! {
                 #[allow(unused_variables)]
-                #[inline]
+                #[inline(always)]
                 fn on_drop(&mut self, entity: #edict_path::entity::EntityId, target: #edict_path::entity::EntityId, encoder: #edict_path::action::ActionEncoder<'_>) {
                     (#on_drop)(self, entity, target, encoder)
                 }
@@ -65,7 +65,7 @@ pub fn derive(
             let on_replace = &on_replace.function;
             quote::quote! {
                 #[allow(unused_variables)]
-                #[inline]
+                #[inline(always)]
                 fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, target: #edict_path::entity::EntityId, new_target: #edict_path::entity::EntityId, encoder: #edict_path::action::ActionEncoder<'_>) -> bool {
                     (#on_replace)(self, value, entity, target, new_target, encoder)
                 }
@@ -77,14 +77,14 @@ pub fn derive(
         let on_target_drop = &on_target_drop.function;
         quote::quote! {
             #[allow(unused_variables)]
-            #[inline]
+            #[inline(always)]
             fn on_target_drop(entity: #edict_path::entity::EntityId, target: #edict_path::entity::EntityId, encoder: #edict_path::action::ActionEncoder<'_>) {
                 (#on_target_drop)(entity, target, encoder)
             }
         }
     });
 
-    let output = quote::quote! {
+    let mut output = quote::quote! {
         impl #impl_generics #edict_path::relation::Relation for #ident #ty_generics
         #where_clause
         {
@@ -103,6 +103,14 @@ pub fn derive(
             #on_target_drop
         }
     };
+
+    if attributes.exclusive.is_some() {
+        output.extend(quote::quote! {
+            impl #impl_generics #edict_path::relation::ExclusiveRelation for #ident #ty_generics
+            #where_clause
+            {}
+        });
+    }
 
     Ok(output)
 }

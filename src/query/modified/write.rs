@@ -3,12 +3,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{phantom::PhantomQuery, Access, Fetch, IntoQuery, Query},
-    system::{QueryArg, QueryArgCache, QueryArgGet},
+    query::{write::Write, Access, Fetch, IntoQuery, Query, WriteAlias},
+    system::QueryArg,
     world::World,
 };
 
-use super::{Modified, ModifiedCache};
+use super::Modified;
 
 /// [`Fetch`] type for the [`Modified<&mut T>`] query.
 pub struct ModifiedFetchWrite<'a, T> {
@@ -26,7 +26,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         ModifiedFetchWrite {
             after_epoch: EpochId::start(),
@@ -38,34 +38,48 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
-        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx);
+    #[inline(always)]
+    unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
+        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let epoch = *self.entity_epochs.as_ptr().add(idx);
+    #[inline(always)]
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
         epoch.after(self.after_epoch)
     }
 
-    #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx);
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
+        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_epoch.bump(self.epoch);
 
-        &mut *self.ptr.as_ptr().add(idx)
+        &mut *self.ptr.as_ptr().add(idx as usize)
     }
 }
 
 impl<T> IntoQuery for Modified<&mut T>
+where
+    T: Send + 'static,
+{
+    type Query = Modified<Write<T>>;
+
+    fn into_query(self) -> Modified<Write<T>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Write<T>>
 where
     T: Send + 'static,
 {
@@ -76,24 +90,44 @@ where
     }
 }
 
-unsafe impl<T> Query for Modified<&mut T>
+impl<T> QueryArg for Modified<Write<T>>
+where
+    T: Send + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
+    }
+}
+
+unsafe impl<T> Query for Modified<Write<T>>
 where
     T: Send + 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = ModifiedFetchWrite<'a, T>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(ty)
+    const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Write::<T>.component_type_access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data_mut();
@@ -102,14 +136,15 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<T>(), Access::Write)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> ModifiedFetchWrite<'a, T> {
@@ -130,80 +165,53 @@ where
     }
 }
 
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<&'static mut T>
-where
-    T: Send + 'static,
-{
-    type Arg = Modified<&'a mut T>;
-    type Query = Modified<&'a mut T>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<&'a mut T> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<&'static mut T>
-where
-    T: Send + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        <&mut T as PhantomQuery>::visit_archetype(archetype)
-    }
-}
-
-impl<'a, T> QueryArg for Modified<&'a mut T>
-where
-    T: Send + 'static,
-{
-    type Cache = ModifiedCache<&'static mut T>;
-}
-
 impl<T> IntoQuery for Modified<Option<&mut T>>
+where
+    T: Send + 'static,
+{
+    type Query = Modified<Option<Write<T>>>;
+
+    #[inline(always)]
+    fn into_query(self) -> Modified<Option<Write<T>>> {
+        Modified {
+            after_epoch: self.after_epoch,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for Modified<Option<Write<T>>>
 where
     T: Send + 'static,
 {
     type Query = Self;
 
+    #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
 }
 
-unsafe impl<T> Query for Modified<Option<&mut T>>
+unsafe impl<T> Query for Modified<Option<Write<T>>>
 where
     T: Send + 'static,
 {
     type Item<'a> = Option<&'a mut T>;
     type Fetch<'a> = Option<ModifiedFetchWrite<'a, T>>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(ty)
+    const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Some(Write::<T>).component_type_access(ty)
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -212,10 +220,10 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(<&mut T as PhantomQuery>::visit_archetype(archetype), true);
+            debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -225,9 +233,10 @@ where
         }
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Option<ModifiedFetchWrite<'a, T>> {
@@ -251,49 +260,4 @@ where
             }
         }
     }
-}
-
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<&'static mut T>>
-where
-    T: Send + 'static,
-{
-    type Arg = Modified<Option<&'a mut T>>;
-    type Query = Modified<Option<&'a mut T>>;
-
-    #[inline]
-    fn get(&mut self, world: &'a World) -> Modified<Option<&mut T>> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        Modified {
-            after_epoch,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T> QueryArgCache for ModifiedCache<Option<&'static mut T>>
-where
-    T: Send + 'static,
-{
-    fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
-    }
-
-    fn access_component(&self, id: TypeId) -> Option<Access> {
-        <&mut T as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-        true
-    }
-}
-
-impl<'a, T> QueryArg for Modified<Option<&mut T>>
-where
-    T: Send + 'static,
-{
-    type Cache = ModifiedCache<Option<&'static mut T>>;
 }

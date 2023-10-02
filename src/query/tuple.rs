@@ -1,19 +1,21 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{
+    archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg, world::World,
+};
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 macro_rules! impl_fetch {
     () => {
         unsafe impl Fetch<'_> for () {
             type Item = ();
 
-            #[inline]
+            #[inline(always)]
             fn dangling() {}
 
-            #[inline]
-            unsafe fn get_item(&mut self, _: usize) {}
+            #[inline(always)]
+            unsafe fn get_item(&mut self, _: u32) {}
         }
 
         impl IntoQuery for () {
@@ -24,30 +26,46 @@ macro_rules! impl_fetch {
             }
         }
 
+        impl DefaultQuery for () {
+            #[inline(always)]
+            fn default_query() -> () {
+                ()
+            }
+        }
+
+        impl QueryArg for () {
+            #[inline(always)]
+            fn new() -> () {
+                ()
+            }
+        }
+
         unsafe impl Query for () {
             type Item<'a> = ();
             type Fetch<'a> = ();
 
-            #[inline]
-            fn access(&self, _ty: TypeId) -> Option<Access> {
-                None
+            const MUTABLE: bool = false;
+
+            #[inline(always)]
+            fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+                Ok(None)
             }
 
-            #[inline]
+            #[inline(always)]
             fn visit_archetype(&self, _: &Archetype) -> bool {
                 true
             }
 
-            #[inline]
-            unsafe fn access_archetype(&self, _: &Archetype, _: &dyn Fn(TypeId, Access)) {}
+            #[inline(always)]
+            unsafe fn access_archetype(&self, _: &Archetype, _: impl FnMut(TypeId, Access)) {}
 
-            #[inline]
-            unsafe fn fetch(&mut self, _: &Archetype, _: EpochId) -> () {
+            #[inline(always)]
+            unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> () {
                 ()
             }
 
-            #[inline]
-            fn reserved_entity_item<'a>(&self, _id: EntityId) -> Option<()> where (): 'a {
+            #[inline(always)]
+            fn reserved_entity_item<'a>(&self, _: EntityId, _: u32) -> Option<()> where (): 'a {
                 Some(())
             }
         }
@@ -63,33 +81,33 @@ macro_rules! impl_fetch {
         {
             type Item = ($($a::Item),+);
 
-            #[inline]
+            #[inline(always)]
             fn dangling() -> Self {
                 ($($a::dangling(),)+)
             }
 
-            #[inline]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+            #[inline(always)]
+            unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = self;
                 $($a.visit_chunk(chunk_idx) &&)+ true
             }
 
             /// Checks if item with specified index must be visited or skipped.
-            #[inline]
-            unsafe fn visit_item(&mut self, idx: usize) -> bool {
+            #[inline(always)]
+            unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = self;
                 $($a.visit_item(idx) &&)+ true
             }
 
             /// Notifies this fetch that it visits a chunk.
-            #[inline]
-            unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+            #[inline(always)]
+            unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = self;
                 $($a.touch_chunk(chunk_idx);)+
             }
 
-            #[inline]
-            unsafe fn get_item(&mut self, idx: usize) -> ($($a::Item),+) {
+            #[inline(always)]
+            unsafe fn get_item(&mut self, idx: u32) -> ($($a::Item),+) {
                 let ($($a,)+) = self;
                 ($( $a.get_item(idx) ),+)
             }
@@ -97,40 +115,79 @@ macro_rules! impl_fetch {
 
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
-        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
-            type Item<'a> = ($($a::Item<'a>),+);
-            type Fetch<'a> = ($($a::Fetch<'a>),+);
+        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
+            #[inline(always)]
+            fn default_query() -> ($($a::Query,)+) {
+                ($($a::default_query(),)+)
+            }
+        }
 
-            #[inline]
-            fn access(&self, ty: TypeId) -> Option<Access> {
-                let ($($a,)+) = self;
-                let mut access = None;
-                $(access = merge_access(access, <$a as Query>::access($a, ty));)+
-                access
+        #[allow(non_snake_case)]
+        #[allow(unused_parens)]
+        impl<$($a),+> QueryArg for ($($a,)+) where $($a: QueryArg,)+ {
+            #[inline(always)]
+            fn new() -> ($($a::Query,)+) {
+                ($($a::new(),)+)
             }
 
-            #[inline]
+            #[inline(always)]
+            fn before(&mut self, world: &World) {
+                let ($($a,)*) = self;
+                $($a.before(world);)*
+            }
+
+            #[inline(always)]
+            fn after(&mut self, world: &World) {
+                let ($($a,)*) = self;
+                $($a.after(world);)*
+            }
+        }
+
+        #[allow(non_snake_case)]
+        #[allow(unused_parens)]
+        unsafe impl<$($a),+> Query for ($($a,)+) where $($a: Query,)+ {
+            type Item<'a> = ($($a::Item<'a>),+) where $($a: 'a,)+;
+            type Fetch<'a> = ($($a::Fetch<'a>),+) where $($a: 'a,)+;
+
+            const MUTABLE: bool = $($a::MUTABLE ||)+ false;
+            const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
+
+            #[inline(always)]
+            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+                let ($($a,)+) = self;
+                let mut result = None;
+                $(
+                    result = match (result, $a.component_type_access(ty)?) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => return Err(WriteAlias),
+                    };
+                )*
+                Ok(result)
+            }
+
+            #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
                 $( <$a as Query>::visit_archetype($a, archetype) )&&+
             }
 
-            #[inline]
-            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+            #[inline(always)]
+            unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = self;
-                $( <$a as Query>::access_archetype($a, archetype, f); )+
+                $( <$a as Query>::access_archetype($a, archetype, &mut f); )+
             }
 
-            #[inline]
-            unsafe fn fetch<'a>(&mut self, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
+            #[inline(always)]
+            unsafe fn fetch<'a>(&self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
-                ($( <$a as Query>::fetch($a, archetype, epoch) ),+)
+                ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+)
             }
 
-            #[inline]
-            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<($($a::Item<'a>),+)> {
+            #[inline(always)]
+            fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<($($a::Item<'a>),+)> {
                 let ($($a,)+) = self;
-                $( let $a = $a.reserved_entity_item(id)?; )+
+                $( let $a = $a.reserved_entity_item(id, idx)?; )+
                 Some(($($a),+))
             }
         }
@@ -141,16 +198,10 @@ macro_rules! impl_fetch {
         impl<$($a),+> IntoQuery for ($($a,)+) where $($a: IntoQuery,)+ {
             type Query = ($($a::Query,)+);
 
+            #[inline(always)]
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self;
                 ($( $a.into_query(), )+)
-            }
-        }
-
-        #[allow(non_snake_case)]
-        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
-            fn default_query() -> Self::Query {
-                ($( $a::default_query(), )+)
             }
         }
     };

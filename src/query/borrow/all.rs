@@ -1,26 +1,18 @@
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
-
 use alloc::vec::Vec;
+use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
+    query::{
+        read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+    },
+    system::QueryArg,
 };
 
-phantom_newtype! {
+marker_type! {
     /// [`PhantomQuery`] that borrows from components.
-    pub struct QueryBorrowAll<T>
-}
-
-impl<T> QueryBorrowAll<&T>
-where
-    T: Sync + ?Sized + 'static,
-{
-    /// Creates a new [`QueryBorrowAll`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
+    pub struct QueryBorrowAll<T>;
 }
 
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
@@ -41,7 +33,7 @@ where
 {
     type Item = Vec<&'a T>;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowAllRead {
             components: Vec::new(),
@@ -49,13 +41,13 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> Vec<&'a T> {
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> Vec<&'a T> {
         self.components
             .iter()
             .map(|c| unsafe {
                 (c.borrow_fn)(
-                    NonNull::new_unchecked(c.ptr.as_ptr().add(idx * c.size)),
+                    NonNull::new_unchecked(c.ptr.as_ptr().add(idx as usize * c.size)),
                     PhantomData::<&'a ()>,
                 )
             })
@@ -63,25 +55,81 @@ where
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAll<&T>
+impl<T> IntoQuery for QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = QueryBorrowAll<Read<T>>;
+
+    #[inline(always)]
+    fn into_query(self) -> QueryBorrowAll<Read<T>> {
+        QueryBorrowAll
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAll<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> QueryBorrowAll<Read<T>> {
+        QueryBorrowAll
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        QueryBorrowAll::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAll<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAll
+    }
+}
+
+unsafe impl<T> Query for QueryBorrowAll<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
     type Item<'a> = Vec<&'a T>;
     type Fetch<'a> = FetchBorrowAllRead<'a, T>;
 
-    #[inline]
-    fn access(_ty: TypeId) -> Option<Access> {
-        Some(Access::Read)
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Read))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let indices = unsafe {
             archetype
                 .borrow_indices(TypeId::of::<T>())
@@ -92,8 +140,13 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> FetchBorrowAllRead<'a, T> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchBorrowAllRead<'a, T> {
         let indices = unsafe {
             archetype
                 .borrow_indices(TypeId::of::<T>())
@@ -122,4 +175,4 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAll<&T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}

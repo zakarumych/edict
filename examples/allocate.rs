@@ -1,6 +1,6 @@
 //! This example shows how to use entity reserving mechanism.
 
-use edict::{action::ActionEncoder, entity::EntityId, scheduler::Scheduler, world::World};
+use edict::{action::ActionEncoder, entity::EntityLoc, scheduler::Scheduler, world::World};
 use edict_proc::Component;
 
 #[derive(Component)]
@@ -16,7 +16,7 @@ fn main() {
     scheduler.run_sequential(&mut world);
     scheduler.run_sequential(&mut world);
 
-    assert_eq!(world.query::<&Foo>().iter().count(), 4);
+    assert_eq!(world.view::<&Foo>().iter().count(), 4);
 }
 
 fn allocate_system(world: &World, mut encoder: ActionEncoder) {
@@ -25,5 +25,5 @@ fn allocate_system(world: &World, mut encoder: ActionEncoder) {
 }
 
 fn spawn_system(mut encoder: ActionEncoder) {
-    let _id: EntityId = encoder.spawn((Foo,));
+    let _id: EntityLoc = encoder.spawn((Foo,));
 }

@@ -14,6 +14,8 @@ pub use self::{
     with::ModifiedFetchWith, write::ModifiedFetchWrite,
 };
 
+use super::DefaultQuery;
+
 /// Query over modified component.
 ///
 /// Should be used as either [`Modified<&T>`], [`Modified<&mut T>`]
@@ -31,7 +33,10 @@ impl_debug!(Modified<T> { after_epoch });
 impl<T> Modified<T> {
     /// Creates new `Modified` query.
     /// Uses provided `after_epoch` id to skip components that are last modified not after this epoch.
-    pub fn new(after_epoch: EpochId) -> Self {
+    pub fn new(after_epoch: EpochId) -> Self
+    where
+        T: DefaultQuery,
+    {
         Modified {
             after_epoch,
             marker: PhantomData,
@@ -41,19 +46,5 @@ impl<T> Modified<T> {
     /// Epoch id threshold for this query.
     pub fn after_epoch(&self) -> EpochId {
         self.after_epoch
-    }
-}
-
-pub struct ModifiedCache<T> {
-    after_epoch: EpochId,
-    marker: PhantomData<fn() -> T>,
-}
-
-impl<T> Default for ModifiedCache<T> {
-    fn default() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
-            marker: PhantomData,
-        }
     }
 }

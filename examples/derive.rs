@@ -32,11 +32,11 @@ impl BorrowMut<f32> for A {
 
 fn main() {
     let mut world = World::new();
-    let a = world.spawn((A { a: 1.0 },));
+    let a = world.spawn((A { a: 1.0 },)).id();
 
     assert_eq!(
         world
-            .new_query()
+            .new_view_mut()
             .borrow_any::<&(dyn Debug + Sync)>()
             .into_iter()
             .count(),
@@ -45,7 +45,7 @@ fn main() {
 
     assert_eq!(
         world
-            .new_query()
+            .new_view_mut()
             .borrow_any::<&(dyn Debug + Send + Sync)>()
             .into_iter()
             .count(),
@@ -54,8 +54,8 @@ fn main() {
 
     assert_eq!(
         world
-            .new_query()
-            .borrow_any::<&mut (dyn Debug + Send)>()
+            .new_view_mut()
+            .borrow_any_mut::<dyn Debug + Send>()
             .into_iter()
             .count(),
         1
@@ -63,40 +63,40 @@ fn main() {
 
     assert_eq!(
         world
-            .new_query()
-            .borrow_any::<&mut (dyn Debug + Send + Sync)>()
+            .new_view_mut()
+            .borrow_any_mut::<dyn Debug + Send + Sync>()
             .into_iter()
             .count(),
         1
     );
 
     assert_eq!(
-        world.new_query().borrow_any::<&u32>().into_iter().count(),
+        world.new_view_mut().borrow_any::<u32>().into_iter().count(),
         1
     );
 
     assert_eq!(
         world
-            .new_query()
-            .borrow_any::<&mut u32>()
+            .new_view_mut()
+            .borrow_any_mut::<u32>()
             .into_iter()
             .count(),
         0
     );
 
     assert_eq!(
-        world.new_query().borrow_any::<&f32>().into_iter().count(),
+        world.new_view_mut().borrow_any::<f32>().into_iter().count(),
         1
     );
 
     assert_eq!(
         world
-            .new_query()
-            .borrow_any::<&mut f32>()
+            .new_view_mut()
+            .borrow_any_mut::<f32>()
             .into_iter()
             .count(),
         1
     );
 
-    world.despawn(a).unwrap();
+    assert_eq!(world.despawn(a), Ok(()));
 }

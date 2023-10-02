@@ -4,11 +4,16 @@ pub use crate::{
     action::{ActionBuffer, ActionBufferSliceExt, ActionEncoder},
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle, EntityBuilder},
     component::Component,
-    entity::EntityId,
-    query::{Alt, Entities, Modified, PhantomQuery, Query, QueryIter},
+    entity::{Entity, EntityBound, EntityId, EntityLoc, EntityRef},
+    query::{Alt, Entities, Modified, Query},
     relation::{ChildOf, Related, Relates, RelatesExclusive, RelatesTo, Relation},
-    scheduler::Scheduler,
     system::{IntoSystem, Res, ResMut, ResMutNoSend, ResNoSync, State, System},
+    view::{View, ViewCell, ViewIter, ViewOne},
+    world::{World, WorldBuilder},
+};
+
+#[cfg(feature = "std")]
+pub use crate::{
+    scheduler::Scheduler,
     task::{task_system, task_world, Task},
-    world::{EntityError, MissingComponents, NoSuchEntity, QueryOneError, QueryRef, World},
 };

@@ -1,4 +1,6 @@
-use crate::query::{any_of::AnyOf, boolean::BooleanQuery, boolean::OrOp, IntoQuery};
+use crate::query::{
+    any_of::AnyOf, boolean::BooleanQuery, boolean::OrOp, read::Read, write::Write, IntoQuery,
+};
 
 use super::Modified;
 
@@ -9,10 +11,43 @@ macro_rules! any_of {
         where
             $($a: Sync + 'static,)+
         {
-            type Query = BooleanQuery<($(Modified<&'static $a>,)+), OrOp>;
+            type Query = BooleanQuery<($(Modified<Read<$a>>,)+), OrOp>;
 
             fn into_query(self) -> Self::Query {
-                BooleanQuery::from_tuple(($(Modified::<&$a>::new(self.after_epoch),)*))
+                BooleanQuery::from_tuple(($(Modified::<Read<$a>>::new(self.after_epoch),)*))
+            }
+        }
+
+        impl<$($a),+> IntoQuery for Modified<AnyOf<($(Read<$a>,)+)>>
+        where
+            $($a: Sync + 'static,)+
+        {
+            type Query = BooleanQuery<($(Modified<Read<$a>>,)+), OrOp>;
+
+            fn into_query(self) -> Self::Query {
+                BooleanQuery::from_tuple(($(Modified::<Read<$a>>::new(self.after_epoch),)*))
+            }
+        }
+
+        impl<$($a),+> IntoQuery for Modified<AnyOf<($(&mut $a,)+)>>
+        where
+            $($a: Send + 'static,)+
+        {
+            type Query = BooleanQuery<($(Modified<Write<$a>>,)+), OrOp>;
+
+            fn into_query(self) -> Self::Query {
+                BooleanQuery::from_tuple(($(Modified::<Write<$a>>::new(self.after_epoch),)*))
+            }
+        }
+
+        impl<$($a),+> IntoQuery for Modified<AnyOf<($(Write<$a>,)+)>>
+        where
+            $($a: Send + 'static,)+
+        {
+            type Query = BooleanQuery<($(Modified<Write<$a>>,)+), OrOp>;
+
+            fn into_query(self) -> Self::Query {
+                BooleanQuery::from_tuple(($(Modified::<Write<$a>>::new(self.after_epoch),)*))
             }
         }
     };

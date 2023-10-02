@@ -4,43 +4,44 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
     relation::{OriginComponent, Relation},
+    Access,
 };
 
-/// Fetch for the `Related<R>` query.
-pub struct FilterFetchRelationTo<'a, R: Relation> {
+/// Fetch for the `RelatesTo<R>` query.
+pub struct FilterFetchRelatesTo<'a, R: Relation> {
     target: EntityId,
     ptr: NonNull<OriginComponent<R>>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FilterFetchRelationTo<'a, R>
+unsafe impl<'a, R> Fetch<'a> for FilterFetchRelatesTo<'a, R>
 where
     R: Relation,
 {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
-        FilterFetchRelationTo {
+        FilterFetchRelatesTo {
             target: EntityId::dangling(),
             ptr: NonNull::dangling(),
             marker: PhantomData,
         }
     }
 
-    #[inline]
-    unsafe fn visit_item(&mut self, idx: usize) -> bool {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx) };
+    #[inline(always)]
+    unsafe fn visit_item(&mut self, idx: u32) -> bool {
+        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         origin_component
-            .origins()
+            .relations()
             .iter()
             .any(|origin| origin.target == self.target)
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, _: usize) -> () {}
+    #[inline(always)]
+    unsafe fn get_item(&mut self, _: u32) -> () {}
 }
 
 /// Filters origins of relation with specified target.
@@ -50,6 +51,7 @@ pub struct FilterRelatesTo<R> {
 }
 
 impl_debug!(FilterRelatesTo<R> { target });
+impl_copy!(FilterRelatesTo<R>);
 
 impl<R> FilterRelatesTo<R> {
     /// Returns relation filter bound to one specific target.
@@ -77,33 +79,33 @@ where
     R: Relation,
 {
     type Item<'a> = ();
-    type Fetch<'a> = FilterFetchRelationTo<'a, R>;
+    type Fetch<'a> = FilterFetchRelatesTo<'a, R>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == TypeId::of::<OriginComponent<R>>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
+    const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Access::read_type::<OriginComponent<R>>(ty))
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(TypeId::of::<OriginComponent<R>>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(TypeId::of::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
-    ) -> FilterFetchRelationTo<'a, R> {
+    ) -> FilterFetchRelatesTo<'a, R> {
         let component = unsafe {
             archetype
                 .component(TypeId::of::<OriginComponent<R>>())
@@ -113,7 +115,7 @@ where
 
         let data = unsafe { component.data() };
 
-        FilterFetchRelationTo {
+        FilterFetchRelatesTo {
             target: self.target,
             ptr: data.ptr.cast(),
             marker: PhantomData,
@@ -122,11 +124,3 @@ where
 }
 
 unsafe impl<R> ImmutableQuery for FilterRelatesTo<R> where R: Relation {}
-
-/// Returns a filter to filter origins of relation with specified target.
-pub fn relates_to<R: Relation>(target: EntityId) -> FilterRelatesTo<R> {
-    FilterRelatesTo {
-        target,
-        phantom: PhantomData,
-    }
-}

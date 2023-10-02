@@ -3,32 +3,16 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutablePhantomQuery, PhantomQuery},
+    query::{
+        read::Read, write::Write, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        WriteAlias,
+    },
+    system::QueryArg,
 };
 
-phantom_newtype! {
+marker_type! {
     /// [`PhantomQuery`] that borrows from components.
-    pub struct QueryBorrowAny<T>
-}
-
-impl<T> QueryBorrowAny<&T>
-where
-    T: Sync + ?Sized + 'static,
-{
-    /// Creates a new [`QueryBorrowAny`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
-}
-
-impl<T> QueryBorrowAny<&mut T>
-where
-    T: Send + ?Sized + 'static,
-{
-    /// Creates a new [`QueryBorrowAny`] query.
-    pub fn query() -> PhantomData<fn() -> Self> {
-        PhantomQuery::query()
-    }
+    pub struct QueryBorrowAny<T>;
 }
 
 /// [`Fetch`] for [`QueryBorrowAny<&T>`].
@@ -44,7 +28,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowAnyRead {
             ptr: NonNull::dangling(),
@@ -53,36 +37,92 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         unsafe {
             (self.borrow_fn)(
-                NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+                NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
                 PhantomData::<&'a ()>,
             )
         }
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAny<&T>
+impl<T> IntoQuery for QueryBorrowAny<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = QueryBorrowAny<Read<T>>;
+
+    #[inline(always)]
+    fn into_query(self) -> QueryBorrowAny<Read<T>> {
+        QueryBorrowAny
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAny<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> QueryBorrowAny<Read<T>> {
+        QueryBorrowAny
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowAny<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAny<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        QueryBorrowAny::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAny<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAny
+    }
+}
+
+unsafe impl<T> Query for QueryBorrowAny<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchBorrowAnyRead<'a, T>;
 
-    #[inline]
-    fn access(_ty: TypeId) -> Option<Access> {
-        Some(Access::Read)
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Read))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -91,8 +131,13 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn fetch(archetype: &Archetype, _epoch: EpochId) -> FetchBorrowAnyRead<T> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchBorrowAnyRead<'a, T> {
         let (id, idx) = *archetype
             .borrow_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -111,7 +156,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutablePhantomQuery for QueryBorrowAny<&T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowAny<Read<T>> where T: Sync + ?Sized + 'static {}
 
 /// [`Fetch`] for [`QueryBorrowAny<&mut T>`].
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
@@ -129,7 +174,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowAnyWrite {
             ptr: NonNull::dangling(),
@@ -141,43 +186,99 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx);
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
+        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_version.bump(self.epoch);
 
         (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
             PhantomData::<&'a mut ()>,
         )
     }
 }
 
-unsafe impl<T> PhantomQuery for QueryBorrowAny<&mut T>
+impl<T> IntoQuery for QueryBorrowAny<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
+    type Query = QueryBorrowAny<Write<T>>;
+
+    #[inline(always)]
+    fn into_query(self) -> QueryBorrowAny<Write<T>> {
+        QueryBorrowAny
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAny<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> QueryBorrowAny<Write<T>> {
+        QueryBorrowAny
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowAny<Write<T>>
+where
+    T: Send + ?Sized + 'static,
+{
+    type Query = Self;
+
+    #[inline(always)]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<T> DefaultQuery for QueryBorrowAny<Write<T>>
+where
+    T: Send + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        QueryBorrowAny::new()
+    }
+}
+
+impl<T> QueryArg for QueryBorrowAny<Write<T>>
+where
+    T: Send + ?Sized + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        QueryBorrowAny
+    }
+}
+
+unsafe impl<T> Query for QueryBorrowAny<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchBorrowAnyWrite<'a, T>;
 
-    #[inline]
-    fn access(_ty: TypeId) -> Option<Access> {
-        Some(Access::Write)
+    const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        Ok(Some(Access::Write))
     }
 
-    #[inline]
-    fn visit_archetype(archetype: &Archetype) -> bool {
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow_mut(TypeId::of::<T>())
     }
 
-    #[inline]
-    unsafe fn access_archetype(archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()
@@ -186,8 +287,13 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn fetch(archetype: &Archetype, epoch: EpochId) -> FetchBorrowAnyWrite<T> {
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> FetchBorrowAnyWrite<'a, T> {
         let (id, idx) = *archetype
             .borrow_mut_indices(TypeId::of::<T>())
             .unwrap_unchecked()

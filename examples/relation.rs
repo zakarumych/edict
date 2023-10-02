@@ -2,8 +2,7 @@ use edict::{
     component::Component,
     epoch::EpochId,
     query::Entities,
-    relation::Relation,
-    relation::{relates_to, Relates},
+    relation::{Relates, Relation},
     world::WorldBuilder,
 };
 
@@ -42,12 +41,12 @@ fn main() {
 
     let mut world = world_builder.build();
 
-    let a = world.spawn((A,));
-    let b = world.spawn(());
+    let a = world.spawn((A,)).id();
+    let b = world.spawn(()).id();
 
     world.add_relation(a, ChildOf, b).unwrap();
 
-    for (e, ChildOf) in world.query::<Entities>().relates_to::<&ChildOf>(b).iter() {
+    for (e, ChildOf) in world.view::<Entities>().relates_to::<ChildOf>(b).iter() {
         println!("{} is child of {}", e, b);
     }
 
@@ -55,41 +54,30 @@ fn main() {
 
     assert_eq!(world.is_alive(a), false);
 
-    let a = world.spawn(());
-    let b = world.spawn(());
-    let c = world.spawn(());
+    let a = world.spawn(()).id();
+    let b = world.spawn(()).id();
+    let c = world.spawn(()).id();
 
     world.add_relation(a, Likes, b).unwrap();
     world.add_relation(a, Likes, c).unwrap();
 
-    assert!(world.query_one_with(a, relates_to::<Likes>(b)).is_ok());
-    assert!(world.query_one_with(a, relates_to::<Likes>(c)).is_ok());
-
-    assert_eq!(
-        world
-            .query_one_mut::<Relates<&Likes>>(a)
-            .unwrap()
-            .clone()
-            .collect::<Vec<_>>(),
-        vec![(&Likes, b), (&Likes, c)]
-    );
+    let mut view = world.get::<Relates<&Likes>>(a).unwrap();
+    let first = view.next().unwrap();
+    assert_eq!(first.1, b);
+    let second = view.next().unwrap();
+    assert_eq!(second.1, c);
 
     world.despawn(b).unwrap();
 
-    assert_eq!(
-        world
-            .query_one_mut::<Relates<&Likes>>(a)
-            .unwrap()
-            .clone()
-            .collect::<Vec<_>>(),
-        vec![(&Likes, c)]
-    );
+    let mut view = world.get::<Relates<&Likes>>(a).unwrap();
+    let first = view.next().unwrap();
+    assert_eq!(first.1, c);
 
-    let b = world.spawn(());
+    let b = world.spawn(()).id();
 
     world.add_relation(a, Enemy, b).unwrap();
 
-    let q = world.query::<Entities>().relates::<&Enemy>();
+    let q = world.view::<Entities>().relates::<Enemy>();
     for (e, enemies) in q.iter() {
         println!(
             "{} is enemy of {:?}",
@@ -101,7 +89,7 @@ fn main() {
 
     let _ = world.despawn(b);
 
-    for (e, enemies) in world.query::<Entities>().relates::<&Enemy>().iter() {
+    for (e, enemies) in world.view_mut::<Entities>().relates::<Enemy>() {
         println!(
             "{} is enemy of {:?}",
             e,
@@ -111,20 +99,19 @@ fn main() {
 
     let since = EpochId::start();
 
-    let mut query = world
-        .query::<(Entities, &A)>()
+    let view = world
+        .view_mut::<(Entities, &A)>()
         .with::<B>()
         .modified::<&C>(since)
-        .relates_to::<&ChildOf>(b)
-        .filter(relates_to::<Likes>(c));
+        .relates_to::<ChildOf>(b)
+        .filter_relates_to::<Likes>(c);
 
-    for ((e, a), c, child_of) in query.iter_mut() {
+    for ((e, a), c, child_of) in view {
         drop((e, a, c, child_of));
     }
-    drop(query);
 
-    let a = world.spawn((A,));
-    let b = world.spawn((B,));
+    let a = world.spawn((A,)).id();
+    let b = world.spawn((B,)).id();
 
     world.add_relation(a, LifeBound, b).unwrap();
 

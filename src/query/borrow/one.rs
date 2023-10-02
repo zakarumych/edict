@@ -3,13 +3,15 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{Access, Fetch, ImmutableQuery, IntoQuery, Query},
+    query::{
+        read::Read, write::Write, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+    },
 };
 
 /// [`Query`] that fetches components with specific `TypeId` as specified borrow.
 pub struct QueryBorrowOne<T> {
-    id: TypeId,
-    marker: PhantomData<fn() -> T>,
+    ty: TypeId,
+    marker: PhantomData<T>,
 }
 
 impl<T> Copy for QueryBorrowOne<T> {}
@@ -20,16 +22,16 @@ impl<T> Clone for QueryBorrowOne<T> {
     }
 
     fn clone_from(&mut self, source: &Self) {
-        self.id = source.id;
+        self.ty = source.ty;
     }
 }
 
 impl<T> QueryBorrowOne<T> {
     /// Construct a new query that fetches component with specified id.
     /// Borrowing it as `T`.
-    pub fn new(id: TypeId) -> Self {
+    pub fn new(ty: TypeId) -> Self {
         QueryBorrowOne {
-            id,
+            ty,
             marker: PhantomData,
         }
     }
@@ -48,7 +50,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowOneRead {
             ptr: NonNull::dangling(),
@@ -57,16 +59,30 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a T {
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
             PhantomData::<&'a ()>,
         )
     }
 }
 
 impl<T> IntoQuery for QueryBorrowOne<&T>
+where
+    T: Sync + ?Sized + 'static,
+{
+    type Query = QueryBorrowOne<Read<T>>;
+
+    fn into_query(self) -> Self::Query {
+        QueryBorrowOne {
+            ty: self.ty,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowOne<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
@@ -77,39 +93,42 @@ where
     }
 }
 
-unsafe impl<T> Query for QueryBorrowOne<&T>
+unsafe impl<T> Query for QueryBorrowOne<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchBorrowOneRead<'a, T>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == self.id {
-            Some(Access::Read)
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        if ty == self.ty {
+            Ok(Some(Access::Read))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(self.id)
+        archetype.has_component(self.ty)
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        f(self.id, Access::Read)
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+        f(self.ty, Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchBorrowOneRead<'a, T> {
-        let component = archetype.component(self.id).unwrap_unchecked();
+        let component = archetype.component(self.ty).unwrap_unchecked();
 
         let cb = component
             .borrows()
@@ -127,7 +146,7 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowOne<&T> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowOne<Read<T>> where T: Sync + ?Sized + 'static {}
 
 /// [`Fetch`] for [`QueryBorrowOne<&mut T>`].
 pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
@@ -146,7 +165,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline]
+    #[inline(always)]
     fn dangling() -> Self {
         FetchBorrowOneWrite {
             ptr: NonNull::dangling(),
@@ -159,25 +178,39 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
-        let chunk_version = &mut *self.chunk_epochs.as_ptr().add(chunk_idx);
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_version = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
         chunk_version.bump(self.epoch);
     }
 
-    #[inline]
-    unsafe fn get_item(&mut self, idx: usize) -> &'a mut T {
-        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx);
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
+        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx as usize);
         entity_version.bump(self.epoch);
 
         (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx * self.size)),
+            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
             PhantomData::<&'a mut ()>,
         )
     }
 }
 
 impl<T> IntoQuery for QueryBorrowOne<&mut T>
+where
+    T: Send + ?Sized + 'static,
+{
+    type Query = QueryBorrowOne<Write<T>>;
+
+    fn into_query(self) -> Self::Query {
+        QueryBorrowOne {
+            ty: self.ty,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T> IntoQuery for QueryBorrowOne<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
@@ -188,39 +221,42 @@ where
     }
 }
 
-unsafe impl<T> Query for QueryBorrowOne<&mut T>
+unsafe impl<T> Query for QueryBorrowOne<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchBorrowOneWrite<'a, T>;
 
-    #[inline]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        if ty == self.id {
-            Some(Access::Write)
+    const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        if ty == self.ty {
+            Ok(Some(Access::Write))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(self.id)
+        archetype.has_component(self.ty)
     }
 
-    #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
-        f(self.id, Access::Read)
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+        f(self.ty, Access::Read)
     }
 
-    #[inline]
+    #[inline(always)]
     unsafe fn fetch<'a>(
-        &mut self,
+        &self,
+        _arch_idx: u32,
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchBorrowOneWrite<'a, T> {
-        let component = archetype.component(self.id).unwrap_unchecked();
+        let component = archetype.component(self.ty).unwrap_unchecked();
 
         let cb = component
             .borrows()

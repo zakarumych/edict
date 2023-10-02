@@ -1,10 +1,10 @@
+use alloc::{collections::VecDeque, sync::Arc};
 use core::{
     any::TypeId,
     iter::FusedIterator,
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use alloc::{collections::VecDeque, sync::Arc};
 use parking_lot::Mutex;
 
 use crate::{
@@ -28,7 +28,7 @@ pub(crate) struct ActionChannel {
 }
 
 impl ActionChannel {
-    #[inline]
+    #[inline(always)]
     pub fn new() -> Self {
         ActionChannel {
             shared: Arc::new(Shared {
@@ -39,7 +39,7 @@ impl ActionChannel {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn sender(&self) -> ActionSender {
         ActionSender {
             shared: self.shared.clone(),
@@ -47,7 +47,7 @@ impl ActionChannel {
     }
 
     /// Fetches actions recorded into the channel.
-    #[inline]
+    #[inline(always)]
     pub fn fetch(&mut self) {
         debug_assert!(self.spare_queue.is_empty());
         if self.shared.non_empty.swap(false, Ordering::Relaxed) {
@@ -56,7 +56,7 @@ impl ActionChannel {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn execute(&mut self) -> Option<impl FnOnce(&mut World, &mut ActionBuffer)> {
         self.spare_queue.pop_front().map(|fun| {
             move |world: &mut World, buffer: &mut ActionBuffer| {
@@ -85,7 +85,7 @@ pub struct ActionSender {
 
 impl ActionSender {
     /// Encodes an action to spawn an entity with provided bundle.
-    #[inline]
+    #[inline(always)]
     pub fn spawn<B>(&self, bundle: B)
     where
         B: DynamicComponentBundle + Send + 'static,
@@ -96,7 +96,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to spawn an entity with provided bundle.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_external<B>(&self, bundle: B)
     where
         B: DynamicBundle + Send + 'static,
@@ -108,7 +108,7 @@ impl ActionSender {
 
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_batch<I>(&self, bundles: I) -> SpawnBatchChannel<I>
     where
         I: IntoIterator,
@@ -126,7 +126,7 @@ impl ActionSender {
 
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_external_batch<I>(&self, bundles: I) -> SpawnBatchChannel<I>
     where
         I: IntoIterator,
@@ -139,7 +139,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to despawn specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn despawn(&self, id: EntityId) {
         self.push_fn(move |world, buffer| {
             let _ = world.despawn_with_buffer(id, buffer);
@@ -147,7 +147,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to insert component to the specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn insert<T>(&self, id: EntityId, component: T)
     where
         T: Component + Send,
@@ -158,7 +158,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to insert component to the specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn insert_external<T>(&self, id: EntityId, component: T)
     where
         T: Send + 'static,
@@ -169,7 +169,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to insert components from bundle to the specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn insert_bundle<B>(&self, id: EntityId, bundle: B)
     where
         B: DynamicComponentBundle + Send + 'static,
@@ -180,7 +180,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to insert components from bundle to the specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn insert_external_bundle<B>(&self, id: EntityId, bundle: B)
     where
         B: DynamicBundle + Send + 'static,
@@ -191,7 +191,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to drop component from specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn drop<T>(&self, id: EntityId)
     where
         T: 'static,
@@ -200,7 +200,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to drop component from specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn drop_erased(&self, id: EntityId, ty: TypeId) {
         self.push_fn(move |world, buffer| {
             let _ = world.drop_erased_with_buffer(id, ty, buffer);
@@ -208,7 +208,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to drop bundle of components from specified entity.
-    #[inline]
+    #[inline(always)]
     pub fn drop_bundle<B>(&self, id: EntityId)
     where
         B: Bundle,
@@ -219,7 +219,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to add relation between two entities to the [`World`].
-    #[inline]
+    #[inline(always)]
     pub fn add_relation<R>(&self, origin: EntityId, relation: R, target: EntityId)
     where
         R: Relation,
@@ -230,7 +230,7 @@ impl ActionSender {
     }
 
     /// Encodes an action to drop relation between two entities in the [`World`].
-    #[inline]
+    #[inline(always)]
     pub fn drop_relation<R>(&self, origin: EntityId, target: EntityId)
     where
         R: Relation,
@@ -258,23 +258,23 @@ impl ActionSender {
     }
 
     /// Encodes a custom action with a closure that takes mutable reference to `World`.
-    #[inline]
+    #[inline(always)]
     pub fn closure(&self, fun: impl FnOnce(&mut World) + Send + 'static) {
-        self.push_fn(move |world, buffer| world.with_buffer(buffer, fun))
+        self.push_fn(move |world, buffer| unsafe { world.with_buffer(buffer, fun) })
     }
 
     /// Encodes a custom action with a closure that takes reference to `World`
     /// and [`ActionEncoder`] that can be used to record new actions.
-    #[inline]
+    #[inline(always)]
     pub fn closure_with_encoder(&self, fun: impl FnOnce(&World, ActionEncoder) + Send + 'static) {
         self.push_fn(|world, buffer| {
-            let encoder = ActionEncoder::new(buffer, world.entity_set());
+            let encoder = ActionEncoder::new(buffer, world.entities());
             fun(world, encoder);
         });
     }
 
     /// Encodes an action to remove component from specified entity.
-    #[inline]
+    #[inline(always)]
     fn push_fn(&self, fun: impl FnOnce(&mut World, &mut ActionBuffer) + Send + 'static) {
         let action = ActionFn::new(fun);
         self.shared.queue.lock().push_back(action);
@@ -294,7 +294,7 @@ where
     B: Bundle + Send + 'static,
 {
     /// Spawns the rest of the entities, dropping their ids.
-    #[inline]
+    #[inline(always)]
     pub fn spawn_all(self) {
         self.for_each(|_| {});
     }
@@ -307,25 +307,25 @@ where
 {
     type Item = ();
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<()> {
         let bundle = self.bundles.next()?;
         Some(self.sender.spawn_external(bundle))
     }
 
-    #[inline]
+    #[inline(always)]
     fn nth(&mut self, n: usize) -> Option<()> {
         // `SpawnBatchChannel` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
         Some(self.sender.spawn_external(bundle))
     }
 
-    #[inline]
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.bundles.size_hint()
     }
 
-    #[inline]
+    #[inline(always)]
     fn fold<T, F>(self, init: T, mut f: F) -> T
     where
         F: FnMut(T, ()) -> T,
@@ -340,7 +340,7 @@ where
         })
     }
 
-    #[inline]
+    #[inline(always)]
     fn collect<T>(self) -> T
     where
         T: FromIterator<()>,
@@ -364,7 +364,7 @@ where
     I: ExactSizeIterator<Item = B>,
     B: Bundle + Send + 'static,
 {
-    #[inline]
+    #[inline(always)]
     fn len(&self) -> usize {
         self.bundles.len()
     }
@@ -375,20 +375,20 @@ where
     I: DoubleEndedIterator<Item = B>,
     B: Bundle + Send + 'static,
 {
-    #[inline]
+    #[inline(always)]
     fn next_back(&mut self) -> Option<()> {
         let bundle = self.bundles.next_back()?;
         Some(self.sender.spawn_external(bundle))
     }
 
-    #[inline]
+    #[inline(always)]
     fn nth_back(&mut self, n: usize) -> Option<()> {
         // `SpawnBatchChannel` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth_back(n)?;
         Some(self.sender.spawn_external(bundle))
     }
 
-    #[inline]
+    #[inline(always)]
     fn rfold<T, F>(self, init: T, mut f: F) -> T
     where
         Self: Sized,

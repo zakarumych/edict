@@ -1,11 +1,13 @@
 //! Entity references.
 //!
-//! Strong, weak and raw ids.
+//! Alive, weak and raw ids.
 
-pub use self::allocator::{IdRange, IdRangeAllocator, OneRangeAllocator};
-pub(crate) use self::entities::EntitySet;
-pub use self::id::EntityId;
+pub use self::{
+    allocator::{IdRange, IdRangeAllocator, OneRangeAllocator},
+    entity::{AliveEntity, Entity, EntityBound, EntityId, EntityLoc, EntityRef, LocatedEntity},
+    set::{EntitySet, Location},
+};
 
 mod allocator;
-mod entities;
-mod id;
+mod entity;
+mod set;

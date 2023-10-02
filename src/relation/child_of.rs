@@ -1,4 +1,4 @@
-use super::Relation;
+use super::{ExclusiveRelation, Relation};
 
 /// Child -> Parent relation.
 /// Children can have only one parent. So this relation is exclusive.
@@ -11,3 +11,5 @@ impl Relation for ChildOf {
     const OWNED: bool = true;
     const SYMMETRIC: bool = false;
 }
+
+impl ExclusiveRelation for ChildOf {}

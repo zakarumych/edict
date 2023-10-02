@@ -1,8 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId};
+use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, merge_access, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query};
+use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
 
 /// Binary operator for [`BooleanQuery`].
 pub trait BooleanFetchOp: 'static {
@@ -20,6 +20,7 @@ pub trait BooleanFetchOp: 'static {
 pub enum AndOp {}
 
 impl BooleanFetchOp for AndOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a && b {
             ControlFlow::Continue(true)
@@ -28,6 +29,7 @@ impl BooleanFetchOp for AndOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, count: usize) -> bool {
         mask == (1 << count) - 1
     }
@@ -36,6 +38,7 @@ impl BooleanFetchOp for AndOp {
 pub enum OrOp {}
 
 impl BooleanFetchOp for OrOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a || b {
             ControlFlow::Break(true)
@@ -44,6 +47,7 @@ impl BooleanFetchOp for OrOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, _count: usize) -> bool {
         mask != 0
     }
@@ -52,6 +56,7 @@ impl BooleanFetchOp for OrOp {
 pub enum XorOp {}
 
 impl BooleanFetchOp for XorOp {
+    #[inline(always)]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         match (a, b) {
             (false, false) => ControlFlow::Continue(false),
@@ -60,6 +65,7 @@ impl BooleanFetchOp for XorOp {
         }
     }
 
+    #[inline(always)]
     fn mask(mask: u16, _count: usize) -> bool {
         mask.is_power_of_two()
     }
@@ -70,11 +76,27 @@ impl BooleanFetchOp for XorOp {
 /// Yields tuple of query items wrapper in `Option`.
 pub struct BooleanQuery<T, Op> {
     tuple: T,
-    op: PhantomData<Op>,
+    op: PhantomData<fn() -> Op>,
 }
+
+impl<T, Op> Clone for BooleanQuery<T, Op>
+where
+    T: Clone,
+{
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        BooleanQuery {
+            tuple: self.tuple.clone(),
+            op: PhantomData,
+        }
+    }
+}
+
+impl<T, Op> Copy for BooleanQuery<T, Op> where T: Copy {}
 
 impl<T, Op> BooleanQuery<T, Op> {
     /// Creates a new [`BooleanQuery`].
+    #[inline(always)]
     pub fn from_tuple(tuple: T) -> Self {
         BooleanQuery {
             tuple,
@@ -94,6 +116,7 @@ pub struct BooleanFetch<T, Op> {
 
 macro_rules! boolean_shortcut {
     ([$archetype:ident $op:ident] $a:ident $($b:ident)*) => {{
+        #[allow(unused_mut)]
         let mut result = $a.visit_archetype($archetype);
         $(
             match $op::op(result, $b.visit_archetype($archetype)) {
@@ -129,7 +152,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn get_item(&mut self, idx: usize) -> ($(Option<$a::Item>,)+) {
+            unsafe fn get_item(&mut self, idx: u32) -> ($(Option<$a::Item>,)+) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 ($({
@@ -144,7 +167,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn visit_item(&mut self, idx: usize) -> bool {
+            unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -159,7 +182,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn visit_chunk(&mut self, chunk_idx: usize) -> bool {
+            unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -174,7 +197,7 @@ macro_rules! impl_boolean {
             }
 
             #[inline(always)]
-            unsafe fn touch_chunk(&mut self, chunk_idx: usize) {
+            unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 0;
                 $(
@@ -223,10 +246,24 @@ macro_rules! impl_boolean {
             $($a: DefaultQuery,)+
             Op: BooleanFetchOp,
         {
-            #[inline]
+            #[inline(always)]
             fn default_query() -> Self::Query {
                 BooleanQuery {
                     tuple: ($($a::default_query(),)+),
+                    op: PhantomData,
+                }
+            }
+        }
+
+        impl<Op $(, $a)+> QueryArg for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: QueryArg,)+
+            Op: BooleanFetchOp,
+        {
+            #[inline(always)]
+            fn new() -> Self {
+                BooleanQuery {
+                    tuple: ($($a::new(),)+),
                     op: PhantomData,
                 }
             }
@@ -239,21 +276,29 @@ macro_rules! impl_boolean {
             $($a: Query,)+
             Op: BooleanFetchOp,
         {
-            type Item<'a> = ($(Option<$a::Item<'a>>,)+);
-            type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op>;
+            type Item<'a> = ($(Option<$a::Item<'a>>,)+) where $($a: 'a,)+;
+            type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op> where $($a: 'a,)+;
+
+            const MUTABLE: bool = $($a::MUTABLE ||)+ false;
 
             #[inline(always)]
-            fn access(&self, ty: TypeId) -> Option<Access> {
+            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = &self.tuple;
                 let mut result = None;
-                $(result = merge_access(result, $a.access(ty));)+
-                result
+                $(
+                    result = match (result, $a.component_type_access(ty)?) {
+                        (None, one) | (one, None) => one,
+                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
+                        _ => return Err(WriteAlias),
+                    };
+                )*
+                Ok(result)
             }
 
             #[inline(always)]
-            unsafe fn access_archetype(&self, archetype: &Archetype, f: &dyn Fn(TypeId, Access)) {
+            unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = &self.tuple;
-                $($a.access_archetype(archetype, f);)+
+                $($a.access_archetype(archetype, &mut f);)+
             }
 
             #[inline(always)]
@@ -264,18 +309,19 @@ macro_rules! impl_boolean {
 
             #[inline(always)]
             unsafe fn fetch<'a>(
-                &mut self,
+                &self,
+                arch_idx: u32,
                 archetype: &'a Archetype,
                 epoch: EpochId,
             ) -> BooleanFetch<($($a::Fetch<'a>,)+), Op> {
-                let ($($a,)+) = &mut self.tuple;
+                let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
                 BooleanFetch {
                     tuple: ($({
                         let fetch = if $a.visit_archetype(archetype) {
                             mask |= (1 << mi);
-                            $a.fetch(archetype, epoch)
+                            $a.fetch(arch_idx, archetype, epoch)
                         } else {
                             Fetch::dangling()
                         };
@@ -289,13 +335,13 @@ macro_rules! impl_boolean {
                 }
             }
 
-            #[inline]
-            fn reserved_entity_item<'a>(&self, id: EntityId) -> Option<Self::Item<'a>> {
+            #[inline(always)]
+            fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
                 $(
-                    let $a = $a.reserved_entity_item(id);
+                    let $a = $a.reserved_entity_item(id, idx);
                     if $a.is_some() {
                         mask |= 1 << mi;
                     }

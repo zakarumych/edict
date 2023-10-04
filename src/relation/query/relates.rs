@@ -6,6 +6,7 @@ use crate::{
     epoch::EpochId,
     query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
     relation::{OriginComponent, Relation, RelationTarget},
+    system::QueryArg,
     Access,
 };
 
@@ -156,6 +157,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        Relates
+    }
+}
+
+impl<R> QueryArg for Relates<Read<R>>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn new() -> Self {
         Relates
     }
 }
@@ -364,6 +375,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        Relates
+    }
+}
+
+impl<R> QueryArg for Relates<Write<R>>
+where
+    R: Relation + Sync,
+{
+    #[inline(always)]
+    fn new() -> Self {
         Relates
     }
 }

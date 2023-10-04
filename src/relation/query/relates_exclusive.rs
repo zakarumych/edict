@@ -6,6 +6,7 @@ use crate::{
     epoch::EpochId,
     query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
     relation::{ExclusiveRelation, OriginComponent},
+    system::QueryArg,
     Access,
 };
 
@@ -84,6 +85,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        RelatesExclusive
+    }
+}
+
+impl<R> QueryArg for RelatesExclusive<Read<R>>
+where
+    R: ExclusiveRelation + Sync,
+{
+    #[inline(always)]
+    fn new() -> Self {
         RelatesExclusive
     }
 }
@@ -222,6 +233,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        RelatesExclusive
+    }
+}
+
+impl<R> QueryArg for RelatesExclusive<Write<R>>
+where
+    R: ExclusiveRelation + Sync,
+{
+    #[inline(always)]
+    fn new() -> Self {
         RelatesExclusive
     }
 }

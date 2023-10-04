@@ -5,6 +5,7 @@ use crate::{
     epoch::EpochId,
     query::{DefaultQuery, ImmutableQuery, IntoQuery, Query, UnitFetch, WriteAlias},
     relation::{Relation, TargetComponent},
+    system::QueryArg,
     Access,
 };
 
@@ -31,6 +32,16 @@ where
 {
     #[inline(always)]
     fn default_query() -> Self {
+        FilterRelated
+    }
+}
+
+impl<R> QueryArg for FilterRelated<R>
+where
+    R: Relation,
+{
+    #[inline(always)]
+    fn new() -> Self {
         FilterRelated
     }
 }

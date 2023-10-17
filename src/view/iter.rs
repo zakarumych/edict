@@ -3,7 +3,7 @@ use core::ops::Range;
 use crate::{
     archetype::{chunk_idx, first_of_chunk, Archetype, CHUNK_LEN},
     epoch::EpochId,
-    query::{Fetch, Query, QueryItem},
+    query::{Fetch, ImmutableQuery, Query, QueryItem},
 };
 
 use super::{BorrowState, StaticallyBorrowed, ViewValue};
@@ -15,86 +15,161 @@ where
     B: BorrowState,
 {
     /// Returns an iterator over entities with a query `Q` and filter `F`.
+    ///
+    /// Unlike `iter`, this version works for views with mutable queries
+    /// since mutable borrow won't allow to iterate the view multiple times simultaneously.
     #[inline(always)]
-    pub fn iter(&self) -> ViewIter<'_, Q, F> {
+    pub fn iter_mut(&mut self) -> ViewIter<'_, Q, F, StaticallyBorrowed> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
         self.acquire_borrow();
 
         // Safety: we just acquired the borrow. Releasing requires a mutable reference to self.
         // This ensures that it can only happen after the iterator is dropped.
-        unsafe { ViewIter::new(epoch, self.query, self.filter, self.archetypes) }
+        unsafe {
+            ViewIter::new(
+                epoch,
+                self.query,
+                self.filter,
+                self.archetypes,
+                StaticallyBorrowed,
+            )
+        }
     }
 }
 
-impl<'a, Q, F> IntoIterator for ViewValue<'a, Q, F, StaticallyBorrowed>
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
+where
+    Q: ImmutableQuery,
+    F: ImmutableQuery,
+    B: BorrowState,
+{
+    /// Returns an iterator over entities with a query `Q` and filter `F`.
+    ///
+    /// Unlike `iter_mut`, this version only works for views with immutable queries.
+    /// Immutable query are guaranteed to not conflict with any other immutable query,
+    /// allowing for iterating a view multiple times simultaneously.
+    #[inline(always)]
+    pub fn iter(&self) -> ViewIter<'_, Q, F, StaticallyBorrowed> {
+        debug_assert!(!Q::MUTABLE && !F::MUTABLE);
+        let epoch = self.epochs.current();
+
+        self.acquire_borrow();
+
+        // Safety: we just acquired the borrow. Releasing requires a mutable reference to self.
+        // This ensures that it can only happen after the iterator is dropped.
+        unsafe {
+            ViewIter::new(
+                epoch,
+                self.query,
+                self.filter,
+                self.archetypes,
+                StaticallyBorrowed,
+            )
+        }
+    }
+}
+
+impl<'a, Q, F, B> IntoIterator for ViewValue<'a, Q, F, B>
 where
     Q: Query,
     F: Query,
+    B: BorrowState,
 {
     type Item = QueryItem<'a, Q>;
-    type IntoIter = ViewIter<'a, Q, F>;
+    type IntoIter = ViewIter<'a, Q, F, B>;
 
     #[inline(always)]
-    fn into_iter(self) -> ViewIter<'a, Q, F> {
+    fn into_iter(self) -> ViewIter<'a, Q, F, B> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
-        // Safety: data is statically borrowed for 'a.
-        unsafe { ViewIter::new(epoch, self.query, self.filter, self.archetypes) }
+        let query = self.query;
+        let filter = self.filter;
+        let archetypes = self.archetypes;
+        let state = self.extract_state();
+
+        // Safety: Existence of this ViewValue guarantees that the borrow state is valid.
+        // Borrow state is given to the iter where it will be released on drop.
+        unsafe { ViewIter::new(epoch, query, filter, archetypes, state) }
     }
 }
 
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
-pub struct ViewIter<'a, Q: Query, F: Query> {
+pub struct ViewIter<'a, Q: Query, F: Query, B: BorrowState> {
     query: Q,
     filter: F,
     query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
-    archetypes_iter: core::iter::Enumerate<core::slice::Iter<'a, Archetype>>,
+    archetypes: &'a [Archetype],
+    next_archetype: usize,
     indices: Range<u32>,
     touch_chunk: bool,
+    state: B,
 }
 
-impl<'a, Q, F> ViewIter<'a, Q, F>
+impl<Q, F, B> Drop for ViewIter<'_, Q, F, B>
 where
     Q: Query,
     F: Query,
+    B: BorrowState,
+{
+    fn drop(&mut self) {
+        self.state.release(self.query, self.filter, self.archetypes);
+    }
+}
+
+impl<'a, Q, F, B> ViewIter<'a, Q, F, B>
+where
+    Q: Query,
+    F: Query,
+    B: BorrowState,
 {
     /// Creates a new iterator over entities with a query `Q` and filter `F`.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that data for the query and filter is borrowed for the duration of the iterator,
-    /// i.e. lifetime 'a.
-    unsafe fn new(epoch: EpochId, query: Q, filter: F, archetypes: &'a [Archetype]) -> Self {
+    /// The caller must ensure that this function
+    /// is never called for the same archetypes with static borrow state
+    /// and any other borrow state for conflicting queries.
+    unsafe fn new(
+        epoch: EpochId,
+        query: Q,
+        filter: F,
+        archetypes: &'a [Archetype],
+        state: B,
+    ) -> Self {
+        state.acquire(query, filter, archetypes);
+
         ViewIter {
             query,
             filter,
             query_fetch: Fetch::dangling(),
             filter_fetch: Fetch::dangling(),
             epoch,
-            archetypes_iter: archetypes.iter().enumerate(),
+            next_archetype: 0,
             indices: 0..0,
             touch_chunk: false,
+            state,
+            archetypes,
         }
     }
 }
 
-impl<'a, Q, F> Iterator for ViewIter<'a, Q, F>
+impl<'a, Q, F, B> Iterator for ViewIter<'a, Q, F, B>
 where
     Q: Query,
     F: Query,
+    B: BorrowState,
 {
     type Item = QueryItem<'a, Q>;
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let upper = self
-            .archetypes_iter
-            .clone()
-            .fold(self.indices.len(), |acc, (_, archetype)| {
+        let upper = self.archetypes[self.next_archetype..].iter().fold(
+            self.indices.len(),
+            |acc, archetype| {
                 if !self.filter.visit_archetype(archetype) {
                     return acc;
                 }
@@ -102,7 +177,8 @@ where
                     return acc;
                 }
                 acc + archetype.len()
-            });
+            },
+        );
 
         (0, Some(upper))
     }
@@ -114,7 +190,12 @@ where
                 None => {
                     // move to the next archetype.
                     loop {
-                        let (arch_idx, archetype) = self.archetypes_iter.next()?;
+                        if self.next_archetype >= self.archetypes.len() {
+                            return None;
+                        }
+                        let arch_idx = self.next_archetype;
+                        self.next_archetype += 1;
+                        let archetype = &self.archetypes[arch_idx];
 
                         if archetype.is_empty() {
                             continue;
@@ -207,7 +288,8 @@ where
             acc = f(acc, item);
         }
 
-        for (arch_idx, archetype) in self.archetypes_iter.by_ref() {
+        for arch_idx in self.next_archetype..self.archetypes.len() {
+            let archetype = &self.archetypes[arch_idx];
             if archetype.is_empty() {
                 continue;
             }

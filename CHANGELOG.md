@@ -35,7 +35,7 @@ This hierarchy is implemented by following types out of the box:
 
 ### Changed
 
-Query API. Renamed `QueryRef` to `View` to better reflect its meaning.
+Query API. Renamed `QueryRef` to `ViewValue` to better reflect its meaning.
 `QueryOneRef` is now `ViewOne`.
 Data borrowing kinds goes to type level.
 
@@ -46,8 +46,13 @@ Data borrowing kinds goes to type level.
 `ViewValue<..., RuntimeBorrow>` has `ViewCell` alias.
 
 `View` can be created using mutable borrow of `World` and commonly used in systems.
-`ViewCell` can be created using shared borrow of `World` methods and may be used in systems
-to defer conflict resolution to runtime, see below for details.
+Scheduler ensures that no conflicting `View` instances exist at the same time.
+This means that pair of systems with conflicting `View`s will not run in parallel
+and system with two conflicting `View`s is invalid and causes panic on scheduling.
+`ViewCell` can be created using shared borrow of `World` methods.
+In a system two or more `ViewCell` can conflict. User should ensure that they are not used
+at the same time. For example with conflicting `a: ViewCell` and `b: ViewCell` in a system
+the user can use view `a`, then drop or `unlock` it and then use view `b`.  
 
 Intrasystem conflict resolution:
 Static conflict happens when two or more views declare access to the same component

@@ -251,7 +251,7 @@ macro_rules! set {
                 Lo: for<'a> Loader<($($a,)+), Error = Er>,
                 Ma: Mark,
             {
-                let view = world.view::<($(Option<&mut $a>,)+)>();
+                let mut view = world.view::<($(Option<&mut $a>,)+)>();
 
                 while let Some(next) = loader.next()? {
                     let EntityDump([bits, present, modified]) = next;
@@ -259,7 +259,7 @@ macro_rules! set {
                         continue;
                     };
 
-                    let mut slots = match view.try_get(id) {
+                    let mut slots = match view.try_get_mut(id) {
                         Ok(($($a),+)) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) == 0 {

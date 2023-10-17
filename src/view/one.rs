@@ -2,7 +2,7 @@ use crate::{
     archetype::Archetype,
     entity::{AliveEntity, EntityId, Location},
     epoch::EpochCounter,
-    query::{IntoQuery, Query, QueryItem},
+    query::{ImmutableQuery, IntoQuery, Query, QueryItem},
     world::World,
 };
 
@@ -38,8 +38,8 @@ impl<'a, Q: Query, F: Query> ViewOneState<'a, Q, F> {
     #[inline(always)]
     pub fn unlock(&self) {
         self.borrow.release(
-            &self.query,
-            &self.filter,
+            self.query,
+            self.filter,
             core::slice::from_ref(self.archetype),
         )
     }
@@ -82,6 +82,89 @@ where
     ///
     /// Returns none if entity does not match the view's query and filter.
     #[inline(always)]
+    pub fn get_mut(&mut self) -> Option<QueryItem<Q>> {
+        if self.loc.arch == u32::MAX {
+            return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
+        }
+
+        // Ensure to borrow view's data.
+        self.borrow.acquire(
+            self.query,
+            self.filter,
+            core::slice::from_ref(self.archetype),
+        );
+
+        unsafe { self._get() }
+    }
+
+    /// Fetches data that matches the view's query and filter
+    /// from a bound entity.
+    ///
+    /// Returns none if entity does not match the view's query and filter.
+    #[inline(always)]
+    #[track_caller]
+    pub fn expect_mut(&mut self) -> QueryItem<Q> {
+        if self.loc.arch == u32::MAX {
+            return expect_match(Query::reserved_entity_item(
+                &self.query,
+                self.id,
+                self.loc.idx,
+            ));
+        }
+
+        // Ensure to borrow view's data.
+        self.borrow.acquire(
+            self.query,
+            self.filter,
+            core::slice::from_ref(self.archetype),
+        );
+
+        expect_match(unsafe { self._get() })
+    }
+
+    /// Fetches data that matches the view's query and filter
+    /// from a bound entity.
+    ///
+    /// Calls provided closure with fetched data if entity matches query and filter.
+    /// Otherwise, returns `None`.
+    #[inline(always)]
+    pub fn map_mut<Fun, R>(&mut self, f: Fun) -> Option<R>
+    where
+        Fun: FnOnce(QueryItem<Q>) -> R,
+    {
+        if self.loc.arch == u32::MAX {
+            return Query::reserved_entity_item(&self.query, self.id, self.loc.idx).map(f);
+        }
+
+        // Ensure to borrow view's data.
+        self.borrow
+            .with(self.query, self.filter, self.archetype, || {
+                unsafe { self._get() }.map(f)
+            })
+    }
+
+    #[inline(always)]
+    unsafe fn _get(&self) -> Option<QueryItem<Q>> {
+        get_at(
+            self.query,
+            self.filter,
+            self.epochs,
+            self.archetype,
+            self.loc,
+        )
+    }
+}
+
+impl<'a, Q, F> ViewOneState<'a, Q, F>
+where
+    Q: ImmutableQuery,
+    F: ImmutableQuery,
+{
+    /// Fetches data that matches the view's query and filter
+    /// from a bound entity.
+    ///
+    /// Returns none if entity does not match the view's query and filter.
+    #[inline(always)]
     pub fn get(&self) -> Option<QueryItem<Q>> {
         if self.loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
@@ -89,12 +172,12 @@ where
 
         // Ensure to borrow view's data.
         self.borrow.acquire(
-            &self.query,
-            &self.filter,
+            self.query,
+            self.filter,
             core::slice::from_ref(self.archetype),
         );
 
-        self._get()
+        unsafe { self._get() }
     }
 
     /// Fetches data that matches the view's query and filter
@@ -114,12 +197,12 @@ where
 
         // Ensure to borrow view's data.
         self.borrow.acquire(
-            &self.query,
-            &self.filter,
+            self.query,
+            self.filter,
             core::slice::from_ref(self.archetype),
         );
 
-        expect_match(self._get())
+        expect_match(unsafe { self._get() })
     }
 
     /// Fetches data that matches the view's query and filter
@@ -138,19 +221,8 @@ where
 
         // Ensure to borrow view's data.
         self.borrow
-            .with(&self.query, &self.filter, self.archetype, || {
-                self._get().map(f)
+            .with(self.query, self.filter, self.archetype, || {
+                unsafe { self._get() }.map(f)
             })
-    }
-
-    #[inline(always)]
-    fn _get(&self) -> Option<QueryItem<Q>> {
-        get_at(
-            self.query,
-            self.filter,
-            self.epochs,
-            self.archetype,
-            self.loc,
-        )
     }
 }

@@ -55,21 +55,19 @@ where
 {
     #[inline(always)]
     fn acquire_borrow(&self) {
-        self.state
-            .acquire(&self.query, &self.filter, self.archetypes);
+        self.state.acquire(self.query, self.filter, self.archetypes);
     }
 
     #[inline(always)]
     fn release_borrow(&self) {
-        self.state
-            .release(&self.query, &self.filter, self.archetypes);
+        self.state.release(self.query, self.filter, self.archetypes);
     }
 
     #[inline(always)]
     fn with_borrow<R>(&self, arch_idx: u32, f: impl FnOnce() -> R) -> R {
         self.state.with(
-            &self.query,
-            &self.filter,
+            self.query,
+            self.filter,
             &self.archetypes[arch_idx as usize],
             f,
         )
@@ -78,8 +76,7 @@ where
     /// Releases borrow state and extracts it.
     #[inline(always)]
     fn extract_state(self) -> B {
-        self.state
-            .release(&self.query, &self.filter, self.archetypes);
+        self.state.release(self.query, self.filter, self.archetypes);
 
         let me = core::mem::ManuallyDrop::new(self);
         // Safety: `state` will not be used after this due to `ManuallyDrop`.
@@ -93,7 +90,31 @@ where
     F: Query,
     B: BorrowState,
 {
-    /// Unlocks runtime borrows.
+    /// Locks query borrows.
+    ///
+    /// Allocs to construct statically borrowed view with
+    /// lifetime tied to this view borrow.
+    ///
+    /// This can improve performance if view is used multiple times where
+    /// compiler can't figure it is borrowed already and perform check over and over.
+    ///
+    /// Additionally handy for existing API that requires `View`.
+    ///
+    /// For simmetry this method is avaialble for statically borrowed views too.
+    #[inline(always)]
+    pub fn lock(&mut self) -> ViewValue<'_, Q, F, StaticallyBorrowed> {
+        self.acquire_borrow();
+        ViewValue {
+            archetypes: self.archetypes,
+            query: self.query,
+            filter: self.filter,
+            state: StaticallyBorrowed,
+            entity_set: self.entity_set,
+            epochs: self.epochs,
+        }
+    }
+
+    /// Unlocks query borrows.
     /// Allows usage of conflicting views.
     ///
     /// Borrows are automatically unlocked when the view is dropped.
@@ -192,7 +213,7 @@ fn expect_alive<T>(value: Option<T>) -> T {
 }
 
 #[inline(always)]
-fn get_at<'a, Q, F>(
+unsafe fn get_at<'a, Q, F>(
     query: Q,
     filter: F,
     epochs: &EpochCounter,

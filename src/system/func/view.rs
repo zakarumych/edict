@@ -33,7 +33,7 @@ pub trait QueryArg: Query {
     }
 }
 
-/// State type used by corresponding [`QueryRef`].
+/// State type used by corresponding [`View`].
 #[derive(Default)]
 pub struct ViewState<Q, F, B> {
     query: Q,
@@ -214,7 +214,7 @@ where
         let world = unsafe { world.as_ref() };
 
         #[cfg(debug_assertions)]
-        acquire(&self.query, &self.filter, world.archetypes());
+        acquire(self.query, self.filter, world.archetypes());
 
         self.query.before(world);
         self.filter.before(world);
@@ -231,7 +231,7 @@ where
         self.filter.after(world);
 
         #[cfg(debug_assertions)]
-        release(&self.query, &self.filter, world.archetypes());
+        release(self.query, self.filter, world.archetypes());
     }
 }
 

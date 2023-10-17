@@ -125,7 +125,11 @@ fn version_test() {
         0
     );
 
-    *world.try_view_one::<&mut U32>(e).unwrap().get().unwrap() = U32(42);
+    *world
+        .try_view_one::<&mut U32>(e)
+        .unwrap()
+        .get_mut()
+        .unwrap() = U32(42);
 
     let view = world
         .view_mut::<Entities>()
@@ -169,7 +173,11 @@ fn version_despawn_test() {
         vec![]
     );
 
-    *world.try_view_one::<&mut U32>(e2).unwrap().get().unwrap() = U32(50);
+    *world
+        .try_view_one::<&mut U32>(e2)
+        .unwrap()
+        .get_mut()
+        .unwrap() = U32(50);
 
     world.despawn(e1).unwrap();
 

@@ -49,7 +49,7 @@ fn system_a(
 ) {
     *counter += 1;
     println!("Counter: {}", *counter);
-    for (&mut A, b, dbg) in view.iter() {
+    for (&mut A, b, dbg) in view {
         println!("A + {:?} + {:?}", b, dbg);
     }
 }

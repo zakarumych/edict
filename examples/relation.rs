@@ -107,7 +107,7 @@ fn main() {
         .filter_relates_to::<Likes>(c);
 
     for ((e, a), c, child_of) in view {
-        drop((e, a, c, child_of));
+        let _ = (e, a, c, child_of);
     }
 
     let a = world.spawn((A,)).id();

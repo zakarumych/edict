@@ -8,16 +8,16 @@ use crate::{archetype::Archetype, query::Query};
 /// dereferencing any pointers.
 pub trait BorrowState {
     /// Borrow components in the archetype if not already borrowed.
-    fn acquire<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]);
+    fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]);
 
     /// Release previously acquired borrow.
-    fn release<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]);
+    fn release<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]);
 
     /// Temporarily acquire borrow and call `f`.
     fn with<Q: Query, F: Query, R>(
         &self,
-        query: &Q,
-        filter: &F,
+        query: Q,
+        filter: F,
         archetype: &Archetype,
         f: impl FnOnce() -> R,
     ) -> R;
@@ -40,11 +40,11 @@ impl RuntimeBorrowState {
 /// Acquire borrow on archetypes.
 #[inline(always)]
 #[track_caller]
-pub fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
+pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetypes: &'a [Archetype],
-        query: &'a Q,
-        filter: &'a F,
+        query: Q,
+        filter: F,
         query_len: usize,
         filter_len: usize,
     }
@@ -109,7 +109,7 @@ pub fn acquire<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetyp
 
 /// Release borrow on archetypes.
 #[inline(always)]
-pub fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetype]) {
+pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
     for archetype in archetypes {
         unsafe {
             if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
@@ -126,11 +126,11 @@ pub fn release<Q: Query, F: Query>(query: &Q, filter: &F, archetypes: &[Archetyp
 
 #[inline(always)]
 #[track_caller]
-fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype) {
+fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetype: &'a Archetype,
-        query: &'a Q,
-        filter: &'a F,
+        query: Q,
+        filter: F,
         query_len: usize,
         filter_len: usize,
     }
@@ -194,7 +194,7 @@ fn acquire_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
 }
 
 #[inline(always)]
-fn release_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype) {
+fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     unsafe {
         if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
             query.access_archetype(archetype, &|id, access| {
@@ -209,7 +209,7 @@ fn release_one<Q: Query, F: Query>(query: &Q, filter: &F, archetype: &Archetype)
 
 impl BorrowState for RuntimeBorrowState {
     #[inline(always)]
-    fn acquire<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]) {
+    fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
         if !self.borrowed.get() {
             acquire(query, filter, archetypes);
             self.borrowed.set(true);
@@ -217,7 +217,7 @@ impl BorrowState for RuntimeBorrowState {
     }
 
     #[inline(always)]
-    fn release<Q: Query, F: Query>(&self, query: &Q, filter: &F, archetypes: &[Archetype]) {
+    fn release<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
         if !self.borrowed.take() {
             return;
         }
@@ -228,8 +228,8 @@ impl BorrowState for RuntimeBorrowState {
     #[inline(always)]
     fn with<Q: Query, F: Query, R>(
         &self,
-        query: &Q,
-        filter: &F,
+        query: Q,
+        filter: F,
         archetype: &Archetype,
         f: impl FnOnce() -> R,
     ) -> R {
@@ -252,16 +252,16 @@ pub struct StaticallyBorrowed;
 
 impl BorrowState for StaticallyBorrowed {
     #[inline(always)]
-    fn acquire<Q: Query, F: Query>(&self, _query: &Q, _filter: &F, _archetypes: &[Archetype]) {}
+    fn acquire<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
 
     #[inline(always)]
-    fn release<Q: Query, F: Query>(&self, _query: &Q, _filter: &F, _archetypes: &[Archetype]) {}
+    fn release<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
 
     #[inline(always)]
     fn with<Q: Query, F: Query, R>(
         &self,
-        _query: &Q,
-        _filter: &F,
+        _query: Q,
+        _filter: F,
         _archetype: &Archetype,
         f: impl FnOnce() -> R,
     ) -> R {

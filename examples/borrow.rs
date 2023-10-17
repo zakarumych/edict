@@ -26,8 +26,6 @@ impl Display for B {
 }
 
 fn main() {
-    drop(());
-
     let mut world = World::new();
 
     // Spawn pair of entities.
@@ -39,11 +37,7 @@ fn main() {
 
     // Borrow any component that exposes `Display` trait.
     // Skips entities without such component.
-    for display in world
-        .new_view()
-        .borrow_any_mut::<dyn Display + Send>()
-        .iter()
-    {
+    for display in world.new_view().borrow_any_mut::<dyn Display + Send>() {
         println!("{}", display);
     }
 

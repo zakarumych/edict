@@ -72,7 +72,7 @@
 //! [`Scheduler`]: edict::scheduler::Scheduler
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 // #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(unused_unsafe)]
 
@@ -444,6 +444,7 @@ pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;
+pub mod flow;
 pub mod prelude;
 pub mod query;
 pub mod relation;

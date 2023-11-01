@@ -262,6 +262,11 @@ impl World {
         &self.archetypes
     }
 
+    /// Returns a slice of all materialized archetypes.
+    pub(crate) fn archetypes_mut(&self) -> &mut [Archetype] {
+        &mut self.archetypes
+    }
+
     /// Returns [`WorldLocal`] referencing this [`World`].
     /// [`WorldLocal`] dereferences to [`World`]
     /// And defines overlapping methods `get_resource` and `get_resource_mut` without `Sync` and `Send` bounds.

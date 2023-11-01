@@ -1,11 +1,10 @@
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::sync::Arc;
+use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use core::{
     any::TypeId,
     iter::FusedIterator,
     sync::atomic::{AtomicBool, Ordering},
 };
-
-use parking_lot::Mutex;
 
 use crate::{
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
@@ -18,13 +17,13 @@ use crate::{
 use super::{ActionBuffer, ActionEncoder, ActionFn};
 
 struct Shared {
-    queue: Mutex<VecDeque<ActionFn<'static>>>,
+    queue: FlipQueue<ActionFn<'static>>,
     non_empty: AtomicBool,
 }
 
 pub(crate) struct ActionChannel {
     shared: Arc<Shared>,
-    spare_queue: VecDeque<ActionFn<'static>>,
+    spare_buffer: RingBuffer<ActionFn<'static>>,
 }
 
 impl ActionChannel {
@@ -32,10 +31,10 @@ impl ActionChannel {
     pub fn new() -> Self {
         ActionChannel {
             shared: Arc::new(Shared {
-                queue: Mutex::new(VecDeque::new()),
+                queue: FlipQueue::new(),
                 non_empty: AtomicBool::new(false),
             }),
-            spare_queue: VecDeque::new(),
+            spare_buffer: RingBuffer::new(),
         }
     }
 
@@ -49,16 +48,15 @@ impl ActionChannel {
     /// Fetches actions recorded into the channel.
     #[inline(always)]
     pub fn fetch(&mut self) {
-        debug_assert!(self.spare_queue.is_empty());
+        debug_assert!(self.spare_buffer.is_empty());
         if self.shared.non_empty.swap(false, Ordering::Relaxed) {
-            let mut queue = self.shared.queue.lock();
-            core::mem::swap(&mut self.spare_queue, &mut *queue);
+            self.shared.queue.swap_buffer(&mut self.spare_buffer);
         }
     }
 
     #[inline(always)]
     pub fn execute(&mut self) -> Option<impl FnOnce(&mut World, &mut ActionBuffer)> {
-        self.spare_queue.pop_front().map(|fun| {
+        self.spare_buffer.pop().map(|fun| {
             move |world: &mut World, buffer: &mut ActionBuffer| {
                 fun.call(world, buffer);
             }
@@ -277,7 +275,7 @@ impl ActionSender {
     #[inline(always)]
     fn push_fn(&self, fun: impl FnOnce(&mut World, &mut ActionBuffer) + Send + 'static) {
         let action = ActionFn::new(fun);
-        self.shared.queue.lock().push_back(action);
+        self.shared.queue.push(action);
         self.shared.non_empty.store(true, Ordering::Relaxed);
     }
 }

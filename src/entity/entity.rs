@@ -395,7 +395,7 @@ impl fmt::Display for EntityRef<'_> {
 impl Drop for EntityRef<'_> {
     #[inline(always)]
     fn drop(&mut self) {
-        self.buffer.execute(self.world);
+        self.maintenance();
     }
 }
 
@@ -464,6 +464,8 @@ impl<'a> EntityRef<'a> {
     where
         Q: IntoQuery,
     {
+        self.maintenance();
+
         unsafe { self.get_with_unchecked(query) }
     }
 
@@ -576,10 +578,12 @@ impl<'a> EntityRef<'a> {
 
     /// Insert a component to the entity.
     #[inline(always)]
-    pub fn insert<T>(&mut self, component: T)
+    pub fn insert<T>(&mut self, component: T) -> &mut T
     where
         T: Component,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -591,6 +595,13 @@ impl<'a> EntityRef<'a> {
                 .unwrap_unchecked()
         }
         .loc;
+
+        unsafe {
+            self.world
+                .archetypes_mut()
+                .get_unchecked_mut(self.loc.arch as usize)
+                .get_mut(self.loc.idx, self.world.epoch())
+        }
     }
 
     /// Attempts to inserts component to the entity.
@@ -613,10 +624,12 @@ impl<'a> EntityRef<'a> {
     /// assert!(entity.has_component::<u32>());
     /// ```
     #[inline(always)]
-    pub fn insert_external<T>(&mut self, component: T)
+    pub fn insert_external<T>(&mut self, component: T) -> &mut T
     where
         T: 'static,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -628,6 +641,88 @@ impl<'a> EntityRef<'a> {
                 .unwrap_unchecked()
         }
         .loc;
+
+        unsafe {
+            self.world
+                .archetypes_mut()
+                .get_unchecked_mut(self.loc.arch as usize)
+                .get_mut(self.loc.idx, self.world.epoch())
+        }
+    }
+
+    /// Returns a mutable reference to the component.
+    /// If entity does not have the component, it is added.
+    #[inline(always)]
+    pub fn with<T>(&mut self, component: impl FnOnce() -> T) -> &mut T
+    where
+        T: Component,
+    {
+        self.maintenance();
+
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.loc = unsafe {
+            self.world
+                .with_with_buffer(loc, component, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
+
+        unsafe {
+            self.world
+                .archetypes_mut()
+                .get_unchecked_mut(self.loc.arch as usize)
+                .get_mut(self.loc.idx, self.world.epoch())
+        }
+    }
+
+    /// Attempts to inserts component to the entity.
+    ///
+    /// If entity already had component of that type,
+    /// closure is not called.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// let mut entity = world.spawn(());
+    ///
+    /// assert!(!entity.has_component::<u32>());
+    /// entity.with_external(42u32);
+    /// assert!(entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn with_external<T>(&mut self, component: impl FnOnce() -> T) -> &mut T
+    where
+        T: 'static,
+    {
+        self.maintenance();
+
+        let loc = EntityLoc {
+            id: self.id,
+            loc: self.loc,
+            world: PhantomData,
+        };
+        self.loc = unsafe {
+            self.world
+                .with_external_with_buffer(loc, component, &mut self.buffer)
+                .unwrap_unchecked()
+        }
+        .loc;
+
+        unsafe {
+            self.world
+                .archetypes_mut()
+                .get_unchecked_mut(self.loc.arch as usize)
+                .get_mut(self.loc.idx, self.world.epoch())
+        }
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -656,6 +751,8 @@ impl<'a> EntityRef<'a> {
     where
         B: DynamicComponentBundle,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -704,6 +801,8 @@ impl<'a> EntityRef<'a> {
     where
         B: DynamicBundle,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -724,6 +823,8 @@ impl<'a> EntityRef<'a> {
     where
         T: 'static,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -740,6 +841,8 @@ impl<'a> EntityRef<'a> {
     where
         T: 'static,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -756,6 +859,8 @@ impl<'a> EntityRef<'a> {
     /// Drops a component from the referenced entity.
     #[inline(always)]
     pub fn drop_erased(&mut self, ty: TypeId) {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -801,6 +906,8 @@ impl<'a> EntityRef<'a> {
     where
         B: Bundle,
     {
+        self.maintenance();
+
         let loc = EntityLoc {
             id: self.id,
             loc: self.loc,
@@ -816,7 +923,8 @@ impl<'a> EntityRef<'a> {
 
     /// Despawns the referenced entity.
     #[inline(always)]
-    pub fn despawn(self) {
+    pub fn despawn(mut self) {
+        self.maintenance();
         unsafe { self.world.despawn_ref(self.id, self.loc) }
     }
 
@@ -831,6 +939,11 @@ impl<'a> EntityRef<'a> {
             world: PhantomData,
         };
         self.world.has_component::<T>(loc)
+    }
+
+    #[inline(always)]
+    fn maintenance(&mut self) {
+        self.buffer.execute(self.world);
     }
 }
 

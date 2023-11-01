@@ -53,7 +53,7 @@ impl World {
     where
         T: Component,
     {
-        self._insert(entity, component, register_one::<T>, buffer)
+        self._with(entity, || component, true, register_one::<T>, buffer)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -101,13 +101,115 @@ impl World {
     where
         T: 'static,
     {
-        self._insert(entity, component, assert_registered_one::<T>, buffer)
+        self._with(
+            entity,
+            || component,
+            true,
+            assert_registered_one::<T>,
+            buffer,
+        )
     }
 
-    pub(crate) fn _insert<T, F>(
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.with(entity, || ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with<T>(
         &mut self,
         entity: impl Entity,
-        component: T,
+        component: impl FnOnce() -> T,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: Component,
+    {
+        with_buffer!(self, buffer => {
+            self.with_with_buffer(entity, component, buffer)?;
+        });
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub(crate) fn with_with_buffer<T>(
+        &mut self,
+        entity: impl Entity,
+        component: impl FnOnce() -> T,
+        buffer: &mut ActionBuffer,
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
+    where
+        T: Component,
+    {
+        self._with(entity, component, false, register_one::<T>, buffer)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.with_external(entity, || 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external<T>(
+        &mut self,
+        entity: impl Entity,
+        component: impl FnOnce() -> T,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        with_buffer!(self, buffer => {
+            self.with_external_with_buffer(entity, component, buffer)?;
+        });
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub(crate) fn with_external_with_buffer<T>(
+        &mut self,
+        entity: impl Entity,
+        component: impl FnOnce() -> T,
+        buffer: &mut ActionBuffer,
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
+    where
+        T: 'static,
+    {
+        self._with(entity, component, false, assert_registered_one::<T>, buffer)
+    }
+
+    pub(crate) fn _with<T, F>(
+        &mut self,
+        entity: impl Entity,
+        component: impl FnOnce() -> T,
+        replace: bool,
         get_or_register: F,
         buffer: &mut ActionBuffer,
     ) -> Result<EntityRef<'_>, NoSuchEntity>
@@ -125,14 +227,16 @@ impl World {
         let encoder = ActionEncoder::new(buffer, &self.entities);
 
         if self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
-            unsafe {
-                self.archetypes[src_loc.arch as usize].set(
-                    entity.id(),
-                    src_loc.idx,
-                    component,
-                    epoch,
-                    encoder,
-                );
+            if replace {
+                unsafe {
+                    self.archetypes[src_loc.arch as usize].set(
+                        entity.id(),
+                        src_loc.idx,
+                        component(),
+                        epoch,
+                        encoder,
+                    );
+                }
             }
 
             // Safety: The location is valid for entity id in this world.

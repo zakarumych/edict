@@ -7,7 +7,7 @@ use crate::{
     archetype::{chunk_idx, Archetype},
     entity::{EntitySet, Location},
     epoch::EpochCounter,
-    query::{Fetch, IntoQuery, Query, QueryItem},
+    query::{AsQuery, Fetch, Query, QueryItem},
     world::World,
 };
 
@@ -132,12 +132,12 @@ where
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
 pub type ViewCell<'a, Q, F = (), B = RuntimeBorrowState> =
-    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, B>;
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
 pub type View<'a, Q, F = ()> =
-    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed>;
 
 impl<'a, Q, F> ViewValue<'a, Q, F, StaticallyBorrowed>
 where
@@ -153,8 +153,8 @@ where
     pub fn new(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewValue {
             archetypes: world.archetypes(),
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query,
+            filter,
             state: StaticallyBorrowed,
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
@@ -168,8 +168,8 @@ where
     #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: query,
+            filter: filter,
             archetypes: world.archetypes(),
             state: StaticallyBorrowed,
             entity_set: world.entities(),
@@ -190,8 +190,8 @@ where
     #[inline(always)]
     pub fn new_cell(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: query,
+            filter: filter,
             archetypes: world.archetypes(),
             state: RuntimeBorrowState::new(),
             entity_set: world.entities(),

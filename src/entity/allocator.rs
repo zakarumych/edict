@@ -197,7 +197,7 @@ impl IdAllocator {
 /// The actual size of range required to reserve entities between two flushes
 /// is application specific, but `u32::MAX` is a safe upper bound
 /// because edict does not support more than `u32::MAX` entities alive in the world.
-pub unsafe trait IdRangeAllocator: 'static {
+pub unsafe trait IdRangeAllocator: Send + Sync + 'static {
     /// Allocate range of unique entity IDs.
     /// IDs generated must be unique for the given allocator.
     /// Special allocator types may enforce uniqueness

@@ -220,7 +220,7 @@ impl ActionSender {
     #[inline(always)]
     pub fn add_relation<R>(&self, origin: EntityId, relation: R, target: EntityId)
     where
-        R: Relation,
+        R: Relation + Send,
     {
         self.push_fn(move |world, buffer| {
             let _ = world.add_relation_with_buffer(origin, relation, target, buffer);

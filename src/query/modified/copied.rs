@@ -3,7 +3,10 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{copied::Cpy, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{
+        copied::Cpy, option::OptionQuery, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        SendQuery, WriteAlias,
+    },
     system::QueryArg,
     world::World,
 };
@@ -21,7 +24,7 @@ pub struct ModifiedFetchCopied<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchCopied<'a, T>
 where
-    T: Copy + Sync + 'a,
+    T: Copy + 'a,
 {
     type Item = T;
 
@@ -54,12 +57,17 @@ where
     }
 }
 
-impl<T> IntoQuery for Modified<Cpy<T>>
+impl<T> AsQuery for Modified<Cpy<T>>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Modified<Cpy<T>>
+where
+    T: Copy + 'static,
+{
     fn into_query(self) -> Self {
         self
     }
@@ -73,7 +81,7 @@ where
     fn new() -> Self {
         Modified {
             after_epoch: EpochId::start(),
-            marker: PhantomData,
+            query: Cpy,
         }
     }
 
@@ -85,7 +93,7 @@ where
 
 unsafe impl<T> Query for Modified<Cpy<T>>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     type Item<'a> = T;
     type Fetch<'a> = ModifiedFetchCopied<'a, T>;
@@ -94,7 +102,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Cpy::<T>.component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -102,7 +110,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -138,22 +146,54 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Cpy<T>> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Cpy<T>> where T: Copy + 'static {}
+unsafe impl<T> SendQuery for Modified<Cpy<T>> where T: Sync + Copy + 'static {}
 
-impl<T> IntoQuery for Modified<Option<Cpy<T>>>
+impl<T> AsQuery for Modified<Option<Cpy<T>>>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
+{
+    type Query = Modified<OptionQuery<Cpy<T>>>;
+}
+
+impl<T> AsQuery for Modified<OptionQuery<Cpy<T>>>
+where
+    T: Copy + 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Modified<OptionQuery<Cpy<T>>>
+where
+    T: Copy + 'static,
+{
+    #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
 }
 
-unsafe impl<T> Query for Modified<Option<Cpy<T>>>
+impl<T> QueryArg for Modified<OptionQuery<Cpy<T>>>
 where
     T: Copy + Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            query: OptionQuery(Cpy),
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
+    }
+}
+
+unsafe impl<T> Query for Modified<OptionQuery<Cpy<T>>>
+where
+    T: Copy + 'static,
 {
     type Item<'a> = Option<T>;
     type Fetch<'a> = Option<ModifiedFetchCopied<'a, T>>;
@@ -162,7 +202,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Some(Cpy::<T>).component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -170,7 +210,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -182,7 +222,7 @@ where
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(Cpy::<T>.visit_archetype(archetype), true);
+            debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -220,4 +260,5 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Option<Cpy<T>>> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<OptionQuery<Cpy<T>>> where T: Copy + 'static {}
+unsafe impl<T> SendQuery for Modified<OptionQuery<Cpy<T>>> where T: Sync + Copy + 'static {}

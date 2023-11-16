@@ -4,7 +4,10 @@ use crate::{
     archetype::Archetype,
     entity::EntityLoc,
     epoch::EpochId,
-    query::{Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{
+        AsQuery, Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+        WriteAlias,
+    },
     Access,
 };
 
@@ -62,7 +65,7 @@ pub(super) struct DumpFetch<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for DumpFetch<'a, T>
 where
-    T: Sync + 'a,
+    T: 'a,
 {
     type Item = DumpItem<'a, T>;
 
@@ -97,12 +100,17 @@ macro_rules! impl_dump_query {
         /* Don't implement for empty tuple */
     };
     ($($a:ident)*) => {
-        impl<$($a),*> IntoQuery for DumpQuery<($($a,)*)>
+        impl<$($a),*> AsQuery for DumpQuery<($($a,)*)>
         where
-            $($a: Sync + 'static,)*
+            $($a: 'static,)*
         {
             type Query = Self;
+        }
 
+        impl<$($a),*> IntoQuery for DumpQuery<($($a,)*)>
+        where
+            $($a: 'static,)*
+        {
             fn into_query(self) -> Self {
                 self
             }
@@ -112,7 +120,7 @@ macro_rules! impl_dump_query {
         #[allow(non_snake_case)]
         unsafe impl<$($a),*> Query for DumpQuery<($($a,)*)>
         where
-            $($a: Sync + 'static,)*
+            $($a: 'static,)*
         {
             type Item<'a> = (EntityLoc<'a>, ($(DumpItem<'a, $a>),*));
             type Fetch<'a> = (EntitiesFetch<'a>, ($(DumpFetch<'a, $a>),*));
@@ -173,8 +181,16 @@ macro_rules! impl_dump_query {
 
         unsafe impl<$($a),*> ImmutableQuery for DumpQuery<($($a,)*)>
         where
-            $($a: Sync + 'static,)*
+            $($a: 'static,)*
         {}
+
+        #[allow(unused_parens)]
+        #[allow(non_snake_case)]
+        unsafe impl<$($a),*> SendQuery for DumpQuery<($($a,)*)>
+        where
+            $($a: 'static,)*
+        {
+        }
     };
 }
 

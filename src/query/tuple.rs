@@ -4,7 +4,10 @@ use crate::{
     archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg, world::World,
 };
 
-use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
+};
 
 macro_rules! impl_fetch {
     () => {
@@ -18,9 +21,11 @@ macro_rules! impl_fetch {
             unsafe fn get_item(&mut self, _: u32) {}
         }
 
-        impl IntoQuery for () {
+        impl AsQuery for () {
             type Query = ();
+        }
 
+        impl IntoQuery for () {
             fn into_query(self) -> () {
                 ()
             }
@@ -71,6 +76,7 @@ macro_rules! impl_fetch {
         }
 
         unsafe impl ImmutableQuery for () {}
+        unsafe impl SendQuery for () {}
     };
 
     ($($a:ident)+) => {
@@ -110,6 +116,20 @@ macro_rules! impl_fetch {
             unsafe fn get_item(&mut self, idx: u32) -> ($($a::Item),+) {
                 let ($($a,)+) = self;
                 ($( $a.get_item(idx) ),+)
+            }
+        }
+
+        #[allow(non_snake_case)]
+        impl<$($a),+> AsQuery for ($($a,)+) where $($a: AsQuery,)+ {
+            type Query = ($($a::Query,)+);
+        }
+
+        #[allow(non_snake_case)]
+        impl<$($a),+> IntoQuery for ($($a,)+) where $($a: IntoQuery,)+ {
+            #[inline(always)]
+            fn into_query(self) -> Self::Query {
+                let ($($a,)+) = self;
+                ($( $a.into_query(), )+)
             }
         }
 
@@ -179,6 +199,12 @@ macro_rules! impl_fetch {
             }
 
             #[inline(always)]
+            fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+                let ($($a,)+) = self;
+                $( <$a as Query>::visit_archetype_late($a, archetype) )&&+
+            }
+
+            #[inline(always)]
             unsafe fn fetch<'a>(&self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
                 ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+)
@@ -193,17 +219,7 @@ macro_rules! impl_fetch {
         }
 
         unsafe impl<$($a),+> ImmutableQuery for ($($a,)+) where $($a: ImmutableQuery,)+ {}
-
-        #[allow(non_snake_case)]
-        impl<$($a),+> IntoQuery for ($($a,)+) where $($a: IntoQuery,)+ {
-            type Query = ($($a::Query,)+);
-
-            #[inline(always)]
-            fn into_query(self) -> Self::Query {
-                let ($($a,)+) = self;
-                ($( $a.into_query(), )+)
-            }
-        }
+        unsafe impl<$($a),+> SendQuery for ($($a,)+) where $($a: SendQuery,)+ {}
     };
 }
 

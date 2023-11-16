@@ -2,7 +2,10 @@ use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
 use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
+};
 
 /// Binary operator for [`BooleanQuery`].
 pub trait BooleanFetchOp: 'static {
@@ -224,13 +227,20 @@ macro_rules! impl_boolean {
         }
 
         #[allow(non_snake_case)]
+        impl<Op $(, $a)+> AsQuery for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: AsQuery,)+
+            Op: BooleanFetchOp,
+        {
+            type Query = BooleanQuery<($($a::Query,)+), Op>;
+        }
+
+        #[allow(non_snake_case)]
         impl<Op $(, $a)+> IntoQuery for BooleanQuery<($($a,)+), Op>
         where
             $($a: IntoQuery,)+
             Op: BooleanFetchOp,
         {
-            type Query = BooleanQuery<($($a::Query,)+), Op>;
-
             #[inline(always)]
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self.tuple;
@@ -298,7 +308,9 @@ macro_rules! impl_boolean {
             #[inline(always)]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = &self.tuple;
-                $($a.access_archetype(archetype, &mut f);)+
+                $(if $a.visit_archetype(archetype) {
+                    $a.access_archetype(archetype, &mut f);
+                })+
             }
 
             #[inline(always)]
@@ -317,17 +329,20 @@ macro_rules! impl_boolean {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
+                let mut cut = false;
+
+                $(
+                    let $a = if $a.visit_archetype(archetype) {
+                        mask |= (1 << mi);
+                        $a.fetch(arch_idx, archetype, epoch)
+                    } else {
+                        Fetch::dangling()
+                    };
+                    mi += 1;
+                )+
+
                 BooleanFetch {
-                    tuple: ($({
-                        let fetch = if $a.visit_archetype(archetype) {
-                            mask |= (1 << mi);
-                            $a.fetch(arch_idx, archetype, epoch)
-                        } else {
-                            Fetch::dangling()
-                        };
-                        mi += 1;
-                        fetch
-                    },)+),
+                    tuple: ($($a,)+),
                     archetype: mask,
                     chunk: 0,
                     item: 0,
@@ -358,6 +373,13 @@ macro_rules! impl_boolean {
         unsafe impl<Op $(, $a)+> ImmutableQuery for BooleanQuery<($($a,)+), Op>
         where
             $($a: ImmutableQuery,)+
+            Op: BooleanFetchOp,
+        {
+        }
+
+        unsafe impl<Op $(, $a)+> SendQuery for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: SendQuery,)+
             Op: BooleanFetchOp,
         {
         }

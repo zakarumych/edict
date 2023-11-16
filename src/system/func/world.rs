@@ -1,6 +1,6 @@
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{archetype::Archetype, system::ActionQueue, world::World, Access};
+use crate::{archetype::Archetype, system::ActionBufferQueue, world::World, Access};
 
 use super::{FnArg, FnArgState};
 
@@ -53,7 +53,7 @@ unsafe impl FnArgState for WorldReadState {
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> &'a World {
         // Safety: Declares read.
         unsafe { world.as_ref() }
@@ -109,7 +109,7 @@ unsafe impl FnArgState for WorldWriteState {
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         mut world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> &'a mut World {
         // Safety: Declares write.
         unsafe { world.as_mut() }

@@ -6,8 +6,8 @@ use core::{
 
 use crate::{
     archetype::Archetype,
-    query::Query,
-    system::ActionQueue,
+    query::SendQuery,
+    system::ActionBufferQueue,
     view::{acquire, release, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
     Access,
@@ -16,7 +16,7 @@ use crate::{
 use super::{FnArg, FnArgState};
 
 /// Query suitable for [`View`] args for function-systems.
-pub trait QueryArg: Query {
+pub trait QueryArg: SendQuery {
     /// Creates new query state.
     fn new() -> Self;
 
@@ -54,7 +54,7 @@ where
     Q: QueryArg,
     F: QueryArg,
 {
-    type Arg<'a> = ViewCell<'a, Q, F>;
+    type Arg<'a> = ViewValue<'a, Q, F, RuntimeBorrowState>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -115,7 +115,7 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> ViewCell<'a, Q, F> {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
@@ -125,7 +125,11 @@ where
     }
 
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(
+        &mut self,
+        world: NonNull<World>,
+        _queue: &mut dyn ActionBufferQueue,
+    ) {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
         self.query.after(world);
@@ -208,7 +212,7 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> View<'a, Q, F> {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
@@ -224,7 +228,11 @@ where
     }
 
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(
+        &mut self,
+        world: NonNull<World>,
+        _queue: &mut dyn ActionBufferQueue,
+    ) {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
         self.query.after(world);

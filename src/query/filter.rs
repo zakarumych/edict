@@ -3,7 +3,8 @@ use core::any::TypeId;
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
 use super::{
-    fetch::UnitFetch, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+    fetch::UnitFetch, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+    SendQuery, WriteAlias,
 };
 
 /// Combines fetch from query and filter.
@@ -179,12 +180,17 @@ where
     unsafe fn get_item(&mut self, _idx: u32) {}
 }
 
+impl<T> AsQuery for Not<T>
+where
+    T: AsQuery,
+{
+    type Query = Not<T::Query>;
+}
+
 impl<T> IntoQuery for Not<T>
 where
     T: IntoQuery,
 {
-    type Query = Not<T::Query>;
-
     #[inline(always)]
     fn into_query(self) -> Not<T::Query> {
         Not(self.0.into_query())
@@ -256,18 +262,24 @@ where
 }
 
 unsafe impl<T> ImmutableQuery for Not<T> where T: ImmutableQuery {}
+unsafe impl<T> SendQuery for Not<T> where T: SendQuery {}
 
 marker_type! {
     /// [`Filter`] that allows only archetypes with specified component.
     pub struct With<T>;
 }
 
-impl<T> IntoQuery for With<T>
+impl<T> AsQuery for With<T>
 where
     T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for With<T>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -323,6 +335,7 @@ where
 }
 
 unsafe impl<T> ImmutableQuery for With<T> where T: 'static {}
+unsafe impl<T> SendQuery for With<T> where T: 'static {}
 
 /// [`Filter`] that allows only archetypes without specified component.
 /// Inverse of [`With`].

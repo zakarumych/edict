@@ -268,10 +268,10 @@ fn set_relation_component<T, C>(
     let component = into_component(value);
 
     let dst_arch = world.edges.insert(
-        TypeId::of::<C>(),
         &mut world.registry,
         &mut world.archetypes,
         src_loc.arch,
+        TypeId::of::<C>(),
         |registry| registry.get_or_register::<C>(),
     );
 

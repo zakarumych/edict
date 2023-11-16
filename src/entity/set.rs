@@ -6,6 +6,8 @@ use core::{
 
 use hashbrown::{hash_map::Entry, HashMap};
 
+use crate::cold;
+
 use super::{
     allocator::{IdAllocator, IdRangeAllocator},
     EntityId, EntityLoc,
@@ -138,7 +140,7 @@ impl EntitySet {
                 self.reserve_counter.fetch_sub(1, Ordering::Relaxed);
                 panic!("Too much entity ids reserved");
             }
-            Some(id) => EntityLoc::new(EntityId::new(id), Location::reserved(idx as u32)),
+            Some(id) => EntityLoc::from_parts(EntityId::new(id), Location::reserved(idx as u32)),
         }
     }
 
@@ -149,6 +151,8 @@ impl EntitySet {
         if reserved == 0 {
             return;
         }
+
+        cold();
         unsafe {
             self.id_allocator.flush_reserved(reserved, |id| {
                 self.map.insert(
@@ -190,6 +194,19 @@ impl EntitySet {
             }
             Some(loc) => Some(*loc),
         }
+    }
+
+    /// Returns location for entity with specified ID.
+    #[inline(always)]
+    pub fn is_alive(&self, id: EntityId) -> bool {
+        if self.map.contains_key(&id.bits()) {
+            return true;
+        }
+        let reserved = self.reserve_counter.load(Ordering::Acquire);
+        let Some(idx) = self.id_allocator.reserved(id.non_zero()) else {
+            return false;
+        };
+        idx < reserved
     }
 
     /// Reserves capacity for at least `additional` more

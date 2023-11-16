@@ -11,18 +11,12 @@ use crate::{
     bundle::{Bundle, BundleDesc},
     cold,
     component::{ComponentInfo, ComponentRegistry},
-    hash::{MulHasherBuilder, NoOpHasherBuilder},
+    hash::MulHasherBuilder,
 };
 
 use super::ArchetypeSet;
 
 pub(super) struct Edges {
-    /// Maps static key of the bundle to archetype index.
-    spawn_key: HashMap<TypeId, u32, NoOpHasherBuilder>,
-
-    /// Maps ids list to archetype.
-    spawn_ids: HashMap<Vec<TypeId>, u32, MulHasherBuilder>,
-
     /// Maps archetype index + additional component id to the archetype index.
     add_one: HashMap<(u32, TypeId), u32, MulHasherBuilder>,
 
@@ -46,8 +40,6 @@ impl Edges {
     #[must_use]
     pub fn new() -> Edges {
         Edges {
-            spawn_key: HashMap::with_hasher(NoOpHasherBuilder),
-            spawn_ids: HashMap::with_hasher(MulHasherBuilder),
             add_one: HashMap::with_hasher(MulHasherBuilder),
             add_key: HashMap::with_hasher(MulHasherBuilder),
             add_ids: HashMap::with_hasher(MulHasherBuilder),
@@ -60,84 +52,12 @@ impl Edges {
 
 impl Edges {
     #[must_use]
-    pub fn spawn<B, F>(
-        &mut self,
-        registry: &mut ComponentRegistry,
-        archetypes: &mut ArchetypeSet,
-        bundle: &B,
-        register_components: F,
-    ) -> u32
-    where
-        B: BundleDesc,
-        F: FnOnce(&mut ComponentRegistry),
-    {
-        let very_slow = move || {
-            cold();
-            match archetypes
-                .iter()
-                .position(|a| bundle.with_ids(|ids| a.matches(ids.iter().copied())))
-            {
-                None => {
-                    cold();
-
-                    archetypes.add_with(|_| {
-                        register_components(registry);
-
-                        bundle.with_ids(|ids| {
-                            Archetype::new(ids.iter().map(|id| match registry.get_info(*id) {
-                                None => panic!("Component {:?} is not registered", id),
-                                Some(info) => info,
-                            }))
-                        })
-                    })
-                }
-                Some(idx) => idx as u32,
-            }
-        };
-
-        let spawn_ids = &mut self.spawn_ids;
-        let slow = || {
-            cold();
-            let raw_entry = bundle.with_ids(move |ids| {
-                let mut hasher = spawn_ids.hasher().build_hasher();
-                ids.hash(&mut hasher);
-                let hash = hasher.finish();
-
-                spawn_ids
-                    .raw_entry_mut()
-                    .from_hash(hash, |key_ids| key_ids == ids)
-            });
-
-            match raw_entry {
-                RawEntryMut::Occupied(entry) => *entry.get(),
-                RawEntryMut::Vacant(entry) => {
-                    let idx = very_slow();
-                    entry.insert(bundle.with_ids(|ids| Vec::from(ids)), idx);
-                    idx
-                }
-            }
-        };
-
-        match B::key() {
-            None => slow(),
-            Some(key) => match self.spawn_key.entry(key) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let idx = slow();
-                    entry.insert(idx);
-                    idx
-                }
-            },
-        }
-    }
-
-    #[must_use]
     pub fn insert<F>(
         &mut self,
-        ty: TypeId,
         registry: &mut ComponentRegistry,
         archetypes: &mut ArchetypeSet,
         src: u32,
+        ty: TypeId,
         register_component: F,
     ) -> u32
     where

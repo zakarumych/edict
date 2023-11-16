@@ -5,7 +5,9 @@ mod func;
 use alloc::vec::Vec;
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{action::ActionBuffer, archetype::Archetype, world::World, Access};
+use crate::{
+    action::ActionBuffer, archetype::Archetype, world::World, Access, ActionBufferSliceExt,
+};
 
 pub use self::func::{
     ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, Res, ResMut,
@@ -15,8 +17,8 @@ pub use self::func::{
 
 /// A queue of `ActionEncoder` instances.
 /// The nature of queue depends on scheduler implementation.
-/// Systems must work with any action queue type - the API uses `dyn ActionQueue`.
-pub trait ActionQueue {
+/// Systems must work with any action queue type - the API uses `dyn ActionBufferQueue`.
+pub trait ActionBufferQueue {
     /// Returns action encoder from the queue.
     fn get<'a>(&self) -> ActionBuffer;
 
@@ -24,7 +26,7 @@ pub trait ActionQueue {
     fn flush(&mut self, buffer: ActionBuffer);
 }
 
-impl ActionQueue for Vec<ActionBuffer> {
+impl ActionBufferQueue for Vec<ActionBuffer> {
     fn get(&self) -> ActionBuffer {
         ActionBuffer::new()
     }
@@ -75,7 +77,19 @@ pub unsafe trait System {
     /// Runs the system with given context instance.
     ///
     /// If `is_local()` returns `true` then running it outside local thread is unsound.
-    unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue);
+    unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue);
+
+    /// Runs the system with exclusive access to [`World`].
+    fn run(&mut self, world: &mut World, queue: &mut dyn ActionBufferQueue) {
+        unsafe { self.run_unchecked(NonNull::from(world), queue) };
+    }
+
+    /// Runs the system with exclusive access to [`World`] and flushes action buffers immediately.
+    fn run_alone(&mut self, world: &mut World) {
+        let mut buffers = Vec::new();
+        unsafe { self.run_unchecked(NonNull::from(&mut *world), &mut buffers) };
+        buffers.execute_all(world);
+    }
 }
 
 /// Trait for types that can be converted into systems.
@@ -128,7 +142,7 @@ where
 //     /// Runs the system with given context instance.
 //     ///
 //     /// If `is_local()` returns `true` then running it outside local thread is unsound.
-//     fn run(&mut self, world: &World, queue: &mut dyn ActionQueue);
+//     fn run(&mut self, world: &World, queue: &mut dyn ActionBufferQueue);
 // }
 
 // /// Marker for [`IntoSystem`] to turn [`ParallelSystem`] into [`System`].
@@ -163,7 +177,7 @@ where
 //         self.system.access_resource(id)
 //     }
 
-//     unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
+//     unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
 //         let world = unsafe { world.as_ref() };
 //         self.system.run(world, queue);
 //     }
@@ -221,7 +235,11 @@ where
         Some(Access::Write)
     }
 
-    unsafe fn run_unchecked(&mut self, mut world: NonNull<World>, _queue: &mut dyn ActionQueue) {
+    unsafe fn run_unchecked(
+        &mut self,
+        mut world: NonNull<World>,
+        _queue: &mut dyn ActionBufferQueue,
+    ) {
         // Safety: Declares write access and local execution.
         let world = unsafe { world.as_mut() };
         self.system.run(world);

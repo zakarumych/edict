@@ -4,7 +4,8 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{
-        read::Read, write::Write, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+        read::Read, write::Write, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        SendQuery, WriteAlias,
     },
 };
 
@@ -46,7 +47,7 @@ pub struct FetchBorrowOneRead<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneRead<'a, T>
 where
-    T: Sync + ?Sized + 'a,
+    T: ?Sized + 'a,
 {
     type Item = &'a T;
 
@@ -68,26 +69,24 @@ where
     }
 }
 
-impl<T> IntoQuery for QueryBorrowOne<&T>
+impl<T> AsQuery for QueryBorrowOne<&T>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Query = QueryBorrowOne<Read<T>>;
+}
 
-    fn into_query(self) -> Self::Query {
-        QueryBorrowOne {
-            ty: self.ty,
-            marker: PhantomData,
-        }
-    }
+impl<T> AsQuery for QueryBorrowOne<Read<T>>
+where
+    T: ?Sized + 'static,
+{
+    type Query = Self;
 }
 
 impl<T> IntoQuery for QueryBorrowOne<Read<T>>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
-    type Query = Self;
-
     fn into_query(self) -> Self::Query {
         self
     }
@@ -95,7 +94,7 @@ where
 
 unsafe impl<T> Query for QueryBorrowOne<Read<T>>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchBorrowOneRead<'a, T>;
@@ -146,7 +145,8 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowOne<Read<T>> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowOne<Read<T>> where T: ?Sized + 'static {}
+unsafe impl<T> SendQuery for QueryBorrowOne<Read<T>> where T: Sync + ?Sized + 'static {}
 
 /// [`Fetch`] for [`QueryBorrowOne<&mut T>`].
 pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
@@ -161,7 +161,7 @@ pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowOneWrite<'a, T>
 where
-    T: Send + ?Sized + 'a,
+    T: ?Sized + 'a,
 {
     type Item = &'a mut T;
 
@@ -196,26 +196,24 @@ where
     }
 }
 
-impl<T> IntoQuery for QueryBorrowOne<&mut T>
+impl<T> AsQuery for QueryBorrowOne<&mut T>
 where
-    T: Send + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Query = QueryBorrowOne<Write<T>>;
+}
 
-    fn into_query(self) -> Self::Query {
-        QueryBorrowOne {
-            ty: self.ty,
-            marker: PhantomData,
-        }
-    }
+impl<T> AsQuery for QueryBorrowOne<Write<T>>
+where
+    T: ?Sized + 'static,
+{
+    type Query = Self;
 }
 
 impl<T> IntoQuery for QueryBorrowOne<Write<T>>
 where
-    T: Send + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
-    type Query = Self;
-
     fn into_query(self) -> Self::Query {
         self
     }
@@ -223,7 +221,7 @@ where
 
 unsafe impl<T> Query for QueryBorrowOne<Write<T>>
 where
-    T: Send + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchBorrowOneWrite<'a, T>;
@@ -281,3 +279,5 @@ where
         }
     }
 }
+
+unsafe impl<T> SendQuery for QueryBorrowOne<Write<T>> where T: Send + ?Sized + 'static {}

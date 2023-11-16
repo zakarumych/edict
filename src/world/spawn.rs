@@ -1,4 +1,7 @@
-use core::{any::type_name, marker::PhantomData};
+use core::{
+    any::{type_name, TypeId},
+    marker::PhantomData,
+};
 
 use crate::{
     action::{ActionBuffer, ActionEncoder},
@@ -7,10 +10,12 @@ use crate::{
     component::ComponentRegistry,
     entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
-    NoSuchEntity,
+    Component, NoSuchEntity,
 };
 
-use super::{assert_registered_bundle, register_bundle, World};
+use super::{
+    assert_registered_bundle, assert_registered_one, register_bundle, register_one, World,
+};
 
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
@@ -42,14 +47,135 @@ impl World {
         self.entities.alloc()
     }
 
-    /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`EntityId`] to the newly spawned entity.
-    /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with returned [`EntityId`].
+    /// Spawns a new entity in this world without components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
     ///
     /// # Panics
     ///
-    /// Panics if new id cannot be allocated.
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_empty();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_empty(&mut self) -> EntityRef<'_> {
+        self.maintenance();
+
+        let (id, loc) = self
+            .entities
+            .spawn(0, |id| self.archetypes[0].spawn_empty(id));
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_one(ExampleComponent);
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one<T>(&mut self, component: T) -> EntityRef<'_>
+    where
+        T: Component,
+    {
+        self.maintenance();
+
+        let arch_idx = self.edges.insert(
+            &mut self.registry,
+            &mut self.archetypes,
+            0,
+            TypeId::of::<T>(),
+            register_one::<T>,
+        );
+
+        let epoch = self.epoch.next_mut();
+        let (id, loc) = self.entities.spawn(arch_idx, |id| {
+            self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
+        });
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_one_external((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one_external<T>(&mut self, component: T) -> EntityRef<'_>
+    where
+        T: 'static,
+    {
+        self.maintenance();
+
+        let arch_idx = self.edges.insert(
+            &mut self.registry,
+            &mut self.archetypes,
+            0,
+            TypeId::of::<T>(),
+            assert_registered_one::<T>,
+        );
+
+        let epoch = self.epoch.next_mut();
+        let (id, loc) = self.entities.spawn(arch_idx, |id| {
+            self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
+        });
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
     ///
     /// # Example
     ///
@@ -218,9 +344,10 @@ impl World {
             );
         }
 
-        let arch_idx = self.edges.spawn(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
+            0,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
@@ -230,7 +357,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        unsafe { EntityRef::from_parts(id, loc, self) }
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
     }
 
     /// Umbrella method for spawning entity with existing ID.
@@ -255,9 +382,10 @@ impl World {
             );
         }
 
-        let arch_idx = self.edges.spawn(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
+            0,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
@@ -267,7 +395,9 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        (spawned, unsafe { EntityRef::from_parts(id, loc, self) })
+        (spawned, unsafe {
+            EntityRef::from_parts(id, loc, self.local())
+        })
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -501,7 +631,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     #[inline(always)]
@@ -513,7 +643,7 @@ where
             self.archetype.spawn(id, bundle, self.epoch)
         });
 
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     #[inline(always)]
@@ -537,7 +667,7 @@ where
 
         self.bundles.fold(init, |acc, bundle| {
             let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, EntityLoc::new(id, loc))
+            f(acc, EntityLoc::from_parts(id, loc))
         })
     }
 
@@ -580,7 +710,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<EntityLoc<'a>> {
@@ -591,7 +721,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     fn rfold<T, F>(mut self, init: T, mut f: F) -> T
@@ -608,7 +738,7 @@ where
 
         self.bundles.rfold(init, |acc, bundle| {
             let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, EntityLoc::new(id, loc))
+            f(acc, EntityLoc::from_parts(id, loc))
         })
     }
 }

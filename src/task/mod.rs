@@ -19,8 +19,6 @@ use crate::{
     world::World,
 };
 
-mod tls;
-
 #[derive(Clone)]
 struct TaskWaker<T> {
     id: EntityId,

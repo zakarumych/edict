@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.cargo.cfgs": {
+        "no_edict_prelude": ""
+    }
+}

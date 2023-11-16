@@ -2,7 +2,9 @@ use core::any::TypeId;
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+};
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
 where
@@ -52,16 +54,14 @@ where
     }
 }
 
-impl<T> IntoQuery for Option<T>
-where
-    T: IntoQuery,
-{
-    type Query = Option<T::Query>;
+#[derive(Clone, Copy, Debug)]
+pub struct OptionQuery<T>(pub T);
 
-    #[inline(always)]
-    fn into_query(self) -> Self::Query {
-        self.map(IntoQuery::into_query)
-    }
+impl<T> AsQuery for Option<T>
+where
+    T: AsQuery,
+{
+    type Query = OptionQuery<T::Query>;
 }
 
 impl<T> DefaultQuery for Option<T>
@@ -69,22 +69,48 @@ where
     T: DefaultQuery,
 {
     #[inline(always)]
-    fn default_query() -> Self::Query {
-        Some(T::default_query())
+    fn default_query() -> OptionQuery<T::Query> {
+        OptionQuery(T::default_query())
     }
 }
 
-impl<T> QueryArg for Option<T>
+impl<T> AsQuery for OptionQuery<T>
+where
+    T: AsQuery,
+{
+    type Query = OptionQuery<T::Query>;
+}
+
+impl<T> IntoQuery for OptionQuery<T>
+where
+    T: IntoQuery,
+{
+    fn into_query(self) -> OptionQuery<T::Query> {
+        OptionQuery(self.0.into_query())
+    }
+}
+
+impl<T> DefaultQuery for OptionQuery<T>
+where
+    T: DefaultQuery,
+{
+    #[inline(always)]
+    fn default_query() -> OptionQuery<T::Query> {
+        OptionQuery(T::default_query())
+    }
+}
+
+impl<T> QueryArg for OptionQuery<T>
 where
     T: QueryArg,
 {
     #[inline(always)]
-    fn new() -> Self::Query {
-        Some(T::new())
+    fn new() -> Self {
+        OptionQuery(T::new())
     }
 }
 
-unsafe impl<T> Query for Option<T>
+unsafe impl<T> Query for OptionQuery<T>
 where
     T: Query,
 {
@@ -95,10 +121,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        match self {
-            None => Ok(None),
-            Some(t) => t.component_type_access(ty),
-        }
+        self.0.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -108,9 +131,8 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        match self {
-            Some(t) if t.visit_archetype(archetype) => t.access_archetype(archetype, f),
-            _ => {}
+        if self.0.visit_archetype(archetype) {
+            self.0.access_archetype(archetype, f);
         }
     }
 
@@ -121,11 +143,21 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Option<T::Fetch<'a>> {
-        match self {
-            Some(t) if t.visit_archetype(archetype) => Some(t.fetch(arch_idx, archetype, epoch)),
-            _ => None,
+        if self.0.visit_archetype(archetype) && self.0.visit_archetype_late(archetype) {
+            Some(self.0.fetch(arch_idx, archetype, epoch))
+        } else {
+            None
         }
+    }
+
+    fn reserved_entity_item<'a>(
+        &self,
+        id: crate::entity::EntityId,
+        idx: u32,
+    ) -> Option<Option<T::Item<'a>>> {
+        Some(self.0.reserved_entity_item(id, idx))
     }
 }
 
-unsafe impl<T> ImmutableQuery for Option<T> where T: ImmutableQuery {}
+unsafe impl<T> ImmutableQuery for OptionQuery<T> where T: ImmutableQuery {}
+unsafe impl<T> SendQuery for OptionQuery<T> where T: SendQuery {}

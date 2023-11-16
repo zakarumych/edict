@@ -3,9 +3,11 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{phantom::PhantomQuery, Access, Fetch, ImmutableQuery, IntoQuery, Query},
-    system::{QueryArg, QueryArgCache, QueryArgGet},
-    world::World,
+    query::{
+        Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery,
+        WriteAlias,
+    },
+    system::QueryArg,
 };
 
 use super::WithEpoch;
@@ -13,13 +15,13 @@ use super::WithEpoch;
 /// [`Fetch`] type for the [`WithEpoch<&T>`] query.
 pub struct WithEpochFetchRead<'a, T> {
     ptr: NonNull<T>,
-    entity_epochs: NonNull<EpochId>,
+    epochs: NonNull<EpochId>,
     marker: PhantomData<&'a [T]>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for WithEpochFetchRead<'a, T>
 where
-    T: Sync + 'a,
+    T: 'a,
 {
     type Item = (&'a T, EpochId);
 
@@ -27,196 +29,113 @@ where
     fn dangling() -> Self {
         WithEpochFetchRead {
             ptr: NonNull::dangling(),
-            entity_epochs: NonNull::dangling(),
+            epochs: NonNull::dangling(),
             marker: PhantomData,
         }
     }
 
     #[inline(always)]
-    unsafe fn get_item(&mut self, idx: usize) -> (&'a T, EpochId) {
-        let epoch = *self.entity_epochs.as_ptr().add(idx);
-        (&*self.ptr.as_ptr().add(idx), epoch)
+    unsafe fn get_item(&mut self, idx: u32) -> (&'a T, EpochId) {
+        let epoch = *self.epochs.as_ptr().add(idx as usize);
+        let item = &*self.ptr.as_ptr().add(idx as usize);
+        (item, epoch)
     }
 }
 
-impl<T> IntoQuery for WithEpoch<&T>
+impl<T> AsQuery for WithEpoch<&T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Query = PhantomData<fn() -> Self>;
-
-    #[inline(always)]
-    fn into_query(self) -> Self::Query {
-        PhantomData
-    }
+    type Query = WithEpoch<Read<T>>;
 }
 
-unsafe impl<T> PhantomQuery for WithEpoch<&T>
+impl<T> DefaultQuery for WithEpoch<&T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Item<'a> = (&'a T, EpochId);
-    type Fetch<'a> = WithEpochFetchRead<'a, T>;
-
-    #[inline(always)]
-    fn access(ty: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(ty)
-    }
-
-    #[inline(always)]
-    fn visit_archetype(archetype: &Archetype) -> bool {
-        match archetype.component(TypeId::of::<T>()) {
-            None => false,
-            Some(component) => unsafe {
-                debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
-
-                debug_assert_eq!(component.id(), TypeId::of::<T>());
-                let data = component.data();
-                data.epoch.after(self.after_epoch)
-            },
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn access_archetype(_archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<T>(), Access::Read)
-    }
-
-    #[inline(always)]
-    unsafe fn fetch<'a>(archetype: &'a Archetype, _epoch: EpochId) -> WithEpochFetchRead<'a, T> {
-        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
-        let data = component.data();
-
-        WithEpochFetchRead {
-            ptr: data.ptr.cast(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
-            marker: PhantomData,
-        }
+    fn default_query() -> Self::Query {
+        WithEpoch(Read)
     }
 }
 
-unsafe impl<T> ImmutableQuery for WithEpoch<&T> where T: Sync + 'static {}
-
-impl<T> IntoQuery for WithEpoch<Option<&T>>
+impl<T> AsQuery for WithEpoch<Read<T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Query = PhantomData<fn() -> Self>;
-
-    fn into_query(self) -> Self::Query {
-        PhantomData
-    }
+    type Query = Self;
 }
 
-unsafe impl<T> Query for WithEpoch<Option<&T>>
+impl<T> IntoQuery for WithEpoch<Read<T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Item<'a> = Option<(&'a T, EpochId)>;
-    type Fetch<'a> = Option<WithEpochFetchRead<'a, T>>;
-
-    #[inline(always)]
-    fn access(&self, ty: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(ty)
-    }
-
-    #[inline(always)]
-    fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.component(TypeId::of::<T>()) {
-            None => true,
-            Some(component) => unsafe {
-                debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
-
-                debug_assert_eq!(component.id(), TypeId::of::<T>());
-                let data = component.data();
-                data.epoch.after(self.after_epoch)
-            },
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(<&T as PhantomQuery>::visit_archetype(archetype), true);
-
-            debug_assert_eq!(component.id(), TypeId::of::<T>());
-            let data = component.data();
-            if data.epoch.after(self.after_epoch) {
-                f(TypeId::of::<T>(), Access::Read)
-            }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn fetch<'a>(
-        &mut self,
-        archetype: &'a Archetype,
-        _epoch: EpochId,
-    ) -> Option<WithEpochFetchRead<'a, T>> {
-        match archetype.component(TypeId::of::<T>()) {
-            None => None,
-            Some(component) => {
-                let data = component.data();
-
-                debug_assert!(data.epoch.after(self.after_epoch));
-
-                Some(WithEpochFetchRead {
-                    after_epoch: self.after_epoch,
-                    ptr: data.ptr.cast(),
-                    entity_epochs: NonNull::new_unchecked(
-                        data.entity_epochs.as_ptr() as *mut EpochId
-                    ),
-                    chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId),
-                    marker: PhantomData,
-                })
-            }
-        }
+    fn into_query(self) -> Self {
+        self
     }
 }
 
-unsafe impl<T> ImmutableQuery for WithEpoch<Option<&T>> where T: Sync + 'static {}
-
-impl<'a, T> QueryArgGet<'a> for ModifiedCache<Option<&T>>
+impl<T> DefaultQuery for WithEpoch<Read<T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Arg = WithEpoch<Option<&'a T>>;
-    type Query = WithEpoch<Option<&'a T>>;
-
-    #[inline(always)]
-    fn get(&mut self, world: &'a World) -> WithEpoch<Option<&T>> {
-        let after_epoch = core::mem::replace(&mut self.after_epoch, world.epoch());
-
-        WithEpoch {
-            after_epoch,
-            marker: PhantomData,
-        }
+    fn default_query() -> Self {
+        WithEpoch(Read)
     }
 }
 
-impl<T> QueryArgCache for ModifiedCache<Option<&T>>
+impl<T> QueryArg for WithEpoch<Read<T>>
 where
     T: Sync + 'static,
 {
     fn new() -> Self {
-        ModifiedCache {
-            after_epoch: EpochId::start(),
+        WithEpoch(Read)
+    }
+}
+
+unsafe impl<T> Query for WithEpoch<Read<T>>
+where
+    T: 'static,
+{
+    type Item<'a> = (&'a T, EpochId);
+    type Fetch<'a> = WithEpochFetchRead<'a, T>;
+
+    const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = false;
+
+    #[inline(always)]
+    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+        self.0.component_type_access(ty)
+    }
+
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        self.0.visit_archetype(archetype)
+    }
+
+    #[inline(always)]
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
+        self.0.access_archetype(archetype, f);
+    }
+
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> WithEpochFetchRead<'a, T> {
+        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
+        debug_assert_eq!(component.id(), TypeId::of::<T>());
+
+        let data = component.data();
+
+        WithEpochFetchRead {
+            ptr: data.ptr.cast(),
+            epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
             marker: PhantomData,
         }
     }
-
-    fn access_component(&self, ty: TypeId) -> Option<Access> {
-        <&T as PhantomQuery>::access(id)
-    }
-
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
-        true
-    }
 }
 
-impl<'a, T> QueryArg for WithEpoch<Option<&T>>
-where
-    T: Sync + 'static,
-{
-    type Cache = ModifiedCache<Option<&'static T>>;
-}
+unsafe impl<T> ImmutableQuery for WithEpoch<Read<T>> where T: 'static {}
+unsafe impl<T> SendQuery for WithEpoch<Read<T>> where T: Sync + 'static {}

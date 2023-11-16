@@ -3,7 +3,10 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{write::Write, Access, Fetch, IntoQuery, Query, WriteAlias},
+    query::{
+        option::OptionQuery, write::Write, Access, AsQuery, Fetch, IntoQuery, Query, SendQuery,
+        WriteAlias,
+    },
     system::QueryArg,
     world::World,
 };
@@ -22,7 +25,7 @@ pub struct ModifiedFetchWrite<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchWrite<'a, T>
 where
-    T: Send + 'a,
+    T: 'a,
 {
     type Item = &'a mut T;
 
@@ -65,26 +68,24 @@ where
     }
 }
 
-impl<T> IntoQuery for Modified<&mut T>
+impl<T> AsQuery for Modified<&mut T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Query = Modified<Write<T>>;
+}
 
-    fn into_query(self) -> Modified<Write<T>> {
-        Modified {
-            after_epoch: self.after_epoch,
-            marker: PhantomData,
-        }
-    }
+impl<T> AsQuery for Modified<Write<T>>
+where
+    T: 'static,
+{
+    type Query = Self;
 }
 
 impl<T> IntoQuery for Modified<Write<T>>
 where
-    T: Send + 'static,
+    T: 'static,
 {
-    type Query = Self;
-
     fn into_query(self) -> Self {
         self
     }
@@ -98,7 +99,7 @@ where
     fn new() -> Self {
         Modified {
             after_epoch: EpochId::start(),
-            marker: PhantomData,
+            query: Write,
         }
     }
 
@@ -110,7 +111,7 @@ where
 
 unsafe impl<T> Query for Modified<Write<T>>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = ModifiedFetchWrite<'a, T>;
@@ -119,7 +120,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Write::<T>.component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -127,7 +128,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data_mut();
@@ -165,36 +166,35 @@ where
     }
 }
 
-impl<T> IntoQuery for Modified<Option<&mut T>>
-where
-    T: Send + 'static,
-{
-    type Query = Modified<Option<Write<T>>>;
+unsafe impl<T> SendQuery for Modified<Write<T>> where T: Send + 'static {}
 
-    #[inline(always)]
-    fn into_query(self) -> Modified<Option<Write<T>>> {
-        Modified {
-            after_epoch: self.after_epoch,
-            marker: PhantomData,
-        }
-    }
+impl<T> AsQuery for Modified<Option<&mut T>>
+where
+    T: 'static,
+{
+    type Query = Modified<OptionQuery<Write<T>>>;
 }
 
-impl<T> IntoQuery for Modified<Option<Write<T>>>
+impl<T> AsQuery for Modified<OptionQuery<Write<T>>>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Modified<OptionQuery<Write<T>>>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
 }
 
-unsafe impl<T> Query for Modified<Option<Write<T>>>
+unsafe impl<T> Query for Modified<OptionQuery<Write<T>>>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Item<'a> = Option<&'a mut T>;
     type Fetch<'a> = Option<ModifiedFetchWrite<'a, T>>;
@@ -203,7 +203,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Some(Write::<T>).component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -211,7 +211,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -223,7 +223,7 @@ where
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(Write::<T>.visit_archetype(archetype), true);
+            debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -261,3 +261,5 @@ where
         }
     }
 }
+
+unsafe impl<T> SendQuery for Modified<OptionQuery<Write<T>>> where T: Send + 'static {}

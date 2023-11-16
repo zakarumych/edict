@@ -10,7 +10,7 @@ use core::{
     ptr::NonNull,
 };
 
-use super::{Access, ActionQueue, IntoSystem, System};
+use super::{Access, ActionBufferQueue, IntoSystem, System};
 use crate::{archetype::Archetype, world::World};
 
 pub use self::{
@@ -96,13 +96,13 @@ pub unsafe trait FnArgState: Send + 'static {
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        queue: &mut dyn ActionQueue,
+        queue: &mut dyn ActionBufferQueue,
     ) -> Self::Arg<'a>;
 
     /// Flushes the argument state.
     /// This method is called after system execution, when `Arg` is already dropped.
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
         let _ = world;
         let _ = queue;
     }
@@ -206,7 +206,7 @@ For example `View` type does not use runtime borrow check and should be replaced
             }
 
             #[inline(always)]
-            unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionQueue) {
+            unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
                 let ($($a,)*) = &mut self.args;
 
                 {

@@ -2,8 +2,11 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     component::Component,
+    flow::flows_system,
     query::{Entities, ImmutableQuery, Not, With, Without},
     relation::{ChildOf, Relation},
+    scheduler::Scheduler,
+    spawn_block,
     world::World,
 };
 
@@ -509,9 +512,9 @@ fn test_symmetric_exclusive_relation() {
 
 #[test]
 fn test_filters() {
-    use crate::query::IntoQuery;
+    use crate::query::AsQuery;
 
-    fn is_filter<F: IntoQuery>()
+    fn is_filter<F: AsQuery>()
     where
         F::Query: ImmutableQuery,
     {
@@ -567,4 +570,36 @@ fn add_relation() {
 
     world.insert(origin, Foo).unwrap();
     world.add_relation(origin, ChildOf, target).unwrap();
+}
+
+#[test]
+fn test_flow() {
+    let mut world = World::new();
+    let mut scheduler = Scheduler::new();
+    scheduler.add_system(flows_system);
+
+    assert_eq!(world.view::<&U32>().iter().count(), 0);
+
+    spawn_block! {in world -> world.spawn((U32(42),)); };
+
+    assert_eq!(world.view::<&U32>().iter().count(), 0);
+    scheduler.run_sequential(&mut world);
+    assert_eq!(world.view::<&U32>().iter().count(), 1);
+}
+
+#[test]
+fn test_entity_flow() {
+    let mut world = World::new();
+    let mut scheduler = Scheduler::new();
+    scheduler.add_system(flows_system);
+
+    let e = world.spawn(()).id();
+
+    assert_eq!(world.view::<&U32>().iter().count(), 0);
+
+    spawn_block! {in world for e -> e.insert(U32(42)).unwrap(); };
+
+    assert_eq!(world.view::<&U32>().iter().count(), 0);
+    scheduler.run_sequential(&mut world);
+    assert_eq!(world.view::<&U32>().iter().count(), 1);
 }

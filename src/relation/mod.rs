@@ -45,7 +45,7 @@ mod query;
 /// is dropped. Appropriate hook method is called when this happens.
 /// `on_drop` is called when relation is dropped from "origin" entity.
 /// `on_target_drop` is called when "target" entity is dropped.
-pub trait Relation: Send + Sync + Copy + 'static {
+pub trait Relation: Copy + 'static {
     /// If `true` then relation can be added only once to an entity.
     /// If another exclusive relation is added to the same entity,
     /// then the old one is removed.

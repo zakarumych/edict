@@ -6,7 +6,9 @@ use crate::{
     system::QueryArg,
 };
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+};
 
 /// [`Fetch`] type for the [`Entities`] query.
 pub struct EntitiesFetch<'a> {
@@ -28,7 +30,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
         let id = *self.entities.get_unchecked(idx as usize);
-        EntityLoc::new(id, Location::new(self.archetype, idx))
+        EntityLoc::from_parts(id, Location::new(self.archetype, idx))
     }
 }
 
@@ -37,9 +39,11 @@ marker_type! {
     pub struct Entities;
 }
 
-impl IntoQuery for Entities {
+impl AsQuery for Entities {
     type Query = Self;
+}
 
+impl IntoQuery for Entities {
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -97,8 +101,9 @@ unsafe impl Query for Entities {
     where
         EntityId: 'a,
     {
-        Some(EntityLoc::new(id, Location::reserved(idx)))
+        Some(EntityLoc::from_parts(id, Location::reserved(idx)))
     }
 }
 
 unsafe impl ImmutableQuery for Entities {}
+unsafe impl SendQuery for Entities {}

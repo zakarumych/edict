@@ -193,7 +193,7 @@ impl<'a> ActionEncoder<'a> {
     #[inline(always)]
     pub fn add_relation<R>(&mut self, origin: impl Entity, relation: R, target: impl Entity)
     where
-        R: Relation,
+        R: Relation + Send,
     {
         let origin = origin.id();
         let target = target.id();

@@ -3,15 +3,12 @@
 use alloc::{vec, vec::Vec};
 use core::{
     any::{type_name, TypeId},
-    cell::Cell,
     convert::TryFrom,
     fmt::{self, Debug},
     marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU64, Ordering},
 };
-
-use atomicell::{Ref, RefMut};
 
 use crate::{
     action::{ActionBuffer, ActionChannel, ActionEncoder, ActionSender},
@@ -100,6 +97,7 @@ impl ArchetypeSet {
     fn new() -> Self {
         let null_archetype = Archetype::new(core::iter::empty());
         ArchetypeSet {
+            // All archetype sets starts the same.
             id: 0,
             archetypes: vec![null_archetype],
         }
@@ -116,6 +114,9 @@ impl ArchetypeSet {
         };
         let new_archetype = f(&self.archetypes);
         self.archetypes.push(new_archetype);
+
+        // Update archetype set id to new process-wide unique value.
+        // Assume u64 increment won't overflow.
         self.id = NEXT_ARCHETYPE_SET_ID.fetch_add(1, Ordering::Relaxed);
         len
     }
@@ -263,7 +264,7 @@ impl World {
     }
 
     /// Returns a slice of all materialized archetypes.
-    pub(crate) fn archetypes_mut(&self) -> &mut [Archetype] {
+    pub(crate) fn archetypes_mut(&mut self) -> &mut [Archetype] {
         &mut self.archetypes
     }
 
@@ -281,11 +282,9 @@ impl World {
     /// let local = world.local();
     /// assert_eq!(42, local.get_resource::<Cell<i32>>().unwrap().get());
     /// ```
-    pub fn local(&mut self) -> WorldLocal<'_> {
-        WorldLocal {
-            world: self,
-            marker: PhantomData,
-        }
+    #[inline(always)]
+    pub fn local(&mut self) -> &mut WorldLocal {
+        WorldLocal::wrap(self)
     }
 
     /// Returns [`ActionSender`] instance bound to this [`World`].\
@@ -304,7 +303,7 @@ impl World {
     ///
     /// let mut world = World::new();
     ///
-    /// let action_sender = world.action_sender();
+    /// let action_sender = world.new_action_sender();
     ///
     /// let handle = std::thread::spawn(move || {
     ///    action_sender.closure(|world| {
@@ -317,7 +316,7 @@ impl World {
     /// world.execute_received_actions();
     /// world.expect_resource_mut::<i32>();
     /// ```
-    pub fn action_sender(&self) -> ActionSender {
+    pub fn new_action_sender(&self) -> ActionSender {
         self.action_channel.sender()
     }
 
@@ -342,17 +341,17 @@ impl World {
 
     /// Runs world maintenance.
     ///
-    /// Users typically do not need to call this method,
+    /// Users do not call this method,
     /// it is automatically called in every method that borrows world mutably.
+    /// It is one `if zero_check { return }` if no entities were allocated since last call.
     ///
     /// The only observable effect of manual call to this method
     /// is execution of actions encoded with [`ActionSender`].
     #[inline(always)]
     fn maintenance(&mut self) {
-        let epoch = self.epoch.current_mut();
         let archetype = &mut self.archetypes[0];
         self.entities
-            .spawn_allocated(|id| archetype.spawn(id, (), epoch));
+            .spawn_allocated(|id| archetype.spawn_empty(id));
     }
 
     pub(crate) unsafe fn with_buffer<R>(
@@ -378,7 +377,10 @@ impl World {
     }
 }
 
-/// A reference to [`World`] that allows to fetch local resources.
+/// A reference to [`World`] that is guaranteed to be not shared
+/// across threads.
+///
+/// It also allows fetching local resources.
 ///
 /// # Examples
 ///
@@ -397,158 +399,62 @@ impl World {
 ///
 /// test_sync::<WorldLocal>;
 /// ```
-pub struct WorldLocal<'a> {
-    world: &'a mut World,
-    marker: PhantomData<Cell<World>>,
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<&WorldLocal>;
+/// ```
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<&mut WorldLocal>;
+/// ```
+#[repr(transparent)]
+pub struct WorldLocal {
+    world: World,
+    marker: PhantomData<WorldLocalIsNotSync>,
 }
 
-impl Deref for WorldLocal<'_> {
+struct WorldLocalIsNotSync {
+    _ptr: *mut (),
+}
+
+impl Deref for WorldLocal {
     type Target = World;
 
-    fn deref(&self) -> &Self::Target {
-        self.world
+    fn deref(&self) -> &World {
+        &self.world
     }
 }
 
-impl DerefMut for WorldLocal<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.world
+impl DerefMut for WorldLocal {
+    fn deref_mut(&mut self) -> &mut World {
+        &mut self.world
     }
 }
 
-impl Debug for WorldLocal<'_> {
+impl Debug for WorldLocal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <World as Debug>::fmt(&*self.world, f)
+        <World as Debug>::fmt(&self.world, f)
     }
 }
 
-impl WorldLocal<'_> {
-    /// Returns some reference to a resource.
-    /// Returns none if resource is not found.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::rc::Rc;
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let world = world.local();
-    /// assert!(world.get_resource::<Rc<i32>>().is_none());
-    /// ```
-    ///
-    /// ```
-    /// # use std::rc::Rc;
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let mut world = world.local();
-    /// world.insert_resource(Rc::new(42i32));
-    /// assert_eq!(**world.get_resource::<Rc<i32>>().unwrap(), 42);
-    /// ```
-    pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        // Safety:
-        // Mutable reference to `Res` ensures this is the "main" thread.
-        unsafe { self.world.res.get_local() }
-    }
-
-    /// Returns reference to a resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let world = world.local();
-    /// world.expect_resource::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let mut world = world.local();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(*world.expect_resource::<i32>(), 42);
-    /// ```
-    #[track_caller]
-    pub fn expect_resource<T: 'static>(&self) -> Ref<T> {
-        // Safety:
-        // Mutable reference to `Res` ensures this is the "main" thread.
-        unsafe { self.world.res.get_local() }.unwrap()
-    }
-
-    /// Returns a copy for the a resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let world = world.local();
-    /// world.copy_resource::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let mut world = world.local();
-    /// world.insert_resource(42i32);
-    /// assert_eq!(world.copy_resource::<i32>(), 42);
-    /// ```
-    #[track_caller]
-    pub fn copy_resource<T: Copy + 'static>(&self) -> T {
-        // Safety:
-        // Mutable reference to `Res` ensures this is the "main" thread.
-        *unsafe { self.world.res.get_local() }.unwrap()
-    }
-
-    /// Returns some mutable reference to a resource.
-    /// Returns none if resource is not found.
-    pub fn get_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        // Safety:
-        // Mutable reference to `Res` ensures this is the "main" thread.
-        unsafe { self.world.res.get_local_mut() }
-    }
-
-    /// Returns mutable reference to a resource.
-    ///
-    /// # Panics
-    ///
-    /// This method will panic if resource is missing.
-    ///
-    /// # Examples
-    ///
-    /// ```should_panic
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let mut world = world.local();
-    /// let world = world.local();
-    /// world.expect_resource_mut::<i32>();
-    /// ```
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// let mut world = world.local();
-    /// world.insert_resource(42i32);
-    /// *world.expect_resource_mut::<i32>() = 11;
-    /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
-    /// ```
-    #[track_caller]
-    pub fn expect_resource_mut<T: 'static>(&self) -> RefMut<T> {
-        // Safety:
-        // Mutable reference to `Res` ensures this is the "main" thread.
-        unsafe { self.world.res.get_local_mut() }.unwrap()
+impl WorldLocal {
+    #[inline(always)]
+    fn wrap(world: &mut World) -> &mut Self {
+        // Safety: #[repr(transparent)] allows this cast.
+        unsafe { &mut *(world as *mut World as *mut Self) }
     }
 }
 
-fn register_bundle<B: ComponentBundleDesc>(registry: &mut ComponentRegistry, bundle: &B) {
+pub(crate) fn register_bundle<B: ComponentBundleDesc>(
+    registry: &mut ComponentRegistry,
+    bundle: &B,
+) {
     bundle.with_components(|infos| {
         for info in infos {
             registry.get_or_register_raw(info.clone());
@@ -556,7 +462,10 @@ fn register_bundle<B: ComponentBundleDesc>(registry: &mut ComponentRegistry, bun
     });
 }
 
-fn assert_registered_bundle<B: BundleDesc>(registry: &mut ComponentRegistry, bundle: &B) {
+pub(crate) fn assert_registered_bundle<B: BundleDesc>(
+    registry: &mut ComponentRegistry,
+    bundle: &B,
+) {
     bundle.with_ids(|ids| {
         for (idx, id) in ids.iter().enumerate() {
             if registry.get_info(*id).is_none() {

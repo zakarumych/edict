@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
+    query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write, WriteAlias},
     relation::{OriginComponent, Relation},
     Access,
 };
@@ -40,7 +40,7 @@ pub struct FetchRelatesToRead<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesToRead<'a, R>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Item = &'a R;
 
@@ -78,27 +78,24 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesTo<&R>
+impl<R> AsQuery for RelatesTo<&R>
 where
     R: Relation + 'static,
 {
     type Query = RelatesTo<Read<R>>;
+}
 
-    #[inline(always)]
-    fn into_query(self) -> RelatesTo<Read<R>> {
-        RelatesTo {
-            target: self.target,
-            phantom: PhantomData,
-        }
-    }
+impl<R> AsQuery for RelatesTo<Read<R>>
+where
+    R: Relation + 'static,
+{
+    type Query = Self;
 }
 
 impl<R> IntoQuery for RelatesTo<Read<R>>
 where
     R: Relation + 'static,
 {
-    type Query = Self;
-
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -107,7 +104,7 @@ where
 
 unsafe impl<R> Query for RelatesTo<Read<R>>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Item<'a> = &'a R;
     type Fetch<'a> = FetchRelatesToRead<'a, R>;
@@ -154,7 +151,8 @@ where
     }
 }
 
-unsafe impl<R> ImmutableQuery for RelatesTo<Read<R>> where R: Relation + Sync {}
+unsafe impl<R> ImmutableQuery for RelatesTo<Read<R>> where R: Relation {}
+unsafe impl<R> SendQuery for RelatesTo<Read<R>> where R: Relation + Sync {}
 
 /// Fetch for the `RelatesTo<R>` query.
 pub struct FetchRelatesToWrite<'a, R: Relation> {
@@ -169,7 +167,7 @@ pub struct FetchRelatesToWrite<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesToWrite<'a, R>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Item = &'a mut R;
 
@@ -219,27 +217,24 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesTo<&mut R>
+impl<R> AsQuery for RelatesTo<&mut R>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Query = RelatesTo<Write<R>>;
+}
 
-    #[inline(always)]
-    fn into_query(self) -> RelatesTo<Write<R>> {
-        RelatesTo {
-            target: self.target,
-            phantom: PhantomData,
-        }
-    }
+impl<R> AsQuery for RelatesTo<Write<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
 }
 
 impl<R> IntoQuery for RelatesTo<Write<R>>
 where
-    R: Relation + Send,
+    R: Relation,
 {
-    type Query = Self;
-
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -248,7 +243,7 @@ where
 
 unsafe impl<R> Query for RelatesTo<Write<R>>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Item<'a> = &'a mut R;
     type Fetch<'a> = FetchRelatesToWrite<'a, R>;
@@ -298,3 +293,5 @@ where
         }
     }
 }
+
+unsafe impl<R> SendQuery for RelatesTo<Write<R>> where R: Relation + Send {}

@@ -1,8 +1,10 @@
+use core::mem::MaybeUninit;
+
 use crate::{
     archetype::Archetype,
     entity::{AliveEntity, EntityId, Location},
     epoch::EpochCounter,
-    query::{ImmutableQuery, IntoQuery, Query, QueryItem},
+    query::{AsQuery, ImmutableQuery, Query, QueryItem},
     world::World,
 };
 
@@ -14,7 +16,9 @@ use super::{expect_match, get_at, BorrowState, RuntimeBorrowState};
 pub struct ViewOneState<'a, Q: Query, F: Query> {
     query: Q,
     filter: F,
-    archetype: &'a Archetype,
+
+    // Init if loc.arch != u32::MAX
+    archetype: MaybeUninit<&'a Archetype>,
     id: EntityId,
     loc: Location,
     borrow: RuntimeBorrowState,
@@ -37,17 +41,20 @@ impl<'a, Q: Query, F: Query> ViewOneState<'a, Q, F> {
     /// to reuse it later.
     #[inline(always)]
     pub fn unlock(&self) {
-        self.borrow.release(
-            self.query,
-            self.filter,
-            core::slice::from_ref(self.archetype),
-        )
+        if self.loc.arch == u32::MAX {
+            return;
+        }
+
+        // Safety: archetype is init if loc.arch != u32::MAX
+        let archetype = unsafe { self.archetype.assume_init() };
+
+        self.borrow
+            .release(self.query, self.filter, core::slice::from_ref(archetype))
     }
 }
 
 /// View for single entity.
-pub type ViewOne<'a, Q, F = ()> =
-    ViewOneState<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query>;
+pub type ViewOne<'a, Q, F = ()> = ViewOneState<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query>;
 
 impl<'a, Q, F> ViewOneState<'a, Q, F>
 where
@@ -58,11 +65,15 @@ where
     #[inline(always)]
     pub fn new(world: &'a World, entity: impl AliveEntity, query: Q, filter: F) -> Self {
         let loc = entity.locate(world.entities());
-        let archetype = &world.archetypes()[loc.arch as usize];
+        let mut archetype = MaybeUninit::uninit();
+
+        if loc.arch != u32::MAX {
+            archetype.write(&world.archetypes()[loc.arch as usize]);
+        }
 
         ViewOneState {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: query,
+            filter: filter,
             archetype,
             id: entity.id(),
             loc,
@@ -87,39 +98,26 @@ where
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
         }
 
-        // Ensure to borrow view's data.
-        self.borrow.acquire(
-            self.query,
-            self.filter,
-            core::slice::from_ref(self.archetype),
-        );
+        // Safety: archetype is init if loc.arch != u32::MAX
+        let archetype = unsafe { self.archetype.assume_init() };
 
-        unsafe { self._get() }
+        // Ensure to borrow view's data.
+        self.borrow
+            .acquire(self.query, self.filter, core::slice::from_ref(archetype));
+
+        unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) }
     }
 
     /// Fetches data that matches the view's query and filter
     /// from a bound entity.
     ///
-    /// Returns none if entity does not match the view's query and filter.
+    /// # Panics
+    ///
+    /// Panics if entity does not match the view's query and filter.
     #[inline(always)]
     #[track_caller]
     pub fn expect_mut(&mut self) -> QueryItem<Q> {
-        if self.loc.arch == u32::MAX {
-            return expect_match(Query::reserved_entity_item(
-                &self.query,
-                self.id,
-                self.loc.idx,
-            ));
-        }
-
-        // Ensure to borrow view's data.
-        self.borrow.acquire(
-            self.query,
-            self.filter,
-            core::slice::from_ref(self.archetype),
-        );
-
-        expect_match(unsafe { self._get() })
+        expect_match(self.get_mut())
     }
 
     /// Fetches data that matches the view's query and filter
@@ -133,25 +131,24 @@ where
         Fun: FnOnce(QueryItem<Q>) -> R,
     {
         if self.loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, self.id, self.loc.idx).map(f);
+            let item = Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
+            return match item {
+                Some(item) => Some(f(item)),
+                None => None,
+            };
         }
 
-        // Ensure to borrow view's data.
-        self.borrow
-            .with(self.query, self.filter, self.archetype, || {
-                unsafe { self._get() }.map(f)
-            })
-    }
+        // Safety: archetype is init if loc.arch != u32::MAX
+        let archetype = unsafe { self.archetype.assume_init() };
 
-    #[inline(always)]
-    unsafe fn _get(&self) -> Option<QueryItem<Q>> {
-        get_at(
-            self.query,
-            self.filter,
-            self.epochs,
-            self.archetype,
-            self.loc,
-        )
+        // Ensure to borrow view's data.
+        self.borrow.with(self.query, self.filter, archetype, || {
+            let item = unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) };
+            match item {
+                Some(item) => Some(f(item)),
+                None => None,
+            }
+        })
     }
 }
 
@@ -170,14 +167,14 @@ where
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
         }
 
-        // Ensure to borrow view's data.
-        self.borrow.acquire(
-            self.query,
-            self.filter,
-            core::slice::from_ref(self.archetype),
-        );
+        // Safety: archetype is init if loc.arch != u32::MAX
+        let archetype = unsafe { self.archetype.assume_init() };
 
-        unsafe { self._get() }
+        // Ensure to borrow view's data.
+        self.borrow
+            .acquire(self.query, self.filter, core::slice::from_ref(archetype));
+
+        unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) }
     }
 
     /// Fetches data that matches the view's query and filter
@@ -187,22 +184,7 @@ where
     #[inline(always)]
     #[track_caller]
     pub fn expect(&self) -> QueryItem<Q> {
-        if self.loc.arch == u32::MAX {
-            return expect_match(Query::reserved_entity_item(
-                &self.query,
-                self.id,
-                self.loc.idx,
-            ));
-        }
-
-        // Ensure to borrow view's data.
-        self.borrow.acquire(
-            self.query,
-            self.filter,
-            core::slice::from_ref(self.archetype),
-        );
-
-        expect_match(unsafe { self._get() })
+        expect_match(self.get())
     }
 
     /// Fetches data that matches the view's query and filter
@@ -216,13 +198,23 @@ where
         Fun: FnOnce(QueryItem<Q>) -> R,
     {
         if self.loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, self.id, self.loc.idx).map(f);
+            let item = Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
+            return match item {
+                Some(item) => Some(f(item)),
+                None => None,
+            };
         }
 
+        // Safety: archetype is init if loc.arch != u32::MAX
+        let archetype = unsafe { self.archetype.assume_init() };
+
         // Ensure to borrow view's data.
-        self.borrow
-            .with(self.query, self.filter, self.archetype, || {
-                unsafe { self._get() }.map(f)
-            })
+        self.borrow.with(self.query, self.filter, archetype, || {
+            let item = unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) };
+            match item {
+                Some(item) => Some(f(item)),
+                None => None,
+            }
+        })
     }
 }

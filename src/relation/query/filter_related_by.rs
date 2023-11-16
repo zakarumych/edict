@@ -4,7 +4,7 @@ use crate::{
     archetype::Archetype,
     entity::EntityId,
     epoch::EpochId,
-    query::{Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias},
     relation::{OriginComponent, Relation, TargetComponent},
     Access,
 };
@@ -64,7 +64,7 @@ where
 /// Filters targets of relation with specified origin.
 pub struct FilterRelatedBy<R> {
     origin: EntityId,
-    phantom: PhantomData<R>,
+    phantom: PhantomData<fn() -> R>,
 }
 
 impl_debug!(FilterRelatedBy<R> { origin });
@@ -80,12 +80,17 @@ impl<R> FilterRelatedBy<R> {
     }
 }
 
-impl<R> IntoQuery for FilterRelatedBy<R>
+impl<R> AsQuery for FilterRelatedBy<R>
 where
     R: Relation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for FilterRelatedBy<R>
+where
+    R: Relation,
+{
     #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
@@ -171,3 +176,4 @@ where
 }
 
 unsafe impl<R> ImmutableQuery for FilterRelatedBy<R> where R: Relation {}
+unsafe impl<R> SendQuery for FilterRelatedBy<R> where R: Relation {}

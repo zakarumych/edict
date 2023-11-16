@@ -4,7 +4,7 @@
 
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 
-use crate::query::ImmutableQuery;
+use crate::query::SendImmutableQuery;
 
 use super::{DumpSet, DumpSlot, Dumper, EntityDump, WorldDump};
 
@@ -51,7 +51,7 @@ macro_rules! dumper {
 
         impl<'a $(, $a)+, Fi> Serialize for WorldDump<'a, ($($a,)+), Fi>
         where
-            Fi: ImmutableQuery + Copy,
+            Fi: SendImmutableQuery + Copy,
             $($a: Serialize + Sync + 'static,)+
         {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

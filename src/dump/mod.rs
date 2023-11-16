@@ -13,7 +13,7 @@ use core::marker::PhantomData;
 
 use crate::{
     action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
-    query::ImmutableQuery, world::World, EntityError,
+    query::SendImmutableQuery, world::World, EntityError,
 };
 
 pub use self::query::DumpItem;
@@ -121,7 +121,7 @@ pub trait DumpSet {
         dumper: &mut D,
     ) -> Result<(), E>
     where
-        F: ImmutableQuery,
+        F: SendImmutableQuery,
         D: for<'a> Dumper<Self, Error = E>;
 }
 
@@ -205,7 +205,7 @@ macro_rules! set {
             #[inline(always)]
             fn dump_world<Fi, Du, Er>(world: &World, filter: Fi, after_epoch: EpochId, dumper: &mut Du) -> Result<(), Er>
             where
-                Fi: ImmutableQuery,
+                Fi: SendImmutableQuery,
                 Du: for<'a> Dumper<($($a,)+), Error = Er>,
             {
                 let view = world.view_with(DumpQuery::<($($a,)+)>::new(after_epoch)).filter(filter);
@@ -272,7 +272,7 @@ macro_rules! set {
                                 }
                             ),+)
                         }
-                        Err(EntityError::QueryMismatch) => unreachable!("Tuple of options is always satisfied"),
+                        Err(EntityError::Mismatch) => unreachable!("Tuple of options is always satisfied"),
                         Err(EntityError::NoSuchEntity) => {
                             indexed_tuple!(idx => $(
                                 if modified & (1 << idx) != 0 {

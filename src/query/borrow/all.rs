@@ -5,15 +5,15 @@ use crate::{
     archetype::Archetype,
     epoch::EpochId,
     query::{
-        read::Read, Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias,
+        read::Read, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        SendQuery, WriteAlias,
     },
     system::QueryArg,
 };
 
-marker_type! {
-    /// [`PhantomQuery`] that borrows from components.
-    pub struct QueryBorrowAll<T>;
-}
+/// Query that borrows from components.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryBorrowAll<T>(pub T);
 
 struct FetchBorrowAllReadComponent<'a, T: ?Sized> {
     ptr: NonNull<u8>,
@@ -29,7 +29,7 @@ pub struct FetchBorrowAllRead<'a, T: ?Sized> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAllRead<'a, T>
 where
-    T: Sync + ?Sized + 'a,
+    T: ?Sized + 'a,
 {
     type Item = Vec<&'a T>;
 
@@ -55,34 +55,34 @@ where
     }
 }
 
-impl<T> IntoQuery for QueryBorrowAll<&T>
+impl<T> AsQuery for QueryBorrowAll<&T>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Query = QueryBorrowAll<Read<T>>;
-
-    #[inline(always)]
-    fn into_query(self) -> QueryBorrowAll<Read<T>> {
-        QueryBorrowAll
-    }
 }
 
 impl<T> DefaultQuery for QueryBorrowAll<&T>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> QueryBorrowAll<Read<T>> {
-        QueryBorrowAll
+        QueryBorrowAll(Read)
     }
+}
+
+impl<T> AsQuery for QueryBorrowAll<Read<T>>
+where
+    T: ?Sized + 'static,
+{
+    type Query = Self;
 }
 
 impl<T> IntoQuery for QueryBorrowAll<Read<T>>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
-    type Query = Self;
-
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -91,11 +91,11 @@ where
 
 impl<T> DefaultQuery for QueryBorrowAll<Read<T>>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
-        QueryBorrowAll::new()
+        QueryBorrowAll(Read)
     }
 }
 
@@ -105,13 +105,13 @@ where
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryBorrowAll
+        QueryBorrowAll(Read)
     }
 }
 
 unsafe impl<T> Query for QueryBorrowAll<Read<T>>
 where
-    T: Sync + ?Sized + 'static,
+    T: ?Sized + 'static,
 {
     type Item<'a> = Vec<&'a T>;
     type Fetch<'a> = FetchBorrowAllRead<'a, T>;
@@ -175,4 +175,5 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for QueryBorrowAll<Read<T>> where T: ?Sized + 'static {}
+unsafe impl<T> SendQuery for QueryBorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}

@@ -294,6 +294,46 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
+    pub fn spawn_empty(&mut self, id: EntityId) -> u32 {
+        debug_assert!(self.matches(core::iter::empty()));
+        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+
+        let entity_idx = self.entities.len() as u32;
+
+        unsafe {
+            self.reserve(1);
+            debug_assert_ne!(self.entities.len(), self.entities.capacity());
+        }
+
+        self.entities.push(id);
+        entity_idx as u32
+    }
+
+    /// Spawns new entity in the archetype.
+    ///
+    /// Returns index of the newly created entity in the archetype.
+    pub fn spawn_one<T>(&mut self, id: EntityId, value: T, epoch: EpochId) -> u32
+    where
+        T: 'static,
+    {
+        debug_assert!(self.matches(core::iter::once(TypeId::of::<T>())));
+        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+
+        let entity_idx = self.entities.len() as u32;
+
+        unsafe {
+            self.reserve(1);
+            debug_assert_ne!(self.entities.len(), self.entities.capacity());
+            self.write_one(id, entity_idx, value, epoch, None);
+        }
+
+        self.entities.push(id);
+        entity_idx as u32
+    }
+
+    /// Spawns new entity in the archetype.
+    ///
+    /// Returns index of the newly created entity in the archetype.
     pub fn spawn<B>(&mut self, id: EntityId, bundle: B, epoch: EpochId) -> u32
     where
         B: DynamicBundle,
@@ -473,7 +513,7 @@ impl Archetype {
         unsafe { &*ptr }
     }
 
-    /// Borrows component mutably. Updates entity epoch.
+    /// Borrows component mutably. Updates component epoch.
     ///
     /// # Safety
     ///
@@ -504,6 +544,30 @@ impl Archetype {
         data.epoch.bump(epoch);
         chunk_epoch.bump(epoch);
         entity_epoch.bump(epoch);
+
+        unsafe { &mut *ptr }
+    }
+
+    /// Borrows component mutably. Does not update component epoch.
+    ///
+    /// # Safety
+    ///
+    /// Archetype must contain that component type.
+    #[inline(always)]
+    pub unsafe fn get_mut_nobump<T>(&mut self, entity_idx: u32) -> &mut T
+    where
+        T: 'static,
+    {
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(entity_idx < self.entities.len() as u32);
+
+        let component = unsafe {
+            self.components
+                .get_mut(&TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
+        let data = component.data.get_mut();
+        let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
 
         unsafe { &mut *ptr }
     }

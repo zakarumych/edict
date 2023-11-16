@@ -3,7 +3,10 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{filter::With, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{
+        filter::With, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+        WriteAlias,
+    },
     system::QueryArg,
     world::World,
 };
@@ -50,12 +53,17 @@ where
     unsafe fn get_item(&mut self, _: u32) {}
 }
 
-impl<T> IntoQuery for Modified<With<T>>
+impl<T> AsQuery for Modified<With<T>>
 where
     T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Modified<With<T>>
+where
+    T: 'static,
+{
     fn into_query(self) -> Self {
         self
     }
@@ -69,7 +77,7 @@ where
     fn new() -> Self {
         Modified {
             after_epoch: EpochId::start(),
-            marker: PhantomData,
+            query: With,
         }
     }
 
@@ -90,7 +98,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        With::<T>.component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -98,7 +106,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(With::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -134,3 +142,4 @@ where
 }
 
 unsafe impl<T> ImmutableQuery for Modified<With<T>> where T: 'static {}
+unsafe impl<T> SendQuery for Modified<With<T>> where T: 'static {}

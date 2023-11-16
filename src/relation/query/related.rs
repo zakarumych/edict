@@ -4,7 +4,9 @@ use crate::{
     archetype::Archetype,
     entity::EntityBound,
     epoch::EpochId,
-    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    },
     relation::{Relation, TargetComponent},
     system::QueryArg,
     Access,
@@ -17,12 +19,17 @@ marker_type! {
     pub struct Related<R>;
 }
 
-impl<R> IntoQuery for Related<R>
+impl<R> AsQuery for Related<R>
 where
     R: Relation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for Related<R>
+where
+    R: Relation,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -124,3 +131,4 @@ where
 }
 
 unsafe impl<R> ImmutableQuery for Related<R> where R: Relation {}
+unsafe impl<R> SendQuery for Related<R> where R: Relation {}

@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 
 mod component;
+// mod query;
 mod relation;
 
 mod kw {
@@ -130,3 +131,14 @@ pub fn derive_relation(
         Err(err) => err.to_compile_error().into(),
     }
 }
+
+// pub fn derive_query(
+//     item: TokenStream,
+//     edict_path: &syn::Path,
+//     edict_namespace: &syn::Ident,
+// ) -> TokenStream {
+//     match syn::parse2(item).and_then(|input| query::derive(input, edict_path, edict_namespace)) {
+//         Ok(output) => output.into(),
+//         Err(err) => err.to_compile_error().into(),
+//     }
+// }

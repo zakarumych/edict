@@ -1,5 +1,5 @@
 use core::{
-    any::TypeId,
+    any::{type_name, TypeId},
     marker::PhantomData,
     ops::{Deref, DerefMut},
     ptr::NonNull,
@@ -9,7 +9,7 @@ use atomicell::{Ref, RefMut};
 
 use crate::{
     archetype::Archetype,
-    system::{Access, ActionQueue},
+    system::{Access, ActionBufferQueue},
     world::World,
 };
 
@@ -112,12 +112,13 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> Res<'a, T> {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
-        Res {
-            inner: world.get_resource().expect("Missing resource"),
+        match world.get_resource() {
+            Some(r) => Res { inner: r },
+            None => missing_resource::<T>(),
         }
     }
 }
@@ -228,12 +229,13 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> ResMut<'a, T> {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
-        ResMut {
-            inner: world.get_resource_mut().expect("Missing resource"),
+        match world.get_resource_mut() {
+            Some(r) => ResMut { inner: r },
+            None => missing_resource::<T>(),
         }
     }
 }
@@ -336,15 +338,15 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> ResNoSync<'a, T> {
         // Safety: Declares read.
         let world = unsafe { world.as_ref() };
 
         // Safety: Declares read access and local execution.
-        let res = unsafe { world.get_local_resource() };
-        ResNoSync {
-            inner: res.expect("Missing resource"),
+        match unsafe { world.get_local_resource() } {
+            Some(r) => ResNoSync { inner: r },
+            None => missing_resource::<T>(),
         }
     }
 }
@@ -457,15 +459,19 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> ResMutNoSend<'a, T> {
         // Safety: Declares read.
         let world = unsafe { world.as_ref() };
 
         // Safety: Declares read access and local execution.
-        let res = unsafe { world.get_local_resource_mut() };
-        ResMutNoSend {
-            inner: res.expect("Missing resource"),
+        match unsafe { world.get_local_resource_mut() } {
+            Some(r) => ResMutNoSend { inner: r },
+            None => missing_resource::<T>(),
         }
     }
+}
+
+fn missing_resource<T>() -> ! {
+    panic!("Missing resource '{}'", type_name::<T>())
 }

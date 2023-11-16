@@ -74,6 +74,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // #![deny(missing_docs)]
 // #![deny(unsafe_op_in_unsafe_fn)]
+#![deny(unused_must_use)]
 #![allow(unused_unsafe)]
 
 extern crate alloc;
@@ -166,7 +167,7 @@ macro_rules! marker_type_impls {
         $(#[$meta:meta])*
         $vis:vis struct $type:ident $(< $($a:ident),+ >)?;
     ) => {
-        impl $(< $($a),+ >)? $type $(< $($a),+ >)? {
+        impl $(< $($a: ?Sized),+ >)? $type $(< $($a),+ >)? {
             /// Constructs new marker instance.
             /// This function is noop as it returns ZST and have no side-effects.
             #[must_use]
@@ -175,8 +176,8 @@ macro_rules! marker_type_impls {
             }
         }
 
-        impl $(< $($a),+ >)? core::marker::Copy for $type $(< $($a),+ >)? {}
-        impl $(< $($a),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
+        impl $(< $($a: ?Sized),+ >)? core::marker::Copy for $type $(< $($a),+ >)? {}
+        impl $(< $($a: ?Sized),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
             #[inline(always)]
             fn clone(&self) -> Self {
                 $type
@@ -186,7 +187,7 @@ macro_rules! marker_type_impls {
             fn clone_from(&mut self, _source: &Self) {}
         }
 
-        impl $(< $($a),+ >)? core::fmt::Debug for $type $(< $($a),+ >)?
+        impl $(< $($a: ?Sized),+ >)? core::fmt::Debug for $type $(< $($a),+ >)?
         $(where $($a : 'static,)+)?
         {
             fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -200,7 +201,7 @@ macro_rules! marker_type_impls {
             }
         }
 
-        impl $(< $($a),+ >)? Default for $type $(< $($a),+ >)? {
+        impl $(< $($a: ?Sized),+ >)? Default for $type $(< $($a),+ >)? {
             #[inline(always)]
             fn default() -> Self {
                 $type
@@ -444,8 +445,6 @@ pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;
-pub mod flow;
-pub mod prelude;
 pub mod query;
 pub mod relation;
 pub mod system;
@@ -454,15 +453,22 @@ pub mod world;
 
 #[cfg(feature = "std")]
 pub mod scheduler;
-#[cfg(feature = "std")]
-pub mod task;
+// #[cfg(feature = "std")]
+// pub mod task;
 
 mod hash;
 mod idx;
 mod res;
+#[cfg(feature = "std")]
+pub mod tls;
 
+#[cfg(feature = "std")]
+pub mod flow;
 #[cfg(test)]
 mod test;
+
+#[cfg(not(no_edict_prelude))]
+pub mod prelude;
 
 /// Error that may be returned when an entity is not found in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -484,8 +490,9 @@ pub enum EntityError {
     /// Error returned when an entity is not found in the world.
     NoSuchEntity,
 
-    /// Entity alive but does not match query.
-    QueryMismatch,
+    /// Entity alive but does not match requirements of the operations.
+    /// Typicall it means that required component is missing.
+    Mismatch,
 }
 
 unsafe trait ResultEntityError<T> {
@@ -497,7 +504,7 @@ unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
     unsafe fn assume_entity_exists(self) -> Option<T> {
         match self {
             Ok(value) => Some(value),
-            Err(EntityError::QueryMismatch) => None,
+            Err(EntityError::Mismatch) => None,
             Err(EntityError::NoSuchEntity) => unsafe { core::hint::unreachable_unchecked() },
         }
     }
@@ -514,7 +521,7 @@ impl fmt::Display for EntityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EntityError::NoSuchEntity => f.write_str("Specified entity is not found"),
-            EntityError::QueryMismatch => f.write_str("Entity does not match query"),
+            EntityError::Mismatch => f.write_str("Entity does not match requirements"),
         }
     }
 }
@@ -554,7 +561,12 @@ impl Access {
 
 #[doc(hidden)]
 pub mod private {
-    pub use alloc::vec::Vec;
+    pub use alloc::{sync::Arc, vec::Vec};
+    pub use core::mem::MaybeUninit;
+
+    pub use crate::flow::{
+        insert_entity_flow, insert_world_flow, EntityClosureSpawn, WorldClosureSpawn, YieldNow,
+    };
 }
 
 #[doc(hidden)]
@@ -562,6 +574,7 @@ pub struct ExampleComponent;
 
 impl component::Component for ExampleComponent {}
 
+#[cfg(not(no_edict_prelude))]
 #[doc(inline)]
 pub use self::prelude::*;
 

@@ -240,14 +240,14 @@ impl World {
             }
 
             // Safety: The location is valid for entity id in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) });
         }
 
         let dst_arch = self.edges.insert(
-            TypeId::of::<T>(),
             &mut self.registry,
             &mut self.archetypes,
             src_loc.arch,
+            TypeId::of::<T>(),
             get_or_register,
         );
 
@@ -263,7 +263,7 @@ impl World {
         };
 
         let (dst_idx, opt_src_id) =
-            unsafe { src.insert(entity.id(), dst, src_loc.idx, component, epoch) };
+            unsafe { src.insert(entity.id(), dst, src_loc.idx, component(), epoch) };
 
         let dst_loc = Location::new(dst_arch, dst_idx);
 
@@ -273,7 +273,7 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) })
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -405,7 +405,7 @@ impl World {
         if bundle.with_ids(|ids| ids.is_empty()) {
             // Safety: bundle is empty, so entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) });
         }
 
         let epoch = self.epoch.next_mut();
@@ -431,7 +431,7 @@ impl World {
 
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) });
         }
 
         let (before, after) = self
@@ -464,6 +464,6 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) })
     }
 }

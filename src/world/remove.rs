@@ -31,7 +31,7 @@ impl World {
         if !self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self) };
+            let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) };
             return Ok((None, e));
         }
 
@@ -63,7 +63,7 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        let e = unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) };
+        let e = unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) };
 
         Ok((Some(component), e))
     }
@@ -83,7 +83,7 @@ impl World {
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline(always)]
-    pub fn drop_with_buffer<T>(
+    pub(crate) fn drop_with_buffer<T>(
         &mut self,
         entity: impl Entity,
         buffer: &mut ActionBuffer,
@@ -120,7 +120,7 @@ impl World {
         if !self.archetypes[src_loc.arch as usize].has_component(tid) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) });
         }
 
         let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, tid);
@@ -155,7 +155,7 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) })
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -221,7 +221,7 @@ impl World {
         }) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) });
         }
 
         let dst_arch = self
@@ -258,6 +258,6 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        return Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) });
+        return Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) });
     }
 }

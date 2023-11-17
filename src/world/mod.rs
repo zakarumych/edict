@@ -11,7 +11,7 @@ use core::{
 };
 
 use crate::{
-    action::{ActionBuffer, ActionChannel, ActionEncoder, ActionSender},
+    action::{ActionChannel, ActionSender, LocalActionBuffer},
     archetype::Archetype,
     bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
@@ -27,32 +27,32 @@ pub(crate) use self::spawn::iter_reserve_hint;
 
 pub use self::builder::WorldBuilder;
 
-/// Takes internal action buffer and
-/// runs expression with it.
-/// After expression completes, action buffer is executed
-/// and then returned to the world.
-///
-/// While action buffer is taken,
-/// all paths would either use world's methods with explicit buffer
-/// or use `with_buffer` method,
-/// ensuring that action buffer is always present
-/// when this macro is called.
-macro_rules! with_buffer {
-    ($world:ident, $buffer:ident => $expr:expr) => {
-        unsafe {
-            let mut buffer = $world.action_buffer.take().unwrap_unchecked();
-            let result = {
-                let $buffer = &mut buffer;
-                $expr
-            };
-            if $world.execute_action_buffer && !buffer.is_empty() {
-                ActionBuffer::execute(&mut buffer, $world);
-            }
-            $world.action_buffer = Some(buffer);
-            result
-        }
-    };
-}
+// /// Takes internal action buffer and
+// /// runs expression with it.
+// /// After expression completes, action buffer is executed
+// /// and then returned to the world.
+// ///
+// /// While action buffer is taken,
+// /// all paths would either use world's methods with explicit buffer
+// /// or use `with_buffer` method,
+// /// ensuring that action buffer is always present
+// /// when this macro is called.
+// macro_rules! with_buffer {
+//     ($world:ident, $buffer:ident => $expr:expr) => {
+//         unsafe {
+//             let mut buffer = $world.action_buffer.take().unwrap_unchecked();
+//             let result = {
+//                 let $buffer = &mut buffer;
+//                 $expr
+//             };
+//             if $world.execute_action_buffer && !buffer.is_empty() {
+//                 ActionBuffer::execute(&mut buffer, $world);
+//             }
+//             $world.action_buffer = Some(buffer);
+//             result
+//         }
+//     };
+// }
 
 mod builder;
 mod edges;
@@ -163,8 +163,7 @@ pub struct World {
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
     /// Commands are immediately executed at the end of the mutating call.
-    action_buffer: Option<ActionBuffer>,
-    execute_action_buffer: bool,
+    action_buffer: LocalActionBuffer,
 
     action_channel: ActionChannel,
 }
@@ -320,20 +319,6 @@ impl World {
         self.action_channel.sender()
     }
 
-    /// Executes actions received from [`ActionSender`] instances
-    /// bound to this [`World`].
-    ///
-    /// See [`World::action_sender`] for more information.
-    pub fn execute_received_actions(&mut self) {
-        self.maintenance();
-        with_buffer!(self, buffer => {
-            self.action_channel.fetch();
-            while let Some(f) = self.action_channel.execute() {
-                f(self, buffer);
-            }
-        })
-    }
-
     /// Returns [`EntitySet`] from the [`World`].
     pub(crate) fn entities(&self) -> &EntitySet {
         &self.entities
@@ -354,26 +339,31 @@ impl World {
             .spawn_allocated(|id| archetype.spawn_empty(id));
     }
 
-    pub(crate) unsafe fn with_buffer<R>(
-        &mut self,
-        buffer: &mut ActionBuffer,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        let old_action_buffer = self.action_buffer.replace(core::mem::take(buffer));
-        let execute_action_buffer = core::mem::take(&mut self.execute_action_buffer);
-        let r = f(self);
-        *buffer = self.action_buffer.take().unwrap_unchecked();
-        self.action_buffer = old_action_buffer;
-        self.execute_action_buffer = execute_action_buffer;
-        r
+    /// Executes actions received from [`ActionSender`] instances
+    /// bound to this [`World`].
+    ///
+    /// See [`World::action_sender`] for more information.
+    pub fn execute_received_actions(&mut self) {
+        self.maintenance();
+        self.action_channel.fetch();
+        while let Some(f) = self.action_channel.pop() {
+            f.call(self);
+        }
     }
 
-    /// Executes closure with [`ActionEncoder`] instance bound to this [`World`].
-    pub fn with_encoder<R>(&mut self, f: impl FnOnce(&Self, ActionEncoder<'_>) -> R) -> R {
-        with_buffer!(self, buffer => {
-            let encoder = ActionEncoder::new(buffer, &self.entities);
-            f(self, encoder)
-        })
+    /// Runs world maintenance.
+    ///
+    /// Users do not call this method,
+    /// it is automatically called in every method that borrows world mutably.
+    /// It is one `if zero_check { return }` if no entities were allocated since last call.
+    ///
+    /// The only observable effect of manual call to this method
+    /// is execution of actions encoded with [`ActionSender`].
+    #[inline(always)]
+    fn execute_local_actions(&mut self) {
+        while let Some(action) = self.action_buffer.pop() {
+            action.call(self);
+        }
     }
 }
 
@@ -480,11 +470,13 @@ pub(crate) fn assert_registered_bundle<B: BundleDesc>(
     })
 }
 
-fn register_one<T: Component>(registry: &mut ComponentRegistry) -> &ComponentInfo {
+pub(crate) fn register_one<T: Component>(registry: &mut ComponentRegistry) -> &ComponentInfo {
     registry.get_or_register::<T>()
 }
 
-fn assert_registered_one<T: 'static>(registry: &mut ComponentRegistry) -> &ComponentInfo {
+pub(crate) fn assert_registered_one<T: 'static>(
+    registry: &mut ComponentRegistry,
+) -> &ComponentInfo {
     match registry.get_info(TypeId::of::<T>()) {
         Some(info) => info,
         None => panic!(

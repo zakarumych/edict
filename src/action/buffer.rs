@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 
 use crate::world::World;
 
-use super::{ActionEncoder, ActionFn};
+use super::{encoder::LocalActionEncoder, ActionEncoder, ActionFn, LocalActionFn};
 
 /// Buffer with all actions recorded by [`ActionEncoder`].
 #[derive(Default)]
@@ -23,11 +23,6 @@ impl ActionBuffer {
     #[inline(always)]
     pub(super) fn actions(&mut self) -> &mut VecDeque<ActionFn<'static>> {
         &mut self.actions
-    }
-
-    #[inline(always)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.actions.is_empty()
     }
 
     /// Returns an encoder that records actions into this buffer.
@@ -58,10 +53,83 @@ impl ActionBuffer {
         }
 
         while let Some(fun) = self.actions.pop_front() {
-            fun.call(world, self);
+            fun.call(world);
         }
 
         true
+    }
+}
+
+/// Buffer with all actions recorded by [`ActionEncoder`].
+#[derive(Default)]
+#[repr(transparent)]
+pub struct LocalActionBuffer {
+    actions: VecDeque<LocalActionFn<'static>>,
+}
+
+impl LocalActionBuffer {
+    /// Returns new empty action buffer.
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            actions: VecDeque::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub(super) fn actions(&mut self) -> &mut VecDeque<LocalActionFn<'static>> {
+        &mut self.actions
+    }
+
+    /// Returns an encoder that records actions into this buffer.
+    ///
+    /// Actions should be executed on the same [`World`],
+    /// otherwise entity ids will not refer to the correct entities.
+    #[inline(always)]
+    pub fn encoder<'a>(&'a mut self, world: &'a World) -> LocalActionEncoder<'a> {
+        LocalActionEncoder::new(self, world.entities())
+    }
+
+    /// Executes recorded actions onto the [`World`].
+    /// Iterates through all recorded actions and executes them one by one.
+    /// Executed actions may trigger component hooks.
+    /// Hooks record actions into the same buffer.
+    ///
+    /// After execution buffer is empty.
+    /// Actions recorded during execution are executed as well.
+    ///
+    /// An infinite recursion is possible if a hook records an action that
+    /// transitively triggers the same hook again.
+    ///
+    /// Returns `true` if at least one action was executed.
+    #[inline(always)]
+    pub fn execute(&mut self, world: &mut World) -> bool {
+        if self.actions.is_empty() {
+            return false;
+        }
+
+        while let Some(fun) = self.actions.pop_front() {
+            fun.call(world);
+        }
+
+        true
+    }
+
+    /// Executes recorded actions onto the [`World`].
+    /// Iterates through all recorded actions and executes them one by one.
+    /// Executed actions may trigger component hooks.
+    /// Hooks record actions into the same buffer.
+    ///
+    /// After execution buffer is empty.
+    /// Actions recorded during execution are executed as well.
+    ///
+    /// An infinite recursion is possible if a hook records an action that
+    /// transitively triggers the same hook again.
+    ///
+    /// Returns `true` if at least one action was executed.
+    #[inline(always)]
+    pub(crate) fn pop(&mut self) -> Option<LocalActionFn<'static>> {
+        self.actions.pop_front()
     }
 }
 
@@ -73,6 +141,13 @@ pub trait ActionBufferSliceExt {
 }
 
 impl ActionBufferSliceExt for [ActionBuffer] {
+    #[inline(always)]
+    fn execute_all(&mut self, world: &mut World) -> bool {
+        self.iter_mut().any(|encoder| encoder.execute(world))
+    }
+}
+
+impl ActionBufferSliceExt for [LocalActionBuffer] {
     #[inline(always)]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut().any(|encoder| encoder.execute(world))

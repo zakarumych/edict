@@ -13,13 +13,14 @@ mod channel;
 mod encoder;
 
 tiny_fn::tiny_fn! {
-    struct ActionFn = FnOnce(world: &mut World, buffer: &mut ActionBuffer) | + Send;
+    pub(crate) struct ActionFn = FnOnce(world: &mut World) | + Send;
+    pub(crate) struct LocalActionFn = FnOnce(world: &mut World);
 }
 
 pub use self::{
-    buffer::{ActionBuffer, ActionBufferSliceExt},
+    buffer::{ActionBuffer, ActionBufferSliceExt, LocalActionBuffer},
     channel::{ActionSender, SpawnBatchChannel},
-    encoder::{ActionEncoder, SpawnBatch},
+    encoder::{ActionEncoder, LocalActionEncoder, LocalSpawnBatch, SpawnBatch},
 };
 
 pub(crate) use self::channel::ActionChannel;

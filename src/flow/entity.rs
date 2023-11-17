@@ -12,7 +12,7 @@ use alloc::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::{
-    action::ActionEncoder,
+    action::LocalActionEncoder,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{EntityId, EntityRef},
@@ -72,7 +72,7 @@ where
             }
             Poll::Ready(()) => {
                 // Remove auto-waker for this future.
-                if let Some(auto_wake) = e.get::<&mut AutoWake>() {
+                if let Some(auto_wake) = e.get_mut::<&mut AutoWake>() {
                     auto_wake.remove_waker(cx.waker());
                 }
             }
@@ -240,7 +240,7 @@ impl Component for AutoWake {
     }
 
     #[inline(always)]
-    fn on_drop(&mut self, _id: EntityId, _encoder: ActionEncoder) {
+    fn on_drop(&mut self, _id: EntityId, _encoder: LocalActionEncoder) {
         // Wake all flows bound to this entity to
         // allow them to terminate.
         for waker in self.wakers.drain(..) {
@@ -384,7 +384,10 @@ impl FlowEntity<'_> {
     where
         T: Component,
     {
-        unsafe { flow_world().with(self.id, component) }
+        unsafe {
+            flow_world().with(self.id, component)?;
+        }
+        Ok(())
     }
 
     /// Attempts to insert a component to the entity if it does not have one.
@@ -407,7 +410,10 @@ impl FlowEntity<'_> {
     where
         T: 'static,
     {
-        unsafe { flow_world().with_external(self.id, component) }
+        unsafe {
+            flow_world().with_external(self.id, component)?;
+        }
+        Ok(())
     }
 
     /// Inserts bundle of components to the entity.

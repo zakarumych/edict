@@ -27,7 +27,7 @@ impl Component for Bool {}
 fn world_spawn() {
     let mut world = World::new();
 
-    let mut e = world.spawn((U32(42), Str("qwe")));
+    let e = world.spawn((U32(42), Str("qwe")));
     assert!(e.has_component::<U32>());
     assert!(e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
@@ -44,7 +44,7 @@ fn world_insert() {
     assert!(!e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), None);
 
-    e.insert(Str("qwe"));
+    e.with(|| Str("qwe"));
     assert!(e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 }
@@ -74,7 +74,7 @@ fn world_insert_bundle() {
     assert!(!e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), None);
 
-    e.insert_bundle((Str("qwe"), Bool(true)));
+    e.with_bundle((Str("qwe"), Bool(true)));
     assert!(e.has_component::<Str>());
     assert!(e.has_component::<Bool>());
     assert_eq!(
@@ -88,13 +88,13 @@ fn world_insert_bundle() {
 fn world_remove_bundle() {
     let mut world = World::new();
 
-    let mut e = world.spawn((U32(42), Str("qwe")));
+    let e = world.spawn((U32(42), Str("qwe")));
     assert!(e.has_component::<U32>());
     assert!(e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), Some((&U32(42), &Str("qwe"))));
 
     // When removing a bundle, any missing component is simply ignored.
-    e.drop_bundle::<(Str, Bool)>();
+    let e = e.drop_bundle::<(Str, Bool)>().unwrap();
     assert!(!e.has_component::<Str>());
     assert_eq!(e.get::<(&U32, &Str)>(), None);
 }

@@ -47,23 +47,23 @@ fn main() {
     //
     // Take care to not include duplicate components in one bundle
     // as method will surely panic.
-    let mut e = world.spawn_external((Foo, Bar, Baz));
+    let e = world.spawn_external((Foo, Bar, Baz));
 
     // Entity can be used to access components in the `World`.
     // Note that query returns `Option` because entity may not have a component.
     assert!(matches!(e.get::<&Foo>(), Some(&Foo)));
 
     // To add another component to the entity call `World::insert`.
-    e.insert_external(Value(0u32));
+    let e = e.insert_external(Value(0u32)).unwrap();
     assert!(matches!(e.get::<&Value<u32>>(), Some(&Value(0))));
 
     // If the component is already present in entity, the value is simply replaced.
-    e.insert_external(Value(1u32));
+    let e = e.insert_external(Value(1u32)).unwrap();
     assert!(matches!(e.get::<&Value<u32>>(), Some(&Value(1))));
 
     // To add few components at once user should call `World::insert_bundle`.
     // This is much more efficient than adding components once by one.
-    e.insert_external_bundle((Value(1u8), Value(2u16)));
+    let e = e.insert_external_bundle((Value(1u8), Value(2u16))).unwrap();
 
     // Spawned entities are despawned using [`World::despawn`] methods.
     e.despawn();

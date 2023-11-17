@@ -10,7 +10,7 @@ use alloc::{vec, vec::Vec};
 use core::{marker::PhantomData, mem::ManuallyDrop};
 
 use crate::{
-    action::ActionEncoder,
+    action::LocalActionEncoder,
     component::{Component, ComponentBorrow},
     entity::EntityId,
 };
@@ -75,7 +75,7 @@ pub trait Relation: Copy + 'static {
     /// Method that is called when relation is dropped on origin entity.
     /// Does nothing by default.
     #[inline(always)]
-    fn on_drop(&mut self, origin: EntityId, target: EntityId, encoder: ActionEncoder) {
+    fn on_drop(&mut self, origin: EntityId, target: EntityId, encoder: LocalActionEncoder) {
         let _ = origin;
         let _ = target;
         let _ = encoder;
@@ -97,7 +97,7 @@ pub trait Relation: Copy + 'static {
         origin: EntityId,
         target: EntityId,
         new_target: EntityId,
-        encoder: ActionEncoder,
+        encoder: LocalActionEncoder,
     ) -> bool {
         let _ = value;
         let _ = origin;
@@ -112,7 +112,7 @@ pub trait Relation: Copy + 'static {
     ///
     /// Does nothing by default.
     #[inline(always)]
-    fn on_target_drop(origin: EntityId, target: EntityId, encoder: ActionEncoder) {
+    fn on_target_drop(origin: EntityId, target: EntityId, encoder: LocalActionEncoder) {
         let _ = origin;
         let _ = target;
         let _ = encoder;
@@ -176,7 +176,7 @@ where
         origin: EntityId,
         target: EntityId,
         relation: R,
-        encoder: ActionEncoder,
+        encoder: LocalActionEncoder,
     ) {
         match R::EXCLUSIVE {
             false => {
@@ -203,7 +203,7 @@ where
         &mut self,
         origin: EntityId,
         target: EntityId,
-        mut encoder: ActionEncoder,
+        mut encoder: LocalActionEncoder,
     ) -> Option<R> {
         match R::EXCLUSIVE {
             false => {
@@ -231,7 +231,7 @@ where
     }
 
     /// Called by target relation component when it is dropped or replaced.
-    fn on_target_drop(origin: EntityId, target: EntityId, mut encoder: ActionEncoder) {
+    fn on_target_drop(origin: EntityId, target: EntityId, mut encoder: LocalActionEncoder) {
         if R::EXCLUSIVE {
             if R::OWNED {
                 encoder.despawn(origin);
@@ -244,7 +244,7 @@ where
                     return;
                 };
 
-                let Some(comp) = origin.get::<&mut Self>() else {
+                let Some(comp) = origin.get_mut::<&mut Self>() else {
                     return;
                 };
 
@@ -284,7 +284,12 @@ where
         }
     }
 
-    fn drop_one(relation: &mut R, origin: EntityId, target: EntityId, mut encoder: ActionEncoder) {
+    fn drop_one(
+        relation: &mut R,
+        origin: EntityId,
+        target: EntityId,
+        mut encoder: LocalActionEncoder,
+    ) {
         relation.on_drop(origin, target, encoder.reborrow());
         if R::SYMMETRIC {
             if target != origin {
@@ -301,7 +306,7 @@ where
         origin: EntityId,
         target: EntityId,
         new_target: EntityId,
-        mut encoder: ActionEncoder,
+        mut encoder: LocalActionEncoder,
     ) {
         let on_replace = relation.on_replace(
             &new_relation,
@@ -331,14 +336,19 @@ where
     R: Relation,
 {
     #[inline(always)]
-    fn on_drop(&mut self, origin: EntityId, mut encoder: ActionEncoder) {
+    fn on_drop(&mut self, origin: EntityId, mut encoder: LocalActionEncoder) {
         for r in self.relations_mut() {
             Self::drop_one(&mut r.relation, origin, r.target, encoder.reborrow());
         }
     }
 
     #[inline(always)]
-    fn on_replace(&mut self, _value: &Self, _origin: EntityId, _encoder: ActionEncoder) -> bool {
+    fn on_replace(
+        &mut self,
+        _value: &Self,
+        _origin: EntityId,
+        _encoder: LocalActionEncoder,
+    ) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 
@@ -380,7 +390,7 @@ where
         &mut self,
         origin: EntityId,
         target: EntityId,
-        mut encoder: ActionEncoder,
+        mut encoder: LocalActionEncoder,
     ) {
         for idx in 0..self.origins.len() {
             if self.origins[idx] == origin {
@@ -394,12 +404,12 @@ where
 
     /// Called when relation is removed from origin entity.
     /// Or origin entity is dropped.
-    fn on_origin_drop(origin: EntityId, target: EntityId, mut encoder: ActionEncoder) {
+    fn on_origin_drop(origin: EntityId, target: EntityId, mut encoder: LocalActionEncoder) {
         encoder.closure(move |world| {
             let Ok(mut target) = world.entity(target) else {
                 return;
             };
-            let Some(comp) = target.get::<&mut Self>() else {
+            let Some(comp) = target.get_mut::<&mut Self>() else {
                 return;
             };
 
@@ -422,7 +432,7 @@ where
     R: Relation,
 {
     #[inline(always)]
-    fn on_drop(&mut self, target: EntityId, mut encoder: ActionEncoder) {
+    fn on_drop(&mut self, target: EntityId, mut encoder: LocalActionEncoder) {
         for &origin in &self.origins {
             R::on_target_drop(origin, target, encoder.reborrow());
             OriginComponent::<R>::on_target_drop(origin, target, encoder.reborrow());
@@ -430,7 +440,12 @@ where
     }
 
     #[inline(always)]
-    fn on_replace(&mut self, _value: &Self, _entity: EntityId, _encoder: ActionEncoder) -> bool {
+    fn on_replace(
+        &mut self,
+        _value: &Self,
+        _entity: EntityId,
+        _encoder: LocalActionEncoder,
+    ) -> bool {
         unimplemented!("This method is not intended to be called");
     }
 

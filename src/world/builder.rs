@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use core::marker::PhantomData;
 
 use crate::{
-    action::{ActionBuffer, ActionChannel},
+    action::{ActionChannel, LocalActionBuffer},
     bundle::ComponentBundle,
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
@@ -49,9 +49,8 @@ impl WorldBuilder {
             edges: Edges::new(),
             res: Res::new(),
             registry: self.registry,
-            action_buffer: Some(ActionBuffer::new()),
+            action_buffer: LocalActionBuffer::new(),
             action_channel: ActionChannel::new(),
-            execute_action_buffer: true,
         }
     }
 

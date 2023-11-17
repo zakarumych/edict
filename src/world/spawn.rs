@@ -4,7 +4,7 @@ use core::{
 };
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::LocalActionEncoder,
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::ComponentRegistry,
@@ -533,20 +533,11 @@ impl World {
     /// ```
     #[inline(always)]
     pub fn despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
-        with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
-    }
-
-    #[inline(always)]
-    pub(crate) fn despawn_with_buffer(
-        &mut self,
-        entity: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
         let loc = self.entities.despawn(entity.id()).ok_or(NoSuchEntity)?;
 
-        let encoder = ActionEncoder::new(buffer, &self.entities);
+        let encoder = LocalActionEncoder::new(&mut self.action_buffer, &self.entities);
         let opt_id = unsafe {
             self.archetypes[loc.arch as usize].despawn_unchecked(entity.id(), loc.idx, encoder)
         };
@@ -564,19 +555,17 @@ impl World {
     /// `EntitySet` and `Archetype`.
     #[inline(always)]
     pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
-        with_buffer!(self, buffer => {
-            let real_loc = self.entities.despawn(id).unwrap_unchecked();
-            debug_assert_eq!(real_loc, loc, "Entity location mismatch");
+        let real_loc = self.entities.despawn(id).unwrap_unchecked();
+        debug_assert_eq!(real_loc, loc, "Entity location mismatch");
 
-            let opt_id = unsafe {
-                self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, ActionEncoder::new(buffer, &self.entities))
-            };
+        let encoder = LocalActionEncoder::new(&mut self.action_buffer, &self.entities);
 
-            if let Some(id) = opt_id {
-                self.entities
-                    .set_location(id, loc)
-            }
-        })
+        let opt_id =
+            unsafe { self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, encoder) };
+
+        if let Some(id) = opt_id {
+            self.entities.set_location(id, loc)
+        }
     }
 }
 

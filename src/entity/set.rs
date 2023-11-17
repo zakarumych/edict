@@ -102,7 +102,7 @@ impl EntitySet {
     }
 
     /// Spawns entity with specified ID in specified archetype.
-    /// If entity with specified ID already exists, returns its `false` and its location.
+    /// If entity with specified ID already exists, returns `false` and its location.
     /// Otherwise calls provided closure to place entity into archetype and acquire index.
     /// And then returns `true` and entity location.
     #[inline(always)]

@@ -1,7 +1,7 @@
 use core::any::TypeId;
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::LocalActionEncoder,
     component::Component,
     entity::{Entity, EntityId, Location},
     relation::{OriginComponent, Relation, TargetComponent},
@@ -34,22 +34,6 @@ impl World {
     where
         R: Relation,
     {
-        with_buffer!(self, buffer => {
-            self.add_relation_with_buffer(origin, relation, target, buffer)
-        })
-    }
-
-    #[inline(always)]
-    pub(crate) fn add_relation_with_buffer<R>(
-        &mut self,
-        origin: impl Entity,
-        relation: R,
-        target: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
-    where
-        R: Relation,
-    {
         self.maintenance();
 
         origin.lookup(&self.entities).ok_or(NoSuchEntity)?;
@@ -66,7 +50,6 @@ impl World {
                 |component, relation, encoder| {
                     component.add_relation(origin.id(), target.id(), relation, encoder)
                 },
-                buffer,
             );
 
             if target.id() != origin.id() {
@@ -78,7 +61,6 @@ impl World {
                     |component, relation, encoder| {
                         component.add_relation(target.id(), origin.id(), relation, encoder)
                     },
-                    buffer,
                 );
             }
         } else {
@@ -90,7 +72,6 @@ impl World {
                 |comp, relation, encoder| {
                     comp.add_relation(origin.id(), target.id(), relation, encoder)
                 },
-                buffer,
             );
 
             set_relation_component(
@@ -99,7 +80,6 @@ impl World {
                 (),
                 |()| TargetComponent::<R>::new(origin.id()),
                 |comp, (), _| comp.add(origin.id()),
-                buffer,
             );
         }
         Ok(())
@@ -121,22 +101,7 @@ impl World {
     where
         R: Relation,
     {
-        with_buffer!(self, buffer => {
-            self.remove_relation_with_buffer::<R>(origin, target, buffer)
-        })
-    }
-
-    #[inline(always)]
-    pub(crate) fn remove_relation_with_buffer<R>(
-        &mut self,
-        origin: impl Entity,
-        target: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<Option<R>, NoSuchEntity>
-    where
-        R: Relation,
-    {
-        self._remove_relation(origin, target, buffer, |_, _, _, _| {})
+        self._remove_relation(origin, target, |_, _, _, _| {})
     }
 
     /// Drops relation between two entities in the [`World`].
@@ -154,22 +119,7 @@ impl World {
     where
         R: Relation,
     {
-        with_buffer!(self, buffer => {
-            self.drop_relation_with_buffer::<R>(origin, target, buffer)
-        })
-    }
-
-    #[inline(always)]
-    pub(crate) fn drop_relation_with_buffer<R>(
-        &mut self,
-        origin: impl Entity,
-        target: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity>
-    where
-        R: Relation,
-    {
-        self._remove_relation(origin, target, buffer, R::on_drop)?;
+        self._remove_relation(origin, target, R::on_drop)?;
         Ok(())
     }
 
@@ -178,8 +128,7 @@ impl World {
         &mut self,
         origin: impl Entity,
         target: impl Entity,
-        buffer: &mut ActionBuffer,
-        on_drop: impl FnOnce(&mut R, EntityId, EntityId, ActionEncoder<'_>),
+        on_drop: impl FnOnce(&mut R, EntityId, EntityId, LocalActionEncoder<'_>),
     ) -> Result<Option<R>, NoSuchEntity>
     where
         R: Relation,
@@ -190,18 +139,15 @@ impl World {
         let target = target.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
 
         unsafe {
+            let mut action_buffer = std::mem::take(&mut self.action_buffer);
+
             if let Ok(comp) = self.get_unchecked::<&mut OriginComponent<R>>(origin) {
-                if let Some(mut relation) = comp.remove_relation(
-                    origin.id(),
-                    target.id(),
-                    ActionEncoder::new(buffer, &self.entities),
-                ) {
-                    on_drop(
-                        &mut relation,
-                        origin.id(),
-                        target.id(),
-                        ActionEncoder::new(buffer, &self.entities),
-                    );
+                let mut encoder = LocalActionEncoder::new(&mut action_buffer, &self.entities);
+
+                if let Some(mut relation) =
+                    comp.remove_relation(origin.id(), target.id(), encoder.reborrow())
+                {
+                    on_drop(&mut relation, origin.id(), target.id(), encoder.reborrow());
 
                     if R::SYMMETRIC {
                         if origin.id() != target.id() {
@@ -209,22 +155,14 @@ impl World {
                                 .get_unchecked::<&mut OriginComponent<R>>(target)
                                 .unwrap_unchecked();
 
-                            comp.remove_relation(
-                                target.id(),
-                                origin.id(),
-                                ActionEncoder::new(buffer, &self.entities),
-                            );
+                            comp.remove_relation(target.id(), origin.id(), encoder);
                         }
                     } else {
                         let comp = self
                             .get_unchecked::<&mut TargetComponent<R>>(target)
                             .unwrap_unchecked();
 
-                        comp.remove_relation(
-                            origin.id(),
-                            target.id(),
-                            ActionEncoder::new(buffer, &self.entities),
-                        );
+                        comp.remove_relation(origin.id(), target.id(), encoder);
                     }
 
                     return Ok(Some(relation));
@@ -242,8 +180,7 @@ fn set_relation_component<T, C>(
     id: EntityId,
     value: T,
     into_component: impl FnOnce(T) -> C,
-    set_component: impl FnOnce(&mut C, T, ActionEncoder),
-    buffer: &mut ActionBuffer,
+    set_component: impl FnOnce(&mut C, T, LocalActionEncoder),
 ) where
     C: Component,
 {
@@ -256,12 +193,9 @@ fn set_relation_component<T, C>(
                 .get_mut::<C>(src_loc.idx, world.epoch.current_mut())
         };
 
-        set_component(
-            component,
-            value,
-            ActionEncoder::new(buffer, &world.entities),
-        );
-
+        let encoders = LocalActionEncoder::new(&mut world.action_buffer, &world.entities);
+        set_component(component, value, encoders);
+        world.execute_local_actions();
         return;
     }
 

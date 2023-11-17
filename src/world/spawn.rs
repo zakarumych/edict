@@ -754,32 +754,6 @@ pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> u32 {
 }
 
 impl WorldLocal {
-    /// Spawns a new entity in this world without components.
-    /// Returns [`EntityRef`] for the newly spawned entity.
-    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
-    /// or despawn command recorded and executed by the [`World`].
-    ///
-    /// # Panics
-    ///
-    /// If new id cannot be allocated.
-    /// If too many entities are spawned.
-    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{World};
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn_empty();
-    /// assert!(!entity.has_component::<ExampleComponent>());
-    /// ```
-    #[inline(always)]
-    pub fn spawn_empty_defer(&self) {
-        self.defer(|world| {
-            let _ = world.spawn_empty();
-        })
-    }
-
     /// Spawns a new entity in this world with provided component.
     /// Returns [`EntityRef`] for the newly spawned entity.
     /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
@@ -802,13 +776,13 @@ impl WorldLocal {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
-    pub fn spawn_one_defer<T>(&self, component: T)
+    pub fn spawn_one_defer<T>(&self, component: T) -> EntityId
     where
         T: Component,
     {
-        self.defer(|world| {
-            let _ = world.spawn_one(component);
-        })
+        let id = self.allocate().id();
+        self.insert_defer(id, component);
+        id
     }
 
     /// Spawns a new entity in this world with provided component.
@@ -834,13 +808,13 @@ impl WorldLocal {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
-    pub fn spawn_one_external_defer<T>(&self, component: T)
+    pub fn spawn_one_external_defer<T>(&self, component: T) -> EntityId
     where
         T: 'static,
     {
-        self.defer(|world| {
-            let _ = world.spawn_one_external(component);
-        })
+        let id = self.allocate().id();
+        self.insert_external_defer(id, component);
+        id
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -865,13 +839,13 @@ impl WorldLocal {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
-    pub fn spawn_defer<B>(&self, bundle: B)
+    pub fn spawn_defer<B>(&self, bundle: B) -> EntityId
     where
         B: DynamicComponentBundle,
     {
-        self.defer(|world| {
-            let _ = world.spawn(bundle);
-        })
+        let id = self.allocate().id();
+        self.insert_bundle_defer(id, bundle);
+        id
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -902,13 +876,13 @@ impl WorldLocal {
     /// assert!(!entity.has_component::<u32>());
     /// ```
     #[inline(always)]
-    pub fn spawn_external_defer<B>(&self, bundle: B)
+    pub fn spawn_external_defer<B>(&self, bundle: B) -> EntityId
     where
         B: DynamicBundle + 'static,
     {
-        self.defer(|world| {
-            let _ = world.spawn_external(bundle);
-        })
+        let id = self.allocate().id();
+        self.insert_external_bundle_defer(id, bundle);
+        id
     }
 
     /// Returns an iterator which spawns and yield entities

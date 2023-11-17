@@ -342,6 +342,48 @@ impl World {
 }
 
 impl WorldLocal {
+    /// Inserts resource instance.
+    /// Old value is replaced.
+    ///
+    /// To access resource, use [`World::get_resource`] and [`World::get_resource_mut`] methods.
+    ///
+    /// [`World::get_resource`]: struct.World.html#method.get_resource
+    /// [`World::get_resource_mut`]: struct.World.html#method.get_resource_mut
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// *world.get_resource_mut::<i32>().unwrap() = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
+    pub fn insert_resource_defer<T: 'static>(&self, resource: T) {
+        self.defer(|world| {
+            world.insert_resource(resource);
+        })
+    }
+
+    /// Drops resource instance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// world.remove_resource::<i32>();
+    /// assert!(world.get_resource::<i32>().is_none());
+    /// ```
+    pub fn drop_resource_defer<T: 'static>(&self) {
+        self.defer(|world| {
+            world.remove_resource::<T>();
+        });
+    }
+
     /// Returns some reference to `Sync` resource.
     /// Returns none if resource is not found.
     ///

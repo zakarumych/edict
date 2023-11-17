@@ -448,6 +448,13 @@ impl Debug for WorldLocal {
 }
 
 impl WorldLocal {
+    pub fn new() -> Self {
+        WorldLocal {
+            world: World::new(),
+            marker: PhantomData,
+        }
+    }
+
     #[inline(always)]
     fn wrap(world: World) -> Self {
         WorldLocal {

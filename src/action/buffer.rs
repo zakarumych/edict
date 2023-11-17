@@ -131,6 +131,21 @@ impl LocalActionBuffer {
     pub(crate) fn pop(&mut self) -> Option<LocalActionFn<'static>> {
         self.actions.pop_front()
     }
+
+    // /// Temporary take this buffer.
+    // #[inline(always)]
+    // pub(crate) fn take(&mut self) -> Self {
+    //     Self {
+    //         actions: std::mem::take(&mut self.actions),
+    //     }
+    // }
+
+    // /// Put back temporary taken buffer.
+    // #[inline(always)]
+    // pub(crate) fn put(&mut self, tmp: Self) {
+    //     debug_assert!(self.actions.is_empty());
+    //     self.actions = tmp.actions;
+    // }
 }
 
 /// Extension trait for slice of [`ActionBuffer`]s.

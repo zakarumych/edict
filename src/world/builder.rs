@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use core::marker::PhantomData;
+use core::{cell::UnsafeCell, marker::PhantomData};
 
 use crate::{
     action::{ActionChannel, LocalActionBuffer},
@@ -49,7 +49,7 @@ impl WorldBuilder {
             edges: Edges::new(),
             res: Res::new(),
             registry: self.registry,
-            action_buffer: LocalActionBuffer::new(),
+            action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
         }
     }

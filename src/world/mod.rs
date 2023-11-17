@@ -3,6 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::{
     any::{type_name, TypeId},
+    cell::UnsafeCell,
     convert::TryFrom,
     fmt::{self, Debug},
     marker::PhantomData,
@@ -11,7 +12,7 @@ use core::{
 };
 
 use crate::{
-    action::{ActionChannel, ActionSender, LocalActionBuffer},
+    action::{ActionChannel, ActionSender, LocalActionBuffer, LocalActionEncoder},
     archetype::Archetype,
     bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
@@ -163,7 +164,7 @@ pub struct World {
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
     /// Commands are immediately executed at the end of the mutating call.
-    action_buffer: LocalActionBuffer,
+    action_buffer: UnsafeCell<LocalActionBuffer>,
 
     action_channel: ActionChannel,
 }
@@ -337,6 +338,7 @@ impl World {
         let archetype = &mut self.archetypes[0];
         self.entities
             .spawn_allocated(|id| archetype.spawn_empty(id));
+        self.execute_local_actions();
     }
 
     /// Executes actions received from [`ActionSender`] instances
@@ -361,9 +363,14 @@ impl World {
     /// is execution of actions encoded with [`ActionSender`].
     #[inline(always)]
     fn execute_local_actions(&mut self) {
-        while let Some(action) = self.action_buffer.pop() {
+        while let Some(action) = self.action_buffer.get_mut().pop() {
             action.call(self);
         }
+    }
+
+    /// Executes deferred actions.
+    pub fn run_deferred(&mut self) {
+        self.execute_local_actions();
     }
 }
 
@@ -406,10 +413,10 @@ impl World {
 #[repr(transparent)]
 pub struct WorldLocal {
     world: World,
-    marker: PhantomData<WorldLocalIsNotSync>,
+    marker: PhantomData<NotSync>,
 }
 
-struct WorldLocalIsNotSync {
+struct NotSync {
     _ptr: *mut (),
 }
 
@@ -438,6 +445,20 @@ impl WorldLocal {
     fn wrap(world: &mut World) -> &mut Self {
         // Safety: #[repr(transparent)] allows this cast.
         unsafe { &mut *(world as *mut World as *mut Self) }
+    }
+
+    /// Defer execution of the function.
+    pub fn defer(&self, f: impl FnOnce(&mut World) + 'static) {
+        // Safety:
+        // Reference to inner action buffer is never given out, it is used only
+        // to record actions from hooks on main thread.
+        //
+        // This is main thread since this function is called from `WorldLocal`.
+        unsafe {
+            let action_buffer = &mut *self.world.action_buffer.get();
+            let mut action_encoder = LocalActionEncoder::new(action_buffer, &self.world.entities);
+            action_encoder.closure(f);
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use alloc::collections::VecDeque;
 
 use crate::{
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
-    component::Component,
+    component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entity, EntityId, EntityLoc, EntitySet},
     relation::Relation,
     world::{iter_reserve_hint, World},
@@ -146,6 +146,32 @@ impl<'a> ActionEncoder<'a> {
         });
     }
 
+    /// Encodes an action to insert component to the specified entity.
+    #[inline(always)]
+    pub fn with<F, T>(&mut self, entity: impl Entity, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Component,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with(id, f);
+        });
+    }
+
+    /// Encodes an action to insert component to the specified entity.
+    #[inline(always)]
+    pub fn with_external<F, T>(&mut self, entity: impl Entity, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_external(id, f);
+        });
+    }
+
     /// Encodes an action to insert components from bundle to the specified entity.
     #[inline(always)]
     pub fn insert_bundle<B>(&mut self, entity: impl Entity, bundle: B)
@@ -167,6 +193,30 @@ impl<'a> ActionEncoder<'a> {
         let id = entity.id();
         self.push_fn(move |world| {
             let _ = world.insert_external_bundle(id, bundle);
+        });
+    }
+
+    /// Encodes an action to insert components from bundle to the specified entity.
+    #[inline(always)]
+    pub fn with_bundle<B>(&mut self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicComponentBundle + Send + 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_bundle(id, bundle);
+        });
+    }
+
+    /// Encodes an action to insert components from bundle to the specified entity.
+    #[inline(always)]
+    pub fn with_external_bundle<B>(&mut self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicBundle + Send + 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_external_bundle(id, bundle);
         });
     }
 
@@ -537,6 +587,48 @@ impl<'a> LocalActionEncoder<'a> {
         });
     }
 
+    /// Encodes an action to insert component to the specified entity.
+    #[inline(always)]
+    pub fn with<T>(&mut self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
+    where
+        T: Component,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with(id, f);
+        });
+    }
+
+    /// Encodes an action to insert component to the specified entity.
+    #[inline(always)]
+    pub fn with_external<T>(&mut self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
+    where
+        T: 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_external(id, f);
+        });
+    }
+
+    /// Encodes an action to insert component to the specified entity.
+    #[inline(always)]
+    pub(crate) fn _with<F, T>(
+        &mut self,
+        entity: impl Entity,
+        f: impl FnOnce() -> T + 'static,
+        replace: bool,
+        get_or_register: F,
+    ) where
+        F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo + 'static,
+        T: 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world._with(id, f, replace, get_or_register);
+        });
+    }
+
     /// Encodes an action to insert components from bundle to the specified entity.
     #[inline(always)]
     pub fn insert_bundle<B>(&mut self, entity: impl Entity, bundle: B)
@@ -558,6 +650,30 @@ impl<'a> LocalActionEncoder<'a> {
         let id = entity.id();
         self.push_fn(move |world| {
             let _ = world.insert_external_bundle(id, bundle);
+        });
+    }
+
+    /// Encodes an action to insert components from bundle to the specified entity.
+    #[inline(always)]
+    pub fn with_bundle<B>(&mut self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicComponentBundle + 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_bundle(id, bundle);
+        });
+    }
+
+    /// Encodes an action to insert components from bundle to the specified entity.
+    #[inline(always)]
+    pub fn with_external_bundle<B>(&mut self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicBundle + 'static,
+    {
+        let id = entity.id();
+        self.push_fn(move |world| {
+            let _ = world.with_external_bundle(id, bundle);
         });
     }
 

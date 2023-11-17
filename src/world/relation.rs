@@ -138,11 +138,13 @@ impl World {
         let origin = origin.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
         let target = target.entity_loc(&self.entities).ok_or(NoSuchEntity)?;
 
-        unsafe {
-            let mut action_buffer = std::mem::take(&mut self.action_buffer);
+        let mut removed = None;
 
+        unsafe {
             if let Ok(comp) = self.get_unchecked::<&mut OriginComponent<R>>(origin) {
-                let mut encoder = LocalActionEncoder::new(&mut action_buffer, &self.entities);
+                // Safety: Operations called on `self` won't touch it.
+                let mut encoder =
+                    LocalActionEncoder::new(&mut *self.action_buffer.get(), &self.entities);
 
                 if let Some(mut relation) =
                     comp.remove_relation(origin.id(), target.id(), encoder.reborrow())
@@ -165,11 +167,14 @@ impl World {
                         comp.remove_relation(origin.id(), target.id(), encoder);
                     }
 
-                    return Ok(Some(relation));
+                    removed = Some(relation);
                 }
+
+                self.execute_local_actions();
             }
         }
-        Ok(None)
+
+        Ok(removed)
     }
 }
 
@@ -193,7 +198,7 @@ fn set_relation_component<T, C>(
                 .get_mut::<C>(src_loc.idx, world.epoch.current_mut())
         };
 
-        let encoders = LocalActionEncoder::new(&mut world.action_buffer, &world.entities);
+        let encoders = LocalActionEncoder::new(world.action_buffer.get_mut(), &world.entities);
         set_component(component, value, encoders);
         world.execute_local_actions();
         return;

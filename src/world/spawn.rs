@@ -537,7 +537,7 @@ impl World {
 
         let loc = self.entities.despawn(entity.id()).ok_or(NoSuchEntity)?;
 
-        let encoder = LocalActionEncoder::new(&mut self.action_buffer, &self.entities);
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
         let opt_id = unsafe {
             self.archetypes[loc.arch as usize].despawn_unchecked(entity.id(), loc.idx, encoder)
         };
@@ -558,7 +558,7 @@ impl World {
         let real_loc = self.entities.despawn(id).unwrap_unchecked();
         debug_assert_eq!(real_loc, loc, "Entity location mismatch");
 
-        let encoder = LocalActionEncoder::new(&mut self.action_buffer, &self.entities);
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
 
         let opt_id =
             unsafe { self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, encoder) };

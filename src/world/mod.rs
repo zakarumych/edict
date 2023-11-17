@@ -284,6 +284,12 @@ impl World {
     /// ```
     #[inline(always)]
     pub fn local(&mut self) -> &mut WorldLocal {
+        WorldLocal::wrap_mut(self)
+    }
+
+    /// Converts [`World`] into [`WorldLocal`].
+    #[inline(always)]
+    pub fn into_local(self) -> WorldLocal {
         WorldLocal::wrap(self)
     }
 
@@ -420,6 +426,7 @@ struct NotSync {
     _ptr: *mut (),
 }
 
+// TODO: This is unsound.
 impl Deref for WorldLocal {
     type Target = World;
 
@@ -442,7 +449,15 @@ impl Debug for WorldLocal {
 
 impl WorldLocal {
     #[inline(always)]
-    fn wrap(world: &mut World) -> &mut Self {
+    fn wrap(world: World) -> Self {
+        WorldLocal {
+            world,
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn wrap_mut(world: &mut World) -> &mut Self {
         // Safety: #[repr(transparent)] allows this cast.
         unsafe { &mut *(world as *mut World as *mut Self) }
     }

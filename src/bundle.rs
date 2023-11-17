@@ -56,7 +56,7 @@ pub unsafe trait DynamicBundle {
 /// # Safety
 ///
 /// [`DynamicComponentBundle::with_components`] must call provided function with a list of component infos of all contained components.
-pub unsafe trait DynamicComponentBundle: DynamicBundle {
+pub unsafe trait DynamicComponentBundle: DynamicBundle + 'static {
     /// Calls provided closure with slice of component infos of types that this bundle contains.
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R;
 }

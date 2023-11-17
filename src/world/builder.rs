@@ -12,7 +12,7 @@ use crate::{
     res::Res,
 };
 
-use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World};
+use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World, WorldLocal};
 
 /// Builder for [`World`] value.
 ///
@@ -51,6 +51,15 @@ impl WorldBuilder {
             registry: self.registry,
             action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
+        }
+    }
+
+    /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
+    #[must_use]
+    pub fn build_local(self) -> WorldLocal {
+        WorldLocal {
+            world: self.build(),
+            marker: PhantomData,
         }
     }
 

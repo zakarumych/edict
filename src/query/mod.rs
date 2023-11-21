@@ -41,7 +41,7 @@ use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, Access};
 
 pub use self::{
     alt::{Alt, FetchAlt},
-    any_of::AnyOf,
+    // any_of::AnyOf,
     boolean::{
         And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFetchOp, BooleanQuery,
         Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
@@ -64,7 +64,7 @@ pub use self::{
 };
 
 mod alt;
-mod any_of;
+// mod any_of;
 mod boolean;
 mod borrow;
 mod copied;
@@ -80,19 +80,30 @@ mod with_epoch;
 mod write;
 
 /// Types associated with a query type.
-pub trait IntoQuery {
+pub trait AsQuery {
     /// Associated query type.
     type Query: Query;
+}
 
+/// Types convertible into query type.
+pub trait IntoQuery: AsQuery {
     /// Converts into query.
     fn into_query(self) -> Self::Query;
 }
 
+/// Types convertible into query type.
+pub unsafe trait IntoSendQuery: IntoQuery + AsSendQuery {}
+unsafe impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
+
 /// Types associated with default-constructible query type.
-pub trait DefaultQuery: IntoQuery {
+pub trait DefaultQuery: AsQuery {
     /// Returns default query instance.
     fn default_query() -> Self::Query;
 }
+
+/// Types associated with default-constructible query type.
+pub unsafe trait DefaultSendQuery: DefaultQuery + AsSendQuery {}
+unsafe impl<Q> DefaultSendQuery for Q where Q: DefaultQuery + AsSendQuery {}
 
 /// Detected write aliasing.
 /// Should be either resolved at runtime or reported with panic.
@@ -119,22 +130,40 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
 
     /// Returns what kind of access the query performs on the component type.
     /// This method may return stronger access type if it is impossible to know
-    /// weaker access with only type-info.
+    /// exact access with only type-id.
     #[must_use]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias>;
 
     /// Checks if archetype must be visited or skipped.
+    /// If returns `false`, `access_archetype` and `fetch` must not be called,
+    /// meaning that complex query should either skip archetype entirely or
+    /// for this query specifically.
     ///
-    /// This method must be safe to execute in parallel with any other accesses
-    /// to the same archetype.
+    /// If this method returns `true`, `access_archetype` and `fetch` must be safe to call.
     #[must_use]
     fn visit_archetype(&self, archetype: &Archetype) -> bool;
 
     /// Asks query to provide types and access for the specific archetype.
     /// Must call provided closure with type id and access pairs.
-    /// For each `(id, access)` pair access must match one returned from `access` method for the same id.
     /// Only types from archetype must be used to call closure.
-    unsafe fn access_archetype(&self, _archetype: &Archetype, f: impl FnMut(TypeId, Access));
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if `visit_archetype` returned `false`.
+    /// Implementation are allowed to assume conditions that make `visit_archetype` return `true`.
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access));
+
+    /// Checks if archetype must be visited or skipped a second time after
+    /// required access was granted.
+    ///
+    /// Most queries do not access to check visiting again so defaults to `true`.
+    #[must_use]
+    #[inline(always)]
+    fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+        debug_assert!(self.visit_archetype(archetype));
+        let _ = archetype;
+        true
+    }
 
     /// Fetches data from one archetype.
     ///
@@ -149,7 +178,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
         epoch: EpochId,
     ) -> Self::Fetch<'a>;
 
-    /// Returns item for reserved entity if reserved entity satisfies the query.
+    /// Returns item for reserved entity if reserved entity (no components) satisfies the query.
     /// Otherwise returns `None`.
     #[must_use]
     #[inline(always)]
@@ -175,5 +204,21 @@ pub unsafe trait ImmutableQuery: Query {
     };
 }
 
+/// Query that can be used from non-main thread.
+pub unsafe trait SendQuery: Query {}
+
+pub unsafe trait SendImmutableQuery: SendQuery + ImmutableQuery {}
+unsafe impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
+
+/// Query that can be used from non-main thread.
+pub unsafe trait AsSendQuery: AsQuery {}
+
+unsafe impl<Q> AsSendQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: SendQuery,
+{
+}
+
 /// Type alias for items returned by the [`Query`] type.
-pub type QueryItem<'a, Q> = <<Q as IntoQuery>::Query as Query>::Item<'a>;
+pub type QueryItem<'a, Q> = <<Q as AsQuery>::Query as Query>::Item<'a>;

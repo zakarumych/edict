@@ -12,7 +12,7 @@ use crate::{
     system::QueryArg,
 };
 
-use super::{Access, DefaultQuery, Fetch, IntoQuery, Query, WriteAlias};
+use super::{Access, AsQuery, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// Item type that [`Alt`] yields.
 /// Wraps `&mut T` and implements [`DerefMut`] to `T`.
@@ -57,7 +57,7 @@ pub struct FetchAlt<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchAlt<'a, T>
 where
-    T: Send + 'a,
+    T: 'a,
 {
     type Item = RefMut<'a, T>;
 
@@ -109,12 +109,17 @@ marker_type! {
     pub struct Alt<T>;
 }
 
-impl<T> IntoQuery for Alt<T>
+impl<T> AsQuery for Alt<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Alt<T>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -123,7 +128,7 @@ where
 
 impl<T> DefaultQuery for Alt<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -143,7 +148,7 @@ where
 
 unsafe impl<T> Query for Alt<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Item<'a> = RefMut<'a, T>;
     type Fetch<'a> = FetchAlt<'a, T>;
@@ -187,3 +192,5 @@ where
         }
     }
 }
+
+unsafe impl<T> SendQuery for Alt<T> where T: Send + 'static {}

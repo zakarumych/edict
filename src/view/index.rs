@@ -44,13 +44,13 @@ where
 
         if loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
-                .ok_or(EntityError::QueryMismatch);
+                .ok_or(EntityError::Mismatch);
         }
 
         // Ensure to borrow view's data.
         self.acquire_borrow();
 
-        unsafe { self._get(loc) }.ok_or(EntityError::QueryMismatch)
+        unsafe { self._get(loc) }.ok_or(EntityError::Mismatch)
     }
 
     /// Fetches data that matches the view's query and filter
@@ -115,12 +115,12 @@ where
         if loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
                 .map(f)
-                .ok_or(EntityError::QueryMismatch);
+                .ok_or(EntityError::Mismatch);
         }
 
         // Ensure to borrow view's data.
         self.with_borrow(loc.arch, || unsafe { self._get(loc) }.map(f))
-            .ok_or(EntityError::QueryMismatch)
+            .ok_or(EntityError::Mismatch)
     }
 
     #[inline(always)]
@@ -172,13 +172,13 @@ where
 
         if loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
-                .ok_or(EntityError::QueryMismatch);
+                .ok_or(EntityError::Mismatch);
         }
 
         // Ensure to borrow view's data.
         self.acquire_borrow();
 
-        unsafe { self._get(loc) }.ok_or(EntityError::QueryMismatch)
+        unsafe { self._get(loc) }.ok_or(EntityError::Mismatch)
     }
 
     /// Fetches data that matches the view's query and filter
@@ -243,12 +243,12 @@ where
         if loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
                 .map(f)
-                .ok_or(EntityError::QueryMismatch);
+                .ok_or(EntityError::Mismatch);
         }
 
         // Ensure to borrow view's data.
         self.with_borrow(loc.arch, || unsafe { self._get(loc) }.map(f))
-            .ok_or(EntityError::QueryMismatch)
+            .ok_or(EntityError::Mismatch)
     }
 }
 

@@ -23,6 +23,8 @@ pub trait BorrowState {
     ) -> R;
 }
 
+pub trait ExtendableBorrowState: BorrowState {}
+
 /// Borrow state for runtime borrowing.
 pub struct RuntimeBorrowState {
     borrowed: Cell<bool>,
@@ -244,6 +246,8 @@ impl BorrowState for RuntimeBorrowState {
     }
 }
 
+impl ExtendableBorrowState for RuntimeBorrowState {}
+
 /// Borrow state for statically borrowed views.
 /// These can be created from [`&mut World`](World)
 /// or unsafely from [`&World`](World).
@@ -268,3 +272,30 @@ impl BorrowState for StaticallyBorrowed {
         f()
     }
 }
+
+/// Borrow state for statically borrowed views.
+/// These can be created from [`&mut World`](World)
+/// or unsafely from [`&World`](World).
+#[derive(Copy, Clone, Debug)]
+pub struct ExclusivelyBorrowed;
+
+impl BorrowState for ExclusivelyBorrowed {
+    #[inline(always)]
+    fn acquire<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
+
+    #[inline(always)]
+    fn release<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
+
+    #[inline(always)]
+    fn with<Q: Query, F: Query, R>(
+        &self,
+        _query: Q,
+        _filter: F,
+        _archetype: &Archetype,
+        f: impl FnOnce() -> R,
+    ) -> R {
+        f()
+    }
+}
+
+impl ExtendableBorrowState for ExclusivelyBorrowed {}

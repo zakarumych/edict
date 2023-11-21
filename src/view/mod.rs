@@ -7,12 +7,15 @@ use crate::{
     archetype::{chunk_idx, Archetype},
     entity::{EntitySet, Location},
     epoch::EpochCounter,
-    query::{Fetch, IntoQuery, Query, QueryItem},
+    query::{AsQuery, Fetch, Query, QueryItem},
     world::World,
 };
 
 pub use self::{
-    borrow::{acquire, release, BorrowState, RuntimeBorrowState, StaticallyBorrowed},
+    borrow::{
+        acquire, release, BorrowState, ExclusivelyBorrowed, ExtendableBorrowState,
+        RuntimeBorrowState, StaticallyBorrowed,
+    },
     iter::ViewIter,
     one::{ViewOne, ViewOneState},
 };
@@ -131,15 +134,42 @@ where
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
-pub type ViewCell<'a, Q, F = (), B = RuntimeBorrowState> =
-    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, B>;
+pub type ViewCell<'a, Q, F = ()> =
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState>;
+
+/// View over entities that match query and filter, restricted to
+/// components that match the query.
+pub type ViewMut<'a, Q, F = ()> =
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, ExclusivelyBorrowed>;
 
 /// View over entities that match query and filter, restricted to
 /// components that match the query.
 pub type View<'a, Q, F = ()> =
-    ViewValue<'a, <Q as IntoQuery>::Query, <F as IntoQuery>::Query, StaticallyBorrowed>;
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed>;
 
 impl<'a, Q, F> ViewValue<'a, Q, F, StaticallyBorrowed>
+where
+    Q: Query,
+    F: Query,
+{
+    /// Creates a new view over the world.
+    /// This is unsafe because it does not perform runtime borrow checks.
+    ///
+    /// Uses user-provided query and filter.
+    #[inline(always)]
+    pub unsafe fn new_static(world: &'a World, query: Q, filter: F) -> Self {
+        ViewValue {
+            query: query,
+            filter: filter,
+            archetypes: world.archetypes(),
+            state: StaticallyBorrowed,
+            entity_set: world.entities(),
+            epochs: world.epoch_counter(),
+        }
+    }
+}
+
+impl<'a, Q, F> ViewValue<'a, Q, F, ExclusivelyBorrowed>
 where
     Q: Query,
     F: Query,
@@ -153,9 +183,9 @@ where
     pub fn new(world: &'a mut World, query: Q, filter: F) -> Self {
         ViewValue {
             archetypes: world.archetypes(),
-            query: query.into_query(),
-            filter: filter.into_query(),
-            state: StaticallyBorrowed,
+            query,
+            filter,
+            state: ExclusivelyBorrowed,
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
         }
@@ -168,10 +198,10 @@ where
     #[inline(always)]
     pub unsafe fn new_unchecked(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: query,
+            filter: filter,
             archetypes: world.archetypes(),
-            state: StaticallyBorrowed,
+            state: ExclusivelyBorrowed,
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
         }
@@ -190,8 +220,8 @@ where
     #[inline(always)]
     pub fn new_cell(world: &'a World, query: Q, filter: F) -> Self {
         ViewValue {
-            query: query.into_query(),
-            filter: filter.into_query(),
+            query: query,
+            filter: filter,
             archetypes: world.archetypes(),
             state: RuntimeBorrowState::new(),
             entity_set: world.entities(),

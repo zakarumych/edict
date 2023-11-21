@@ -6,7 +6,7 @@ use core::convert::Infallible;
 
 pub use nanoserde::{DeBin, DeBinErr, SerBin};
 
-use crate::{action::ActionEncoder, component::Component, query::ImmutableQuery};
+use crate::{action::ActionEncoder, component::Component, query::SendImmutableQuery};
 
 use super::{
     DumpSet, DumpSlot, Dumper, EntityDump, LoadSet, LoadSlot, Loader, Mark, WorldDump, WorldLoad,
@@ -52,7 +52,7 @@ macro_rules! dumper {
 
         impl<'a $(, $a)+, Fi> SerBin for WorldDump<'a, ($($a,)+), Fi>
         where
-            Fi: ImmutableQuery + Copy,
+            Fi: SendImmutableQuery + Copy,
             $($a: SerBin + Sync + 'static,)+
         {
             fn ser_bin(&self, buf: &mut Vec<u8>) {
@@ -62,7 +62,7 @@ macro_rules! dumper {
 
         impl<'a $(, $a)+, Fi> WorldDump<'a, ($($a,)+), Fi>
         where
-            Fi: ImmutableQuery + Copy,
+            Fi: SendImmutableQuery + Copy,
             $($a: SerBin + Sync + 'static,)+
         {
             fn dump_bin(&self, buf: &mut Vec<u8>) {

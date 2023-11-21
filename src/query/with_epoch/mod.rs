@@ -2,7 +2,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{fetch::Fetch, Access, DefaultQuery, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
+};
+
+mod read;
 
 /// Fetch for [`EpochOf`] epochs.
 pub struct FetchEpoch<'a> {
@@ -32,12 +37,17 @@ marker_type! {
     pub struct EpochOf<T>;
 }
 
-impl<T> IntoQuery for EpochOf<T>
+impl<T> AsQuery for EpochOf<T>
 where
     T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for EpochOf<T>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -106,3 +116,8 @@ where
 }
 
 unsafe impl<T> ImmutableQuery for EpochOf<T> where T: 'static {}
+unsafe impl<T> SendQuery for EpochOf<T> where T: 'static {}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(transparent)]
+pub struct WithEpoch<T>(pub T);

@@ -2,7 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, DefaultQuery, Fetch, IntoQuery, Query, WriteAlias};
+use super::{Access, AsQuery, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -15,7 +15,7 @@ pub struct FetchWrite<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchWrite<'a, T>
 where
-    T: Send + 'a,
+    T: 'a,
 {
     type Item = &'a mut T;
 
@@ -50,21 +50,16 @@ marker_type! {
     pub struct Write<T>;
 }
 
-impl<T> IntoQuery for &mut T
+impl<T> AsQuery for &mut T
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Query = Write<T>;
-
-    #[inline(always)]
-    fn into_query(self) -> Write<T> {
-        Write
-    }
 }
 
 impl<T> DefaultQuery for &mut T
 where
-    T: Send + 'static,
+    T: 'static,
 {
     #[inline(always)]
     fn default_query() -> Write<T> {
@@ -72,12 +67,17 @@ where
     }
 }
 
+impl<T> AsQuery for Write<T>
+where
+    T: 'static,
+{
+    type Query = Self;
+}
+
 impl<T> IntoQuery for Write<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
-    type Query = Write<T>;
-
     #[inline(always)]
     fn into_query(self) -> Write<T> {
         Write
@@ -86,7 +86,7 @@ where
 
 impl<T> DefaultQuery for Write<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     #[inline(always)]
     fn default_query() -> Write<T> {
@@ -106,7 +106,7 @@ where
 
 unsafe impl<T> Query for Write<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     type Item<'a> = &'a mut T;
     type Fetch<'a> = FetchWrite<'a, T>;
@@ -150,3 +150,5 @@ where
         }
     }
 }
+
+unsafe impl<T> SendQuery for Write<T> where T: Send + 'static {}

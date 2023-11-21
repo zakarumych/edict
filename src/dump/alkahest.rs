@@ -8,7 +8,7 @@ use alkahest::{
     Serialize,
 };
 
-use crate::{action::ActionEncoder, component::Component, query::ImmutableQuery};
+use crate::{action::ActionEncoder, component::Component, query::SendImmutableQuery};
 
 use super::{
     DumpSet, DumpSlot, Dumper, EntityDump, LoadSet, LoadSlot, Loader, Mark, WorldDump, WorldLoad,
@@ -76,7 +76,7 @@ macro_rules! dumper {
 
         impl<'a $(, $c)+, Fi> WorldDump<'a, ($($c,)+), Fi>
         where
-            Fi: ImmutableQuery,
+            Fi: SendImmutableQuery,
         {
             /// Serialize the world with the given alkahest serializer.
             pub fn dump_alkahest<$($f),+>(self, output: &mut Vec<u8>) -> (usize, usize)
@@ -90,7 +90,7 @@ macro_rules! dumper {
 
         impl<Fi $(, $f)+ $(, $c)+> Serialize<WorldFormula<($($f,)+)>> for WorldDump<'_, ($($c,)+), Fi>
         where
-            Fi: ImmutableQuery,
+            Fi: SendImmutableQuery,
             $($f: Formula,)+
             $($c: Sync + 'static, for<'a> &'a $c: Serialize<$f>,)+
         {

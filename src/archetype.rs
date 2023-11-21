@@ -11,7 +11,7 @@ use core::{
     cell::UnsafeCell,
     intrinsics::copy_nonoverlapping,
     iter::FromIterator,
-    mem::{self, size_of, MaybeUninit},
+    mem::{self, size_of, ManuallyDrop, MaybeUninit},
     ops::Deref,
     ptr::{self, NonNull},
 };
@@ -22,7 +22,7 @@ use atomicell::borrow::{
 use hashbrown::HashMap;
 
 use crate::{
-    action::ActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
+    action::LocalActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
     epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, Access,
 };
 
@@ -294,6 +294,46 @@ impl Archetype {
     /// Spawns new entity in the archetype.
     ///
     /// Returns index of the newly created entity in the archetype.
+    pub fn spawn_empty(&mut self, id: EntityId) -> u32 {
+        debug_assert!(self.matches(core::iter::empty()));
+        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+
+        let entity_idx = self.entities.len() as u32;
+
+        unsafe {
+            self.reserve(1);
+            debug_assert_ne!(self.entities.len(), self.entities.capacity());
+        }
+
+        self.entities.push(id);
+        entity_idx as u32
+    }
+
+    /// Spawns new entity in the archetype.
+    ///
+    /// Returns index of the newly created entity in the archetype.
+    pub fn spawn_one<T>(&mut self, id: EntityId, value: T, epoch: EpochId) -> u32
+    where
+        T: 'static,
+    {
+        debug_assert!(self.matches(core::iter::once(TypeId::of::<T>())));
+        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+
+        let entity_idx = self.entities.len() as u32;
+
+        unsafe {
+            self.reserve(1);
+            debug_assert_ne!(self.entities.len(), self.entities.capacity());
+            self.write_one(id, entity_idx, value, epoch, None);
+        }
+
+        self.entities.push(id);
+        entity_idx as u32
+    }
+
+    /// Spawns new entity in the archetype.
+    ///
+    /// Returns index of the newly created entity in the archetype.
     pub fn spawn<B>(&mut self, id: EntityId, bundle: B, epoch: EpochId) -> u32
     where
         B: DynamicBundle,
@@ -307,7 +347,7 @@ impl Archetype {
             self.reserve(1);
 
             debug_assert_ne!(self.entities.len(), self.entities.capacity());
-            self.write_bundle(id, entity_idx, bundle, epoch, None, |_| false);
+            self.write_bundle(id, entity_idx, bundle, epoch, None, false, |_| false);
         }
 
         self.entities.push(id);
@@ -318,7 +358,12 @@ impl Archetype {
     ///
     /// Returns id of the entity that took the place of despawned.
     #[inline(always)]
-    pub fn despawn(&mut self, id: EntityId, idx: u32, encoder: ActionEncoder) -> Option<EntityId> {
+    pub fn despawn(
+        &mut self,
+        id: EntityId,
+        idx: u32,
+        encoder: LocalActionEncoder,
+    ) -> Option<EntityId> {
         assert!(idx < self.entities.len() as u32);
 
         unsafe { self.despawn_unchecked(id, idx, encoder) }
@@ -335,7 +380,7 @@ impl Archetype {
         &mut self,
         id: EntityId,
         idx: u32,
-        mut encoder: ActionEncoder,
+        mut encoder: LocalActionEncoder,
     ) -> Option<EntityId> {
         let entity_idx = idx;
         debug_assert!(entity_idx < self.entities.len() as u32);
@@ -402,7 +447,7 @@ impl Archetype {
         idx: u32,
         bundle: B,
         epoch: EpochId,
-        encoder: ActionEncoder,
+        encoder: LocalActionEncoder,
     ) where
         B: DynamicBundle,
     {
@@ -413,7 +458,7 @@ impl Archetype {
         debug_assert!(entity_idx < self.entities.len() as u32);
 
         unsafe {
-            self.write_bundle(id, entity_idx, bundle, epoch, Some(encoder), |_| true);
+            self.write_bundle(id, entity_idx, bundle, epoch, Some(encoder), true, |_| true);
         }
     }
 
@@ -429,7 +474,7 @@ impl Archetype {
         idx: u32,
         value: T,
         epoch: EpochId,
-        encoder: ActionEncoder,
+        encoder: LocalActionEncoder,
     ) where
         T: 'static,
     {
@@ -473,7 +518,7 @@ impl Archetype {
         unsafe { &*ptr }
     }
 
-    /// Borrows component mutably. Updates entity epoch.
+    /// Borrows component mutably. Updates component epoch.
     ///
     /// # Safety
     ///
@@ -508,6 +553,30 @@ impl Archetype {
         unsafe { &mut *ptr }
     }
 
+    /// Borrows component mutably. Does not update component epoch.
+    ///
+    /// # Safety
+    ///
+    /// Archetype must contain that component type.
+    #[inline(always)]
+    pub unsafe fn get_mut_nobump<T>(&mut self, entity_idx: u32) -> &mut T
+    where
+        T: 'static,
+    {
+        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(entity_idx < self.entities.len() as u32);
+
+        let component = unsafe {
+            self.components
+                .get_mut(&TypeId::of::<T>())
+                .unwrap_unchecked()
+        };
+        let data = component.data.get_mut();
+        let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
+
+        unsafe { &mut *ptr }
+    }
+
     /// Add components from bundle to the entity, moving entity to new archetype.
     ///
     /// # Safety
@@ -522,7 +591,8 @@ impl Archetype {
         src_idx: u32,
         bundle: B,
         epoch: EpochId,
-        encoder: ActionEncoder,
+        encoder: LocalActionEncoder,
+        replace: bool,
     ) -> (u32, Option<EntityId>)
     where
         B: DynamicBundle,
@@ -556,13 +626,21 @@ impl Archetype {
         }
 
         unsafe {
-            dst.write_bundle(id, dst_entity_idx, bundle, epoch, Some(encoder), |id| {
-                if self.components.contains_key(&id) {
-                    true
-                } else {
-                    false
-                }
-            });
+            dst.write_bundle(
+                id,
+                dst_entity_idx,
+                bundle,
+                epoch,
+                Some(encoder),
+                replace,
+                |id| {
+                    if self.components.contains_key(&id) {
+                        true
+                    } else {
+                        false
+                    }
+                },
+            );
         }
 
         let entity = self.entities.swap_remove(src_entity_idx as usize);
@@ -701,7 +779,7 @@ impl Archetype {
         id: EntityId,
         dst: &mut Archetype,
         src_idx: u32,
-        mut encoder: ActionEncoder,
+        mut encoder: LocalActionEncoder,
     ) -> (u32, Option<EntityId>) {
         debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
 
@@ -787,7 +865,8 @@ impl Archetype {
         entity_idx: u32,
         bundle: B,
         epoch: EpochId,
-        mut encoder: Option<ActionEncoder>,
+        mut encoder: Option<LocalActionEncoder>,
+        replace: bool,
         occupied: F,
     ) where
         B: DynamicBundle,
@@ -809,7 +888,11 @@ impl Archetype {
                 NonNull::new_unchecked(data.ptr.as_ptr().add((entity_idx as usize) * size))
             };
             if occupied(tid) {
-                component.set_one(dst, src, id, encoder.as_mut().unwrap().reborrow());
+                if replace {
+                    component.set_one(dst, src, id, encoder.as_mut().unwrap().reborrow());
+                } else {
+                    component.final_drop(src, 1);
+                }
             } else {
                 unsafe {
                     ptr::copy_nonoverlapping(src.as_ptr(), dst.as_ptr(), size);
@@ -825,7 +908,7 @@ impl Archetype {
         entity_idx: u32,
         value: T,
         epoch: EpochId,
-        occupied: Option<ActionEncoder>,
+        occupied: Option<LocalActionEncoder>,
     ) where
         T: 'static,
     {
@@ -853,7 +936,8 @@ impl Archetype {
         };
 
         if let Some(encoder) = occupied {
-            component.set_one(dst, NonNull::from(&value).cast(), id, encoder)
+            let value = ManuallyDrop::new(value);
+            component.set_one(dst, NonNull::from(&*value).cast(), id, encoder)
         } else {
             unsafe {
                 ptr::write(dst.as_ptr().cast(), value);

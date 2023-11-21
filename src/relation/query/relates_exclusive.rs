@@ -4,7 +4,10 @@ use crate::{
     archetype::Archetype,
     entity::{EntityBound, EntityId},
     epoch::EpochId,
-    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
+    query::{
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write,
+        WriteAlias,
+    },
     relation::{ExclusiveRelation, OriginComponent},
     system::QueryArg,
     Access,
@@ -25,7 +28,7 @@ pub struct FetchRelatesExclusiveRead<'a, R: ExclusiveRelation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesExclusiveRead<'a, R>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     type Item = (&'a R, EntityBound<'a>);
 
@@ -45,21 +48,16 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesExclusive<&R>
+impl<R> AsQuery for RelatesExclusive<&R>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     type Query = RelatesExclusive<Read<R>>;
-
-    #[inline(always)]
-    fn into_query(self) -> RelatesExclusive<Read<R>> {
-        RelatesExclusive
-    }
 }
 
 impl<R> DefaultQuery for RelatesExclusive<&R>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     #[inline(always)]
     fn default_query() -> RelatesExclusive<Read<R>> {
@@ -67,12 +65,17 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesExclusive<Read<R>>
+impl<R> AsQuery for RelatesExclusive<Read<R>>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for RelatesExclusive<Read<R>>
+where
+    R: ExclusiveRelation,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -81,7 +84,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<Read<R>>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -91,7 +94,7 @@ where
 
 impl<R> QueryArg for RelatesExclusive<Read<R>>
 where
-    R: ExclusiveRelation + Sync,
+    R: Sync + ExclusiveRelation,
 {
     #[inline(always)]
     fn new() -> Self {
@@ -101,7 +104,7 @@ where
 
 unsafe impl<R> Query for RelatesExclusive<Read<R>>
 where
-    R: ExclusiveRelation + Sync,
+    R: ExclusiveRelation,
 {
     type Item<'a> = (&'a R, EntityBound<'a>);
     type Fetch<'a> = FetchRelatesExclusiveRead<'a, R>;
@@ -148,7 +151,8 @@ where
     }
 }
 
-unsafe impl<R> ImmutableQuery for RelatesExclusive<Read<R>> where R: ExclusiveRelation + Sync {}
+unsafe impl<R> ImmutableQuery for RelatesExclusive<Read<R>> where R: ExclusiveRelation {}
+unsafe impl<R> SendQuery for RelatesExclusive<Read<R>> where R: ExclusiveRelation + Sync {}
 
 /// Fetch for the [`RelatesExclusive<&mut R>`] query.
 pub struct FetchRelatesExclusiveWrite<'a, R: ExclusiveRelation> {
@@ -161,7 +165,7 @@ pub struct FetchRelatesExclusiveWrite<'a, R: ExclusiveRelation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesExclusiveWrite<'a, R>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     type Item = (&'a mut R, EntityId);
 
@@ -193,21 +197,16 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesExclusive<&mut R>
+impl<R> AsQuery for RelatesExclusive<&mut R>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     type Query = RelatesExclusive<Write<R>>;
-
-    #[inline(always)]
-    fn into_query(self) -> RelatesExclusive<Write<R>> {
-        RelatesExclusive
-    }
 }
 
 impl<R> DefaultQuery for RelatesExclusive<&mut R>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     #[inline(always)]
     fn default_query() -> RelatesExclusive<Write<R>> {
@@ -215,12 +214,17 @@ where
     }
 }
 
-impl<R> IntoQuery for RelatesExclusive<Write<R>>
+impl<R> AsQuery for RelatesExclusive<Write<R>>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for RelatesExclusive<Write<R>>
+where
+    R: ExclusiveRelation,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -229,7 +233,7 @@ where
 
 impl<R> DefaultQuery for RelatesExclusive<Write<R>>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -239,7 +243,7 @@ where
 
 impl<R> QueryArg for RelatesExclusive<Write<R>>
 where
-    R: ExclusiveRelation + Sync,
+    R: Send + ExclusiveRelation,
 {
     #[inline(always)]
     fn new() -> Self {
@@ -249,7 +253,7 @@ where
 
 unsafe impl<R> Query for RelatesExclusive<Write<R>>
 where
-    R: ExclusiveRelation + Send,
+    R: ExclusiveRelation,
 {
     type Item<'a> = (&'a mut R, EntityId);
     type Fetch<'a> = FetchRelatesExclusiveWrite<'a, R>;
@@ -299,3 +303,5 @@ where
         }
     }
 }
+
+unsafe impl<R> SendQuery for RelatesExclusive<Write<R>> where R: ExclusiveRelation + Send {}

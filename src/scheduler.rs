@@ -34,8 +34,8 @@ use parking_lot::Mutex;
 
 use crate::{
     action::ActionBuffer,
-    executor::{MockExecutor, ScopedExecutor},
-    system::{ActionQueue, IntoSystem, System},
+    executor::ScopedExecutor,
+    system::{ActionBufferQueue, IntoSystem, System},
     world::World,
     Access,
 };
@@ -169,12 +169,15 @@ impl<T> Queue<T> {
     }
 }
 
-impl ActionQueue for Queue<ActionBuffer> {
+impl ActionBufferQueue for Queue<ActionBuffer> {
     #[inline(always)]
     fn get<'a>(&self) -> ActionBuffer {
-        match self.try_deque() {
-            Some(buffer) => buffer,
-            None => ActionBuffer::new(),
+        // Taking last ensures that commands from system won't be executed before commands
+        // of its transient dependencies.
+        if let Some(last) = self.inner.items.lock().pop_back() {
+            last
+        } else {
+            ActionBuffer::new()
         }
     }
 
@@ -297,7 +300,18 @@ impl Scheduler {
 
     pub fn run_sequential(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
-        let buffers = self.run_with(world, &mut MockExecutor);
+        // let buffers = self.run_with(world, &mut MockExecutor);
+        // buffers.execute_all(world);
+
+        let mut buffers = Vec::new();
+        {
+            for system in &mut self.systems {
+                let system = system.system.inner.get_mut();
+                unsafe {
+                    system.run_unchecked(NonNull::from(&mut *world), &mut buffers);
+                }
+            }
+        }
         buffers.execute_all(world);
     }
 
@@ -417,8 +431,8 @@ impl Scheduler {
 
                 for id in world.resource_types() {
                     if conflicts(
-                        system_a.component_type_access(id),
-                        system_b.component_type_access(id),
+                        system_a.resource_type_access(id),
+                        system_b.resource_type_access(id),
                     ) {
                         // Conflicts on this resource.
                         // Add a dependency.

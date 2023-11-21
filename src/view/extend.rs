@@ -4,8 +4,8 @@ use crate::{
     entity::Entity,
     epoch::EpochId,
     query::{
-        IntoQuery, Modified, Not, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, With,
-        Without,
+        AsQuery, Modified, Not, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, Read,
+        SendQuery, With, Without, Write,
     },
     relation::{
         ExclusiveRelation, FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related,
@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{BorrowState, ViewValue};
+use super::{ExtendableBorrowState, ViewValue};
 
 /// A helper trait to extend tuples of queries to produce a new query.
 pub trait TupleQuery: Query + Sized {
@@ -25,7 +25,7 @@ pub trait TupleQuery: Query + Sized {
 }
 
 /// A helper type alias to extend tuples.
-pub type TupleQueryAdd<T, E> = <T as TupleQuery>::Extended<<E as IntoQuery>::Query>;
+pub type TupleQueryAdd<T, E> = <T as TupleQuery>::Extended<<E as AsQuery>::Query>;
 
 macro_rules! impl_extend {
     () => {};
@@ -63,16 +63,18 @@ impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
     Q: TupleQuery,
     F: Query,
-    B: BorrowState,
+    B: ExtendableBorrowState,
 {
     /// Extends query tuple with an additional query element.
     #[inline(always)]
     pub fn extend<E>(self, ext: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B>
     where
-        E: IntoQuery,
+        E: SendQuery,
     {
+        self.release_borrow();
+
         ViewValue {
-            query: Q::extend_query(self.query, ext.into_query()),
+            query: Q::extend_query(self.query, ext),
             filter: self.filter,
             archetypes: self.archetypes,
             entity_set: self.entity_set,
@@ -91,7 +93,7 @@ where
     where
         T: Sync + 'static,
     {
-        self.extend(Modified::<&T>::new(after_epoch))
+        self.extend(Modified::<Read<T>>::new(after_epoch))
     }
 
     /// Extends query tuple with a query element that fetches the component,
@@ -104,7 +106,7 @@ where
     where
         T: Send + 'static,
     {
-        self.extend(Modified::<&mut T>::new(after_epoch))
+        self.extend(Modified::<Write<T>>::new(after_epoch))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -116,7 +118,7 @@ where
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAny::<&T>.into_query())
+        self.extend(QueryBorrowAny(Read::<T>))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -130,7 +132,7 @@ where
     where
         T: Send + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAny::<&mut T>.into_query())
+        self.extend(QueryBorrowAny(Write::<T>))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -149,7 +151,7 @@ where
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowOne::<&T>::new(ty))
+        self.extend(QueryBorrowOne::<Read<T>>::new(ty))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -168,7 +170,7 @@ where
     where
         T: Send + ?Sized + 'static,
     {
-        self.extend(QueryBorrowOne::<&mut T>::new(ty))
+        self.extend(QueryBorrowOne::<Write<T>>::new(ty))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -184,67 +186,69 @@ where
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAll::<&T>)
+        self.extend(QueryBorrowAll(Read::<T>))
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates<R: Relation>(self) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B> {
-        self.extend(Relates::<&R>)
+    pub fn relates<R: Relation + Sync>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B> {
+        self.extend(Relates::<Read<R>>)
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_mut<R: Relation>(
+    pub fn relates_mut<R: Relation + Send>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a mut R>>, F, B> {
-        self.extend(Relates::<&mut R>)
+        self.extend(Relates::<Write<R>>)
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_to<R: Relation>(
+    pub fn relates_to<R: Relation + Sync>(
         self,
         target: impl Entity,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a R>>, F, B> {
-        self.extend(RelatesTo::<&R>::new(target.id()))
+        self.extend(RelatesTo::<Read<R>>::new(target.id()))
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_to_mut<R: Relation>(
+    pub fn relates_to_mut<R: Relation + Send>(
         self,
         target: impl Entity,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a mut R>>, F, B> {
-        self.extend(RelatesTo::<&mut R>::new(target.id()))
+        self.extend(RelatesTo::<Write<R>>::new(target.id()))
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_exclusive<R: ExclusiveRelation>(
+    pub fn relates_exclusive<R: ExclusiveRelation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B> {
-        self.extend(RelatesExclusive::<&R>)
+        self.extend(RelatesExclusive::<Read<R>>)
     }
 
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_exclusive_mut<R: ExclusiveRelation>(
+    pub fn relates_exclusive_mut<R: ExclusiveRelation + Send>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a mut R>>, F, B> {
-        self.extend(RelatesExclusive::<&mut R>)
+        self.extend(RelatesExclusive::<Write<R>>)
     }
 
     /// Queries for target entities in relation of type `R`.
@@ -259,17 +263,19 @@ impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
     Q: Query,
     F: TupleQuery,
-    B: BorrowState,
+    B: ExtendableBorrowState,
 {
     /// Extends filter tuple with an additional filter element.
     #[inline(always)]
     pub fn filter<E>(self, ext: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
     where
-        E: IntoQuery,
+        E: SendQuery,
     {
+        self.release_borrow();
+
         ViewValue {
             query: self.query,
-            filter: F::extend_query(self.filter, ext.into_query()),
+            filter: F::extend_query(self.filter, ext),
             archetypes: self.archetypes,
             entity_set: self.entity_set,
             epochs: self.epochs,

@@ -4,7 +4,10 @@ use crate::{
     archetype::Archetype,
     entity::{EntityBound, EntityId},
     epoch::EpochId,
-    query::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, Write, WriteAlias},
+    query::{
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write,
+        WriteAlias,
+    },
     relation::{OriginComponent, Relation, RelationTarget},
     system::QueryArg,
     Access,
@@ -95,7 +98,7 @@ pub struct FetchRelatesRead<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesRead<'a, R>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Item = RelatesReadIter<'a, R>;
 
@@ -117,21 +120,16 @@ where
     }
 }
 
-impl<R> IntoQuery for Relates<&R>
+impl<R> AsQuery for Relates<&R>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Query = Relates<Read<R>>;
-
-    #[inline(always)]
-    fn into_query(self) -> Relates<Read<R>> {
-        Relates
-    }
 }
 
 impl<R> DefaultQuery for Relates<&R>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     #[inline(always)]
     fn default_query() -> Relates<Read<R>> {
@@ -139,12 +137,17 @@ where
     }
 }
 
-impl<R> IntoQuery for Relates<Read<R>>
+impl<R> AsQuery for Relates<Read<R>>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for Relates<Read<R>>
+where
+    R: Relation,
+{
     #[inline(always)]
     fn into_query(self) -> Self::Query {
         self
@@ -153,7 +156,7 @@ where
 
 impl<R> DefaultQuery for Relates<Read<R>>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -163,7 +166,7 @@ where
 
 impl<R> QueryArg for Relates<Read<R>>
 where
-    R: Relation + Sync,
+    R: Sync + Relation,
 {
     #[inline(always)]
     fn new() -> Self {
@@ -173,7 +176,7 @@ where
 
 unsafe impl<R> Query for Relates<Read<R>>
 where
-    R: Relation + Sync,
+    R: Relation,
 {
     type Item<'a> = RelatesReadIter<'a, R>;
     type Fetch<'a> = FetchRelatesRead<'a, R>;
@@ -219,7 +222,8 @@ where
     }
 }
 
-unsafe impl<R> ImmutableQuery for Relates<Read<R>> where R: Relation + Sync {}
+unsafe impl<R> ImmutableQuery for Relates<Read<R>> where R: Relation {}
+unsafe impl<R> SendQuery for Relates<Read<R>> where R: Relation + Sync {}
 
 /// Iterator over relations of a given type on one entity.
 pub struct RelatesWriteIter<'a, R> {
@@ -301,7 +305,7 @@ pub struct FetchRelatesWrite<'a, R: Relation> {
 
 unsafe impl<'a, R> Fetch<'a> for FetchRelatesWrite<'a, R>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Item = RelatesWriteIter<'a, R>;
 
@@ -335,21 +339,16 @@ where
     }
 }
 
-impl<R> IntoQuery for Relates<&mut R>
+impl<R> AsQuery for Relates<&mut R>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Query = Relates<Write<R>>;
-
-    #[inline(always)]
-    fn into_query(self) -> Relates<Write<R>> {
-        Relates
-    }
 }
 
 impl<R> DefaultQuery for Relates<&mut R>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     #[inline(always)]
     fn default_query() -> Relates<Write<R>> {
@@ -357,12 +356,17 @@ where
     }
 }
 
-impl<R> IntoQuery for Relates<Write<R>>
+impl<R> AsQuery for Relates<Write<R>>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for Relates<Write<R>>
+where
+    R: Relation,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -371,7 +375,7 @@ where
 
 impl<R> DefaultQuery for Relates<Write<R>>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -381,7 +385,7 @@ where
 
 impl<R> QueryArg for Relates<Write<R>>
 where
-    R: Relation + Sync,
+    R: Send + Relation,
 {
     #[inline(always)]
     fn new() -> Self {
@@ -391,7 +395,7 @@ where
 
 unsafe impl<R> Query for Relates<Write<R>>
 where
-    R: Relation + Send,
+    R: Relation,
 {
     type Item<'a> = RelatesWriteIter<'a, R>;
     type Fetch<'a> = FetchRelatesWrite<'a, R>;
@@ -439,3 +443,5 @@ where
         }
     }
 }
+
+unsafe impl<R> SendQuery for Relates<Write<R>> where R: Relation + Send {}

@@ -2,7 +2,9 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg, Access};
 
-use super::{DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -13,7 +15,7 @@ pub struct FetchRead<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchRead<'a, T>
 where
-    T: Sync + 'a,
+    T: 'a,
 {
     type Item = &'a T;
 
@@ -36,21 +38,16 @@ marker_type! {
     pub struct Read<T>;
 }
 
-impl<T> IntoQuery for &T
+impl<T> AsQuery for &T
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Query = Read<T>;
-
-    #[inline(always)]
-    fn into_query(self) -> Read<T> {
-        Read
-    }
 }
 
 impl<T> DefaultQuery for &T
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     #[inline(always)]
     fn default_query() -> Read<T> {
@@ -58,12 +55,17 @@ where
     }
 }
 
-impl<T> IntoQuery for Read<T>
+impl<T> AsQuery for Read<T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Read<T>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -72,7 +74,7 @@ where
 
 impl<T> DefaultQuery for Read<T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     #[inline(always)]
     fn default_query() -> Read<T> {
@@ -92,7 +94,7 @@ where
 
 unsafe impl<T> Query for Read<T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = FetchRead<'a, T>;
@@ -133,4 +135,5 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Read<T> where T: Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Read<T> where T: 'static {}
+unsafe impl<T> SendQuery for Read<T> where T: Sync + 'static {}

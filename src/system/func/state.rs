@@ -6,7 +6,7 @@ use core::{
 
 use crate::{
     archetype::Archetype,
-    system::{Access, ActionQueue},
+    system::{Access, ActionBufferQueue},
     world::World,
 };
 
@@ -27,6 +27,12 @@ use super::{FnArg, FnArgState};
 #[repr(transparent)]
 pub struct State<'a, T> {
     value: &'a mut T,
+}
+
+impl<'a, T> From<&'a mut T> for State<'a, T> {
+    fn from(value: &'a mut T) -> Self {
+        State { value }
+    }
 }
 
 /// [`FnArgState`] for [`State`] argument.
@@ -104,7 +110,7 @@ where
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         _world: NonNull<World>,
-        _queue: &mut dyn ActionQueue,
+        _queue: &mut dyn ActionBufferQueue,
     ) -> State<'a, T> {
         State {
             value: &mut self.value,

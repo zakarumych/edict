@@ -3,7 +3,10 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{read::Read, Access, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias},
+    query::{
+        option::OptionQuery, read::Read, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        SendQuery, WriteAlias,
+    },
     system::QueryArg,
     world::World,
 };
@@ -21,7 +24,7 @@ pub struct ModifiedFetchRead<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for ModifiedFetchRead<'a, T>
 where
-    T: Sync + 'a,
+    T: 'a,
 {
     type Item = &'a T;
 
@@ -54,27 +57,24 @@ where
     }
 }
 
-impl<T> IntoQuery for Modified<&T>
+impl<T> AsQuery for Modified<&T>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Query = Modified<Read<T>>;
+}
 
-    #[inline(always)]
-    fn into_query(self) -> Modified<Read<T>> {
-        Modified {
-            after_epoch: self.after_epoch,
-            marker: PhantomData,
-        }
-    }
+impl<T> AsQuery for Modified<Read<T>>
+where
+    T: 'static,
+{
+    type Query = Self;
 }
 
 impl<T> IntoQuery for Modified<Read<T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Query = Self;
-
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -89,7 +89,7 @@ where
     fn new() -> Self {
         Modified {
             after_epoch: EpochId::start(),
-            marker: PhantomData,
+            query: Read,
         }
     }
 
@@ -101,7 +101,7 @@ where
 
 unsafe impl<T> Query for Modified<Read<T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Item<'a> = &'a T;
     type Fetch<'a> = ModifiedFetchRead<'a, T>;
@@ -110,7 +110,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Read::<T>.component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -118,7 +118,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -154,38 +154,54 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Read<T>> where T: Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<Read<T>> where T: 'static {}
+unsafe impl<T> SendQuery for Modified<Read<T>> where T: Sync + 'static {}
 
-impl<T> IntoQuery for Modified<Option<&T>>
+impl<T> AsQuery for Modified<Option<&T>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
-    type Query = Modified<Option<Read<T>>>;
-
-    #[inline(always)]
-    fn into_query(self) -> Modified<Option<Read<T>>> {
-        Modified {
-            after_epoch: self.after_epoch,
-            marker: PhantomData,
-        }
-    }
+    type Query = Modified<OptionQuery<Read<T>>>;
 }
 
-impl<T> IntoQuery for Modified<Option<Read<T>>>
+impl<T> AsQuery for Modified<OptionQuery<Read<T>>>
 where
-    T: Sync + 'static,
+    T: 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Modified<OptionQuery<Read<T>>>
+where
+    T: 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
     }
 }
 
-unsafe impl<T> Query for Modified<Option<Read<T>>>
+impl<T> QueryArg for Modified<OptionQuery<Read<T>>>
 where
     T: Sync + 'static,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            query: OptionQuery(Read),
+        }
+    }
+
+    #[inline(always)]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
+    }
+}
+
+unsafe impl<T> Query for Modified<OptionQuery<Read<T>>>
+where
+    T: 'static,
 {
     type Item<'a> = Option<&'a T>;
     type Fetch<'a> = Option<ModifiedFetchRead<'a, T>>;
@@ -194,7 +210,7 @@ where
 
     #[inline(always)]
     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Some(Read::<T>).component_type_access(ty)
+        self.query.component_type_access(ty)
     }
 
     #[inline(always)]
@@ -202,7 +218,7 @@ where
         match archetype.component(TypeId::of::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
+                debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), TypeId::of::<T>());
                 let data = component.data();
@@ -214,7 +230,7 @@ where
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if let Some(component) = archetype.component(TypeId::of::<T>()) {
-            debug_assert_eq!(Read::<T>.visit_archetype(archetype), true);
+            debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), TypeId::of::<T>());
             let data = component.data();
@@ -252,4 +268,5 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Modified<Option<Read<T>>> where T: Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Modified<OptionQuery<Read<T>>> where T: 'static {}
+unsafe impl<T> SendQuery for Modified<OptionQuery<Read<T>>> where T: Sync + 'static {}

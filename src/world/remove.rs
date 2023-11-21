@@ -1,13 +1,13 @@
 use core::any::{type_name, TypeId};
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::LocalActionEncoder,
     bundle::Bundle,
     entity::{Entity, EntityRef, Location},
     NoSuchEntity,
 };
 
-use super::World;
+use super::{World, WorldLocal};
 
 impl World {
     /// Removes component from the specified entity and returns its value.
@@ -31,7 +31,7 @@ impl World {
         if !self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self) };
+            let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) };
             return Ok((None, e));
         }
 
@@ -63,7 +63,7 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        let e = unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) };
+        let e = unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) };
 
         Ok((Some(component), e))
     }
@@ -83,35 +83,7 @@ impl World {
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline(always)]
-    pub fn drop_with_buffer<T>(
-        &mut self,
-        entity: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
-    where
-        T: 'static,
-    {
-        self.drop_erased_with_buffer(entity, TypeId::of::<T>(), buffer)
-    }
-
-    /// Drops component from the specified entity.
-    ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
     pub fn drop_erased(&mut self, entity: impl Entity, tid: TypeId) -> Result<(), NoSuchEntity> {
-        with_buffer!(self, buffer => {
-            self.drop_erased_with_buffer(entity, tid, buffer)?;
-        });
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn drop_erased_with_buffer(
-        &mut self,
-        entity: impl Entity,
-        tid: TypeId,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity> {
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
@@ -120,7 +92,7 @@ impl World {
         if !self.archetypes[src_loc.arch as usize].has_component(tid) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(());
         }
 
         let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, tid);
@@ -136,14 +108,9 @@ impl World {
             false => (&mut after[0], &mut before[dst_arch as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe {
-            src.drop_bundle(
-                entity.id(),
-                dst,
-                src_loc.idx,
-                ActionEncoder::new(buffer, &self.entities),
-            )
-        };
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+        let (dst_idx, opt_src_id) =
+            unsafe { src.drop_bundle(entity.id(), dst, src_loc.idx, encoder) };
 
         let dst_loc = Location::new(dst_arch, dst_idx);
 
@@ -153,9 +120,8 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        // Safety: entity is moved
-        // Reference is created with correct location of entity in this world.
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        self.execute_local_actions();
+        Ok(())
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -188,21 +154,6 @@ impl World {
     where
         B: Bundle,
     {
-        with_buffer!(self, buffer => {
-            self.drop_bundle_with_buffer::<B>(entity, buffer)?;
-        });
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn drop_bundle_with_buffer<B>(
-        &mut self,
-        entity: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
-    where
-        B: Bundle,
-    {
         if !B::static_valid() {
             panic!(
                 "Specified bundle `{}` is not valid. Check for duplicate component types",
@@ -221,7 +172,7 @@ impl World {
         }) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(());
         }
 
         let dst_arch = self
@@ -239,14 +190,9 @@ impl World {
             false => (&mut after[0], &mut before[dst_arch as usize]),
         };
 
-        let (dst_idx, opt_src_id) = unsafe {
-            src.drop_bundle(
-                entity.id(),
-                dst,
-                src_loc.idx,
-                ActionEncoder::new(buffer, &self.entities),
-            )
-        };
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+        let (dst_idx, opt_src_id) =
+            unsafe { src.drop_bundle(entity.id(), dst, src_loc.idx, encoder) };
 
         let dst_loc = Location::new(dst_arch, dst_idx);
 
@@ -258,6 +204,66 @@ impl World {
 
         // Safety: entity is moved
         // Reference is created with correct location of entity in this world.
-        return Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) });
+        return Ok(());
+    }
+}
+
+impl WorldLocal {
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn drop_defer<T>(&self, entity: impl Entity)
+    where
+        T: 'static,
+    {
+        self.drop_erased_defer(entity, TypeId::of::<T>())
+    }
+
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn drop_erased_defer(&self, entity: impl Entity, tid: TypeId) {
+        let id = entity.id();
+        self.defer(move |world| {
+            let _ = world.drop_erased(id, tid);
+        })
+    }
+
+    /// Drops entity's components that are found in the specified bundle.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// Unlike other methods that use `Bundle` trait, this method does not require
+    /// all components from bundle to be registered in the world.
+    /// Entity can't have components that are not registered in the world,
+    /// so no need to drop them.
+    ///
+    /// For this reason there's no separate method that uses `ComponentBundle` trait.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    ///
+    /// struct OtherComponent;
+    ///
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn((ExampleComponent,));
+    ///
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn drop_bundle_defer<B>(&mut self, entity: impl Entity)
+    where
+        B: Bundle,
+    {
+        let id = entity.id();
+        self.defer(move |world| {
+            let _ = world.drop_bundle::<B>(id);
+        });
     }
 }

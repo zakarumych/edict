@@ -1,16 +1,22 @@
-use core::{any::type_name, marker::PhantomData};
+use core::{
+    any::{type_name, TypeId},
+    marker::PhantomData,
+};
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::LocalActionEncoder,
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::ComponentRegistry,
     entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
-    NoSuchEntity,
+    Component, NoSuchEntity,
 };
 
-use super::{assert_registered_bundle, register_bundle, World};
+use super::{
+    assert_registered_bundle, assert_registered_one, register_bundle, register_one, World,
+    WorldLocal,
+};
 
 /// Limits on reserving of space for entities and components
 /// in archetypes when `spawn_batch` is used.
@@ -42,14 +48,135 @@ impl World {
         self.entities.alloc()
     }
 
-    /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`EntityId`] to the newly spawned entity.
-    /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with returned [`EntityId`].
+    /// Spawns a new entity in this world without components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
     ///
     /// # Panics
     ///
-    /// Panics if new id cannot be allocated.
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_empty();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_empty(&mut self) -> EntityRef<'_> {
+        self.maintenance();
+
+        let (id, loc) = self
+            .entities
+            .spawn(0, |id| self.archetypes[0].spawn_empty(id));
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_one(ExampleComponent);
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one<T>(&mut self, component: T) -> EntityRef<'_>
+    where
+        T: Component,
+    {
+        self.maintenance();
+
+        let arch_idx = self.edges.insert(
+            &mut self.registry,
+            &mut self.archetypes,
+            0,
+            TypeId::of::<T>(),
+            register_one::<T>,
+        );
+
+        let epoch = self.epoch.next_mut();
+        let (id, loc) = self.entities.spawn(arch_idx, |id| {
+            self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
+        });
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_one_external((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one_external<T>(&mut self, component: T) -> EntityRef<'_>
+    where
+        T: 'static,
+    {
+        self.maintenance();
+
+        let arch_idx = self.edges.insert(
+            &mut self.registry,
+            &mut self.archetypes,
+            0,
+            TypeId::of::<T>(),
+            assert_registered_one::<T>,
+        );
+
+        let epoch = self.epoch.next_mut();
+        let (id, loc) = self.entities.spawn(arch_idx, |id| {
+            self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
+        });
+
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
     ///
     /// # Example
     ///
@@ -218,9 +345,10 @@ impl World {
             );
         }
 
-        let arch_idx = self.edges.spawn(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
+            0,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
@@ -230,7 +358,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        unsafe { EntityRef::from_parts(id, loc, self) }
+        unsafe { EntityRef::from_parts(id, loc, self.local()) }
     }
 
     /// Umbrella method for spawning entity with existing ID.
@@ -255,9 +383,10 @@ impl World {
             );
         }
 
-        let arch_idx = self.edges.spawn(
+        let arch_idx = self.edges.insert_bundle(
             &mut self.registry,
             &mut self.archetypes,
+            0,
             &bundle,
             |registry| register_bundle(registry, &bundle),
         );
@@ -267,7 +396,9 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        (spawned, unsafe { EntityRef::from_parts(id, loc, self) })
+        (spawned, unsafe {
+            EntityRef::from_parts(id, loc, self.local())
+        })
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -403,20 +534,11 @@ impl World {
     /// ```
     #[inline(always)]
     pub fn despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
-        with_buffer!(self, buffer => self.despawn_with_buffer(entity, buffer))
-    }
-
-    #[inline(always)]
-    pub(crate) fn despawn_with_buffer(
-        &mut self,
-        entity: impl Entity,
-        buffer: &mut ActionBuffer,
-    ) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
         let loc = self.entities.despawn(entity.id()).ok_or(NoSuchEntity)?;
 
-        let encoder = ActionEncoder::new(buffer, &self.entities);
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
         let opt_id = unsafe {
             self.archetypes[loc.arch as usize].despawn_unchecked(entity.id(), loc.idx, encoder)
         };
@@ -434,19 +556,17 @@ impl World {
     /// `EntitySet` and `Archetype`.
     #[inline(always)]
     pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
-        with_buffer!(self, buffer => {
-            let real_loc = self.entities.despawn(id).unwrap_unchecked();
-            debug_assert_eq!(real_loc, loc, "Entity location mismatch");
+        let real_loc = self.entities.despawn(id).unwrap_unchecked();
+        debug_assert_eq!(real_loc, loc, "Entity location mismatch");
 
-            let opt_id = unsafe {
-                self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, ActionEncoder::new(buffer, &self.entities))
-            };
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
 
-            if let Some(id) = opt_id {
-                self.entities
-                    .set_location(id, loc)
-            }
-        })
+        let opt_id =
+            unsafe { self.archetypes[loc.arch as usize].despawn_unchecked(id, loc.idx, encoder) };
+
+        if let Some(id) = opt_id {
+            self.entities.set_location(id, loc)
+        }
     }
 }
 
@@ -501,7 +621,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     #[inline(always)]
@@ -513,7 +633,7 @@ where
             self.archetype.spawn(id, bundle, self.epoch)
         });
 
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     #[inline(always)]
@@ -537,7 +657,7 @@ where
 
         self.bundles.fold(init, |acc, bundle| {
             let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, EntityLoc::new(id, loc))
+            f(acc, EntityLoc::from_parts(id, loc))
         })
     }
 
@@ -580,7 +700,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<EntityLoc<'a>> {
@@ -591,7 +711,7 @@ where
         let (id, loc) = self.entities.spawn(self.arch_idx, |id| {
             self.archetype.spawn(id, bundle, self.epoch)
         });
-        Some(EntityLoc::new(id, loc))
+        Some(EntityLoc::from_parts(id, loc))
     }
 
     fn rfold<T, F>(mut self, init: T, mut f: F) -> T
@@ -608,7 +728,7 @@ where
 
         self.bundles.rfold(init, |acc, bundle| {
             let (id, loc) = entities.spawn(arch_idx, |id| archetype.spawn(id, bundle, epoch));
-            f(acc, EntityLoc::new(id, loc))
+            f(acc, EntityLoc::from_parts(id, loc))
         })
     }
 }
@@ -630,5 +750,218 @@ pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> u32 {
                 .max(upper.min(MAX_SPAWN_RESERVE))
                 .min(u32::MAX as usize) as u32
         }
+    }
+}
+
+impl WorldLocal {
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_one(ExampleComponent);
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one_defer<T>(&self, component: T) -> EntityId
+    where
+        T: Component,
+    {
+        let id = self.allocate().id();
+        self.insert_defer(id, component);
+        id
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_one_external((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one_external_defer<T>(&self, component: T) -> EntityId
+    where
+        T: 'static,
+    {
+        let id = self.allocate().id();
+        self.insert_external_defer(id, component);
+        id
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_defer<B>(&self, bundle: B) -> EntityId
+    where
+        B: DynamicComponentBundle,
+    {
+        let id = self.allocate().id();
+        self.insert_bundle_defer(id, bundle);
+        id
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] handle to the newly spawned entity.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until despawned.
+    ///
+    /// All components from the bundle must be previously registered.
+    /// If component in bundle implements [`Component`] it could be registered implicitly
+    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if new id cannot be allocated.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert!(entity.has_component::<u32>());
+    /// assert_eq!(entity.remove(), Some(42u32));
+    /// assert!(!entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_external_defer<B>(&self, bundle: B) -> EntityId
+    where
+        B: DynamicBundle + 'static,
+    {
+        let id = self.allocate().id();
+        self.insert_external_bundle_defer(id, bundle);
+        id
+    }
+
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles yielded from provided bundles iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    #[inline(always)]
+    pub fn spawn_batch_defer<B, I>(&self, bundles: I)
+    where
+        I: IntoIterator<Item = B> + 'static,
+        B: ComponentBundle,
+    {
+        self.defer(|world| {
+            let _ = world.spawn_batch(bundles);
+        })
+    }
+
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles yielded from provided bundles iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    ///
+    /// All components from the bundle must be previously registered.
+    /// If component in bundle implements [`Component`] it could be registered implicitly
+    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    #[inline(always)]
+    pub fn spawn_batch_external_defer<B, I>(&self, bundles: I)
+    where
+        I: IntoIterator<Item = B> + 'static,
+        B: Bundle,
+    {
+        self.defer(|world| {
+            let _ = world.spawn_batch_external(bundles);
+        })
+    }
+
+    /// Despawns an entity with specified id.
+    /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,)).id();
+    /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
+    /// assert!(world.despawn(entity).is_err(), "Already despawned");
+    /// ```
+    #[inline(always)]
+    pub fn despawn_defer(&self, entity: impl Entity) {
+        let id = entity.id();
+        self.defer(move |world| {
+            let _ = world.despawn(id);
+        })
     }
 }

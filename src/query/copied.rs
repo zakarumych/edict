@@ -2,7 +2,9 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
 
-use super::{Access, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, WriteAlias};
+use super::{
+    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+};
 
 /// [`Fetch`] type for the `&T` query.
 
@@ -13,7 +15,7 @@ pub struct FetchCopied<'a, T> {
 
 unsafe impl<'a, T> Fetch<'a> for FetchCopied<'a, T>
 where
-    T: Copy + Sync + 'a,
+    T: Copy + 'a,
 {
     type Item = T;
 
@@ -38,12 +40,17 @@ marker_type! {
     pub struct Cpy<T>;
 }
 
-impl<T> IntoQuery for Cpy<T>
+impl<T> AsQuery for Cpy<T>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     type Query = Self;
+}
 
+impl<T> IntoQuery for Cpy<T>
+where
+    T: Copy + 'static,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -52,7 +59,7 @@ where
 
 impl<T> DefaultQuery for Cpy<T>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
@@ -72,7 +79,7 @@ where
 
 unsafe impl<T> Query for Cpy<T>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     type Item<'a> = T;
     type Fetch<'a> = FetchCopied<'a, T>;
@@ -113,4 +120,6 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for Cpy<T> where T: Copy + Sync + 'static {}
+unsafe impl<T> ImmutableQuery for Cpy<T> where T: Copy + 'static {}
+
+unsafe impl<T> SendQuery for Cpy<T> where T: Sync + Copy + 'static {}

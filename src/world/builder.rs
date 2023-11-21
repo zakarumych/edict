@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
-use core::marker::PhantomData;
+use core::{cell::UnsafeCell, marker::PhantomData};
 
 use crate::{
-    action::{ActionBuffer, ActionChannel},
+    action::{ActionChannel, LocalActionBuffer},
     bundle::ComponentBundle,
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
@@ -12,7 +12,7 @@ use crate::{
     res::Res,
 };
 
-use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World};
+use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World, WorldLocal};
 
 /// Builder for [`World`] value.
 ///
@@ -49,9 +49,17 @@ impl WorldBuilder {
             edges: Edges::new(),
             res: Res::new(),
             registry: self.registry,
-            action_buffer: Some(ActionBuffer::new()),
+            action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
-            execute_action_buffer: true,
+        }
+    }
+
+    /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
+    #[must_use]
+    pub fn build_local(self) -> WorldLocal {
+        WorldLocal {
+            world: self.build(),
+            marker: PhantomData,
         }
     }
 

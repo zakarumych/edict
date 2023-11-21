@@ -3,7 +3,9 @@ use core::any::TypeId;
 use crate::{
     archetype::Archetype,
     epoch::EpochId,
-    query::{DefaultQuery, ImmutableQuery, IntoQuery, Query, UnitFetch, WriteAlias},
+    query::{
+        AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias,
+    },
     relation::{OriginComponent, Relation},
     system::QueryArg,
     Access,
@@ -14,12 +16,17 @@ marker_type! {
     pub struct FilterRelates<R>;
 }
 
-impl<R> IntoQuery for FilterRelates<R>
+impl<R> AsQuery for FilterRelates<R>
 where
     R: Relation,
 {
     type Query = Self;
+}
 
+impl<R> IntoQuery for FilterRelates<R>
+where
+    R: Relation,
+{
     #[inline(always)]
     fn into_query(self) -> Self {
         self
@@ -75,3 +82,4 @@ where
 }
 
 unsafe impl<R> ImmutableQuery for FilterRelates<R> where R: Relation {}
+unsafe impl<R> SendQuery for FilterRelates<R> where R: Relation {}

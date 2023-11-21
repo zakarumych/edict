@@ -1,15 +1,16 @@
 use core::any::{type_name, TypeId};
 
 use crate::{
-    action::{ActionBuffer, ActionEncoder},
+    action::LocalActionEncoder,
     bundle::{DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entity, EntityRef, Location},
+    entity::{Entity, EntityLoc, Location},
     NoSuchEntity,
 };
 
 use super::{
     assert_registered_bundle, assert_registered_one, register_bundle, register_one, World,
+    WorldLocal,
 };
 
 impl World {
@@ -37,23 +38,8 @@ impl World {
     where
         T: Component,
     {
-        with_buffer!(self, buffer => {
-            self.insert_with_buffer(entity, component, buffer)?;
-        });
+        self._with(entity, || component, true, register_one::<T>)?;
         Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn insert_with_buffer<T>(
-        &mut self,
-        entity: impl Entity,
-        component: T,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
-    where
-        T: Component,
-    {
-        self._insert(entity, component, register_one::<T>, buffer)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -85,32 +71,80 @@ impl World {
     where
         T: 'static,
     {
-        with_buffer!(self, buffer => {
-            self.insert_external_with_buffer(entity, component, buffer)?;
-        });
+        self._with(entity, || component, true, assert_registered_one::<T>)?;
         Ok(())
     }
 
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.with(entity, || ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
     #[inline(always)]
-    pub(crate) fn insert_external_with_buffer<T>(
+    pub fn with<T>(
         &mut self,
         entity: impl Entity,
-        component: T,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
+        f: impl FnOnce() -> T,
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    where
+        T: Component,
+    {
+        self._with(entity, f, false, register_one::<T>)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.with_external(entity, || 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external<T>(
+        &mut self,
+        entity: impl Entity,
+        f: impl FnOnce() -> T,
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
     where
         T: 'static,
     {
-        self._insert(entity, component, assert_registered_one::<T>, buffer)
+        self._with(entity, f, false, assert_registered_one::<T>)
     }
 
-    pub(crate) fn _insert<T, F>(
+    pub(crate) fn _with<T, F>(
         &mut self,
         entity: impl Entity,
-        component: T,
+        f: impl FnOnce() -> T,
+        replace: bool,
         get_or_register: F,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
     where
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
@@ -122,28 +156,29 @@ impl World {
 
         let epoch = self.epoch.next_mut();
 
-        let encoder = ActionEncoder::new(buffer, &self.entities);
-
         if self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
-            unsafe {
-                self.archetypes[src_loc.arch as usize].set(
-                    entity.id(),
-                    src_loc.idx,
-                    component,
-                    epoch,
-                    encoder,
-                );
+            if replace {
+                let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+                unsafe {
+                    self.archetypes[src_loc.arch as usize].set(
+                        entity.id(),
+                        src_loc.idx,
+                        f(),
+                        epoch,
+                        encoder,
+                    );
+                }
+                self.execute_local_actions();
             }
 
-            // Safety: The location is valid for entity id in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
         }
 
         let dst_arch = self.edges.insert(
-            TypeId::of::<T>(),
             &mut self.registry,
             &mut self.archetypes,
             src_loc.arch,
+            TypeId::of::<T>(),
             get_or_register,
         );
 
@@ -159,7 +194,7 @@ impl World {
         };
 
         let (dst_idx, opt_src_id) =
-            unsafe { src.insert(entity.id(), dst, src_loc.idx, component, epoch) };
+            unsafe { src.insert(entity.id(), dst, src_loc.idx, f(), epoch) };
 
         let dst_loc = Location::new(dst_arch, dst_idx);
 
@@ -169,7 +204,8 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        self.execute_local_actions();
+        Ok(EntityLoc::from_parts(entity.id(), dst_loc))
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -198,33 +234,17 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        with_buffer!(self, buffer => {
-            self.insert_bundle_with_buffer(entity, bundle, buffer)?;
-        });
+        self._with_bundle(entity, bundle, true, register_bundle::<B>)?;
         Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn insert_bundle_with_buffer<B>(
-        &mut self,
-        entity: impl Entity,
-        bundle: B,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
-    where
-        B: DynamicComponentBundle,
-    {
-        self._insert_bundle(entity, bundle, register_bundle::<B>, buffer)
     }
 
     /// Inserts bundle of components to the specified entity.
     /// This is moral equivalent to calling `World::insert` with each component separately,
     /// but more efficient.
     ///
-    /// For each component type in bundle:
-    /// If entity already had component of that type,
-    /// old component value is replaced with new one.
-    /// Otherwise new component is added to the entity.
+    /// If entity has component of any type in bundle already,
+    /// it is replaced with new one.
+    /// Otherwise components is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     ///
@@ -255,32 +275,86 @@ impl World {
     where
         B: DynamicBundle,
     {
-        with_buffer!(self, buffer => {
-            self.insert_external_bundle_with_buffer(entity, bundle, buffer)?;
-        });
+        self._with_bundle(entity, bundle, true, assert_registered_bundle::<B>)?;
         Ok(())
     }
 
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// This function guarantees that no hooks are triggered,
+    /// and entity cannot be despawned as a result of this operation.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
     #[inline(always)]
-    pub(crate) fn insert_external_bundle_with_buffer<B>(
+    pub fn with_bundle<B>(
         &mut self,
         entity: impl Entity,
         bundle: B,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    where
+        B: DynamicComponentBundle,
+    {
+        self._with_bundle(entity, bundle, false, register_bundle::<B>)
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external_bundle<B>(
+        &mut self,
+        entity: impl Entity,
+        bundle: B,
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
     where
         B: DynamicBundle,
     {
-        self._insert_bundle(entity, bundle, assert_registered_bundle::<B>, buffer)
+        self._with_bundle(entity, bundle, false, assert_registered_bundle::<B>)
     }
 
-    fn _insert_bundle<B, F>(
+    fn _with_bundle<B, F>(
         &mut self,
         entity: impl Entity,
         bundle: B,
+        replace: bool,
         register_bundle: F,
-        buffer: &mut ActionBuffer,
-    ) -> Result<EntityRef<'_>, NoSuchEntity>
+    ) -> Result<EntityLoc<'_>, NoSuchEntity>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -295,13 +369,12 @@ impl World {
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
-
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         if bundle.with_ids(|ids| ids.is_empty()) {
             // Safety: bundle is empty, so entity is not moved
             // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
         }
 
         let epoch = self.epoch.next_mut();
@@ -315,19 +388,22 @@ impl World {
         );
 
         if dst_arch == src_loc.arch {
-            unsafe {
-                self.archetypes[src_loc.arch as usize].set_bundle(
-                    entity.id(),
-                    src_loc.idx,
-                    bundle,
-                    epoch,
-                    ActionEncoder::new(buffer, &self.entities),
-                )
+            if replace {
+                let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+                unsafe {
+                    self.archetypes[src_loc.arch as usize].set_bundle(
+                        entity.id(),
+                        src_loc.idx,
+                        bundle,
+                        epoch,
+                        encoder,
+                    )
+                }
+
+                self.execute_local_actions();
             }
 
-            // Safety: entity is not moved
-            // Reference is created with correct location of entity in this world.
-            return Ok(unsafe { EntityRef::from_parts(entity.id(), src_loc, self) });
+            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
         }
 
         let (before, after) = self
@@ -339,6 +415,7 @@ impl World {
             false => (&mut after[0], &mut before[dst_arch as usize]),
         };
 
+        let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
         let (dst_idx, opt_src_id) = unsafe {
             src.insert_bundle(
                 entity.id(),
@@ -346,7 +423,8 @@ impl World {
                 src_loc.idx,
                 bundle,
                 epoch,
-                ActionEncoder::new(buffer, &self.entities),
+                encoder,
+                replace,
             )
         };
 
@@ -358,8 +436,277 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        // Safety: entity is moved
-        // Reference is created with correct location of entity in this world.
-        Ok(unsafe { EntityRef::from_parts(entity.id(), dst_loc, self) })
+        self.execute_local_actions();
+        Ok(EntityLoc::from_parts(entity.id(), dst_loc))
+    }
+}
+
+impl WorldLocal {
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert(entity, ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_defer<T>(&self, entity: impl Entity, component: T)
+    where
+        T: Component,
+    {
+        self._with_defer(entity, || component, true, register_one::<T>)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.insert_external(entity, 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_external_defer<T>(&self, entity: impl Entity, component: T)
+    where
+        T: 'static,
+    {
+        self._with_defer(entity, || component, true, assert_registered_one::<T>)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.with(entity, || ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_defer<T>(&self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
+    where
+        T: Component,
+    {
+        self._with_defer(entity, f, false, register_one::<T>)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.with_external(entity, || 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external_defer<T>(&self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
+    where
+        T: 'static,
+    {
+        self._with_defer(entity, f, false, assert_registered_one::<T>)
+    }
+
+    pub(crate) fn _with_defer<T, F>(
+        &self,
+        entity: impl Entity,
+        f: impl FnOnce() -> T + 'static,
+        replace: bool,
+        get_or_register: F,
+    ) where
+        T: 'static,
+        F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo + 'static,
+    {
+        let id = entity.id();
+        self.defer(move |world| {
+            let _ = world._with(id, f, replace, get_or_register);
+        })
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicComponentBundle + 'static,
+    {
+        self._with_bundle_defer(entity, bundle, true, register_bundle::<B>);
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// If entity has component of any type in bundle already,
+    /// it is replaced with new one.
+    /// Otherwise components is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_external_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicBundle + 'static,
+    {
+        self._with_bundle_defer(entity, bundle, true, assert_registered_bundle::<B>);
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// This function guarantees that no hooks are triggered,
+    /// and entity cannot be despawned as a result of this operation.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicComponentBundle + 'static,
+    {
+        self._with_bundle_defer(entity, bundle, false, register_bundle::<B>);
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
+    where
+        B: DynamicBundle + 'static,
+    {
+        self._with_bundle_defer(entity, bundle, false, assert_registered_bundle::<B>);
+    }
+
+    fn _with_bundle_defer<B, F>(
+        &self,
+        entity: impl Entity,
+        bundle: B,
+        replace: bool,
+        register_bundle: F,
+    ) where
+        B: DynamicBundle + 'static,
+        F: FnOnce(&mut ComponentRegistry, &B) + 'static,
+    {
+        let id = entity.id();
+        self.defer(move |world| {
+            let _ = world._with_bundle(id, bundle, replace, register_bundle);
+        });
     }
 }

@@ -1,11 +1,10 @@
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::sync::Arc;
+use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use core::{
     any::TypeId,
     iter::FusedIterator,
     sync::atomic::{AtomicBool, Ordering},
 };
-
-use parking_lot::Mutex;
 
 use crate::{
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
@@ -15,16 +14,16 @@ use crate::{
     world::{iter_reserve_hint, World},
 };
 
-use super::{ActionBuffer, ActionEncoder, ActionFn};
+use super::ActionFn;
 
 struct Shared {
-    queue: Mutex<VecDeque<ActionFn<'static>>>,
+    queue: FlipQueue<ActionFn<'static>>,
     non_empty: AtomicBool,
 }
 
 pub(crate) struct ActionChannel {
     shared: Arc<Shared>,
-    spare_queue: VecDeque<ActionFn<'static>>,
+    spare_buffer: RingBuffer<ActionFn<'static>>,
 }
 
 impl ActionChannel {
@@ -32,10 +31,10 @@ impl ActionChannel {
     pub fn new() -> Self {
         ActionChannel {
             shared: Arc::new(Shared {
-                queue: Mutex::new(VecDeque::new()),
+                queue: FlipQueue::new(),
                 non_empty: AtomicBool::new(false),
             }),
-            spare_queue: VecDeque::new(),
+            spare_buffer: RingBuffer::new(),
         }
     }
 
@@ -49,20 +48,15 @@ impl ActionChannel {
     /// Fetches actions recorded into the channel.
     #[inline(always)]
     pub fn fetch(&mut self) {
-        debug_assert!(self.spare_queue.is_empty());
+        debug_assert!(self.spare_buffer.is_empty());
         if self.shared.non_empty.swap(false, Ordering::Relaxed) {
-            let mut queue = self.shared.queue.lock();
-            core::mem::swap(&mut self.spare_queue, &mut *queue);
+            self.shared.queue.swap_buffer(&mut self.spare_buffer);
         }
     }
 
     #[inline(always)]
-    pub fn execute(&mut self) -> Option<impl FnOnce(&mut World, &mut ActionBuffer)> {
-        self.spare_queue.pop_front().map(|fun| {
-            move |world: &mut World, buffer: &mut ActionBuffer| {
-                fun.call(world, buffer);
-            }
-        })
+    pub(crate) fn pop(&mut self) -> Option<ActionFn<'static>> {
+        self.spare_buffer.pop()
     }
 }
 
@@ -90,7 +84,7 @@ impl ActionSender {
     where
         B: DynamicComponentBundle + Send + 'static,
     {
-        self.push_fn(move |world, _| {
+        self.push_fn(move |world| {
             let _ = world.spawn(bundle);
         });
     }
@@ -101,7 +95,7 @@ impl ActionSender {
     where
         B: DynamicBundle + Send + 'static,
     {
-        self.push_fn(move |world, _| {
+        self.push_fn(move |world| {
             let _ = world.spawn_external(bundle);
         });
     }
@@ -114,7 +108,7 @@ impl ActionSender {
         I: IntoIterator,
         I::Item: ComponentBundle + Send + 'static,
     {
-        self.push_fn(|world, _| {
+        self.push_fn(|world| {
             world.ensure_bundle_registered::<I::Item>();
         });
 
@@ -141,8 +135,8 @@ impl ActionSender {
     /// Encodes an action to despawn specified entity.
     #[inline(always)]
     pub fn despawn(&self, id: EntityId) {
-        self.push_fn(move |world, buffer| {
-            let _ = world.despawn_with_buffer(id, buffer);
+        self.push_fn(move |world| {
+            let _ = world.despawn(id);
         })
     }
 
@@ -152,8 +146,8 @@ impl ActionSender {
     where
         T: Component + Send,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.insert_with_buffer(id, component, buffer);
+        self.push_fn(move |world| {
+            let _ = world.insert(id, component);
         });
     }
 
@@ -163,8 +157,8 @@ impl ActionSender {
     where
         T: Send + 'static,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.insert_external_with_buffer(id, component, buffer);
+        self.push_fn(move |world| {
+            let _ = world.insert_external(id, component);
         });
     }
 
@@ -174,8 +168,8 @@ impl ActionSender {
     where
         B: DynamicComponentBundle + Send + 'static,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.insert_bundle_with_buffer(id, bundle, buffer);
+        self.push_fn(move |world| {
+            let _ = world.insert_bundle(id, bundle);
         });
     }
 
@@ -185,8 +179,8 @@ impl ActionSender {
     where
         B: DynamicBundle + Send + 'static,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.insert_external_bundle_with_buffer(id, bundle, buffer);
+        self.push_fn(move |world| {
+            let _ = world.insert_external_bundle(id, bundle);
         });
     }
 
@@ -202,8 +196,8 @@ impl ActionSender {
     /// Encodes an action to drop component from specified entity.
     #[inline(always)]
     pub fn drop_erased(&self, id: EntityId, ty: TypeId) {
-        self.push_fn(move |world, buffer| {
-            let _ = world.drop_erased_with_buffer(id, ty, buffer);
+        self.push_fn(move |world| {
+            let _ = world.drop_erased(id, ty);
         })
     }
 
@@ -213,8 +207,8 @@ impl ActionSender {
     where
         B: Bundle,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.drop_bundle_with_buffer::<B>(id, buffer);
+        self.push_fn(move |world| {
+            let _ = world.drop_bundle::<B>(id);
         });
     }
 
@@ -222,10 +216,10 @@ impl ActionSender {
     #[inline(always)]
     pub fn add_relation<R>(&self, origin: EntityId, relation: R, target: EntityId)
     where
-        R: Relation,
+        R: Relation + Send,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.add_relation_with_buffer(origin, relation, target, buffer);
+        self.push_fn(move |world| {
+            let _ = world.add_relation(origin, relation, target);
         });
     }
 
@@ -235,8 +229,8 @@ impl ActionSender {
     where
         R: Relation,
     {
-        self.push_fn(move |world, buffer| {
-            let _ = world.remove_relation_with_buffer::<R>(origin, target, buffer);
+        self.push_fn(move |world| {
+            let _ = world.remove_relation::<R>(origin, target);
         });
     }
 
@@ -245,14 +239,14 @@ impl ActionSender {
     where
         T: Send + 'static,
     {
-        self.push_fn(move |world, _| {
+        self.push_fn(move |world| {
             world.insert_resource(resource);
         });
     }
 
     /// Encodes an action to drop resource instance.
     pub fn drop_resource<T: 'static>(&self) {
-        self.push_fn(move |world, _| {
+        self.push_fn(move |world| {
             world.remove_resource::<T>();
         });
     }
@@ -260,24 +254,14 @@ impl ActionSender {
     /// Encodes a custom action with a closure that takes mutable reference to `World`.
     #[inline(always)]
     pub fn closure(&self, fun: impl FnOnce(&mut World) + Send + 'static) {
-        self.push_fn(move |world, buffer| unsafe { world.with_buffer(buffer, fun) })
-    }
-
-    /// Encodes a custom action with a closure that takes reference to `World`
-    /// and [`ActionEncoder`] that can be used to record new actions.
-    #[inline(always)]
-    pub fn closure_with_encoder(&self, fun: impl FnOnce(&World, ActionEncoder) + Send + 'static) {
-        self.push_fn(|world, buffer| {
-            let encoder = ActionEncoder::new(buffer, world.entities());
-            fun(world, encoder);
-        });
+        self.push_fn(fun)
     }
 
     /// Encodes an action to remove component from specified entity.
     #[inline(always)]
-    fn push_fn(&self, fun: impl FnOnce(&mut World, &mut ActionBuffer) + Send + 'static) {
+    fn push_fn(&self, fun: impl FnOnce(&mut World) + Send + 'static) {
         let action = ActionFn::new(fun);
-        self.shared.queue.lock().push_back(action);
+        self.shared.queue.push(action);
         self.shared.non_empty.store(true, Ordering::Relaxed);
     }
 }
@@ -331,7 +315,7 @@ where
         F: FnMut(T, ()) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
-        self.sender.push_fn(move |world, _| {
+        self.sender.push_fn(move |world| {
             world.spawn_reserve::<B>(additional);
         });
 
@@ -351,7 +335,7 @@ where
         // Hence we should reserve space in archetype here.
 
         let additional = iter_reserve_hint(&self.bundles);
-        self.sender.push_fn(move |world, _| {
+        self.sender.push_fn(move |world| {
             world.spawn_reserve::<B>(additional);
         });
 
@@ -395,7 +379,7 @@ where
         F: FnMut(T, ()) -> T,
     {
         let additional = iter_reserve_hint(&self.bundles);
-        self.sender.push_fn(move |world, _| {
+        self.sender.push_fn(move |world| {
             world.spawn_reserve::<B>(additional);
         });
 

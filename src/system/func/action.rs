@@ -3,7 +3,7 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     archetype::Archetype,
-    system::{Access, ActionQueue},
+    system::{Access, ActionBufferQueue},
     world::World,
 };
 
@@ -60,14 +60,18 @@ unsafe impl FnArgState for ActionEncoderState {
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
-        queue: &mut dyn ActionQueue,
+        queue: &mut dyn ActionBufferQueue,
     ) -> ActionEncoder<'a> {
         let buffer = self.buffer.get_or_insert_with(|| queue.get());
         ActionEncoder::new(buffer, unsafe { world.as_ref() }.entities())
     }
 
     #[inline(always)]
-    unsafe fn flush_unchecked(&mut self, _world: NonNull<World>, queue: &mut dyn ActionQueue) {
+    unsafe fn flush_unchecked(
+        &mut self,
+        _world: NonNull<World>,
+        queue: &mut dyn ActionBufferQueue,
+    ) {
         if let Some(buffer) = self.buffer.take() {
             queue.flush(buffer);
         }

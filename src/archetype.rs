@@ -11,7 +11,7 @@ use core::{
     cell::UnsafeCell,
     intrinsics::copy_nonoverlapping,
     iter::FromIterator,
-    mem::{self, size_of, MaybeUninit},
+    mem::{self, size_of, ManuallyDrop, MaybeUninit},
     ops::Deref,
     ptr::{self, NonNull},
 };
@@ -936,7 +936,8 @@ impl Archetype {
         };
 
         if let Some(encoder) = occupied {
-            component.set_one(dst, NonNull::from(&value).cast(), id, encoder)
+            let value = ManuallyDrop::new(value);
+            component.set_one(dst, NonNull::from(&*value).cast(), id, encoder)
         } else {
             unsafe {
                 ptr::write(dst.as_ptr().cast(), value);

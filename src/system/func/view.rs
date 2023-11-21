@@ -224,7 +224,7 @@ where
         self.filter.before(world);
 
         // Safety: Declares access for these queries.
-        unsafe { ViewValue::new_unchecked(world, self.query, self.filter) }
+        unsafe { ViewValue::new_static(world, self.query, self.filter) }
     }
 
     #[inline(always)]

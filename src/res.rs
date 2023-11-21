@@ -104,18 +104,21 @@ impl Res {
     /// Removes resource from container.
     /// Returns `None` if resource is not found.
     pub fn remove<T: 'static>(&mut self) -> Option<T> {
-        let resource = self.resources.remove(&TypeId::of::<T>())?;
-        let value = AtomicCell::into_inner(*unsafe {
+        let mut resource = self.resources.remove(&TypeId::of::<T>())?;
+        let data = AtomicCell::into_inner(*unsafe {
+            assert!(resource.data.get_mut().is::<T>());
+
             // # Safety
             // Manually casting is is safe, type behind `dyn Any` is `T`.
             Box::from_raw(Box::into_raw(resource.data) as *mut AtomicCell<T>)
         });
-        Some(value)
+        Some(data)
     }
 
     /// Returns some reference to `Sync` resource.
     /// Returns none if resource is not found.
     #[inline(always)]
+    #[track_caller]
     pub fn get<T: Sync + 'static>(&self) -> Option<Ref<T>> {
         unsafe {
             // # Safety
@@ -128,6 +131,7 @@ impl Res {
     /// Returns some mutable reference to `Send` resource.
     /// Returns none if resource is not found.
     #[inline(always)]
+    #[track_caller]
     pub fn get_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
         unsafe {
             // # Safety
@@ -148,15 +152,25 @@ impl Res {
     /// If `T` is `Sync` then this method is always safe.
     /// In this case prefer to use [`get`] method instead.
     #[inline(always)]
+    #[track_caller]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
         let id = TypeId::of::<T>();
+
+        let resource = self.resources.get(&id)?;
 
         let r = {
             // # Safety
             // Index from `ids` always valid.
-            &*self.resources.get(&id)?.data
+            &resource.data
         }
-        .borrow();
+        .try_borrow();
+
+        let Some(r) = r else {
+            panic!(
+                "Attempt to borrow {} when it is already borrowed mutably",
+                type_name::<T>()
+            );
+        };
 
         let r = Ref::map(r, |r| r.downcast_ref::<T>().unwrap());
         Some(r)
@@ -173,15 +187,25 @@ impl Res {
     /// If `T` is `Send` then this method is always safe.
     /// In this case prefer to use [`get_mut`] method instead.
     #[inline(always)]
+    #[track_caller]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
         let id = TypeId::of::<T>();
+
+        let resource = self.resources.get(&id)?;
 
         let r = {
             // # Safety
             // Index from `ids` always valid.
-            &*self.resources.get(&id)?.data
+            &resource.data
         }
-        .borrow_mut();
+        .try_borrow_mut();
+
+        let Some(r) = r else {
+            panic!(
+                "Attempt to borrow {} mutably when it is already borrowed",
+                type_name::<T>()
+            );
+        };
 
         let r = RefMut::map(r, |r| r.downcast_mut::<T>().unwrap());
         Some(r)

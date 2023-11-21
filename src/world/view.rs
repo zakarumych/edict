@@ -1,6 +1,6 @@
 use crate::{
     query::{DefaultQuery, DefaultSendQuery, IntoQuery, IntoSendQuery},
-    view::{View, ViewCell, ViewValue},
+    view::{ViewCell, ViewMut, ViewValue},
 };
 
 use super::{World, WorldLocal};
@@ -23,7 +23,7 @@ impl World {
     ///
     /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     #[inline(always)]
-    pub fn new_view_mut<'a>(&'a mut self) -> View<'a, ()> {
+    pub fn new_view_mut<'a>(&'a mut self) -> ViewMut<'a, ()> {
         ViewValue::new(self, (), ())
     }
 
@@ -40,7 +40,7 @@ impl World {
     /// The caller is responsible that query won't create
     /// invalid aliasing of world's components.
     #[inline(always)]
-    pub unsafe fn new_view_unchecked<'a>(&'a mut self) -> View<'a, ()> {
+    pub unsafe fn new_view_unchecked<'a>(&'a mut self) -> ViewMut<'a, ()> {
         unsafe { ViewValue::new_unchecked(self, (), ()) }
     }
 
@@ -65,7 +65,7 @@ impl World {
     ///
     /// Use [`View`]'s methods to add sub-queries and filters.
     #[inline(always)]
-    pub fn view_mut<'a, Q>(&'a mut self) -> View<'a, (Q,)>
+    pub fn view_mut<'a, Q>(&'a mut self) -> ViewMut<'a, (Q,)>
     where
         Q: DefaultQuery,
     {
@@ -85,7 +85,7 @@ impl World {
     /// The caller is responsible that query won't create
     /// invalid aliasing of world's components.
     #[inline(always)]
-    pub unsafe fn view_unchecked<'a, Q>(&'a self) -> View<'a, (Q,)>
+    pub unsafe fn view_unchecked<'a, Q>(&'a self) -> ViewMut<'a, (Q,)>
     where
         Q: DefaultQuery,
     {
@@ -115,7 +115,7 @@ impl World {
     ///
     /// Use [`View`]'s methods to add sub-queries and filters.
     #[inline(always)]
-    pub fn view_with_mut<'a, Q>(&'a mut self, query: Q) -> View<'a, (Q,)>
+    pub fn view_with_mut<'a, Q>(&'a mut self, query: Q) -> ViewMut<'a, (Q,)>
     where
         Q: IntoQuery,
     {
@@ -135,7 +135,7 @@ impl World {
     /// The caller is responsible that query won't create
     /// invalid aliasing of world's components.
     #[inline(always)]
-    pub unsafe fn view_with_unchecked<'a, Q>(&'a self, query: Q) -> View<'a, (Q,)>
+    pub unsafe fn view_with_unchecked<'a, Q>(&'a self, query: Q) -> ViewMut<'a, (Q,)>
     where
         Q: IntoQuery,
     {

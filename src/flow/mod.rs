@@ -242,7 +242,7 @@ impl<F> TypedFlows<F>
 where
     F: Flow,
 {
-    #[inline]
+    #[inline(always)]
     unsafe fn execute(&mut self, ids: &[usize]) {
         for &id in ids {
             let Some(task) = self.array.get(id) else {

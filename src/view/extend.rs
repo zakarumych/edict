@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{BorrowState, ViewValue};
+use super::{ExtendableBorrowState, ViewValue};
 
 /// A helper trait to extend tuples of queries to produce a new query.
 pub trait TupleQuery: Query + Sized {
@@ -63,7 +63,7 @@ impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
     Q: TupleQuery,
     F: Query,
-    B: BorrowState,
+    B: ExtendableBorrowState,
 {
     /// Extends query tuple with an additional query element.
     #[inline(always)]
@@ -71,6 +71,8 @@ where
     where
         E: SendQuery,
     {
+        self.release_borrow();
+
         ViewValue {
             query: Q::extend_query(self.query, ext),
             filter: self.filter,
@@ -261,7 +263,7 @@ impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
     Q: Query,
     F: TupleQuery,
-    B: BorrowState,
+    B: ExtendableBorrowState,
 {
     /// Extends filter tuple with an additional filter element.
     #[inline(always)]
@@ -269,6 +271,8 @@ where
     where
         E: SendQuery,
     {
+        self.release_borrow();
+
         ViewValue {
             query: self.query,
             filter: F::extend_query(self.filter, ext),

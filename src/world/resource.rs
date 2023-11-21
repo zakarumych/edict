@@ -1,4 +1,4 @@
-use core::any::TypeId;
+use core::any::{type_name, TypeId};
 
 use atomicell::{Ref, RefMut};
 
@@ -111,8 +111,9 @@ impl World {
     /// let local = world.local();
     /// assert_eq!(42, *local.get_resource::<i32>().unwrap());
     /// ```
+    #[track_caller]
     pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        unsafe { self.res.get_local() }
+        unsafe { self.res.get_local::<T>() }
     }
 
     /// Returns some mutable reference to potentially `!Send` resource.
@@ -149,8 +150,9 @@ impl World {
     /// let local = world.local();
     /// *local.get_resource_mut::<i32>().unwrap() = 11;
     /// ```
+    #[track_caller]
     pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        unsafe { self.res.get_local_mut() }
+        unsafe { self.res.get_local_mut::<T>() }
     }
 
     /// Returns some reference to `Sync` resource.
@@ -170,6 +172,7 @@ impl World {
     /// world.insert_resource(42i32);
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
     /// ```
+    #[track_caller]
     pub fn get_resource<T: Sync + 'static>(&self) -> Option<Ref<T>> {
         self.res.get::<T>()
     }
@@ -196,7 +199,10 @@ impl World {
     /// ```
     #[track_caller]
     pub fn expect_resource<T: Sync + 'static>(&self) -> Ref<T> {
-        self.res.get::<T>().unwrap()
+        match self.res.get::<T>() {
+            Some(res) => res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Returns a copy for the `Sync` resource.
@@ -221,7 +227,10 @@ impl World {
     /// ```
     #[track_caller]
     pub fn copy_resource<T: Copy + Sync + 'static>(&self) -> T {
-        *self.res.get::<T>().unwrap()
+        match self.res.get::<T>() {
+            Some(res) => *res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Returns a clone for the `Sync` resource.
@@ -246,7 +255,10 @@ impl World {
     /// ```
     #[track_caller]
     pub fn clone_resource<T: Clone + Sync + 'static>(&self) -> T {
-        (*self.res.get::<T>().unwrap()).clone()
+        match self.res.get::<T>() {
+            Some(res) => (*res).clone(),
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Returns some mutable reference to `Send` resource.
@@ -267,8 +279,9 @@ impl World {
     /// *world.get_resource_mut::<i32>().unwrap() = 11;
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
     /// ```
+    #[track_caller]
     pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
-        self.res.get_mut()
+        self.res.get_mut::<T>()
     }
 
     /// Returns mutable reference to `Send` resource.
@@ -294,7 +307,10 @@ impl World {
     /// ```
     #[track_caller]
     pub fn expect_resource_mut<T: Send + 'static>(&self) -> RefMut<T> {
-        self.res.get_mut().unwrap()
+        match self.res.get_mut::<T>() {
+            Some(res) => res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Reset all possible leaks on resources.
@@ -401,8 +417,9 @@ impl WorldLocal {
     /// world.insert_resource(42i32);
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
     /// ```
+    #[track_caller]
     pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        unsafe { self.res.get_local() }
+        unsafe { self.world.res.get_local::<T>() }
     }
 
     /// Returns reference to `Sync` resource.
@@ -427,7 +444,10 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn expect_resource<T: 'static>(&self) -> Ref<T> {
-        unsafe { self.world.res.get_local() }.unwrap()
+        match unsafe { self.world.res.get_local::<T>() } {
+            Some(res) => res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Returns a copy for the `Sync` resource.
@@ -452,7 +472,38 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn copy_resource<T: Copy + 'static>(&self) -> T {
-        *unsafe { self.res.get_local() }.unwrap()
+        match unsafe { self.world.res.get_local::<T>() } {
+            Some(res) => *res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
+    }
+
+    /// Returns a clone for the `Sync` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.copy_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(world.copy_resource::<i32>(), 42);
+    /// ```
+    #[track_caller]
+    pub fn clone_resource<T: Clone + 'static>(&self) -> T {
+        match unsafe { self.world.res.get_local::<T>() } {
+            Some(res) => (*res).clone(),
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 
     /// Returns some mutable reference to `Send` resource.
@@ -473,8 +524,9 @@ impl WorldLocal {
     /// *world.get_resource_mut::<i32>().unwrap() = 11;
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
     /// ```
+    #[track_caller]
     pub fn get_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        unsafe { self.world.res.get_local_mut() }
+        unsafe { self.world.res.get_local_mut::<T>() }
     }
 
     /// Returns mutable reference to `Send` resource.
@@ -500,6 +552,9 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn expect_resource_mut<T: 'static>(&self) -> RefMut<T> {
-        unsafe { self.res.get_local_mut() }.unwrap()
+        match unsafe { self.world.res.get_local_mut::<T>() } {
+            Some(res) => res,
+            None => panic!("Resource {} not found", type_name::<T>()),
+        }
     }
 }

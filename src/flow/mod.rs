@@ -305,9 +305,7 @@ impl Default for Flows {
     }
 }
 
-pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
-    let flows = &mut *flows;
-
+pub fn execute_flows(world: &mut World, flows: &mut Flows) {
     {
         let mut new_flows = match world.get_resource_mut::<NewFlows>() {
             None => return,
@@ -339,6 +337,11 @@ pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
         // Clear ready buffer.
         typed.ready.clear();
     }
+}
+
+pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
+    let flows = &mut *flows;
+    execute_flows(world, flows);
 }
 
 /// Spawn a flow into the world.

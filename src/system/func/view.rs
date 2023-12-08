@@ -235,11 +235,12 @@ where
     ) {
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
-        self.query.after(world);
-        self.filter.after(world);
 
         #[cfg(debug_assertions)]
         release(self.query, self.filter, world.archetypes());
+
+        self.query.after(world);
+        self.filter.after(world);
     }
 }
 

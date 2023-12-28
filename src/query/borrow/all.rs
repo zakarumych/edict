@@ -294,7 +294,7 @@ where
     type Item<'a> = Vec<&'a mut T>;
     type Fetch<'a> = FetchBorrowAllWrite<'a, T>;
 
-    const MUTABLE: bool = false;
+    const MUTABLE: bool = true;
 
     #[inline(always)]
     fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {

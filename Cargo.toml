@@ -18,8 +18,8 @@ default = ["std"]
 
 [dependencies]
 edict-proc = { version = "=0.5.0", path = "proc" }
-amity = { path = "../amity" }
-# amity = { git = "https://github.com/zakarumych/amity" }
+# amity = { path = "../amity" }
+amity = { git = "https://github.com/zakarumych/amity" }
 hashbrown = { version = "0.14", features = ["ahash"], default-features = false }
 smallvec = { version = "1.10", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"

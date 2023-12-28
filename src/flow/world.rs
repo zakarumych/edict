@@ -25,7 +25,7 @@ use super::{entity::FlowEntity, flow_world, Flow, NewFlowTask, NewFlows};
 /// but provides similar API to work with in flows.
 #[derive(Clone, Copy)]
 pub struct FlowWorld<'a> {
-    marker: PhantomData<&'a mut World>,
+    pub(super) marker: PhantomData<&'a mut World>,
 }
 
 unsafe impl Send for FlowWorld<'_> {}
@@ -174,12 +174,15 @@ pub struct PollWorld<F> {
 
 impl<F, R> Future for PollWorld<F>
 where
-    F: FnMut(&mut World, &mut Context) -> Poll<R> + Unpin,
+    F: FnMut(&mut World, &mut Context) -> Poll<R>,
 {
     type Output = R;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        (self.get_mut().f)(unsafe { flow_world() }, cx)
+        unsafe {
+            let me = self.get_unchecked_mut();
+            (me.f)(flow_world(), cx)
+        }
     }
 }
 
@@ -208,9 +211,13 @@ impl<'a> FlowWorld<'a> {
     /// Polls the world until closure returns [`Poll::Ready`].
     pub fn poll_fn<F, R>(&self, f: F) -> PollWorld<F>
     where
-        F: FnMut(&mut World, &mut Context) -> Poll<R> + Unpin,
+        F: FnMut(&mut World, &mut Context) -> Poll<R>,
     {
         PollWorld { f }
+    }
+
+    pub fn entity(&self, id: EntityId) -> FlowEntity<'a> {
+        FlowEntity::new(id)
     }
 
     /// Reserves new entity.
@@ -237,6 +244,18 @@ impl<'a> FlowWorld<'a> {
     pub fn allocate(&self) -> FlowEntity<'a> {
         let id = unsafe { flow_world().allocate().id() };
         FlowEntity::new(id)
+    }
+
+    /// Checks if entity has component of specified type.
+    #[inline(always)]
+    pub fn has_component<T: 'static>(&self, entity: EntityId) -> bool {
+        unsafe { flow_world().try_has_component::<T>(entity).unwrap_or(false) }
+    }
+
+    /// Checks if entity is alive.
+    #[inline(always)]
+    pub fn is_alive(&self, id: EntityId) -> bool {
+        unsafe { flow_world().is_alive(id) }
     }
 
     /// Spawns a new entity in this world with provided bundle of components.

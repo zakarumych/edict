@@ -16,11 +16,12 @@ use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{EntityId, EntityRef},
+    query::{DefaultQuery, DefaultSendQuery, QueryItem, SendQuery},
     world::World,
     EntityError, NoSuchEntity,
 };
 
-use super::{flow_world, Flow, NewFlowTask, NewFlows};
+use super::{flow_world, Flow, FlowWorld, NewFlowTask, NewFlows};
 
 /// Entity reference usable in flows.
 ///
@@ -250,23 +251,75 @@ impl Component for AutoWake {
 }
 
 impl FlowEntity<'_> {
-    pub(crate) fn new(id: EntityId) -> Self {
+    pub(super) fn new(id: EntityId) -> Self {
         FlowEntity {
             id,
             marker: PhantomData,
         }
     }
 
+    pub fn id(&self) -> EntityId {
+        self.id
+    }
+
     #[doc(hidden)]
     pub fn reborrow(&self) -> FlowEntity<'_> {
-        FlowEntity {
-            id: self.id,
+        *self
+    }
+
+    pub fn world(&self) -> FlowWorld<'_> {
+        FlowWorld {
             marker: PhantomData,
         }
     }
 
-    pub fn id(&self) -> EntityId {
-        self.id
+    /// Perform operations on the world.
+    ///
+    /// This is safe since closure cannot yield and refences from world cannot escape.
+    pub fn sync_view<Q, R>(&self, f: impl FnOnce(QueryItem<Q>) -> R) -> Option<R>
+    where
+        Q: DefaultQuery,
+    {
+        let world = unsafe { flow_world() };
+        match world.view_mut::<Q>().try_get_mut(self.id) {
+            Ok(item) => Some(f(item)),
+            Err(EntityError::Mismatch) => None,
+            Err(EntityError::NoSuchEntity) => unreachable!(),
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    pub fn poll_ref<F, Q, R>(&self, f: F) -> PollRef<F>
+    where
+        F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+    {
+        PollRef { id: self.id, f }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<Q::Query, F>
+    where
+        Q: DefaultSendQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    pub fn expect_poll_view<Q, F, R>(&self, f: F) -> ExpectPollView<Q::Query, F>
+    where
+        Q: DefaultSendQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        ExpectPollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+        }
     }
 
     /// Unsafely fetches component from the entity.
@@ -303,7 +356,7 @@ impl FlowEntity<'_> {
     ///
     /// Returns clone of the component value.
     #[inline(always)]
-    pub fn get<T>(&self) -> Result<T, EntityError>
+    pub fn get_clone<T>(&self) -> Result<T, EntityError>
     where
         T: Clone + Sync + 'static,
     {
@@ -561,5 +614,77 @@ impl FlowEntity<'_> {
     #[inline(always)]
     pub fn has_component<T: 'static>(&self) -> Result<bool, NoSuchEntity> {
         unsafe { flow_world().try_has_component::<T>(self.id) }
+    }
+}
+
+pub struct PollRef<F> {
+    id: EntityId,
+    f: F,
+}
+
+impl<F, R> Future for PollRef<F>
+where
+    F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let e = flow_world().entity(me.id).unwrap();
+            (me.f)(e, cx)
+        }
+    }
+}
+
+pub struct PollView<Q, F> {
+    id: EntityId,
+    query: Q,
+    f: F,
+}
+
+impl<Q, F, R> Future for PollView<Q, F>
+where
+    Q: SendQuery,
+    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
+{
+    type Output = Option<R>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
+
+            let r = match view_one.get_mut() {
+                None => Poll::Ready(None),
+                Some(item) => (me.f)(item, cx).map(Some),
+            };
+            r
+        }
+    }
+}
+
+pub struct ExpectPollView<Q, F> {
+    id: EntityId,
+    query: Q,
+    f: F,
+}
+
+impl<Q, F, R> Future for ExpectPollView<Q, F>
+where
+    Q: SendQuery,
+    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
+
+            let item = view_one.get_mut().unwrap();
+            let r = (me.f)(item, cx);
+            r
+        }
     }
 }

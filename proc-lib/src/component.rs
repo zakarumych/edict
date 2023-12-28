@@ -82,169 +82,172 @@ pub fn derive(
                                 )),
                             };
 
+                        // insert_borrows.extend(quote::quote! {
+                        //     {
+                        //         #![allow(dead_code)]
+
+                        //         struct DispatchBorrowSendSync<T>(DispatchBorrowSend<T>);
+                        //         struct DispatchBorrowSend<T>(DispatchBorrowSync<T>);
+                        //         struct DispatchBorrowSync<T>(DispatchBorrow<T>);
+                        //         struct DispatchBorrow<T>(core::marker::PhantomData<T>);
+
+                        //         impl<T> core::ops::Deref for DispatchBorrowSendSync<T> {
+                        //             type Target = DispatchBorrowSend<T>;
+
+                        //             fn deref(&self) -> &DispatchBorrowSend<T> {
+                        //                 &self.0
+                        //             }
+                        //         }
+
+                        //         impl<T> core::ops::Deref for DispatchBorrowSend<T> {
+                        //             type Target = DispatchBorrowSync<T>;
+
+                        //             fn deref(&self) -> &DispatchBorrowSync<T> {
+                        //                 &self.0
+                        //             }
+                        //         }
+
+                        //         impl<T> core::ops::Deref for DispatchBorrowSync<T> {
+                        //             type Target = DispatchBorrow<T>;
+
+                        //             fn deref(&self) -> &DispatchBorrow<T> {
+                        //                 &self.0
+                        //             }
+                        //         }
+
+                        //         impl<T: #bound + Send + Sync + 'static> DispatchBorrowSendSync<T> {
+                        //             fn insert(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 self.insert_one(extend);
+                        //                 self.0.insert_one(extend);
+                        //                 self.0 .0.insert_one(extend);
+                        //                 self.0 .0 .0.insert_one(extend);
+                        //             }
+
+                        //             fn insert_one(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 extend.extend(Some(#edict_path::component::ComponentBorrow::make(
+                        //                     |ptr: core::ptr::NonNull<u8>,
+                        //                      core::marker::PhantomData|
+                        //                      -> &(dyn #bound + Send + Sync) {
+                        //                         unsafe { ptr.cast::<T>().as_ref() }
+                        //                     },
+                        //                     core::option::Option::Some(
+                        //                         |ptr: core::ptr::NonNull<u8>,
+                        //                          core::marker::PhantomData|
+                        //                          -> &mut (dyn #bound + Send + Sync) {
+                        //                             unsafe { ptr.cast::<T>().as_mut() }
+                        //                         },
+                        //                     ),
+                        //                 )));
+                        //             }
+                        //         }
+
+                        //         impl<T: #bound + Send + 'static> DispatchBorrowSend<T> {
+                        //             fn insert(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 self.insert_one(extend);
+                        //                 self.0 .0.insert_one(extend);
+                        //             }
+
+                        //             fn insert_one(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 extend.extend(Some(#edict_path::component::ComponentBorrow::make(
+                        //                     |ptr: core::ptr::NonNull<u8>,
+                        //                      core::marker::PhantomData|
+                        //                      -> &(dyn #bound + Send) {
+                        //                         unsafe { ptr.cast::<T>().as_ref() }
+                        //                     },
+                        //                     core::option::Option::Some(
+                        //                         |ptr: core::ptr::NonNull<u8>,
+                        //                          core::marker::PhantomData|
+                        //                          -> &mut (dyn #bound + Send) {
+                        //                             unsafe { ptr.cast::<T>().as_mut() }
+                        //                         },
+                        //                     ),
+                        //                 )));
+                        //             }
+                        //         }
+
+                        //         impl<T: #bound + Sync + 'static> DispatchBorrowSync<T> {
+                        //             fn insert(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 self.insert_one(extend);
+                        //                 self.0.insert_one(extend);
+                        //             }
+
+                        //             fn insert_one(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 extend.extend(Some(#edict_path::component::ComponentBorrow::make(
+                        //                     |ptr: core::ptr::NonNull<u8>,
+                        //                      core::marker::PhantomData|
+                        //                      -> &(dyn #bound + Sync) {
+                        //                         unsafe { ptr.cast::<T>().as_ref() }
+                        //                     },
+                        //                     core::option::Option::Some(
+                        //                         |ptr: core::ptr::NonNull<u8>,
+                        //                          core::marker::PhantomData|
+                        //                          -> &mut (dyn #bound + Sync) {
+                        //                             unsafe { ptr.cast::<T>().as_mut() }
+                        //                         },
+                        //                     ),
+                        //                 )));
+                        //             }
+                        //         }
+
+                        //         impl<T: #bound + 'static> DispatchBorrow<T> {
+                        //             fn insert(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 self.insert_one(extend);
+                        //             }
+
+                        //             fn insert_one(
+                        //                 &self,
+                        //                 extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
+                        //             ) {
+                        //                 extend.extend(Some(#edict_path::component::ComponentBorrow::make(
+                        //                     |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn #bound {
+                        //                         unsafe { ptr.cast::<T>().as_ref() }
+                        //                     },
+                        //                     core::option::Option::Some(
+                        //                         |ptr: core::ptr::NonNull<u8>,
+                        //                          core::marker::PhantomData|
+                        //                          -> &mut dyn #bound {
+                        //                             unsafe { ptr.cast::<T>().as_mut() }
+                        //                         },
+                        //                     ),
+                        //                 )));
+                        //             }
+                        //         }
+
+                        //         let dispatch = DispatchBorrowSendSync(DispatchBorrowSend(DispatchBorrowSync(
+                        //             DispatchBorrow(core::marker::PhantomData::<#ident>),
+                        //         )));
+                        //         dispatch.insert(&mut output);
+                        //     }
+                        // });
+
                         insert_borrows.extend(quote::quote! {
-                            {
-                                #![allow(dead_code)]
-
-                                struct DispatchBorrowSendSync<T>(DispatchBorrowSend<T>);
-                                struct DispatchBorrowSend<T>(DispatchBorrowSync<T>);
-                                struct DispatchBorrowSync<T>(DispatchBorrow<T>);
-                                struct DispatchBorrow<T>(core::marker::PhantomData<T>);
-
-                                impl<T> core::ops::Deref for DispatchBorrowSendSync<T> {
-                                    type Target = DispatchBorrowSend<T>;
-
-                                    fn deref(&self) -> &DispatchBorrowSend<T> {
-                                        &self.0
-                                    }
-                                }
-
-                                impl<T> core::ops::Deref for DispatchBorrowSend<T> {
-                                    type Target = DispatchBorrowSync<T>;
-
-                                    fn deref(&self) -> &DispatchBorrowSync<T> {
-                                        &self.0
-                                    }
-                                }
-
-                                impl<T> core::ops::Deref for DispatchBorrowSync<T> {
-                                    type Target = DispatchBorrow<T>;
-
-                                    fn deref(&self) -> &DispatchBorrow<T> {
-                                        &self.0
-                                    }
-                                }
-
-                                impl<T: #bound + Send + Sync + 'static> DispatchBorrowSendSync<T> {
-                                    fn insert(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        self.insert_one(extend);
-                                        self.0.insert_one(extend);
-                                        self.0 .0.insert_one(extend);
-                                        self.0 .0 .0.insert_one(extend);
-                                    }
-
-                                    fn insert_one(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
-                                            |ptr: core::ptr::NonNull<u8>,
-                                             core::marker::PhantomData|
-                                             -> &(dyn #bound + Send + Sync) {
-                                                unsafe { ptr.cast::<T>().as_ref() }
-                                            },
-                                            core::option::Option::Some(
-                                                |ptr: core::ptr::NonNull<u8>,
-                                                 core::marker::PhantomData|
-                                                 -> &mut (dyn #bound + Send + Sync) {
-                                                    unsafe { ptr.cast::<T>().as_mut() }
-                                                },
-                                            ),
-                                        )));
-                                    }
-                                }
-
-                                impl<T: #bound + Send + 'static> DispatchBorrowSend<T> {
-                                    fn insert(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        self.insert_one(extend);
-                                        self.0 .0.insert_one(extend);
-                                    }
-
-                                    fn insert_one(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
-                                            |ptr: core::ptr::NonNull<u8>,
-                                             core::marker::PhantomData|
-                                             -> &(dyn #bound + Send) {
-                                                unsafe { ptr.cast::<T>().as_ref() }
-                                            },
-                                            core::option::Option::Some(
-                                                |ptr: core::ptr::NonNull<u8>,
-                                                 core::marker::PhantomData|
-                                                 -> &mut (dyn #bound + Send) {
-                                                    unsafe { ptr.cast::<T>().as_mut() }
-                                                },
-                                            ),
-                                        )));
-                                    }
-                                }
-
-                                impl<T: #bound + Sync + 'static> DispatchBorrowSync<T> {
-                                    fn insert(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        self.insert_one(extend);
-                                        self.0.insert_one(extend);
-                                    }
-
-                                    fn insert_one(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
-                                            |ptr: core::ptr::NonNull<u8>,
-                                             core::marker::PhantomData|
-                                             -> &(dyn #bound + Sync) {
-                                                unsafe { ptr.cast::<T>().as_ref() }
-                                            },
-                                            core::option::Option::Some(
-                                                |ptr: core::ptr::NonNull<u8>,
-                                                 core::marker::PhantomData|
-                                                 -> &mut (dyn #bound + Sync) {
-                                                    unsafe { ptr.cast::<T>().as_mut() }
-                                                },
-                                            ),
-                                        )));
-                                    }
-                                }
-
-                                impl<T: #bound + 'static> DispatchBorrow<T> {
-                                    fn insert(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        self.insert_one(extend);
-                                    }
-
-                                    fn insert_one(
-                                        &self,
-                                        extend: &mut #edict_path::private::Vec<#edict_path::component::ComponentBorrow>,
-                                    ) {
-                                        extend.extend(Some(#edict_path::component::ComponentBorrow::make(
-                                            |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn #bound {
-                                                unsafe { ptr.cast::<T>().as_ref() }
-                                            },
-                                            core::option::Option::Some(
-                                                |ptr: core::ptr::NonNull<u8>,
-                                                 core::marker::PhantomData|
-                                                 -> &mut dyn #bound {
-                                                    unsafe { ptr.cast::<T>().as_mut() }
-                                                },
-                                            ),
-                                        )));
-                                    }
-                                }
-
-                                let dispatch = DispatchBorrowSendSync(DispatchBorrowSend(DispatchBorrowSync(
-                                    DispatchBorrow(core::marker::PhantomData::<#ident>),
-                                )));
-                                dispatch.insert(&mut output);
-                            }
+                            #edict_path::trait_borrow!(#ident as #bound => output);
                         });
                     }
                     _ => {
                         insert_borrows.extend(quote::quote! {
-                            let dispatch = #edict_path::component::private::DispatchBorrowMut(#edict_path::component::private::DispatchBorrow(core::marker::PhantomData::<(#ident, #target)>));
-                            dispatch.insert(&mut output);
+                            #edict_path::type_borrow!(#ident as #target => output);
                         });
                     }
                 };

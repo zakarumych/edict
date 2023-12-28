@@ -3,10 +3,12 @@ use alloc::{vec, vec::Vec};
 use crate::{
     component::Component,
     flow::flows_system,
-    query::{Entities, ImmutableQuery, Not, With, Without},
+    query::{Entities, ImmutableQuery, Modified, Not, With, Without},
     relation::{ChildOf, Relation},
     scheduler::Scheduler,
     spawn_block,
+    system::{IntoSystem, System},
+    view::View,
     world::World,
 };
 
@@ -602,4 +604,15 @@ fn test_entity_flow() {
     assert_eq!(world.view::<&U32>().iter().count(), 0);
     scheduler.run_sequential(&mut world);
     assert_eq!(world.view::<&U32>().iter().count(), 1);
+}
+
+#[test]
+fn test_aliasing_borrows() {
+    let mut world = World::new();
+
+    world.spawn_one(U32(42));
+
+    let system = |_: View<Modified<&U32>>, _: View<&U32>| {};
+
+    system.into_system().run_alone(&mut world);
 }

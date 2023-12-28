@@ -267,176 +267,6 @@ macro_rules! marker_type {
     };
 }
 
-/// Extends output with `ComponentBorrow` to borrow dyn trait object.
-/// `dyn Trait + Send + Sync` and all valid combinations are automatically added.
-#[macro_export]
-macro_rules! borrow_dyn_trait {
-    ($self:ident as $trait:path => $extend:ident) => {{
-        #![allow(dead_code)]
-
-        struct DispatchBorrowSendSync<T>(DispatchBorrowSend<T>);
-        struct DispatchBorrowSend<T>(DispatchBorrowSync<T>);
-        struct DispatchBorrowSync<T>(DispatchBorrow<T>);
-        struct DispatchBorrow<T>(core::marker::PhantomData<T>);
-
-        impl<T> core::ops::Deref for DispatchBorrowSendSync<T> {
-            type Target = DispatchBorrowSend<T>;
-
-            fn deref(&self) -> &DispatchBorrowSend<T> {
-                &self.0
-            }
-        }
-
-        impl<T> core::ops::Deref for DispatchBorrowSend<T> {
-            type Target = DispatchBorrowSync<T>;
-
-            fn deref(&self) -> &DispatchBorrowSync<T> {
-                &self.0
-            }
-        }
-
-        impl<T> core::ops::Deref for DispatchBorrowSync<T> {
-            type Target = DispatchBorrow<T>;
-
-            fn deref(&self) -> &DispatchBorrow<T> {
-                &self.0
-            }
-        }
-
-        impl<T: $trait + Send + Sync + 'static> DispatchBorrowSendSync<T> {
-            fn insert(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                self.insert_one(extend);
-                self.0.insert_one(extend);
-                self.0 .0.insert_one(extend);
-                self.0 .0 .0.insert_one(extend);
-            }
-
-            fn insert_one(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                extend.extend(Some($crate::component::ComponentBorrow::make(
-                    |ptr: core::ptr::NonNull<u8>,
-                     core::marker::PhantomData|
-                     -> &(dyn $trait + Send + Sync) {
-                        unsafe { ptr.cast::<T>().as_ref() }
-                    },
-                    core::option::Option::Some(
-                        |ptr: core::ptr::NonNull<u8>,
-                         core::marker::PhantomData|
-                         -> &mut (dyn $trait + Send + Sync) {
-                            unsafe { ptr.cast::<T>().as_mut() }
-                        },
-                    ),
-                )));
-            }
-        }
-
-        impl<T: $trait + Send + 'static> DispatchBorrowSend<T> {
-            fn insert(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                self.insert_one(extend);
-                self.0 .0.insert_one(extend);
-            }
-
-            fn insert_one(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                extend.extend(Some($crate::component::ComponentBorrow::make(
-                    |ptr: core::ptr::NonNull<u8>,
-                     core::marker::PhantomData|
-                     -> &(dyn $trait + Send) {
-                        unsafe { ptr.cast::<T>().as_ref() }
-                    },
-                    core::option::Option::Some(
-                        |ptr: core::ptr::NonNull<u8>,
-                         core::marker::PhantomData|
-                         -> &mut (dyn $trait + Send) {
-                            unsafe { ptr.cast::<T>().as_mut() }
-                        },
-                    ),
-                )));
-            }
-        }
-
-        impl<T: $trait + Sync + 'static> DispatchBorrowSync<T> {
-            fn insert(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                self.insert_one(extend);
-                self.0.insert_one(extend);
-            }
-
-            fn insert_one(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                extend.extend(Some($crate::component::ComponentBorrow::make(
-                    |ptr: core::ptr::NonNull<u8>,
-                     core::marker::PhantomData|
-                     -> &(dyn $trait + Sync) {
-                        unsafe { ptr.cast::<T>().as_ref() }
-                    },
-                    core::option::Option::Some(
-                        |ptr: core::ptr::NonNull<u8>,
-                         core::marker::PhantomData|
-                         -> &mut (dyn $trait + Sync) {
-                            unsafe { ptr.cast::<T>().as_mut() }
-                        },
-                    ),
-                )));
-            }
-        }
-
-        impl<T: $trait + 'static> DispatchBorrow<T> {
-            fn insert(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                self.insert_one(extend);
-            }
-
-            fn insert_one(
-                &self,
-                extend: &mut impl core::iter::Extend<$crate::component::ComponentBorrow>,
-            ) {
-                extend.extend(Some($crate::component::ComponentBorrow::make(
-                    |ptr: core::ptr::NonNull<u8>, core::marker::PhantomData| -> &dyn $trait {
-                        unsafe { ptr.cast::<T>().as_ref() }
-                    },
-                    core::option::Option::Some(
-                        |ptr: core::ptr::NonNull<u8>,
-                         core::marker::PhantomData|
-                         -> &mut dyn $trait {
-                            unsafe { ptr.cast::<T>().as_mut() }
-                        },
-                    ),
-                )));
-            }
-        }
-
-        let dispatch = DispatchBorrowSendSync(DispatchBorrowSend(DispatchBorrowSync(
-            DispatchBorrow(core::marker::PhantomData::<$self>),
-        )));
-        dispatch.insert(&mut $extend);
-    }};
-}
-
-/// Constructs `ComponentBorrow` to borrow dyn trait object.
-#[macro_export]
-macro_rules! borrow_dyn_any {
-    ($self:ident => $extend:ident) => {{
-        $crate::borrow_dyn_trait!($self as core::any::Any => $extend)
-    }};
-}
-
 pub mod action;
 pub mod archetype;
 pub mod bundle;
@@ -483,6 +313,19 @@ impl fmt::Display for NoSuchEntity {
 #[cfg(feature = "std")]
 impl std::error::Error for NoSuchEntity {}
 
+/// Error that may be returned when an entity does not have required components.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Mismatch;
+
+impl fmt::Display for Mismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Entity does not match requirements")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Mismatch {}
+
 /// Error that may be returned when fetching query from entity that
 /// may be despawned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -517,11 +360,18 @@ impl From<NoSuchEntity> for EntityError {
     }
 }
 
+impl From<Mismatch> for EntityError {
+    #[inline(always)]
+    fn from(_: Mismatch) -> Self {
+        EntityError::Mismatch
+    }
+}
+
 impl fmt::Display for EntityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EntityError::NoSuchEntity => f.write_str("Specified entity is not found"),
-            EntityError::Mismatch => f.write_str("Entity does not match requirements"),
+            EntityError::NoSuchEntity => fmt::Display::fmt(&NoSuchEntity, f),
+            EntityError::Mismatch => fmt::Display::fmt(&Mismatch, f),
         }
     }
 }
@@ -562,7 +412,12 @@ impl Access {
 #[doc(hidden)]
 pub mod private {
     pub use alloc::{sync::Arc, vec::Vec};
-    pub use core::mem::MaybeUninit;
+    pub use core::{
+        marker::{PhantomData, Send, Sync},
+        mem::MaybeUninit,
+        option::Option,
+        ptr::NonNull,
+    };
 
     pub use crate::flow::{
         insert_entity_flow, insert_world_flow, EntityClosureSpawn, WorldClosureSpawn, YieldNow,

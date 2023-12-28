@@ -203,13 +203,13 @@ pub mod private {
                         |ptr: $crate::private::NonNull<u8>,
                          $crate::private::PhantomData|
                          -> &(dyn $trait + Send) {
-                            unsafe { ptr.cast::<$self>().as_ref() }
+                            unsafe { ptr.cast::<T>().as_ref() }
                         },
                         $crate::private::Option::Some(
                             |ptr: $crate::private::NonNull<u8>,
                              $crate::private::PhantomData|
                              -> &mut (dyn $trait + Send) {
-                                unsafe { ptr.cast::<$self>().as_mut() }
+                                unsafe { ptr.cast::<T>().as_mut() }
                             },
                         ),
                     )));
@@ -279,14 +279,6 @@ pub mod private {
             let dispatch = DispatchTraitBorrowSendSync::<$self>::new();
             dispatch.insert(&mut $borrows);
         }};
-    }
-
-    /// Constructs `ComponentBorrow` to borrow dyn trait object.
-    #[macro_export]
-    macro_rules! borrow_dyn_any {
-        ($self:ty => $borrows:ident) => {
-            $crate::trait_borrow!($self as core::any::Any => $borrows)
-        };
     }
 }
 
@@ -386,7 +378,10 @@ pub trait Component: Sized + 'static {
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
     #[inline(always)]
-    fn on_replace(&mut self, value: &Self, id: EntityId, encoder: LocalActionEncoder) -> bool {
+    fn on_replace(&mut self, value: &Self, id: EntityId, encoder: LocalActionEncoder) -> bool
+    where
+        Self: Sized,
+    {
         let _ = value;
         let _ = id;
         let _ = encoder;
@@ -907,5 +902,21 @@ unsafe fn final_drop<T>(ptr: NonNull<u8>, count: usize) {
     let slice = slice_from_raw_parts_mut(ptr.cast::<T>().as_ptr(), count);
     unsafe {
         drop_in_place(slice);
+    }
+}
+
+/// Value component properties and behavior.
+pub trait Value: 'static {
+    /// Returns name of the component type.
+    fn name(&self) -> &'static str;
+}
+
+impl<T> Value for T
+where
+    T: Component,
+{
+    #[inline(always)]
+    fn name(&self) -> &'static str {
+        T::name()
     }
 }

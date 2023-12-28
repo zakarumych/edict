@@ -413,6 +413,7 @@ impl Access {
 pub mod private {
     pub use alloc::{sync::Arc, vec::Vec};
     pub use core::{
+        any::Any,
         marker::{PhantomData, Send, Sync},
         mem::MaybeUninit,
         option::Option,

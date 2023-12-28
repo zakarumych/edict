@@ -302,7 +302,8 @@ where
         let component = archetype.component(id).unwrap_unchecked();
         debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
 
-        let data = component.data_mut();
+        let data = unsafe { component.data_mut() };
+        data.epoch.bump(epoch);
 
         FetchBorrowAnyWrite {
             ptr: data.ptr,

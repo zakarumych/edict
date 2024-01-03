@@ -2,6 +2,7 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::{BorrowFn, BorrowFnMut},
     epoch::EpochId,
     query::{
         read::Read, write::Write, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
@@ -18,7 +19,8 @@ pub struct QueryBorrowAny<T>(pub T);
 pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
-    borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a ()>) -> &'a T,
+    borrow_fn: BorrowFn<T>,
+    marker: PhantomData<&'a T>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyRead<'a, T>
@@ -33,6 +35,7 @@ where
             ptr: NonNull::dangling(),
             size: 0,
             borrow_fn: |_, _| unreachable!(),
+            marker: PhantomData,
         }
     }
 
@@ -41,7 +44,7 @@ where
         unsafe {
             (self.borrow_fn)(
                 NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
-                PhantomData::<&'a ()>,
+                self.marker,
             )
         }
     }
@@ -151,6 +154,7 @@ where
             ptr: data.ptr,
             size: component.layout().size(),
             borrow_fn: component.borrows()[idx].borrow(),
+            marker: PhantomData::<&'a T>,
         }
     }
 }
@@ -162,10 +166,11 @@ unsafe impl<T> SendQuery for QueryBorrowAny<Read<T>> where T: Sync + ?Sized + 's
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
-    borrow_fn: unsafe fn(NonNull<u8>, PhantomData<&'a mut ()>) -> &'a mut T,
+    borrow_fn: BorrowFnMut<T>,
     entity_epochs: NonNull<EpochId>,
     chunk_epochs: NonNull<EpochId>,
     epoch: EpochId,
+    marker: PhantomData<&'a mut T>,
 }
 
 unsafe impl<'a, T> Fetch<'a> for FetchBorrowAnyWrite<'a, T>
@@ -183,6 +188,7 @@ where
             entity_epochs: NonNull::dangling(),
             chunk_epochs: NonNull::dangling(),
             epoch: EpochId::start(),
+            marker: PhantomData,
         }
     }
 
@@ -199,7 +205,7 @@ where
 
         (self.borrow_fn)(
             NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
-            PhantomData::<&'a mut ()>,
+            self.marker,
         )
     }
 }
@@ -312,6 +318,7 @@ where
             entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
             chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
             epoch,
+            marker: PhantomData::<&'a mut T>,
         }
     }
 }

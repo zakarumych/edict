@@ -17,10 +17,10 @@ use crate::{action::LocalActionEncoder, entity::EntityId, hash::NoOpHasherBuilde
 pub use edict_proc::Component;
 
 #[doc(hidden)]
-pub type BorrowFn<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r ()>) -> &'r T;
+pub type BorrowFn<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r T>) -> &'r T;
 
 #[doc(hidden)]
-pub type BorrowFnMut<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r mut ()>) -> &'r mut T;
+pub type BorrowFnMut<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r mut T>) -> &'r mut T;
 
 /// Defines conversion of reference to component into reference to target type.
 #[derive(Clone, Copy)]

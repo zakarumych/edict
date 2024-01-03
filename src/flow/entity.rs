@@ -298,15 +298,19 @@ impl FlowEntity<'_> {
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn poll_ref<F, Q, R>(&mut self, f: F) -> PollRef<F>
+    pub fn poll_ref<F, Q, R>(&mut self, f: F) -> PollRef<'_, F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
-        PollRef { id: self.id, f }
+        PollRef {
+            id: self.id,
+            f,
+            marker: PhantomData,
+        }
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<Q::Query, F>
+    pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
         Q::Query: ImmutableQuery,
@@ -316,11 +320,12 @@ impl FlowEntity<'_> {
             id: self.id,
             f,
             query: Q::default_query(),
+            marker: PhantomData,
         }
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollView<Q::Query, F>
+    pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
@@ -329,11 +334,12 @@ impl FlowEntity<'_> {
             id: self.id,
             f,
             query: Q::default_query(),
+            marker: PhantomData,
         }
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn expect_poll_view<Q, F, R>(&self, f: F) -> ExpectPollView<Q::Query, F>
+    pub fn expect_poll_view<Q, F, R>(&self, f: F) -> ExpectPollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
@@ -342,11 +348,12 @@ impl FlowEntity<'_> {
             id: self.id,
             f,
             query: Q::default_query(),
+            marker: PhantomData,
         }
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn expect_poll_view_mut<Q, F, R>(&mut self, f: F) -> ExpectPollView<Q::Query, F>
+    pub fn expect_poll_view_mut<Q, F, R>(&mut self, f: F) -> ExpectPollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
         Q::Query: ImmutableQuery,
@@ -356,6 +363,7 @@ impl FlowEntity<'_> {
             id: self.id,
             f,
             query: Q::default_query(),
+            marker: PhantomData,
         }
     }
 
@@ -578,12 +586,14 @@ impl FlowEntity<'_> {
     }
 }
 
-pub struct PollRef<F> {
+#[must_use = "Future does nothing unless polled"]
+pub struct PollRef<'a, F> {
     id: EntityId,
     f: F,
+    marker: PhantomData<&'a ()>,
 }
 
-impl<F, R> Future for PollRef<F>
+impl<F, R> Future for PollRef<'_, F>
 where
     F: FnMut(EntityRef, &mut Context) -> Poll<R>,
 {
@@ -598,13 +608,15 @@ where
     }
 }
 
-pub struct PollView<Q, F> {
+#[must_use = "Future does nothing unless polled"]
+pub struct PollView<'a, Q, F> {
     id: EntityId,
     query: Q,
     f: F,
+    marker: PhantomData<&'a ()>,
 }
 
-impl<Q, F, R> Future for PollView<Q, F>
+impl<Q, F, R> Future for PollView<'_, Q, F>
 where
     Q: SendQuery,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
@@ -625,13 +637,15 @@ where
     }
 }
 
-pub struct ExpectPollView<Q, F> {
+#[must_use = "Future does nothing unless polled"]
+pub struct ExpectPollView<'a, Q, F> {
     id: EntityId,
     query: Q,
     f: F,
+    marker: PhantomData<&'a ()>,
 }
 
-impl<Q, F, R> Future for ExpectPollView<Q, F>
+impl<Q, F, R> Future for ExpectPollView<'_, Q, F>
 where
     Q: SendQuery,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,

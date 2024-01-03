@@ -13,7 +13,7 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [features]
-std = ["blink-alloc?/std", "serde?/std", "alkahest?/std"]
+std = ["serde?/std", "alkahest?/std"]
 default = ["std"]
 
 [dependencies]
@@ -30,10 +30,11 @@ alkahest = { version = "0.3.0", optional = true, features = [
     "fixed32",
 ], default-features = false }
 nanoserde = { version = "0.1.32", optional = true, default-features = false }
-serde = { version = "1.0", optional = true, default-features = false }
+serde = { version = "1.0", optional = true, default-features = false, features = [
+    "alloc",
+] }
 parking_lot = "0.12"
 slab = "0.4"
-blink-alloc = { version = "0.3", optional = true, default-features = false }
 
 [dev-dependencies]
 alkahest-proc = { version = "0.3.0" }

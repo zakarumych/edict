@@ -143,11 +143,11 @@ impl World {
     /// struct OtherComponent;
     ///
     /// let mut world = World::new();
-    /// let mut entity = world.spawn((ExampleComponent,));
+    /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// world.drop_bundle::<(ExampleComponent, OtherComponent)>(entity).unwrap();
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn drop_bundle<B>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
@@ -202,9 +202,8 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        // Safety: entity is moved
-        // Reference is created with correct location of entity in this world.
-        return Ok(());
+        self.execute_local_actions();
+        Ok(())
     }
 }
 
@@ -245,19 +244,20 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, ExampleComponent};
+    /// # use edict::{world::WorldLocal, ExampleComponent};
     ///
     /// struct OtherComponent;
     ///
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn((ExampleComponent,));
+    /// let mut world = WorldLocal::new();
+    /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// world.drop_bundle_defer::<(ExampleComponent, OtherComponent)>(entity);
+    /// world.run_deferred();
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
-    pub fn drop_bundle_defer<B>(&mut self, entity: impl Entity)
+    pub fn drop_bundle_defer<B>(&self, entity: impl Entity)
     where
         B: Bundle,
     {

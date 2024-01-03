@@ -12,7 +12,7 @@ use crate::{
     res::Res,
 };
 
-use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World, WorldLocal};
+use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World, WorldLocal, WorldShare};
 
 /// Builder for [`World`] value.
 ///
@@ -56,10 +56,17 @@ impl WorldBuilder {
 
     /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
     #[must_use]
+    pub fn build_share(self) -> WorldShare {
+        WorldShare {
+            world: self.build(),
+        }
+    }
+
+    /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
+    #[must_use]
     pub fn build_local(self) -> WorldLocal {
         WorldLocal {
             world: self.build(),
-            marker: PhantomData,
         }
     }
 

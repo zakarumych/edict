@@ -82,6 +82,8 @@ impl World {
                 |comp, (), _| comp.add(origin.id()),
             );
         }
+
+        self.execute_local_actions();
         Ok(())
     }
 
@@ -120,6 +122,7 @@ impl World {
         R: Relation,
     {
         self._remove_relation(origin, target, R::on_drop)?;
+        self.execute_local_actions();
         Ok(())
     }
 

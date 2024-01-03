@@ -1,4 +1,10 @@
 //! Self-contained ECS [`World`].
+//!
+//! There's 3 kinds of `World`s which are wrap one another:
+//! `World`         - non-shareable world that is pinned to a thread where it is accessed.
+//! `WorldShare`    - shareable world. Derefs to `World`.
+//! `WorldLocal`    - World that is guaranteed to be on the main thread. Derefs for `World`.
+//!
 
 use alloc::{vec, vec::Vec};
 use core::{
@@ -6,7 +12,6 @@ use core::{
     cell::UnsafeCell,
     convert::TryFrom,
     fmt::{self, Debug},
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -123,6 +128,29 @@ impl ArchetypeSet {
     }
 }
 
+#[repr(transparent)]
+pub struct WorldShare {
+    world: World,
+}
+
+impl Deref for WorldShare {
+    type Target = World;
+
+    #[inline(always)]
+    fn deref(&self) -> &World {
+        &self.world
+    }
+}
+
+impl DerefMut for WorldShare {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut World {
+        &mut self.world
+    }
+}
+
+unsafe impl Sync for WorldShare {}
+
 /// Container for entities with any sets of components.
 ///
 /// Entities can be spawned in the [`World`] with handle [`EntityId`] returned,
@@ -168,8 +196,6 @@ pub struct World {
 
     action_channel: ActionChannel,
 }
-
-unsafe impl Sync for World {}
 
 impl Default for World {
     fn default() -> Self {
@@ -380,62 +406,26 @@ impl World {
     }
 }
 
-/// A reference to [`World`] that is guaranteed to be not shared
-/// across threads.
+/// A [`World`] that is guaranteed to be on world's main thread.
+/// It allows fetching local resources and create views with queries that are not [`SendQuery`].
 ///
-/// It also allows fetching local resources.
-///
-/// # Examples
-///
-/// [`WorldLocal`] intentionally doesn't implement `Send` or `Sync`.
-///
-/// ```compile_fail
-/// # use edict::world::WorldLocal;
-/// fn test_send<T: core::marker::Send>() {}
-///
-/// test_send::<WorldLocal>;
-/// ```
-///
-/// ```compile_fail
-/// # use edict::world::WorldLocal;
-/// fn test_sync<T: core::marker::Sync>() {}
-///
-/// test_sync::<WorldLocal>;
-/// ```
-///
-/// ```compile_fail
-/// # use edict::world::WorldLocal;
-/// fn test_send<T: core::marker::Send>() {}
-///
-/// test_send::<&WorldLocal>;
-/// ```
-///
-/// ```compile_fail
-/// # use edict::world::WorldLocal;
-/// fn test_send<T: core::marker::Send>() {}
-///
-/// test_send::<&mut WorldLocal>;
-/// ```
+/// Normal [`World`] may be shared as part of [`WorldShare`].
 #[repr(transparent)]
 pub struct WorldLocal {
     world: World,
-    marker: PhantomData<NotSync>,
 }
 
-struct NotSync {
-    _ptr: *mut (),
-}
-
-// TODO: This is unsound.
 impl Deref for WorldLocal {
     type Target = World;
 
+    #[inline(always)]
     fn deref(&self) -> &World {
         &self.world
     }
 }
 
 impl DerefMut for WorldLocal {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut World {
         &mut self.world
     }
@@ -451,16 +441,12 @@ impl WorldLocal {
     pub fn new() -> Self {
         WorldLocal {
             world: World::new(),
-            marker: PhantomData,
         }
     }
 
     #[inline(always)]
     fn wrap(world: World) -> Self {
-        WorldLocal {
-            world,
-            marker: PhantomData,
-        }
+        WorldLocal { world }
     }
 
     #[inline(always)]

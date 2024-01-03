@@ -62,7 +62,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World};
+    /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn_empty();
     /// assert!(!entity.has_component::<ExampleComponent>());
@@ -139,7 +139,7 @@ impl World {
     /// # use edict::{World, ExampleComponent};
     /// let mut world = World::new();
     /// world.ensure_component_registered::<ExampleComponent>();
-    /// let mut entity = world.spawn_one_external((ExampleComponent,));
+    /// let mut entity = world.spawn_one_external(ExampleComponent);
     /// assert!(entity.has_component::<ExampleComponent>());
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
@@ -547,6 +547,7 @@ impl World {
             self.entities.set_location(id, loc)
         }
 
+        self.execute_local_actions();
         Ok(())
     }
 
@@ -556,6 +557,8 @@ impl World {
     /// `EntitySet` and `Archetype`.
     #[inline(always)]
     pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
+        self.maintenance();
+
         let real_loc = self.entities.despawn(id).unwrap_unchecked();
         debug_assert_eq!(real_loc, loc, "Entity location mismatch");
 
@@ -567,6 +570,8 @@ impl World {
         if let Some(id) = opt_id {
             self.entities.set_location(id, loc)
         }
+
+        self.execute_local_actions();
     }
 }
 
@@ -799,13 +804,14 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
-    /// let mut world = World::new();
+    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// let mut world = WorldLocal::new();
     /// world.ensure_component_registered::<ExampleComponent>();
-    /// let mut entity = world.spawn_one_external((ExampleComponent,));
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// let ExampleComponent = entity.remove().unwrap();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// let mut entity = world.spawn_one_external_defer(ExampleComponent);
+    /// world.run_deferred();
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// let ExampleComponent = world.remove(entity).unwrap().0.unwrap();
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn spawn_one_external_defer<T>(&self, component: T) -> EntityId

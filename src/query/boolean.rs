@@ -157,14 +157,14 @@ macro_rules! impl_boolean {
             #[inline(always)]
             unsafe fn get_item(&mut self, idx: u32) -> ($(Option<$a::Item>,)+) {
                 let ($($a,)+) = &mut self.tuple;
-                let mut mi = 0;
+                let mut mi = 1;
                 ($({
-                    let elem = if self.item & (1 << mi) != 0 {
+                    let elem = if self.item & mi != 0 {
                         Some($a.get_item(idx))
                     } else {
                         None
                     };
-                    mi += 1;
+                    mi <<= 1;
                     elem
                 },)+)
             }
@@ -172,41 +172,46 @@ macro_rules! impl_boolean {
             #[inline(always)]
             unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
-                let mut mi = 0;
+                let mut mi = 1;
+                let mut count = 0;
                 $(
-                    if self.chunk & (1 << mi) != 0 {
+                    if self.chunk & mi != 0 {
                         if $a.visit_item(idx) {
-                            self.item |= 1 << mi;
+                            self.item |= mi;
                         }
                     }
-                    mi += 1;
+                    mi <<= 1;
+                    count += 1;
                 )+
-                Op::mask(self.item, mi)
+                Op::mask(self.item, count)
             }
 
             #[inline(always)]
             unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
-                let mut mi = 0;
+                let mut mi = 1;
+                let mut count = 0;
                 $(
-                    if self.archetype & (1 << mi) != 0 {
+                    if self.archetype & mi != 0 {
                         if $a.visit_chunk(chunk_idx) {
-                            self.chunk |= 1 << mi;
+                            self.chunk |= mi;
                         }
                     }
-                    mi += 1;
+                    mi <<= 1;
+                    count += 1;
                 )+
-                Op::mask(self.chunk, mi)
+                Op::mask(self.chunk, count)
             }
 
             #[inline(always)]
             unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = &mut self.tuple;
-                let mut mi = 0;
+                let mut mi = 1;
                 $(
-                    if self.chunk & (1 << mi) != 0 {
+                    if self.chunk & mi != 0 {
                         $a.touch_chunk(chunk_idx);
                     }
+                    mi <<= 1;
                 )+
             }
         }

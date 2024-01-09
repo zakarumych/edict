@@ -310,6 +310,7 @@ impl FlowEntity<'_> {
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
+    /// Waits until query is satisfied.
     pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -325,6 +326,7 @@ impl FlowEntity<'_> {
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
+    /// Waits until query is satisfied.
     pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -339,12 +341,14 @@ impl FlowEntity<'_> {
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn expect_poll_view<Q, F, R>(&self, f: F) -> ExpectPollView<'_, Q::Query, F>
+    /// If query is not satisfied, returns [`Poll::Ready(None)`].
+    pub fn try_poll_view<Q, F, R>(&self, f: F) -> TryPollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
+        Q::Query: ImmutableQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
-        ExpectPollView {
+        TryPollView {
             id: self.id,
             f,
             query: Q::default_query(),
@@ -353,13 +357,13 @@ impl FlowEntity<'_> {
     }
 
     /// Polls the world until closure returns [`Poll::Ready`].
-    pub fn expect_poll_view_mut<Q, F, R>(&mut self, f: F) -> ExpectPollView<'_, Q::Query, F>
+    /// If query is not satisfied, returns [`Poll::Ready(None)`].
+    pub fn try_poll_view_mut<Q, F, R>(&mut self, f: F) -> TryPollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
-        Q::Query: ImmutableQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
-        ExpectPollView {
+        TryPollView {
             id: self.id,
             f,
             query: Q::default_query(),
@@ -621,35 +625,6 @@ where
     Q: SendQuery,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
-    type Output = Option<R>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
-
-            let r = match view_one.get_mut() {
-                None => Poll::Ready(None),
-                Some(item) => (me.f)(item, cx).map(Some),
-            };
-            r
-        }
-    }
-}
-
-#[must_use = "Future does nothing unless polled"]
-pub struct ExpectPollView<'a, Q, F> {
-    id: EntityId,
-    query: Q,
-    f: F,
-    marker: PhantomData<&'a ()>,
-}
-
-impl<Q, F, R> Future for ExpectPollView<'_, Q, F>
-where
-    Q: SendQuery,
-    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
-{
     type Output = R;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
@@ -657,9 +632,38 @@ where
             let me = self.get_unchecked_mut();
             let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
 
-            let item = view_one.get_mut().unwrap();
-            let r = (me.f)(item, cx);
-            r
+            let Some(item) = view_one.get_mut() else {
+                return Poll::Pending;
+            };
+            (me.f)(item, cx)
+        }
+    }
+}
+
+#[must_use = "Future does nothing unless polled"]
+pub struct TryPollView<'a, Q, F> {
+    id: EntityId,
+    query: Q,
+    f: F,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<Q, F, R> Future for TryPollView<'_, Q, F>
+where
+    Q: SendQuery,
+    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
+{
+    type Output = Option<R>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
+
+            let Some(item) = view_one.get_mut() else {
+                return Poll::Ready(None);
+            };
+            (me.f)(item, cx).map(Some)
         }
     }
 }

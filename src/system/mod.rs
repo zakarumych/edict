@@ -256,3 +256,96 @@ where
         IntoLocalSystem { system: self }
     }
 }
+
+pub struct SystemSequence<T>(pub T);
+
+macro_rules! impl_system {
+    () => {};
+    ($($a:ident)+) => {
+        #[allow(non_snake_case)]
+        impl< Marker, $($a),+ > IntoSystem<Marker> for ($($a,)+)
+        where
+            $($a: IntoSystem<Marker>,)+
+        {
+            type System = SystemSequence<($($a::System,)+)>;
+
+            fn into_system(self) -> Self::System {
+                let ($($a,)+) = self;
+                SystemSequence(($($a.into_system(),)+))
+            }
+        }
+
+        #[allow(non_snake_case)]
+        unsafe impl< $($a),+ > System for SystemSequence<($($a,)+)>
+        where
+            $($a: System,)+
+        {
+            fn is_local(&self) -> bool {
+                let ($($a,)+) = &self.0;
+                true $(&& $a.is_local())+
+            }
+
+            #[inline]
+            fn world_access(&self) -> Option<Access> {
+                let ($($a,)+) = &self.0;
+                let mut result = None;
+                $(
+                    result = match (result, $a.world_access()) {
+                        (Some(Access::Write), _) | (_, Some(Access::Write)) => Some(Access::Write),
+                        (Some(Access::Read), _) | (_, Some(Access::Read)) => Some(Access::Read),
+                        (None, None) => None,
+                    };
+                )+
+                result
+            }
+
+            #[inline]
+            fn visit_archetype(&self, archetype: &Archetype) -> bool {
+                let ($($a,)*) = &self.0;
+                false $(|| $a.visit_archetype(archetype))+
+            }
+
+            #[inline]
+            fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+                let ($($a,)+) = &self.0;
+                let mut result = None;
+                $(
+                    result = match (result, $a.component_type_access(ty)) {
+                        (Some(Access::Write), _) | (_, Some(Access::Write)) => Some(Access::Write),
+                        (Some(Access::Read), _) | (_, Some(Access::Read)) => Some(Access::Read),
+                        (None, None) => None,
+                    };
+                )+
+                result
+            }
+
+            /// Returns access type to the specified resource type this system may perform.
+            #[inline]
+            fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
+                let ($($a,)+) = &self.0;
+                let mut result = None;
+                $(
+                    result = match (result, $a.resource_type_access(ty)) {
+                        (Some(Access::Write), _) | (_, Some(Access::Write)) => Some(Access::Write),
+                        (Some(Access::Read), _) | (_, Some(Access::Read)) => Some(Access::Read),
+                        (None, None) => None,
+                    };
+                )+
+                result
+            }
+
+            /// Runs the system with given context instance.
+            ///
+            /// If `is_local()` returns `true` then running it outside local thread is unsound.
+            #[inline]
+            unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
+                let ($($a,)+) = &mut self.0;
+                unsafe {
+                    $($a.run_unchecked(world, queue);)+
+                }
+            }
+        }
+    };
+}
+
+for_tuple!(impl_system);

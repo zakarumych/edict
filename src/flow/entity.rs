@@ -15,18 +15,19 @@ use crate::{
     action::LocalActionEncoder,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    entity::{EntityId, EntityRef},
+    entity::{EntityBound, EntityId, EntityRef},
+    query::{DefaultQuery, ImmutableQuery, QueryItem, SendQuery},
     world::World,
     EntityError, NoSuchEntity,
 };
 
-use super::{flow_world, Flow, NewFlowTask, NewFlows};
+use super::{flow_world, Flow, FlowWorld, NewFlowTask, NewFlows};
 
 /// Entity reference usable in flows.
 ///
 /// It can be used to access entity's components,
 /// insert and remove components.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FlowEntity<'a> {
     id: EntityId,
     marker: PhantomData<&'a mut World>,
@@ -34,6 +35,20 @@ pub struct FlowEntity<'a> {
 
 unsafe impl Send for FlowEntity<'_> {}
 unsafe impl Sync for FlowEntity<'_> {}
+
+impl PartialEq<EntityId> for FlowEntity<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityId) -> bool {
+        self.id == *other
+    }
+}
+
+impl PartialEq<EntityBound<'_>> for FlowEntity<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &EntityBound<'_>) -> bool {
+        self.id == other.id()
+    }
+}
 
 /// Future wrapped to be used as a flow.
 struct FutureFlow<F> {
@@ -176,8 +191,9 @@ macro_rules! flow_closure_for {
             $crate::private::insert_entity_flow(
                 id,
                 world,
-                |entity: $crate::flow::FlowEntity<'static>| async move {
-                    let $entity $(: $FlowEntity)? = entity.reborrow();
+                |mut entity: $crate::flow::FlowEntity<'static>| async move {
+                    #[allow(unused_mut)]
+                    let mut $entity $(: $FlowEntity)? = entity.reborrow();
                     let res: $ret = { $code };
                     res
                 },
@@ -189,8 +205,9 @@ macro_rules! flow_closure_for {
             $crate::private::insert_entity_flow(
                 id,
                 world,
-                |entity: $crate::flow::FlowEntity<'static>| async move {
-                    let $entity $(: $FlowEntity)? = entity.reborrow();
+                |mut entity: $crate::flow::FlowEntity<'static>| async move {
+                    #[allow(unused_mut)]
+                    let mut $entity $(: $FlowEntity)? = entity.reborrow();
                     $code
                 },
             )
@@ -250,17 +267,9 @@ impl Component for AutoWake {
 }
 
 impl FlowEntity<'_> {
-    pub(crate) fn new(id: EntityId) -> Self {
+    pub(super) fn new(id: EntityId) -> Self {
         FlowEntity {
             id,
-            marker: PhantomData,
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn reborrow(&self) -> FlowEntity<'_> {
-        FlowEntity {
-            id: self.id,
             marker: PhantomData,
         }
     }
@@ -269,7 +278,100 @@ impl FlowEntity<'_> {
         self.id
     }
 
-    /// Unsafely fetches component from the entity.
+    #[doc(hidden)]
+    pub fn reborrow(&mut self) -> FlowEntity<'_> {
+        FlowEntity {
+            id: self.id,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn world(&mut self) -> FlowWorld<'_> {
+        FlowWorld {
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_ref(&mut self) -> EntityRef<'_> {
+        unsafe { flow_world().entity(self.id).unwrap() }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    pub fn poll_ref<F, Q, R>(&mut self, f: F) -> PollRef<'_, F>
+    where
+        F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+    {
+        PollRef {
+            id: self.id,
+            f,
+            marker: PhantomData,
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    /// Waits until query is satisfied.
+    pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<'_, Q::Query, F>
+    where
+        Q: DefaultQuery,
+        Q::Query: ImmutableQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    /// Waits until query is satisfied.
+    pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollView<'_, Q::Query, F>
+    where
+        Q: DefaultQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    /// If query is not satisfied, returns [`Poll::Ready(None)`].
+    pub fn try_poll_view<Q, F, R>(&self, f: F) -> TryPollView<'_, Q::Query, F>
+    where
+        Q: DefaultQuery,
+        Q::Query: ImmutableQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        TryPollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Polls the world until closure returns [`Poll::Ready`].
+    /// If query is not satisfied, returns [`Poll::Ready(None)`].
+    pub fn try_poll_view_mut<Q, F, R>(&mut self, f: F) -> TryPollView<'_, Q::Query, F>
+    where
+        Q: DefaultQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        TryPollView {
+            id: self.id,
+            f,
+            query: Q::default_query(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Unsafely fetches a component from the entity.
     ///
     /// It is intended to be used to construct safe API on top of it.
     ///
@@ -303,7 +405,7 @@ impl FlowEntity<'_> {
     ///
     /// Returns clone of the component value.
     #[inline(always)]
-    pub fn get<T>(&self) -> Result<T, EntityError>
+    pub fn get_clone<T>(&self) -> Result<T, EntityError>
     where
         T: Clone + Sync + 'static,
     {
@@ -356,20 +458,6 @@ impl FlowEntity<'_> {
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.ensure_external_registered::<u32>();
-    ///
-    /// let mut entity = world.spawn(());
-    ///
-    /// assert!(!entity.has_component::<u32>());
-    /// entity.insert_external(42u32);
-    /// assert!(entity.has_component::<u32>());
-    /// ```
     #[inline(always)]
     pub fn insert_external<T>(&self, component: T) -> Result<(), NoSuchEntity>
     where
@@ -391,20 +479,6 @@ impl FlowEntity<'_> {
     }
 
     /// Attempts to insert a component to the entity if it does not have one.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::world::World;
-    /// let mut world = World::new();
-    /// world.ensure_external_registered::<u32>();
-    ///
-    /// let mut entity = world.spawn(());
-    ///
-    /// assert!(!entity.has_component::<u32>());
-    /// entity.with_external(|| 42u32);
-    /// assert!(entity.has_component::<u32>());
-    /// ```
     #[inline(always)]
     pub fn with_external<T>(&self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
@@ -426,19 +500,8 @@ impl FlowEntity<'_> {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{world::World, ExampleComponent};
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn(());
-    /// assert!(!entity.has_component::<ExampleComponent>());
-    /// entity.insert_bundle((ExampleComponent,));
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// ```
     #[inline(always)]
-    pub fn insert_bundle<B>(&self, bundle: B) -> Result<(), NoSuchEntity>
+    pub fn insert_bundle<B>(&mut self, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
     {
@@ -455,26 +518,6 @@ impl FlowEntity<'_> {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{world::World, ExampleComponent};
-    /// let mut world = World::new();
-    ///
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// world.ensure_external_registered::<u32>();
-    ///
-    /// let mut entity = world.spawn(());
-    ///
-    /// assert!(!entity.has_component::<ExampleComponent>());
-    /// assert!(!entity.has_component::<u32>());
-    ///
-    /// entity.insert_external_bundle((ExampleComponent, 42u32));
-    ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// assert!(entity.has_component::<u32>());
-    /// ```
     #[inline(always)]
     pub fn insert_external_bundle<B>(&self, bundle: B) -> Result<(), NoSuchEntity>
     where
@@ -524,23 +567,6 @@ impl FlowEntity<'_> {
     /// so no need to drop them.
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use edict::{world::World, ExampleComponent};
-    ///
-    /// struct OtherComponent;
-    ///
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn((ExampleComponent,));
-    ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    ///
-    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
-    ///
-    /// assert!(!entity.has_component::<ExampleComponent>());
-    /// ```
     #[inline(always)]
     pub fn drop_bundle<B>(&self) -> Result<(), NoSuchEntity>
     where
@@ -561,5 +587,83 @@ impl FlowEntity<'_> {
     #[inline(always)]
     pub fn has_component<T: 'static>(&self) -> Result<bool, NoSuchEntity> {
         unsafe { flow_world().try_has_component::<T>(self.id) }
+    }
+}
+
+#[must_use = "Future does nothing unless polled"]
+pub struct PollRef<'a, F> {
+    id: EntityId,
+    f: F,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<F, R> Future for PollRef<'_, F>
+where
+    F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let e = flow_world().entity(me.id).unwrap();
+            (me.f)(e, cx)
+        }
+    }
+}
+
+#[must_use = "Future does nothing unless polled"]
+pub struct PollView<'a, Q, F> {
+    id: EntityId,
+    query: Q,
+    f: F,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<Q, F, R> Future for PollView<'_, Q, F>
+where
+    Q: SendQuery,
+    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
+
+            let Some(item) = view_one.get_mut() else {
+                return Poll::Pending;
+            };
+            (me.f)(item, cx)
+        }
+    }
+}
+
+#[must_use = "Future does nothing unless polled"]
+pub struct TryPollView<'a, Q, F> {
+    id: EntityId,
+    query: Q,
+    f: F,
+    marker: PhantomData<&'a ()>,
+}
+
+impl<Q, F, R> Future for TryPollView<'_, Q, F>
+where
+    Q: SendQuery,
+    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
+{
+    type Output = Option<R>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let mut view_one = flow_world().try_view_one_with(me.id, me.query).unwrap();
+
+            let Some(item) = view_one.get_mut() else {
+                return Poll::Ready(None);
+            };
+            (me.f)(item, cx).map(Some)
+        }
     }
 }

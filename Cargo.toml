@@ -13,14 +13,14 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [features]
-std = []
+std = ["serde?/std", "alkahest?/std"]
 default = ["std"]
 
 [dependencies]
 edict-proc = { version = "=0.5.0", path = "proc" }
-amity = { path = "../amity" }
-# amity = { git = "https://github.com/zakarumych/amity" }
-hashbrown = { version = "0.14", features = ["ahash"], default-features = false }
+# amity = { path = "../amity" }
+amity = { git = "https://github.com/zakarumych/amity" }
+hashbrown = { version = "0.14" }
 smallvec = { version = "1.10", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
 atomicell = "0.2"
@@ -30,7 +30,9 @@ alkahest = { version = "0.3.0", optional = true, features = [
     "fixed32",
 ], default-features = false }
 nanoserde = { version = "0.1.32", optional = true, default-features = false }
-serde = { version = "1.0", optional = true, default-features = false }
+serde = { version = "1.0", optional = true, default-features = false, features = [
+    "alloc",
+] }
 parking_lot = "0.12"
 slab = "0.4"
 

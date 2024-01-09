@@ -2,11 +2,12 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     component::Component,
-    flow::flows_system,
-    query::{Entities, ImmutableQuery, Not, With, Without},
+    flow::{execute_flows, Flows},
+    query::{Entities, ImmutableQuery, Modified, Not, With, Without},
     relation::{ChildOf, Relation},
-    scheduler::Scheduler,
     spawn_block,
+    system::{IntoSystem, System},
+    view::View,
     world::World,
 };
 
@@ -575,23 +576,19 @@ fn add_relation() {
 #[test]
 fn test_flow() {
     let mut world = World::new();
-    let mut scheduler = Scheduler::new();
-    scheduler.add_system(flows_system);
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
     spawn_block! {in world -> world.spawn((U32(42),)); };
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
-    scheduler.run_sequential(&mut world);
+    execute_flows(&mut world, &mut Flows::default());
     assert_eq!(world.view::<&U32>().iter().count(), 1);
 }
 
 #[test]
 fn test_entity_flow() {
     let mut world = World::new();
-    let mut scheduler = Scheduler::new();
-    scheduler.add_system(flows_system);
 
     let e = world.spawn(()).id();
 
@@ -600,6 +597,17 @@ fn test_entity_flow() {
     spawn_block! {in world for e -> e.insert(U32(42)).unwrap(); };
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
-    scheduler.run_sequential(&mut world);
+    execute_flows(&mut world, &mut Flows::default());
     assert_eq!(world.view::<&U32>().iter().count(), 1);
+}
+
+#[test]
+fn test_aliasing_borrows() {
+    let mut world = World::new();
+
+    world.spawn_one(U32(42));
+
+    let system = |_: View<Modified<&U32>>, _: View<&U32>| {};
+
+    system.into_system().run_alone(&mut world);
 }

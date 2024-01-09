@@ -161,7 +161,6 @@ macro_rules! impl_func {
                 let mut result = None;
                 let mut runtime_borrow = true;
                 $(
-                    runtime_borrow &= $a.borrows_components_at_runtime();
                     if let Some(access) = $a.component_type_access(ty) {
                         runtime_borrow &= $a.borrows_components_at_runtime();
                         result = match (result, access) {
@@ -173,11 +172,7 @@ macro_rules! impl_func {
                                     // Conflict will be resolved at runtime.
                                     Some(Access::Write)
                                 } else {
-                                    panic!("Conflicting args in system `{}`.
-A component is aliased mutably.
-If arguments require mutable aliasing, all arguments that access a type must use runtime borrow check.
-For example `View` type does not use runtime borrow check and should be replaced with `ViewCell`.",
-                                        type_name::<Func>());
+                                    panic!("Conflicting args in system `{}`.\nA component is aliased mutably.\nIf arguments require mutable aliasing, all arguments that access a type must use runtime borrow check.\nFor example `View` type does not use runtime borrow check and should be replaced with `ViewCell`.", type_name::<Func>());
                                 }
                             }
                         };

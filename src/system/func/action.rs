@@ -62,6 +62,7 @@ unsafe impl FnArgState for ActionEncoderState {
         world: NonNull<World>,
         queue: &mut dyn ActionBufferQueue,
     ) -> ActionEncoder<'a> {
+        debug_assert!(self.buffer.is_none());
         let buffer = self.buffer.get_or_insert_with(|| queue.get());
         ActionEncoder::new(buffer, unsafe { world.as_ref() }.entities())
     }

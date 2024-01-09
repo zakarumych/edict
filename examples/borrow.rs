@@ -46,7 +46,7 @@ fn main() {
     // and it doesn't exposes `Any` trait.
     for a in world
         .new_view()
-        .borrow_one::<&(dyn Any + Sync)>(TypeId::of::<A>())
+        .borrow_one::<dyn Any + Sync>(TypeId::of::<A>())
         .iter()
     {
         println!("{}", (a as &dyn Any).downcast_ref::<A>().unwrap());
@@ -57,7 +57,7 @@ fn main() {
     // Current behavior is to skip entities with no such components.
     for (e, a) in world
         .view::<Entities>()
-        .borrow_all::<&(dyn Display + Sync)>()
+        .borrow_all::<dyn Display + Sync>()
         .iter()
     {
         print!("{}", e);

@@ -715,7 +715,7 @@ impl<'a> EntityRef<'a> {
     /// let mut entity = world.spawn(());
     ///
     /// assert!(!entity.has_component::<u32>());
-    /// entity.insert_external(42u32);
+    /// let entity = entity.insert_external(42u32).unwrap();
     /// assert!(entity.has_component::<u32>());
     /// ```
     #[inline(always)]
@@ -825,7 +825,7 @@ impl<'a> EntityRef<'a> {
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// entity.insert_bundle((ExampleComponent,));
+    /// let entity = entity.insert_bundle((ExampleComponent,)).unwrap();
     /// assert!(entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
@@ -875,7 +875,7 @@ impl<'a> EntityRef<'a> {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// assert!(!entity.has_component::<u32>());
     ///
-    /// entity.insert_external_bundle((ExampleComponent, 42u32));
+    /// let entity = entity.insert_external_bundle((ExampleComponent, 42u32)).unwrap();
     ///
     /// assert!(entity.has_component::<ExampleComponent>());
     /// assert!(entity.has_component::<u32>());
@@ -922,7 +922,7 @@ impl<'a> EntityRef<'a> {
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// entity.insert_bundle((ExampleComponent,));
+    /// entity.with_bundle((ExampleComponent,));
     /// assert!(entity.has_component::<ExampleComponent>());
     /// ```
     #[inline(always)]
@@ -963,7 +963,7 @@ impl<'a> EntityRef<'a> {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// assert!(!entity.has_component::<u32>());
     ///
-    /// entity.insert_external_bundle((ExampleComponent, 42u32));
+    /// entity.with_external_bundle((ExampleComponent, 42u32));
     ///
     /// assert!(entity.has_component::<ExampleComponent>());
     /// assert!(entity.has_component::<u32>());
@@ -1071,7 +1071,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(entity.has_component::<ExampleComponent>());
     ///
-    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
+    /// let entity = entity.drop_bundle::<(ExampleComponent, OtherComponent)>().unwrap();
     ///
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+Flow API for writing asynchronous tasks, both local for an entity and global for world.
+Flows run on the internal scheduler that can be invoked with system or function call.
+
 Entity API is now extended for both ergonomics and performance.
 
 Entity now can be represented by different types that implement traits from following hierarchy

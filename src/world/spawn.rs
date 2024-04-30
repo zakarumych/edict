@@ -126,7 +126,13 @@ impl World {
     /// Returns [`EntityRef`] for the newly spawned entity.
     /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
     /// or despawn command recorded and executed by the [`World`].
-    ///
+    /// 
+    /// Component must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// 
     /// # Panics
     ///
     /// If new id cannot be allocated.
@@ -136,13 +142,11 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::World;
     /// let mut world = World::new();
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// let mut entity = world.spawn_one_external(ExampleComponent);
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// let ExampleComponent = entity.remove().unwrap();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// world.ensure_external_registered::<u32>();
+    /// let mut entity = world.spawn_one_external(42u32);
+    /// assert!(entity.has_component::<u32>());
     /// ```
     #[inline(always)]
     pub fn spawn_one_external<T>(&mut self, component: T) -> EntityRef<'_>
@@ -263,12 +267,12 @@ impl World {
     /// Spawned entity is populated with all components from the bundle.
     /// Entity will be alive until despawned.
     ///
-    /// All components from the bundle must be previously registered.
-    /// If component in bundle implements [`Component`] it could be registered implicitly
-    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
-    ///
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// 
     /// # Panics
     ///
     /// Panics if new id cannot be allocated.
@@ -299,12 +303,12 @@ impl World {
     /// Spawned entity is populated with all components from the bundle.
     /// Entity will be alive until despawned.
     ///
-    /// All components from the bundle must be previously registered.
-    /// If component in bundle implements [`Component`] it could be registered implicitly
-    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
-    ///
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// 
     /// # Panics
     ///
     /// Panics if the id is already used by the world.
@@ -445,11 +449,11 @@ impl World {
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
     ///
-    /// All components from the bundle must be previously registered.
-    /// If component in bundle implements [`Component`] it could be registered implicitly
-    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
     #[inline(always)]
     pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
@@ -769,16 +773,28 @@ impl WorldLocal {
     /// If new id cannot be allocated.
     /// If too many entities are spawned.
     /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    /// 
+    /// This is deferred version of [`World::spawn_one`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Entity is created immediatelly in reserved state.
+    /// And spawning operation is enqueued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     ///
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn_one(ExampleComponent);
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// let ExampleComponent = entity.remove().unwrap();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// let mut world = WorldLocal::new();
+    /// let entity = world.spawn_one_defer(ExampleComponent);
+    /// 
+    /// // Entity is alive when reserved.
+    /// assert!(world.is_alive(entity));
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
+    /// world.run_deferred();
+    /// 
+    /// assert!(world.is_alive(entity));
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn spawn_one_defer<T>(&self, component: T) -> EntityId
@@ -794,24 +810,39 @@ impl WorldLocal {
     /// Returns [`EntityRef`] for the newly spawned entity.
     /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
     /// or despawn command recorded and executed by the [`World`].
+    /// 
+    /// Component must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
     ///
     /// # Panics
     ///
     /// If new id cannot be allocated.
     /// If too many entities are spawned.
     /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    /// 
+    /// This is deferred version of [`World::spawn_one_external`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Entity is created immediatelly in reserved state.
+    /// And spawning operation is enqueued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     ///
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// # use edict::world::{WorldLocal};
     /// let mut world = WorldLocal::new();
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// let mut entity = world.spawn_one_external_defer(ExampleComponent);
+    /// world.ensure_external_registered::<u32>();
+    /// let mut entity = world.spawn_one_external_defer(42u32);
+    /// 
+    /// assert!(world.is_alive(entity));
+    /// assert!(!world.try_has_component::<u32>(entity).unwrap());
+    /// 
     /// world.run_deferred();
-    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// let ExampleComponent = world.remove(entity).unwrap().0.unwrap();
-    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
+    /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn spawn_one_external_defer<T>(&self, component: T) -> EntityId
@@ -827,6 +858,17 @@ impl WorldLocal {
     /// Returns [`EntityRef`] for the newly spawned entity.
     /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
     /// or despawn command recorded and executed by the [`World`].
+    /// 
+    /// Component must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// 
+    /// This is deferred version of [`World::spawn`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Entity is created immediatelly in reserved state.
+    /// And spawning operation is enqueued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     ///
     /// # Panics
     ///
@@ -837,12 +879,16 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
-    /// let mut world = World::new();
-    /// let mut entity = world.spawn((ExampleComponent,));
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// let ExampleComponent = entity.remove().unwrap();
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// let mut world = WorldLocal::new();
+    /// let mut entity = world.spawn_defer((ExampleComponent,));
+    /// 
+    /// assert!(world.is_alive(entity));
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
+    /// world.run_deferred();
+    /// 
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn spawn_defer<B>(&self, bundle: B) -> EntityId
@@ -859,11 +905,17 @@ impl WorldLocal {
     /// Spawned entity is populated with all components from the bundle.
     /// Entity will be alive until despawned.
     ///
-    /// All components from the bundle must be previously registered.
-    /// If component in bundle implements [`Component`] it could be registered implicitly
-    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// 
+    /// This is deferred version of [`World::spawn_external`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Entity is created immediatelly in reserved state.
+    /// And spawning operation is enqueued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     ///
     /// # Panics
     ///
@@ -872,14 +924,17 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
-    /// let mut world = World::new();
+    /// # use edict::world::WorldLocal;
+    /// let mut world = WorldLocal::new();
     /// world.ensure_external_registered::<u32>();
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
-    /// assert!(entity.has_component::<u32>());
-    /// assert_eq!(entity.remove(), Some(42u32));
-    /// assert!(!entity.has_component::<u32>());
+    /// let mut entity = world.spawn_external_defer((42u32,));
+    /// 
+    /// assert!(world.is_alive(entity));
+    /// assert!(!world.try_has_component::<u32>(entity).unwrap());
+    /// 
+    /// world.run_deferred();
+    /// 
+    /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
     #[inline(always)]
     pub fn spawn_external_defer<B>(&self, bundle: B) -> EntityId
@@ -907,6 +962,11 @@ impl WorldLocal {
     ///
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
+    /// 
+    /// This is deferred version of [`World::spawn_batch`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     #[inline(always)]
     pub fn spawn_batch_defer<B, I>(&self, bundles: I)
     where
@@ -935,11 +995,16 @@ impl WorldLocal {
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
     ///
-    /// All components from the bundle must be previously registered.
-    /// If component in bundle implements [`Component`] it could be registered implicitly
-    /// on first by [`World::spawn`], [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`].
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] types must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// 
+    /// This is deferred version of [`World::spawn_batch_external`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     #[inline(always)]
     pub fn spawn_batch_external_defer<B, I>(&self, bundles: I)
     where
@@ -953,6 +1018,11 @@ impl WorldLocal {
 
     /// Despawns an entity with specified id.
     /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
+    /// 
+    /// This is deferred version of [`World::despawn`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued to be executed when [`World::run_deferred`] is called
+    /// or when mutable operation is performed on the world.
     ///
     /// # Example
     ///

@@ -12,7 +12,7 @@ use crate::{
     res::Res,
 };
 
-use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World, WorldLocal, WorldShare};
+use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World};
 
 /// Builder for [`World`] value.
 ///
@@ -51,22 +51,6 @@ impl WorldBuilder {
             registry: self.registry,
             action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
-        }
-    }
-
-    /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
-    #[must_use]
-    pub fn build_share(self) -> WorldShare {
-        WorldShare {
-            world: self.build(),
-        }
-    }
-
-    /// Returns newly created [`World`] with configuration copied from this [`WorldBuilder`].
-    #[must_use]
-    pub fn build_local(self) -> WorldLocal {
-        WorldLocal {
-            world: self.build(),
         }
     }
 
@@ -113,6 +97,7 @@ impl World {
     pub fn new() -> Self {
         Self::builder().build()
     }
+
 
     /// Returns new instance of [`WorldBuilder`].
     /// This allows pre-register component types and override their behavior.

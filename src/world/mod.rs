@@ -128,28 +128,6 @@ impl ArchetypeSet {
     }
 }
 
-#[repr(transparent)]
-pub struct WorldShare {
-    world: World,
-}
-
-impl Deref for WorldShare {
-    type Target = World;
-
-    #[inline(always)]
-    fn deref(&self) -> &World {
-        &self.world
-    }
-}
-
-impl DerefMut for WorldShare {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut World {
-        &mut self.world
-    }
-}
-
-unsafe impl Sync for WorldShare {}
 
 /// Container for entities with any sets of components.
 ///
@@ -172,6 +150,24 @@ unsafe impl Sync for WorldShare {}
 /// maps entity to location of components in archetypes,
 /// moves components of entities between archetypes,
 /// spawns and despawns entities.
+/// 
+/// [`World`] type is not `Sync` or `Send`, but an instance is allowed to be shared
+/// from [`WorldShare`] references.
+/// However mutable reference [`World`]
+/// 
+/// ```compile_fail
+/// # use edict::world::World;
+/// 
+/// fn is_send<T: core::marker::Send>() {}
+/// is_send::<World>();
+/// ```
+/// 
+/// ```compile_fail
+/// # use edict::world::World;
+/// 
+/// fn is_sync<T: core::marker::Sync>() {}
+/// is_sync::<World>();
+/// ```
 pub struct World {
     /// Epoch counter of the World.
     /// Incremented on each mutable query.
@@ -406,13 +402,120 @@ impl World {
     }
 }
 
-/// A [`World`] that is guaranteed to be on world's main thread.
-/// It allows fetching local resources and create views with queries that are not [`SendQuery`].
+#[repr(transparent)]
+pub struct WorldShare {
+    inner: World,
+}
+
+// WorldMain is only Sync, not Send.
+unsafe impl Sync for WorldShare {}
+
+impl Deref for WorldShare {
+    type Target = World;
+
+    fn deref(&self) -> &World {
+        &self.inner
+    }
+}
+
+impl DerefMut for WorldShare {
+    fn deref_mut(&mut self) -> &mut World {
+        &mut self.inner
+    }
+}
+
+impl Debug for WorldShare {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <World as Debug>::fmt(&self.inner, f)
+    }
+}
+
+impl From<WorldShare> for World {
+    #[inline]
+    fn from(world: WorldShare) -> Self {
+        world.inner
+    }
+}
+
+impl From<World> for WorldShare {
+    #[inline]
+    fn from(world: World) -> Self {
+        WorldShare {
+            inner: world,
+        }
+    }
+}
+
+impl WorldShare {
+    pub fn new() -> Self {
+        WorldShare {
+            inner: World::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn wrap(world: World) -> Self {
+        WorldShare {
+            inner: world,
+        }
+    }
+}
+
+/// A reference to [`World`] that is guaranteed to be not shared with other threads.
+/// It can only be created from mutable reference to `World` which is not sendable.
 ///
-/// Normal [`World`] may be shared as part of [`WorldShare`].
+/// It bypasses some threading checks and allows access to deferred actions.
+///
+/// # Examples
+///
+/// [`WorldLocal`] intentionally doesn't implement `Send` or `Sync`.
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<WorldLocal>;
+/// ```
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_sync<T: core::marker::Sync>() {}
+///
+/// test_sync::<WorldLocal>;
+/// ```
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<&WorldLocal>;
+/// ```
+///
+/// ```compile_fail
+/// # use edict::world::WorldLocal;
+/// fn test_send<T: core::marker::Send>() {}
+///
+/// test_send::<&mut WorldLocal>;
+/// ```
 #[repr(transparent)]
 pub struct WorldLocal {
-    world: World,
+    inner: World,
+}
+
+impl From<WorldLocal> for World {
+    #[inline]
+    fn from(world: WorldLocal) -> Self {
+        world.inner
+    }
+}
+
+impl From<World> for WorldLocal {
+    #[inline]
+    fn from(world: World) -> Self {
+        WorldLocal {
+            inner: world,
+        }
+    }
 }
 
 impl Deref for WorldLocal {
@@ -420,33 +523,35 @@ impl Deref for WorldLocal {
 
     #[inline(always)]
     fn deref(&self) -> &World {
-        &self.world
+        &self.inner
     }
 }
 
 impl DerefMut for WorldLocal {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut World {
-        &mut self.world
+        &mut self.inner
     }
 }
 
 impl Debug for WorldLocal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <World as Debug>::fmt(&self.world, f)
+        <World as Debug>::fmt(&self.inner, f)
     }
 }
 
 impl WorldLocal {
     pub fn new() -> Self {
         WorldLocal {
-            world: World::new(),
+            inner: World::new(),
         }
     }
 
     #[inline(always)]
-    fn wrap(world: World) -> Self {
-        WorldLocal { world }
+    pub fn wrap(world: World) -> Self {
+        WorldLocal {
+            inner: world,
+        }
     }
 
     #[inline(always)]
@@ -463,8 +568,8 @@ impl WorldLocal {
         //
         // This is main thread since this function is called from `WorldLocal`.
         unsafe {
-            let action_buffer = &mut *self.world.action_buffer.get();
-            let mut action_encoder = LocalActionEncoder::new(action_buffer, &self.world.entities);
+            let action_buffer = &mut *self.inner.action_buffer.get();
+            let mut action_encoder = LocalActionEncoder::new(action_buffer, &self.inner.entities);
             action_encoder.closure(f);
         }
     }

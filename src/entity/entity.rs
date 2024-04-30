@@ -715,8 +715,11 @@ impl<'a> EntityRef<'a> {
     /// let mut entity = world.spawn(());
     ///
     /// assert!(!entity.has_component::<u32>());
-    /// let entity = entity.insert_external(42u32).unwrap();
-    /// assert!(entity.has_component::<u32>());
+    /// 
+    /// let id = entity.id();
+    /// entity.insert_external(42u32);
+    /// 
+    /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn insert_external<T>(self, component: T) -> Option<Self>
@@ -825,8 +828,11 @@ impl<'a> EntityRef<'a> {
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// let entity = entity.insert_bundle((ExampleComponent,)).unwrap();
-    /// assert!(entity.has_component::<ExampleComponent>());
+    /// 
+    /// let id = entity.id();
+    /// entity.insert_bundle((ExampleComponent,));
+    /// 
+    /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn insert_bundle<B>(self, bundle: B) -> Option<Self>
@@ -875,10 +881,11 @@ impl<'a> EntityRef<'a> {
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// assert!(!entity.has_component::<u32>());
     ///
-    /// let entity = entity.insert_external_bundle((ExampleComponent, 42u32)).unwrap();
+    /// let id = entity.id();
+    /// entity.insert_external_bundle((ExampleComponent, 42u32));
     ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// assert!(entity.has_component::<u32>());
+    /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
+    /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn insert_external_bundle<B>(self, bundle: B) -> Option<Self>
@@ -921,9 +928,13 @@ impl<'a> EntityRef<'a> {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
+    /// 
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// entity.with_bundle((ExampleComponent,));
-    /// assert!(entity.has_component::<ExampleComponent>());
+    /// 
+    /// let id = entity.id();
+    /// entity.insert_bundle((ExampleComponent,));
+    /// 
+    /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn with_bundle<B>(&mut self, bundle: B)
@@ -962,11 +973,12 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// assert!(!entity.has_component::<u32>());
-    ///
+    /// 
+    /// let id = entity.id();
     /// entity.with_external_bundle((ExampleComponent, 42u32));
     ///
-    /// assert!(entity.has_component::<ExampleComponent>());
-    /// assert!(entity.has_component::<u32>());
+    /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
+    /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn with_external_bundle<B>(&mut self, bundle: B)
@@ -1070,10 +1082,11 @@ impl<'a> EntityRef<'a> {
     /// let mut entity = world.spawn((ExampleComponent,));
     ///
     /// assert!(entity.has_component::<ExampleComponent>());
+    /// 
+    /// let id = entity.id();
+    /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
     ///
-    /// let entity = entity.drop_bundle::<(ExampleComponent, OtherComponent)>().unwrap();
-    ///
-    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// assert!(!world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
     #[inline(always)]
     pub fn drop_bundle<B>(self) -> Option<Self>

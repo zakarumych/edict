@@ -419,7 +419,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn get_resource<T: 'static>(&self) -> Option<Ref<T>> {
-        unsafe { self.world.res.get_local::<T>() }
+        unsafe { self.inner.res.get_local::<T>() }
     }
 
     /// Returns reference to `Sync` resource.
@@ -444,7 +444,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn expect_resource<T: 'static>(&self) -> Ref<T> {
-        match unsafe { self.world.res.get_local::<T>() } {
+        match unsafe { self.inner.res.get_local::<T>() } {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),
         }
@@ -472,7 +472,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn copy_resource<T: Copy + 'static>(&self) -> T {
-        match unsafe { self.world.res.get_local::<T>() } {
+        match unsafe { self.inner.res.get_local::<T>() } {
             Some(res) => *res,
             None => panic!("Resource {} not found", type_name::<T>()),
         }
@@ -500,7 +500,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn clone_resource<T: Clone + 'static>(&self) -> T {
-        match unsafe { self.world.res.get_local::<T>() } {
+        match unsafe { self.inner.res.get_local::<T>() } {
             Some(res) => (*res).clone(),
             None => panic!("Resource {} not found", type_name::<T>()),
         }
@@ -526,7 +526,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn get_resource_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        unsafe { self.world.res.get_local_mut::<T>() }
+        unsafe { self.inner.res.get_local_mut::<T>() }
     }
 
     /// Returns mutable reference to `Send` resource.
@@ -552,7 +552,7 @@ impl WorldLocal {
     /// ```
     #[track_caller]
     pub fn expect_resource_mut<T: 'static>(&self) -> RefMut<T> {
-        match unsafe { self.world.res.get_local_mut::<T>() } {
+        match unsafe { self.inner.res.get_local_mut::<T>() } {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),
         }

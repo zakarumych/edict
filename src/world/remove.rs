@@ -211,6 +211,30 @@ impl WorldLocal {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// 
+    /// This is deferred version of [`World::drop`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// or when mutable operation is performed on the world.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::WorldLocal, ExampleComponent};
+    ///
+    /// let mut world = WorldLocal::new();
+    /// let mut entity = world.spawn((ExampleComponent,)).id();
+    ///
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
+    /// world.drop_defer::<ExampleComponent>(entity);
+    /// 
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
+    /// world.run_deferred();
+    /// 
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// ```
     #[inline(always)]
     pub fn drop_defer<T>(&self, entity: impl Entity)
     where
@@ -222,6 +246,11 @@ impl WorldLocal {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// 
+    /// This is deferred version of [`World::drop_erased`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// or when mutable operation is performed on the world.
     #[inline(always)]
     pub fn drop_erased_defer(&self, entity: impl Entity, tid: TypeId) {
         let id = entity.id();
@@ -240,6 +269,11 @@ impl WorldLocal {
     /// so no need to drop them.
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
+    /// 
+    /// This is deferred version of [`World::drop_bundle`].
+    /// It can be used on shared `WorldLocal` reference.
+    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// or when mutable operation is performed on the world.
     ///
     /// # Example
     ///
@@ -252,8 +286,13 @@ impl WorldLocal {
     /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
     /// world.drop_bundle_defer::<(ExampleComponent, OtherComponent)>(entity);
+    /// 
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// 
     /// world.run_deferred();
+    /// 
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]

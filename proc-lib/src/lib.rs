@@ -3,6 +3,7 @@ use proc_macro2::TokenStream;
 mod component;
 // mod query;
 mod relation;
+mod system;
 
 mod kw {
     proc_easy::easy_token!(name);
@@ -142,3 +143,7 @@ pub fn derive_relation(
 //         Err(err) => err.to_compile_error().into(),
 //     }
 // }
+
+pub fn system(item: syn::ItemFn, edict_path: &syn::Path) -> syn::Result<TokenStream> {
+    system::system(item, edict_path)
+}

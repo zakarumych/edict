@@ -420,9 +420,19 @@ pub mod private {
         ptr::NonNull,
     };
 
-    pub use crate::flow::{
-        insert_entity_flow, insert_world_flow, EntityClosureSpawn, WorldClosureSpawn, YieldNow,
+    use crate::system::{IntoSystem, IsFunctionSystem};
+    pub use crate::{
+        flow::{
+            insert_entity_flow, insert_world_flow, EntityClosureSpawn, WorldClosureSpawn, YieldNow,
+        },
+        system::FnArg,
     };
+
+    #[inline(always)]
+    pub fn is_fn_arg<A: FnArg>() {}
+
+    #[inline(always)]
+    pub fn is_fn_system<Args, F: IntoSystem<IsFunctionSystem<Args>>>(_: F) {}
 }
 
 #[doc(hidden)]
@@ -437,3 +447,5 @@ pub use self::prelude::*;
 #[cold]
 #[inline(always)]
 fn cold() {}
+
+pub use edict_proc::system;

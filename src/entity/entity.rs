@@ -66,6 +66,7 @@ pub trait LocatedEntity: AliveEntity {
 /// Entity ID.
 /// The ID is unique within the world.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]
 #[repr(transparent)]
 pub struct EntityId {
     id: NonZeroU64,

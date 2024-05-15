@@ -156,7 +156,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Checks if archetype must be visited or skipped a second time after
     /// required access was granted.
     ///
-    /// Most queries do not access to check visiting again so defaults to `true`.
+    /// Most queries do not check visiting again so defaults to `true`.
     #[must_use]
     #[inline(always)]
     fn visit_archetype_late(&self, archetype: &Archetype) -> bool {

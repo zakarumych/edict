@@ -1,7 +1,8 @@
 use core::any::TypeId;
 
 use crate::{
-    archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg, world::World,
+    archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
+    system::QueryArg, world::World,
 };
 
 use super::{
@@ -52,7 +53,7 @@ macro_rules! impl_fetch {
             const MUTABLE: bool = false;
 
             #[inline(always)]
-            fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+            fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 Ok(None)
             }
 
@@ -173,11 +174,11 @@ macro_rules! impl_fetch {
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
 
             #[inline(always)]
-            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+            fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = self;
                 let mut result = None;
                 $(
-                    result = match (result, $a.component_type_access(ty)?) {
+                    result = match (result, $a.component_access(comp)?) {
                         (None, one) | (one, None) => one,
                         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
                         _ => return Err(WriteAlias),

@@ -11,6 +11,7 @@ use crate::{
     component::Component,
     entity::EntityId,
     relation::Relation,
+    type_id,
     world::{iter_reserve_hint, World},
 };
 
@@ -190,7 +191,7 @@ impl ActionSender {
     where
         T: 'static,
     {
-        self.drop_erased(id, TypeId::of::<T>())
+        self.drop_erased(id, type_id::<T>())
     }
 
     /// Encodes an action to drop component from specified entity.

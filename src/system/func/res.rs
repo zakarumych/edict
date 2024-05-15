@@ -9,7 +9,9 @@ use atomicell::{Ref, RefMut};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     system::{Access, ActionBufferQueue},
+    type_id,
     world::World,
 };
 
@@ -98,14 +100,18 @@ where
 
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
-        Access::read_type::<T>(ty)
+        if ty == type_id::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
     }
 
     #[inline(always)]
@@ -215,14 +221,18 @@ where
 
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
-        Access::write_type::<T>(ty)
+        if ty == type_id::<T>() {
+            Some(Access::Write)
+        } else {
+            None
+        }
     }
 
     #[inline(always)]
@@ -324,14 +334,18 @@ where
 
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
-        Access::read_type::<T>(ty)
+        if ty == type_id::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
     }
 
     #[inline(always)]
@@ -445,14 +459,18 @@ where
 
     /// Returns access type to the specified component type this argument may perform.
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
     #[inline(always)]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
-        Access::write_type::<T>(ty)
+        if ty == type_id::<T>() {
+            Some(Access::Write)
+        } else {
+            None
+        }
     }
 
     #[inline(always)]

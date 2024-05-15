@@ -21,6 +21,8 @@ use core::{
 use atomicell::{AtomicCell, Ref, RefMut};
 use hashbrown::HashMap;
 
+use crate::type_id;
+
 struct Resource {
     // Box<AtomicCell> instead of AtomicCell<Box> to avoid false sharing
     data: Box<AtomicCell<dyn Any>>,
@@ -70,7 +72,7 @@ impl Res {
     ///
     /// `Res<NoSend>` accepts any `'static` resource type.
     pub fn insert<T: 'static>(&mut self, resource: T) {
-        let id = TypeId::of::<T>();
+        let id = type_id::<T>();
         self.resources.insert(
             id,
             Resource {
@@ -88,7 +90,7 @@ impl Res {
     ///
     /// `Res<NoSend>` accepts any `'static` resource type.
     pub fn with<T: 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
-        let id = TypeId::of::<T>();
+        let id = type_id::<T>();
         self.resources
             .entry(id)
             .or_insert_with(|| Resource {
@@ -104,7 +106,7 @@ impl Res {
     /// Removes resource from container.
     /// Returns `None` if resource is not found.
     pub fn remove<T: 'static>(&mut self) -> Option<T> {
-        let mut resource = self.resources.remove(&TypeId::of::<T>())?;
+        let mut resource = self.resources.remove(&type_id::<T>())?;
         let data = AtomicCell::into_inner(*unsafe {
             assert!(resource.data.get_mut().is::<T>());
 
@@ -154,7 +156,7 @@ impl Res {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
-        let id = TypeId::of::<T>();
+        let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;
 
@@ -189,7 +191,7 @@ impl Res {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
-        let id = TypeId::of::<T>();
+        let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;
 

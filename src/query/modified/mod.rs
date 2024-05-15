@@ -86,8 +86,8 @@ impl<T> Modified<T> {
 //     const MUTABLE: bool = true;
 
 //     #[inline(always)]
-//     fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-//         self.query.component_type_access(ty)
+//     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+//         self.query.component_access(ty)
 //     }
 
 //     #[inline(always)]
@@ -120,7 +120,7 @@ impl<T> Modified<T> {
 //         archetype: &'a Archetype,
 //         epoch: EpochId,
 //     ) -> Option<ModifiedFetch<'a, T>> {
-//         match archetype.component(TypeId::of::<T>()) {
+//         match archetype.component(type_id::<T>()) {
 //             None => None,
 //             Some(component) => {
 //                 let data = component.data_mut();

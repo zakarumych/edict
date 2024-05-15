@@ -1,11 +1,9 @@
-use core::any::TypeId;
-
 use crate::{
     action::LocalActionEncoder,
     component::Component,
     entity::{Entity, EntityId, Location},
     relation::{OriginComponent, Relation, TargetComponent},
-    NoSuchEntity,
+    type_id, NoSuchEntity,
 };
 
 use super::World;
@@ -195,7 +193,7 @@ fn set_relation_component<T, C>(
     let src_loc = world.entities.get_location(id).unwrap();
     debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
-    if world.archetypes[src_loc.arch as usize].has_component(TypeId::of::<C>()) {
+    if world.archetypes[src_loc.arch as usize].has_component(type_id::<C>()) {
         let component = unsafe {
             world.archetypes[src_loc.arch as usize]
                 .get_mut::<C>(src_loc.idx, world.epoch.current_mut())
@@ -213,7 +211,7 @@ fn set_relation_component<T, C>(
         &mut world.registry,
         &mut world.archetypes,
         src_loc.arch,
-        TypeId::of::<C>(),
+        type_id::<C>(),
         |registry| registry.get_or_register::<C>(),
     );
 

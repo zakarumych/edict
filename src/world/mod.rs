@@ -8,7 +8,7 @@
 
 use alloc::{vec, vec::Vec};
 use core::{
-    any::{type_name, TypeId},
+    any::type_name,
     cell::UnsafeCell,
     convert::TryFrom,
     fmt::{self, Debug},
@@ -24,7 +24,7 @@ use crate::{
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
     res::Res,
-    NoSuchEntity,
+    type_id, NoSuchEntity,
 };
 
 use self::edges::Edges;
@@ -128,7 +128,6 @@ impl ArchetypeSet {
     }
 }
 
-
 /// Container for entities with any sets of components.
 ///
 /// Entities can be spawned in the [`World`] with handle [`EntityId`] returned,
@@ -150,21 +149,21 @@ impl ArchetypeSet {
 /// maps entity to location of components in archetypes,
 /// moves components of entities between archetypes,
 /// spawns and despawns entities.
-/// 
+///
 /// [`World`] type is not `Sync` or `Send`, but an instance is allowed to be shared
 /// from [`WorldShare`] references.
 /// However mutable reference [`World`]
-/// 
+///
 /// ```compile_fail
 /// # use edict::world::World;
-/// 
+///
 /// fn is_send<T: core::marker::Send>() {}
 /// is_send::<World>();
 /// ```
-/// 
+///
 /// ```compile_fail
 /// # use edict::world::World;
-/// 
+///
 /// fn is_sync<T: core::marker::Sync>() {}
 /// is_sync::<World>();
 /// ```
@@ -254,7 +253,7 @@ impl World {
         if loc.arch == u32::MAX {
             return false;
         }
-        self.archetypes[loc.arch as usize].has_component(TypeId::of::<T>())
+        self.archetypes[loc.arch as usize].has_component(type_id::<T>())
     }
 
     /// Checks if entity has component of specified type.
@@ -266,7 +265,7 @@ impl World {
         if loc.arch == u32::MAX {
             return Ok(false);
         }
-        Ok(self.archetypes[loc.arch as usize].has_component(TypeId::of::<T>()))
+        Ok(self.archetypes[loc.arch as usize].has_component(type_id::<T>()))
     }
 
     /// Checks if entity is alive.
@@ -440,9 +439,7 @@ impl From<WorldShare> for World {
 impl From<World> for WorldShare {
     #[inline]
     fn from(world: World) -> Self {
-        WorldShare {
-            inner: world,
-        }
+        WorldShare { inner: world }
     }
 }
 
@@ -455,9 +452,7 @@ impl WorldShare {
 
     #[inline(always)]
     pub fn wrap(world: World) -> Self {
-        WorldShare {
-            inner: world,
-        }
+        WorldShare { inner: world }
     }
 }
 
@@ -512,9 +507,7 @@ impl From<WorldLocal> for World {
 impl From<World> for WorldLocal {
     #[inline]
     fn from(world: World) -> Self {
-        WorldLocal {
-            inner: world,
-        }
+        WorldLocal { inner: world }
     }
 }
 
@@ -549,9 +542,7 @@ impl WorldLocal {
 
     #[inline(always)]
     pub fn wrap(world: World) -> Self {
-        WorldLocal {
-            inner: world,
-        }
+        WorldLocal { inner: world }
     }
 
     #[inline(always)]
@@ -611,12 +602,12 @@ pub(crate) fn register_one<T: Component>(registry: &mut ComponentRegistry) -> &C
 pub(crate) fn assert_registered_one<T: 'static>(
     registry: &mut ComponentRegistry,
 ) -> &ComponentInfo {
-    match registry.get_info(TypeId::of::<T>()) {
+    match registry.get_info(type_id::<T>()) {
         Some(info) => info,
         None => panic!(
             "Component {}({:?}) is not registered",
             type_name::<T>(),
-            TypeId::of::<T>()
+            type_id::<T>()
         ),
     }
 }

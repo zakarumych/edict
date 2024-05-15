@@ -66,10 +66,30 @@ pub trait LocatedEntity: AliveEntity {
 /// Entity ID.
 /// The ID is unique within the world.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]
 #[repr(transparent)]
 pub struct EntityId {
     id: NonZeroU64,
+}
+
+#[cfg(feature = "serde")]
+impl serde::ser::Serialize for EntityId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        self.id.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::de::Deserialize<'de> for EntityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let id = NonZeroU64::deserialize(deserializer)?;
+        Ok(EntityId { id })
+    }
 }
 
 impl PartialEq<EntityBound<'_>> for EntityId {
@@ -716,10 +736,10 @@ impl<'a> EntityRef<'a> {
     /// let mut entity = world.spawn(());
     ///
     /// assert!(!entity.has_component::<u32>());
-    /// 
+    ///
     /// let id = entity.id();
     /// entity.insert_external(42u32);
-    /// 
+    ///
     /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
     #[inline(always)]
@@ -829,10 +849,10 @@ impl<'a> EntityRef<'a> {
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// 
+    ///
     /// let id = entity.id();
     /// entity.insert_bundle((ExampleComponent,));
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
     #[inline(always)]
@@ -929,12 +949,12 @@ impl<'a> EntityRef<'a> {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn(());
-    /// 
+    ///
     /// assert!(!entity.has_component::<ExampleComponent>());
-    /// 
+    ///
     /// let id = entity.id();
     /// entity.insert_bundle((ExampleComponent,));
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
     #[inline(always)]
@@ -974,7 +994,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// assert!(!entity.has_component::<u32>());
-    /// 
+    ///
     /// let id = entity.id();
     /// entity.with_external_bundle((ExampleComponent, 42u32));
     ///
@@ -1083,7 +1103,7 @@ impl<'a> EntityRef<'a> {
     /// let mut entity = world.spawn((ExampleComponent,));
     ///
     /// assert!(entity.has_component::<ExampleComponent>());
-    /// 
+    ///
     /// let id = entity.id();
     /// entity.drop_bundle::<(ExampleComponent, OtherComponent)>();
     ///

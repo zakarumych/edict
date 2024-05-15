@@ -2,11 +2,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
     query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias},
     relation::{OriginComponent, Relation, TargetComponent},
-    Access,
+    type_id, Access,
 };
 
 /// Fetch for the `FilterRelatedBy<R>` query.
@@ -108,29 +109,37 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if R::SYMMETRIC {
-            Ok(Access::read_type::<OriginComponent<R>>(ty))
+            if comp.id() == type_id::<OriginComponent<R>>() {
+                Ok(Some(Access::Read))
+            } else {
+                Ok(None)
+            }
         } else {
-            Ok(Access::read_type::<TargetComponent<R>>(ty))
+            if comp.id() == type_id::<TargetComponent<R>>() {
+                Ok(Some(Access::Read))
+            } else {
+                Ok(None)
+            }
         }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
-            archetype.has_component(TypeId::of::<OriginComponent<R>>())
+            archetype.has_component(type_id::<OriginComponent<R>>())
         } else {
-            archetype.has_component(TypeId::of::<TargetComponent<R>>())
+            archetype.has_component(type_id::<TargetComponent<R>>())
         }
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if R::SYMMETRIC {
-            f(TypeId::of::<OriginComponent<R>>(), Access::Read)
+            f(type_id::<OriginComponent<R>>(), Access::Read)
         } else {
-            f(TypeId::of::<TargetComponent<R>>(), Access::Read)
+            f(type_id::<TargetComponent<R>>(), Access::Read)
         }
     }
 
@@ -144,10 +153,10 @@ where
         if R::SYMMETRIC {
             let component = unsafe {
                 archetype
-                    .component(TypeId::of::<OriginComponent<R>>())
+                    .component(type_id::<OriginComponent<R>>())
                     .unwrap_unchecked()
             };
-            debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+            debug_assert_eq!(component.id(), type_id::<OriginComponent<R>>());
 
             let data = unsafe { component.data() };
 
@@ -159,10 +168,10 @@ where
         } else {
             let component = unsafe {
                 archetype
-                    .component(TypeId::of::<TargetComponent<R>>())
+                    .component(type_id::<TargetComponent<R>>())
                     .unwrap_unchecked()
             };
-            debug_assert_eq!(component.id(), TypeId::of::<TargetComponent<R>>());
+            debug_assert_eq!(component.id(), type_id::<TargetComponent<R>>());
 
             let data = unsafe { component.data() };
 

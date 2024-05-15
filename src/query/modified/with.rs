@@ -2,12 +2,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     epoch::EpochId,
     query::{
         filter::With, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
         WriteAlias,
     },
     system::QueryArg,
+    type_id,
     world::World,
 };
 
@@ -97,18 +99,18 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        self.query.component_type_access(ty)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        self.query.component_access(comp)
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.component(TypeId::of::<T>()) {
+        match archetype.component(type_id::<T>()) {
             None => false,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
-                debug_assert_eq!(component.id(), TypeId::of::<T>());
+                debug_assert_eq!(component.id(), type_id::<T>());
                 let data = component.data();
                 data.epoch.after(self.after_epoch)
             },
@@ -117,7 +119,7 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<T>(), Access::Read)
+        f(type_id::<T>(), Access::Read)
     }
 
     #[inline(always)]
@@ -127,7 +129,7 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchWith<'a, T> {
-        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
+        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
         let data = component.data();
 
         debug_assert!(data.epoch.after(self.after_epoch));

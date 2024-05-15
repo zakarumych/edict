@@ -1,6 +1,9 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
-use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg, Access};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+    Access,
+};
 
 use super::{
     AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
@@ -102,18 +105,22 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Access::read_type::<T>(ty))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == type_id::<T>() {
+            Ok(Some(Access::Read))
+        } else {
+            Err(WriteAlias)
+        }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<T>())
+        archetype.has_component(type_id::<T>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<T>(), Access::Read)
+        f(type_id::<T>(), Access::Read)
     }
 
     #[inline(always)]
@@ -123,8 +130,8 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRead<'a, T> {
-        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
-        debug_assert_eq!(component.id(), TypeId::of::<T>());
+        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        debug_assert_eq!(component.id(), type_id::<T>());
 
         let data = component.data();
 

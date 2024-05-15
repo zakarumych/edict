@@ -2,12 +2,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     epoch::EpochId,
     query::{
         Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery,
         WriteAlias,
     },
     system::QueryArg,
+    type_id,
 };
 
 use super::WithEpoch;
@@ -103,8 +105,8 @@ where
     const FILTERS_ENTITIES: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        self.0.component_type_access(ty)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        self.0.component_access(comp)
     }
 
     #[inline(always)]
@@ -124,8 +126,8 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> WithEpochFetchRead<'a, T> {
-        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
-        debug_assert_eq!(component.id(), TypeId::of::<T>());
+        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        debug_assert_eq!(component.id(), type_id::<T>());
 
         let data = component.data();
 

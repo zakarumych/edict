@@ -31,7 +31,7 @@ use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use hashbrown::HashMap;
 use slab::Slab;
 
-use crate::{system::State, tls, world::World};
+use crate::{system::State, tls, type_id, world::World};
 
 mod entity;
 mod world;
@@ -66,7 +66,7 @@ impl<'a> dyn AnyNewFlows + 'a {
     #[inline(always)]
     unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedNewFlows<F> {
         #[cfg(debug_assertions)]
-        assert_eq!(self.flow_id(), TypeId::of::<F>());
+        assert_eq!(self.flow_id(), type_id::<F>());
 
         unsafe { &mut *(self as *mut Self as *mut TypedNewFlows<F>) }
     }
@@ -99,7 +99,7 @@ where
 {
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId {
-        TypeId::of::<F>()
+        type_id::<F>()
     }
 
     fn drain(&mut self, flows: &mut Flows) {
@@ -109,16 +109,13 @@ where
         }
 
         // Find queue for this type of flows or create new one.
-        let queue = flows
-            .map
-            .entry(TypeId::of::<F>())
-            .or_insert_with(|| AnyQueue {
-                queue: Arc::new(FlipQueue::new()),
-                ready: RingBuffer::new(),
-                flows: Box::new(TypedFlows::<F> { array: Slab::new() }),
-            });
+        let queue = flows.map.entry(type_id::<F>()).or_insert_with(|| AnyQueue {
+            queue: Arc::new(FlipQueue::new()),
+            ready: RingBuffer::new(),
+            flows: Box::new(TypedFlows::<F> { array: Slab::new() }),
+        });
 
-        // Safety: TypedFlows<F> is at index `TypeId::of::<F>()` in `flows.map`.
+        // Safety: TypedFlows<F> is at index `type_id::<F>()` in `flows.map`.
         let typed_flows = unsafe { queue.flows.downcast_mut::<F>() };
 
         // Reserve space to ensure oom can't happen in the loop below.
@@ -164,7 +161,7 @@ impl NewFlows {
     {
         let new_flows = self
             .map
-            .entry(TypeId::of::<F>())
+            .entry(type_id::<F>())
             .or_insert_with(|| Box::new(TypedNewFlows::<F> { array: Vec::new() }));
 
         unsafe { new_flows.downcast_mut::<F>() }
@@ -196,7 +193,7 @@ impl dyn AnyFlows {
     #[inline(always)]
     unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedFlows<F> {
         #[cfg(debug_assertions)]
-        assert_eq!(self.flow_id(), TypeId::of::<F>());
+        assert_eq!(self.flow_id(), type_id::<F>());
 
         unsafe { &mut *(self as *mut Self as *mut TypedFlows<F>) }
     }
@@ -276,7 +273,7 @@ where
 {
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId {
-        TypeId::of::<F>()
+        type_id::<F>()
     }
 
     unsafe fn execute(&mut self, front: &[usize], back: &[usize]) {

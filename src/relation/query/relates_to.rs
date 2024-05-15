@@ -2,11 +2,12 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
     query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write, WriteAlias},
     relation::{OriginComponent, Relation},
-    Access,
+    type_id, Access,
 };
 
 /// Query for origins of relation with specified target.
@@ -113,17 +114,21 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Access::read_type::<OriginComponent<R>>(ty))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == type_id::<OriginComponent<R>>() {
+            Ok(Some(Access::Read))
+        } else {
+            Ok(None)
+        }
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<OriginComponent<R>>())
+        archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<OriginComponent<R>>(), Access::Read)
+        f(type_id::<OriginComponent<R>>(), Access::Read)
     }
 
     #[inline(always)]
@@ -135,10 +140,10 @@ where
     ) -> FetchRelatesToRead<'a, R> {
         let component = unsafe {
             archetype
-                .component(TypeId::of::<OriginComponent<R>>())
+                .component(type_id::<OriginComponent<R>>())
                 .unwrap_unchecked()
         };
-        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+        debug_assert_eq!(component.id(), type_id::<OriginComponent<R>>());
 
         let data = unsafe { component.data() };
 
@@ -252,17 +257,21 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Access::write_type::<OriginComponent<R>>(ty))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == type_id::<OriginComponent<R>>() {
+            Ok(Some(Access::Write))
+        } else {
+            Ok(None)
+        }
     }
 
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<OriginComponent<R>>())
+        archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<OriginComponent<R>>(), Access::Write)
+        f(type_id::<OriginComponent<R>>(), Access::Write)
     }
 
     #[inline(always)]
@@ -274,10 +283,10 @@ where
     ) -> FetchRelatesToWrite<'a, R> {
         let component = unsafe {
             archetype
-                .component(TypeId::of::<OriginComponent<R>>())
+                .component(type_id::<OriginComponent<R>>())
                 .unwrap_unchecked()
         };
-        debug_assert_eq!(component.id(), TypeId::of::<OriginComponent<R>>());
+        debug_assert_eq!(component.id(), type_id::<OriginComponent<R>>());
 
         let data = unsafe { component.data_mut() };
         data.epoch.bump(epoch);

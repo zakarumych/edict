@@ -4,7 +4,7 @@ use crate::{
     action::LocalActionEncoder,
     bundle::Bundle,
     entity::{Entity, EntityRef, Location},
-    NoSuchEntity,
+    type_id, NoSuchEntity,
 };
 
 use super::{World, WorldLocal};
@@ -28,7 +28,7 @@ impl World {
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
-        if !self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
+        if !self.archetypes[src_loc.arch as usize].has_component(type_id::<T>()) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
             let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) };
@@ -37,7 +37,7 @@ impl World {
 
         let dst_arch = self
             .edges
-            .remove(&mut self.archetypes, src_loc.arch, TypeId::of::<T>());
+            .remove(&mut self.archetypes, src_loc.arch, type_id::<T>());
 
         debug_assert_ne!(src_loc.arch, dst_arch);
 
@@ -76,26 +76,26 @@ impl World {
     where
         T: 'static,
     {
-        self.drop_erased(entity, TypeId::of::<T>())
+        self.drop_erased(entity, type_id::<T>())
     }
 
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline(always)]
-    pub fn drop_erased(&mut self, entity: impl Entity, tid: TypeId) -> Result<(), NoSuchEntity> {
+    pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
-        if !self.archetypes[src_loc.arch as usize].has_component(tid) {
+        if !self.archetypes[src_loc.arch as usize].has_component(ty) {
             // Safety: entity is not moved
             // Reference is created with correct location of entity in this world.
             return Ok(());
         }
 
-        let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, tid);
+        let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, ty);
 
         debug_assert_ne!(src_loc.arch, dst_arch);
 
@@ -211,7 +211,7 @@ impl WorldLocal {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    /// 
+    ///
     /// This is deferred version of [`World::drop`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -226,13 +226,13 @@ impl WorldLocal {
     /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.drop_defer::<ExampleComponent>(entity);
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -240,22 +240,22 @@ impl WorldLocal {
     where
         T: 'static,
     {
-        self.drop_erased_defer(entity, TypeId::of::<T>())
+        self.drop_erased_defer(entity, type_id::<T>())
     }
 
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    /// 
+    ///
     /// This is deferred version of [`World::drop_erased`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
     /// or when mutable operation is performed on the world.
     #[inline(always)]
-    pub fn drop_erased_defer(&self, entity: impl Entity, tid: TypeId) {
+    pub fn drop_erased_defer(&self, entity: impl Entity, ty: TypeId) {
         let id = entity.id();
         self.defer(move |world| {
-            let _ = world.drop_erased(id, tid);
+            let _ = world.drop_erased(id, ty);
         })
     }
 
@@ -269,7 +269,7 @@ impl WorldLocal {
     /// so no need to drop them.
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
-    /// 
+    ///
     /// This is deferred version of [`World::drop_bundle`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -286,13 +286,13 @@ impl WorldLocal {
     /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.drop_bundle_defer::<(ExampleComponent, OtherComponent)>(entity);
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]

@@ -6,7 +6,8 @@ use alloc::vec::Vec;
 use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
-    action::ActionBuffer, archetype::Archetype, world::World, Access, ActionBufferSliceExt,
+    action::ActionBuffer, archetype::Archetype, component::ComponentInfo, world::World, Access,
+    ActionBufferSliceExt,
 };
 
 pub use self::func::{
@@ -68,7 +69,7 @@ pub unsafe trait System {
 
     /// Returns access type to the specified component type this system may perform.
     #[must_use]
-    fn component_type_access(&self, ty: TypeId) -> Option<Access>;
+    fn component_access(&self, comp: &ComponentInfo) -> Option<Access>;
 
     /// Returns access type to the specified resource type this system may perform.
     #[must_use]
@@ -227,11 +228,11 @@ where
         true
     }
 
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         Some(Access::Write)
     }
 
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
@@ -306,11 +307,11 @@ macro_rules! impl_system {
             }
 
             #[inline]
-            fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+            fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
                 let ($($a,)+) = &self.0;
                 let mut result = None;
                 $(
-                    result = match (result, $a.component_type_access(ty)) {
+                    result = match (result, $a.component_access(comp)) {
                         (Some(Access::Write), _) | (_, Some(Access::Write)) => Some(Access::Write),
                         (Some(Access::Read), _) | (_, Some(Access::Read)) => Some(Access::Read),
                         (None, None) => None,

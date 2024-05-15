@@ -12,7 +12,7 @@ use core::{
 
 use hashbrown::hash_map::{Entry, HashMap};
 
-use crate::{action::LocalActionEncoder, entity::EntityId, hash::NoOpHasherBuilder};
+use crate::{action::LocalActionEncoder, entity::EntityId, hash::NoOpHasherBuilder, type_id};
 
 pub use edict_proc::Component;
 
@@ -25,12 +25,12 @@ pub type BorrowFnMut<T> = for<'r> unsafe fn(NonNull<u8>, PhantomData<&'r mut T>)
 /// Defines conversion of reference to component into reference to target type.
 #[derive(Clone, Copy)]
 pub struct ComponentBorrow {
-    target: TypeId,
+    ty: TypeId,
 
-    // Actually is `BorrowFn<T>` where `TypeId::of::<T>() == target`.
+    // Actually is `BorrowFn<T>` where `type_id::<T>() == target`.
     borrow: BorrowFn<()>,
 
-    // Actually is `BorrowFnMut<T>` where `TypeId::of::<T>() == target`.
+    // Actually is `BorrowFnMut<T>` where `type_id::<T>() == target`.
     borrow_mut: Option<BorrowFnMut<()>>,
 }
 
@@ -291,7 +291,7 @@ impl ComponentBorrow {
         borrow_mut: Option<BorrowFnMut<T>>,
     ) -> Self {
         ComponentBorrow {
-            target: TypeId::of::<T>(),
+            ty: type_id::<T>(),
             borrow: unsafe { transmute(borrow) },
             borrow_mut: borrow_mut.map(|f| unsafe { transmute(f) }),
         }
@@ -332,11 +332,11 @@ impl ComponentBorrow {
     }
 
     pub(crate) fn target(&self) -> TypeId {
-        self.target
+        self.ty
     }
 
     pub(crate) fn borrow<'a, T: ?Sized + 'static>(&self) -> BorrowFn<T> {
-        debug_assert!(self.target == TypeId::of::<T>());
+        debug_assert!(self.ty == type_id::<T>());
         unsafe { transmute(self.borrow) }
     }
 
@@ -345,7 +345,7 @@ impl ComponentBorrow {
     }
 
     pub(crate) fn borrow_mut<'a, T: ?Sized + 'static>(&self) -> Option<BorrowFnMut<T>> {
-        debug_assert!(self.target == TypeId::of::<T>());
+        debug_assert!(self.ty == type_id::<T>());
         unsafe { self.borrow_mut.map(|f| transmute(f)) }
     }
 }
@@ -437,7 +437,7 @@ impl ComponentInfo {
         T: Component,
     {
         ComponentInfo {
-            ty: TypeId::of::<T>(),
+            ty: type_id::<T>(),
             layout: Layout::new::<T>(),
             name: T::name(),
             drop_one: drop_one::<T, DefaultDropHook>,
@@ -456,7 +456,7 @@ impl ComponentInfo {
         T: 'static,
     {
         ComponentInfo {
-            ty: TypeId::of::<T>(),
+            ty: type_id::<T>(),
             layout: Layout::new::<T>(),
             name: type_name::<T>(),
             drop_one: drop_one::<T, ExternalDropHook>,
@@ -464,18 +464,41 @@ impl ComponentInfo {
             set_one: set_one::<T, ExternalSetHook, ExternalDropHook>,
             on_replace: Arc::new(ExternalSetHook),
             final_drop: final_drop::<T>,
-            borrows: Arc::new([]),
+            borrows: vec![ComponentBorrow::auto::<T>()].into(),
         }
     }
 
     #[inline(always)]
-    pub(crate) fn id(&self) -> TypeId {
+    pub fn id(&self) -> TypeId {
         self.ty
     }
 
     #[inline(always)]
-    pub(crate) fn layout(&self) -> Layout {
+    pub fn layout(&self) -> Layout {
         self.layout
+    }
+
+    #[inline(always)]
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    #[inline(always)]
+    pub fn borrows(&self) -> &[ComponentBorrow] {
+        &self.borrows
+    }
+
+    #[inline(always)]
+    pub fn has_borrow(&self, ty: TypeId) -> bool {
+        self.borrows.iter().any(|b| b.target() == ty)
+    }
+
+    #[inline(always)]
+    pub fn has_borrow_mut(&self, ty: TypeId) -> bool {
+        self.borrows
+            .iter()
+            .find(|b| b.target() == ty)
+            .map_or(false, |b| b.has_borrow_mut())
     }
 
     #[inline(always)]
@@ -510,16 +533,6 @@ impl ComponentInfo {
         unsafe {
             (self.final_drop)(ptr, count);
         }
-    }
-
-    #[inline(always)]
-    pub(crate) fn name(&self) -> &'static str {
-        self.name
-    }
-
-    #[inline(always)]
-    pub(crate) fn borrows(&self) -> &[ComponentBorrow] {
-        &self.borrows
     }
 }
 
@@ -763,7 +776,7 @@ impl ComponentRegistry {
         T: Component,
     {
         self.components
-            .entry(TypeId::of::<T>())
+            .entry(type_id::<T>())
             .or_insert_with(ComponentInfo::of::<T>)
     }
 
@@ -798,7 +811,7 @@ impl ComponentRegistry {
     where
         T: Component,
     {
-        let info = match self.components.entry(TypeId::of::<T>()) {
+        let info = match self.components.entry(type_id::<T>()) {
             Entry::Occupied(_) => panic!("Component already registered"),
             Entry::Vacant(e) => e.insert(ComponentInfo::of::<T>()),
         };
@@ -818,7 +831,7 @@ impl ComponentRegistry {
     where
         T: 'static,
     {
-        let info = match self.components.entry(TypeId::of::<T>()) {
+        let info = match self.components.entry(type_id::<T>()) {
             Entry::Occupied(_) => panic!("Component already registered"),
             Entry::Vacant(e) => e.insert(ComponentInfo::external::<T>()),
         };

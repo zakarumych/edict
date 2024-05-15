@@ -17,7 +17,10 @@ use core::{
 
 use smallvec::SmallVec;
 
-use crate::component::{Component, ComponentInfo};
+use crate::{
+    component::{Component, ComponentInfo},
+    type_id,
+};
 
 /// Possibly dynamic collection of components that may be inserted into the `World`.
 ///
@@ -134,11 +137,11 @@ macro_rules! impl_bundle {
 
             #[inline(always)]
             fn static_key() -> TypeId {
-                TypeId::of::<()>()
+                type_id::<()>()
             }
 
             #[inline(always)]
-            fn static_contains_id(_id: TypeId) -> bool {
+            fn static_contains_id(_ty: TypeId) -> bool {
                 false
             }
 
@@ -187,7 +190,7 @@ macro_rules! impl_bundle {
                 let ($($a,)+) = self;
                 let ($($a,)+) = ($(ManuallyDrop::new($a),)+);
                 $(
-                    f(NonNull::from(&*$a).cast(), TypeId::of::<$a>(), size_of::<$a>());
+                    f(NonNull::from(&*$a).cast(), type_id::<$a>(), size_of::<$a>());
                 )+
             }
         }
@@ -205,7 +208,7 @@ macro_rules! impl_bundle {
         where $($a: 'static,)+
         {
             fn static_valid() -> bool {
-                let mut ids: &[_] = &[$(TypeId::of::<$a>(),)+];
+                let mut ids: &[_] = &[$(type_id::<$a>(),)+];
                 while let [check, rest @ ..] = ids {
                     let mut rest = rest;
                     if let [head, tail @ ..] = rest {
@@ -221,17 +224,17 @@ macro_rules! impl_bundle {
 
             #[inline(always)]
             fn static_key() -> TypeId {
-                TypeId::of::<Self>()
+                type_id::<Self>()
             }
 
             #[inline(always)]
             fn static_contains_id(ty: TypeId) -> bool {
-                $( TypeId::of::<$a>() == ty )|| *
+                $( type_id::<$a>() == ty )|| *
             }
 
             #[inline(always)]
             fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R {
-                f(&[$(TypeId::of::<$a>(),)+])
+                f(&[$(type_id::<$a>(),)+])
             }
         }
 
@@ -379,7 +382,7 @@ impl EntityBuilder {
             self.len = value_offset + size_of::<T>();
         }
 
-        self.ids.push(TypeId::of::<T>());
+        self.ids.push(type_id::<T>());
         self.infos.push(ComponentInfo::of::<T>());
         self.offsets.push(value_offset);
 
@@ -392,7 +395,7 @@ impl EntityBuilder {
     where
         T: 'static,
     {
-        let idx = self.ids.iter().position(|id| *id == TypeId::of::<T>())?;
+        let idx = self.ids.iter().position(|id| *id == type_id::<T>())?;
         let offset = self.offsets[idx];
         Some(unsafe { &*self.ptr.as_ptr().add(offset).cast::<T>() })
     }
@@ -403,7 +406,7 @@ impl EntityBuilder {
     where
         T: 'static,
     {
-        let idx = self.ids.iter().position(|id| *id == TypeId::of::<T>())?;
+        let idx = self.ids.iter().position(|id| *id == type_id::<T>())?;
         let offset = self.offsets[idx];
         Some(unsafe { &mut *self.ptr.as_ptr().add(offset).cast::<T>() })
     }
@@ -429,8 +432,8 @@ unsafe impl DynamicBundle for EntityBuilder {
     }
 
     #[inline(always)]
-    fn contains_id(&self, target: TypeId) -> bool {
-        self.ids.iter().any(|id| *id == target)
+    fn contains_id(&self, ty: TypeId) -> bool {
+        self.ids.iter().any(|id| *id == ty)
     }
 
     #[inline(always)]

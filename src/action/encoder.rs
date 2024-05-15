@@ -7,6 +7,7 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entity, EntityId, EntityLoc, EntitySet},
     relation::Relation,
+    type_id,
     world::{iter_reserve_hint, World},
 };
 
@@ -226,7 +227,7 @@ impl<'a> ActionEncoder<'a> {
     where
         T: 'static,
     {
-        self.drop_erased(entity, TypeId::of::<T>())
+        self.drop_erased(entity, type_id::<T>())
     }
 
     /// Encodes an action to drop component from specified entity.
@@ -683,7 +684,7 @@ impl<'a> LocalActionEncoder<'a> {
     where
         T: 'static,
     {
-        self.drop_erased(entity, TypeId::of::<T>())
+        self.drop_erased(entity, type_id::<T>())
     }
 
     /// Encodes an action to drop component from specified entity.

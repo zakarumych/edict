@@ -37,7 +37,9 @@
 
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, Access};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId, Access,
+};
 
 pub use self::{
     alt::{Alt, FetchAlt},
@@ -132,7 +134,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// This method may return stronger access type if it is impossible to know
     /// exact access with only type-id.
     #[must_use]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias>;
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias>;
 
     /// Checks if archetype must be visited or skipped.
     /// If returns `false`, `access_archetype` and `fetch` must not be called,

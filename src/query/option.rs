@@ -1,6 +1,6 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
+use crate::{archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg};
 
 use super::{
     Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
@@ -120,8 +120,8 @@ where
     const MUTABLE: bool = T::MUTABLE;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        self.0.component_type_access(ty)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        self.0.component_access(comp)
     }
 
     #[inline(always)]

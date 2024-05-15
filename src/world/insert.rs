@@ -1,11 +1,11 @@
-use core::any::{type_name, TypeId};
+use core::any::type_name;
 
 use crate::{
     action::LocalActionEncoder,
     bundle::{DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{Entity, EntityLoc, Location},
-    NoSuchEntity,
+    type_id, NoSuchEntity,
 };
 
 use super::{
@@ -156,7 +156,7 @@ impl World {
 
         let epoch = self.epoch.next_mut();
 
-        if self.archetypes[src_loc.arch as usize].has_component(TypeId::of::<T>()) {
+        if self.archetypes[src_loc.arch as usize].has_component(type_id::<T>()) {
             if replace {
                 let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
                 unsafe {
@@ -178,7 +178,7 @@ impl World {
             &mut self.registry,
             &mut self.archetypes,
             src_loc.arch,
-            TypeId::of::<T>(),
+            type_id::<T>(),
             get_or_register,
         );
 
@@ -449,7 +449,7 @@ impl WorldLocal {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::insert`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -463,13 +463,13 @@ impl WorldLocal {
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.insert_defer(entity, ExampleComponent);
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -487,7 +487,7 @@ impl WorldLocal {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::insert_external`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -501,14 +501,14 @@ impl WorldLocal {
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.ensure_external_registered::<u32>();
     /// world.insert_external_defer(entity, 42u32);
-    /// 
+    ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -526,7 +526,7 @@ impl WorldLocal {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::with`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -540,13 +540,13 @@ impl WorldLocal {
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.with_defer(entity, || ExampleComponent);
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -564,7 +564,7 @@ impl WorldLocal {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::with_external`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -578,14 +578,14 @@ impl WorldLocal {
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.ensure_external_registered::<u32>();
     /// world.with_external_defer(entity, || 42u32);
-    /// 
+    ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -622,7 +622,7 @@ impl WorldLocal {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::insert_bundle`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -634,15 +634,15 @@ impl WorldLocal {
     /// # use edict::{world::WorldLocal, ExampleComponent};
     /// let mut world = WorldLocal::new();
     /// let entity = world.spawn(()).id();
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.insert_bundle_defer(entity, (ExampleComponent,));
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -662,7 +662,7 @@ impl WorldLocal {
     /// Otherwise components is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::insert_external_bundle`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -685,7 +685,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -708,7 +708,7 @@ impl WorldLocal {
     /// and entity cannot be despawned as a result of this operation.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::with_bundle`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -720,15 +720,15 @@ impl WorldLocal {
     /// # use edict::{world::WorldLocal, ExampleComponent};
     /// let mut world = WorldLocal::new();
     /// let entity = world.spawn(()).id();
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.with_bundle_defer(entity, (ExampleComponent,));
-    /// 
+    ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
-    /// 
+    ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
     #[inline(always)]
@@ -745,7 +745,7 @@ impl WorldLocal {
     /// if replacing is required use [`World::insert_bundle`].
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    /// 
+    ///
     /// This is deferred version of [`World::with_external_bundle`].
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
@@ -768,7 +768,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
-    /// 
+    ///
     /// world.run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());

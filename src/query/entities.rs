@@ -2,6 +2,7 @@ use core::any::TypeId;
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     entity::{EntityId, EntityLoc, Location},
     system::QueryArg,
 };
@@ -71,7 +72,7 @@ unsafe impl Query for Entities {
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 

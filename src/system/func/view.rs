@@ -6,6 +6,7 @@ use core::{
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     query::SendQuery,
     system::ActionBufferQueue,
     view::{acquire, release, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
@@ -86,14 +87,14 @@ where
     }
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+    fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
         let q = self
             .query
-            .component_type_access(ty)
+            .component_access(comp)
             .unwrap_or(Some(Access::Write));
         let f = self
             .filter
-            .component_type_access(ty)
+            .component_access(comp)
             .unwrap_or(Some(Access::Write));
 
         match (q, f) {
@@ -107,7 +108,7 @@ where
     }
 
     #[inline(always)]
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 
@@ -182,11 +183,11 @@ where
     }
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Option<Access> {
-        let Ok(q) = self.query.component_type_access(ty) else {
+    fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
+        let Ok(q) = self.query.component_access(comp) else {
             panic!("Mutable alias in query of `{}`", type_name::<Self>());
         };
-        let Ok(f) = self.filter.component_type_access(ty) else {
+        let Ok(f) = self.filter.component_access(comp) else {
             panic!("Mutable alias in filter of `{}`", type_name::<Self>());
         };
 
@@ -204,7 +205,7 @@ where
     }
 
     #[inline(always)]
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 

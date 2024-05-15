@@ -2,13 +2,14 @@ use core::any::TypeId;
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     epoch::EpochId,
     query::{
         AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias,
     },
     relation::{Relation, TargetComponent},
     system::QueryArg,
-    Access,
+    type_id, Access,
 };
 
 marker_type! {
@@ -63,13 +64,13 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, _: TypeId) -> Result<Option<Access>, WriteAlias> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<TargetComponent<R>>())
+        archetype.has_component(type_id::<TargetComponent<R>>())
     }
 
     #[inline(always)]

@@ -1,6 +1,9 @@
 use core::{any::TypeId, marker::PhantomData, ops::ControlFlow};
 
-use crate::{archetype::Archetype, entity::EntityId, epoch::EpochId, system::QueryArg};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
+    system::QueryArg,
+};
 
 use super::{
     fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
@@ -297,11 +300,11 @@ macro_rules! impl_boolean {
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
 
             #[inline(always)]
-            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+            fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = &self.tuple;
                 let mut result = None;
                 $(
-                    result = match (result, $a.component_type_access(ty)?) {
+                    result = match (result, $a.component_access(comp)?) {
                         (None, one) | (one, None) => one,
                         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
                         _ => return Err(WriteAlias),

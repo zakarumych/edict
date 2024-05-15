@@ -3,6 +3,7 @@ use core::{any::TypeId, ptr::NonNull};
 use crate::{
     action::{ActionBuffer, ActionEncoder},
     archetype::Archetype,
+    component::ComponentInfo,
     system::{Access, ActionBufferQueue},
     world::World,
 };
@@ -47,12 +48,12 @@ unsafe impl FnArgState for ActionEncoderState {
     }
 
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     #[inline(always)]
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 

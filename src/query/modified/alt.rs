@@ -2,6 +2,7 @@ use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::{chunk_idx, Archetype},
+    component::ComponentInfo,
     epoch::EpochId,
     query::{
         alt::{Alt, RefMut},
@@ -9,6 +10,7 @@ use crate::{
         Access, AsQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias,
     },
     system::QueryArg,
+    type_id,
 };
 
 use super::Modified;
@@ -118,18 +120,18 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        self.query.component_type_access(ty)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        self.query.component_access(comp)
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.component(TypeId::of::<T>()) {
+        match archetype.component(type_id::<T>()) {
             None => false,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
-                debug_assert_eq!(component.id(), TypeId::of::<T>());
+                debug_assert_eq!(component.id(), type_id::<T>());
                 let data = component.data_mut();
                 data.epoch.after(self.after_epoch)
             },
@@ -138,7 +140,7 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(TypeId::of::<T>(), Access::Write)
+        f(type_id::<T>(), Access::Write)
     }
 
     #[inline(always)]
@@ -148,8 +150,8 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> ModifiedFetchAlt<'a, T> {
-        let component = archetype.component(TypeId::of::<T>()).unwrap_unchecked();
-        debug_assert_eq!(component.id(), TypeId::of::<T>());
+        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        debug_assert_eq!(component.id(), type_id::<T>());
 
         let data = component.data_mut();
 
@@ -222,18 +224,18 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        self.query.component_type_access(ty)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        self.query.component_access(comp)
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.component(TypeId::of::<T>()) {
+        match archetype.component(type_id::<T>()) {
             None => true,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
-                debug_assert_eq!(component.id(), TypeId::of::<T>());
+                debug_assert_eq!(component.id(), type_id::<T>());
                 let data = component.data();
                 data.epoch.after(self.after_epoch)
             },
@@ -242,13 +244,13 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        if let Some(component) = archetype.component(TypeId::of::<T>()) {
+        if let Some(component) = archetype.component(type_id::<T>()) {
             debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
-            debug_assert_eq!(component.id(), TypeId::of::<T>());
+            debug_assert_eq!(component.id(), type_id::<T>());
             let data = component.data();
             if data.epoch.after(self.after_epoch) {
-                f(TypeId::of::<T>(), Access::Read)
+                f(type_id::<T>(), Access::Read)
             }
         }
     }
@@ -260,7 +262,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Option<ModifiedFetchAlt<'a, T>> {
-        match archetype.component(TypeId::of::<T>()) {
+        match archetype.component(type_id::<T>()) {
             None => None,
             Some(component) => {
                 let data = component.data_mut();

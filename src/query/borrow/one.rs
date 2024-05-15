@@ -2,12 +2,13 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    component::{BorrowFn, BorrowFnMut},
+    component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
         read::Read, write::Write, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
         SendQuery, WriteAlias,
     },
+    type_id,
 };
 
 /// [`Query`] that fetches components with specific `TypeId` as specified borrow.
@@ -105,8 +106,13 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        if ty == self.ty {
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == self.ty {
+            assert!(
+                comp.has_borrow(type_id::<T>()),
+                "Component does not have the borrow"
+            );
+
             Ok(Some(Access::Read))
         } else {
             Ok(None)
@@ -135,7 +141,7 @@ where
         let cb = component
             .borrows()
             .iter()
-            .find(|&cb| cb.target() == TypeId::of::<T>())
+            .find(|&cb| cb.target() == type_id::<T>())
             .unwrap();
 
         let data = component.data();
@@ -233,8 +239,13 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        if ty == self.ty {
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == self.ty {
+            assert!(
+                comp.has_borrow_mut(type_id::<T>()),
+                "Component does not have the borrow_mut"
+            );
+
             Ok(Some(Access::Write))
         } else {
             Ok(None)
@@ -263,7 +274,7 @@ where
         let cb = component
             .borrows()
             .iter()
-            .find(|&cb| cb.target() == TypeId::of::<T>())
+            .find(|&cb| cb.target() == type_id::<T>())
             .unwrap();
 
         assert!(cb.borrow_mut::<T>().is_some());

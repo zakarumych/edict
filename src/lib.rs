@@ -389,26 +389,6 @@ pub enum Access {
     Write,
 }
 
-impl Access {
-    #[inline(always)]
-    fn read_type<T: 'static>(ty: TypeId) -> Option<Self> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Read)
-        } else {
-            None
-        }
-    }
-
-    #[inline(always)]
-    fn write_type<T: 'static>(ty: TypeId) -> Option<Self> {
-        if ty == TypeId::of::<T>() {
-            Some(Access::Write)
-        } else {
-            None
-        }
-    }
-}
-
 #[doc(hidden)]
 pub mod private {
     pub use alloc::{sync::Arc, vec::Vec};
@@ -449,3 +429,8 @@ pub use self::prelude::*;
 fn cold() {}
 
 pub use edict_proc::system;
+
+/// Shorter version of [`core::any::TypeId::of`].
+fn type_id<T: 'static + ?Sized>() -> TypeId {
+    TypeId::of::<T>()
+}

@@ -10,8 +10,9 @@ use core::{
     ptr::NonNull,
 };
 
+use crate::{archetype::Archetype, component::ComponentInfo, world::World};
+
 use super::{Access, ActionBufferQueue, IntoSystem, System};
-use crate::{archetype::Archetype, world::World};
 
 pub use self::{
     action::ActionEncoderState,
@@ -74,7 +75,7 @@ pub unsafe trait FnArgState: Send + 'static {
     /// Returns access type to the specified component type this argument may perform.
     /// Called only for scheduling purposes.
     #[must_use]
-    fn component_type_access(&self, ty: TypeId) -> Option<Access>;
+    fn component_access(&self, comp: &ComponentInfo) -> Option<Access>;
 
     /// Returns access type to the specified resource type this argument may perform.
     /// Called only for scheduling purposes.
@@ -156,12 +157,12 @@ macro_rules! impl_func {
             }
 
             #[inline(always)]
-            fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+            fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
                 let mut runtime_borrow = true;
                 $(
-                    if let Some(access) = $a.component_type_access(ty) {
+                    if let Some(access) = $a.component_access(comp) {
                         runtime_borrow &= $a.borrows_components_at_runtime();
                         result = match (result, access) {
                             (None, one) => Some(one),

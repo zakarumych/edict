@@ -1,6 +1,8 @@
 use core::{any::TypeId, ptr::NonNull};
 
-use crate::{archetype::Archetype, system::ActionBufferQueue, world::World, Access};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, system::ActionBufferQueue, world::World, Access,
+};
 
 use super::{FnArg, FnArgState};
 
@@ -40,12 +42,12 @@ unsafe impl FnArgState for WorldReadState {
     }
 
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         Some(Access::Write)
     }
 
     #[inline(always)]
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
@@ -96,12 +98,12 @@ unsafe impl FnArgState for WorldWriteState {
     }
 
     #[inline(always)]
-    fn component_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         Some(Access::Write)
     }
 
     #[inline(always)]
-    fn resource_type_access(&self, _id: TypeId) -> Option<Access> {
+    fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 

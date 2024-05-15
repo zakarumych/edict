@@ -1,6 +1,8 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, epoch::EpochId, system::QueryArg};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+};
 
 use super::{
     fetch::UnitFetch, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
@@ -87,10 +89,10 @@ where
 //     const MUTABLE: bool = F::MUTABLE || Q::MUTABLE;
 
 //     #[inline(always)]
-//     fn component_type_access(&self, ty: TypeId) -> Option<Access> {
+//     fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
 //         match (
-//             self.filter.component_type_access(ty),
-//             self.query.component_type_access(ty),
+//             self.filter.component_access(ty),
+//             self.query.component_access(ty),
 //         ) {
 //             (None, one) | (one, None) => one,
 //             (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
@@ -227,16 +229,16 @@ where
     const MUTABLE: bool = T::MUTABLE;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
     #[inline(always)]
-    fn visit_archetype(&self, _archetype: &Archetype) -> bool {
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if T::FILTERS_ENTITIES {
             true
         } else {
-            !self.0.visit_archetype(_archetype)
+            !self.0.visit_archetype(archetype)
         }
     }
 
@@ -316,13 +318,13 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
+    fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(TypeId::of::<T>())
+        archetype.has_component(type_id::<T>())
     }
 
     #[inline(always)]

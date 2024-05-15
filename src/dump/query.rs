@@ -2,13 +2,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
+    component::ComponentInfo,
     entity::EntityLoc,
     epoch::EpochId,
     query::{
         AsQuery, Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
         WriteAlias,
     },
-    Access,
+    type_id, Access,
 };
 
 /// Query result per component.
@@ -129,23 +130,23 @@ macro_rules! impl_dump_query {
             const FILTERS_ENTITIES: bool = true;
 
             #[inline(always)]
-            fn component_type_access(&self, ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-                if [$(TypeId::of::<$a>(),)*].contains(&ty) {
-                    return Ok(Some(Access::Read))
+            fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+                match comp.id() {
+                    $(id if id == type_id::<$a>() => Ok(Some(Access::Read)),)*
+                    _ => Ok(None),
                 }
-                Ok(None)
             }
 
             #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
-                false $(|| archetype.has_component(TypeId::of::<$a>()))*
+                false $(|| archetype.has_component(type_id::<$a>()))*
             }
 
             #[inline(always)]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 $(
-                    if archetype.has_component(TypeId::of::<$a>()) {
-                        f(TypeId::of::<$a>(), Access::Read);
+                    if archetype.has_component(type_id::<$a>()) {
+                        f(type_id::<$a>(), Access::Read);
                     }
                 )*
             }
@@ -158,7 +159,7 @@ macro_rules! impl_dump_query {
                 epoch: EpochId,
             ) -> (EntitiesFetch<'a>, ($(DumpFetch<'a, $a>),*)) {
                 let ($($a,)*) = ($(
-                    match archetype.component(TypeId::of::<$a>()) {
+                    match archetype.component(type_id::<$a>()) {
                         None => DumpFetch {
                             after_epoch: self.after_epoch,
                             ptr: None,

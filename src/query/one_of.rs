@@ -115,10 +115,10 @@ macro_rules! one_of {
             //     const MUTABLE: bool = $($crate::one_of!(@MUTABLE $q) ||)+ false;
             //     const FILTERS_ENTITIES: bool = false;
 
-            //     fn component_type_access(&self, ty: core::any::TypeId) -> Result<Option<Access>, WriteAlias> {
+            //     fn component_access(&self, ty: core::any::TypeId) -> Result<Option<Access>, WriteAlias> {
             //         $(
             //             let $v = $crate::one_of!(@IntoQuery &'a $q);
-            //             match $crate::query::Query::component_type_access(&$v, ty)? {
+            //             match $crate::query::Query::component_access(&$v, ty)? {
             //                 None => {},
             //                 Some(access) => return Ok(Some(access)),
             //             };

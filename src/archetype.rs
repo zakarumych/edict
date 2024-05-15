@@ -23,7 +23,7 @@ use hashbrown::HashMap;
 
 use crate::{
     action::LocalActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, Access,
+    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, type_id, Access,
 };
 
 pub(crate) struct ComponentData {
@@ -231,34 +231,34 @@ impl Archetype {
 
     /// Returns `true` if archetype contains compoment with specified id.
     #[inline(always)]
-    pub fn has_component(&self, type_id: TypeId) -> bool {
-        self.components.contains_key(&type_id)
+    pub fn has_component(&self, ty: TypeId) -> bool {
+        self.components.contains_key(&ty)
     }
 
     /// Returns `true` if archetype contains compoment with specified id.
     #[inline(always)]
-    pub fn contains_borrow(&self, type_id: TypeId) -> bool {
-        self.borrows.contains_key(&type_id)
+    pub fn contains_borrow(&self, ty: TypeId) -> bool {
+        self.borrows.contains_key(&ty)
     }
 
     /// Returns `true` if archetype contains compoment with specified id.
     #[inline(always)]
-    pub fn contains_borrow_mut(&self, type_id: TypeId) -> bool {
-        self.borrows_mut.contains_key(&type_id)
+    pub fn contains_borrow_mut(&self, ty: TypeId) -> bool {
+        self.borrows_mut.contains_key(&ty)
     }
 
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
     #[inline(always)]
-    pub(crate) fn borrow_indices(&self, type_id: TypeId) -> Option<&[(TypeId, usize)]> {
-        self.borrows.get(&type_id).map(|v| &v[..])
+    pub(crate) fn borrow_indices(&self, ty: TypeId) -> Option<&[(TypeId, usize)]> {
+        self.borrows.get(&ty).map(|v| &v[..])
     }
 
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
     #[inline(always)]
-    pub(crate) fn borrow_mut_indices(&self, type_id: TypeId) -> Option<&[(TypeId, usize)]> {
-        self.borrows_mut.get(&type_id).map(|v| &v[..])
+    pub(crate) fn borrow_mut_indices(&self, ty: TypeId) -> Option<&[(TypeId, usize)]> {
+        self.borrows_mut.get(&ty).map(|v| &v[..])
     }
 
     /// Returns `true` if archetype matches components set specified.
@@ -316,7 +316,7 @@ impl Archetype {
     where
         T: 'static,
     {
-        debug_assert!(self.matches(core::iter::once(TypeId::of::<T>())));
+        debug_assert!(self.matches(core::iter::once(type_id::<T>())));
         debug_assert!(self.entities.len() < MAX_IDX_USIZE);
 
         let entity_idx = self.entities.len() as u32;
@@ -480,7 +480,7 @@ impl Archetype {
     {
         let entity_idx = idx;
 
-        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
         unsafe {
@@ -498,14 +498,10 @@ impl Archetype {
     where
         T: 'static,
     {
-        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe {
-            self.components
-                .get_mut(&TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
         let ptr = unsafe {
             component
                 .data
@@ -531,14 +527,10 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe {
-            self.components
-                .get_mut(&TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
         let data = component.data.get_mut();
         let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
 
@@ -563,14 +555,10 @@ impl Archetype {
     where
         T: 'static,
     {
-        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe {
-            self.components
-                .get_mut(&TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
         let data = component.data.get_mut();
         let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
 
@@ -675,8 +663,8 @@ impl Archetype {
         T: 'static,
     {
         debug_assert!(self.ids().all(|id| dst.components.contains_key(&id)));
-        debug_assert!(!self.components.contains_key(&TypeId::of::<T>()));
-        debug_assert!(dst.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(!self.components.contains_key(&type_id::<T>()));
+        debug_assert!(dst.components.contains_key(&type_id::<T>()));
         debug_assert_eq!(self.components.len() + 1, dst.components.len());
 
         let src_entity_idx = src_idx;
@@ -727,8 +715,8 @@ impl Archetype {
         T: 'static,
     {
         debug_assert!(dst.ids().all(|id| self.components.contains_key(&id)));
-        debug_assert!(!dst.components.contains_key(&TypeId::of::<T>()));
-        debug_assert!(self.components.contains_key(&TypeId::of::<T>()));
+        debug_assert!(!dst.components.contains_key(&type_id::<T>()));
+        debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert_eq!(dst.components.len() + 1, self.components.len());
 
         let src_entity_idx = src_idx;
@@ -744,7 +732,7 @@ impl Archetype {
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         unsafe {
             self.relocate_components(src_entity_idx, dst, dst_entity_idx, |info, ptr| {
-                if info.id() != TypeId::of::<T>() {
+                if info.id() != type_id::<T>() {
                     unreachable_unchecked()
                 }
 
@@ -914,11 +902,7 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component = unsafe {
-            self.components
-                .get_mut(&TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
         let data = component.data.get_mut();
         let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx as usize) };
         let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx as usize) };

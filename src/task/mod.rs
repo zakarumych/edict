@@ -34,7 +34,7 @@ impl<T: 'static> Wake for TaskWaker<T> {
 
     #[inline(always)]
     fn wake_by_ref(self: &Arc<Self>) {
-        self.queue.lock().push((self.id, TypeId::of::<T>()));
+        self.queue.lock().push((self.id, type_id::<T>()));
     }
 }
 
@@ -204,7 +204,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
     let guard_tls = WorldTLS::new(world);
 
     for archetype in world.archetypes() {
-        let Some(indices) = archetype.borrow_mut_indices(TypeId::of::<dyn AnyTask>()) else {
+        let Some(indices) = archetype.borrow_mut_indices(type_id::<dyn AnyTask>()) else {
             continue;
         };
         for &(tid, borrow_idx) in indices {
@@ -266,7 +266,7 @@ pub fn task_system(world: &mut World, mut state: State<TaskSystemState>) {
             component
                 .borrows()
                 .iter()
-                .find(|b| b.target() == TypeId::of::<dyn AnyTask>())
+                .find(|b| b.target() == type_id::<dyn AnyTask>())
                 .unwrap_unchecked()
         };
         let data = unsafe { component.data_mut() };

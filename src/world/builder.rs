@@ -98,7 +98,6 @@ impl World {
         Self::builder().build()
     }
 
-
     /// Returns new instance of [`WorldBuilder`].
     /// This allows pre-register component types and override their behavior.
     #[inline(always)]

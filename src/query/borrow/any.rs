@@ -2,13 +2,14 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     archetype::Archetype,
-    component::{BorrowFn, BorrowFnMut},
+    component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
         read::Read, write::Write, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
         Query, SendQuery, WriteAlias,
     },
     system::QueryArg,
+    type_id,
 };
 
 /// Query that borrows from components.
@@ -114,21 +115,22 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Some(Access::Read))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.has_borrow(type_id::<T>()) {
+            Ok(Some(Access::Read))
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.contains_borrow(TypeId::of::<T>())
+        archetype.contains_borrow(type_id::<T>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        for (id, _) in archetype
-            .borrow_indices(TypeId::of::<T>())
-            .unwrap_unchecked()
-        {
+        for (id, _) in archetype.borrow_indices(type_id::<T>()).unwrap_unchecked() {
             f(*id, Access::Read);
         }
     }
@@ -141,12 +143,12 @@ where
         _epoch: EpochId,
     ) -> FetchBorrowAnyRead<'a, T> {
         let (id, idx) = *archetype
-            .borrow_indices(TypeId::of::<T>())
+            .borrow_indices(type_id::<T>())
             .unwrap_unchecked()
             .get_unchecked(0);
 
         let component = archetype.component(id).unwrap_unchecked();
-        debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
+        debug_assert_eq!(component.borrows()[idx].target(), type_id::<T>());
 
         let data = component.data();
 
@@ -274,19 +276,23 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Some(Access::Write))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.has_borrow_mut(type_id::<T>()) {
+            Ok(Some(Access::Write))
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.contains_borrow_mut(TypeId::of::<T>())
+        archetype.contains_borrow_mut(type_id::<T>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in archetype
-            .borrow_mut_indices(TypeId::of::<T>())
+            .borrow_mut_indices(type_id::<T>())
             .unwrap_unchecked()
         {
             f(*id, Access::Write);
@@ -301,12 +307,12 @@ where
         epoch: EpochId,
     ) -> FetchBorrowAnyWrite<'a, T> {
         let (id, idx) = *archetype
-            .borrow_mut_indices(TypeId::of::<T>())
+            .borrow_mut_indices(type_id::<T>())
             .unwrap_unchecked()
             .get_unchecked(0);
 
         let component = archetype.component(id).unwrap_unchecked();
-        debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
+        debug_assert_eq!(component.borrows()[idx].target(), type_id::<T>());
 
         let data = unsafe { component.data_mut() };
         data.epoch.bump(epoch);

@@ -3,13 +3,14 @@ use core::{any::TypeId, fmt::Debug, iter::FusedIterator, marker::PhantomData, pt
 
 use crate::{
     archetype::Archetype,
-    component::{BorrowFn, BorrowFnMut},
+    component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
         read::Read, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
         SendQuery, Write, WriteAlias,
     },
     system::QueryArg,
+    type_id,
 };
 
 /// Query that borrows from components.
@@ -238,22 +239,22 @@ where
     const MUTABLE: bool = false;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Some(Access::Read))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.has_borrow(type_id::<T>()) {
+            Ok(Some(Access::Read))
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.contains_borrow(TypeId::of::<T>())
+        archetype.contains_borrow(type_id::<T>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        let indices = unsafe {
-            archetype
-                .borrow_indices(TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let indices = unsafe { archetype.borrow_indices(type_id::<T>()).unwrap_unchecked() };
         for (id, _) in indices {
             f(*id, Access::Read);
         }
@@ -266,16 +267,12 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchBorrowAllRead<'a, T> {
-        let indices = unsafe {
-            archetype
-                .borrow_indices(TypeId::of::<T>())
-                .unwrap_unchecked()
-        };
+        let indices = unsafe { archetype.borrow_indices(type_id::<T>()).unwrap_unchecked() };
         let components = indices
             .iter()
             .map(|&(id, idx)| {
                 let component = unsafe { archetype.component(id).unwrap_unchecked() };
-                debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
+                debug_assert_eq!(component.borrows()[idx].target(), type_id::<T>());
 
                 let data = unsafe { component.data_mut() };
 
@@ -536,20 +533,24 @@ where
     const MUTABLE: bool = true;
 
     #[inline(always)]
-    fn component_type_access(&self, _ty: TypeId) -> Result<Option<Access>, WriteAlias> {
-        Ok(Some(Access::Write))
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.has_borrow_mut(type_id::<T>()) {
+            Ok(Some(Access::Write))
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.contains_borrow_mut(TypeId::of::<T>())
+        archetype.contains_borrow_mut(type_id::<T>())
     }
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let indices = unsafe {
             archetype
-                .borrow_mut_indices(TypeId::of::<T>())
+                .borrow_mut_indices(type_id::<T>())
                 .unwrap_unchecked()
         };
         for (id, _) in indices {
@@ -566,14 +567,14 @@ where
     ) -> FetchBorrowAllWrite<'a, T> {
         let indices = unsafe {
             archetype
-                .borrow_mut_indices(TypeId::of::<T>())
+                .borrow_mut_indices(type_id::<T>())
                 .unwrap_unchecked()
         };
         let components = indices
             .iter()
             .map(|&(id, idx)| {
                 let component = unsafe { archetype.component(id).unwrap_unchecked() };
-                debug_assert_eq!(component.borrows()[idx].target(), TypeId::of::<T>());
+                debug_assert_eq!(component.borrows()[idx].target(), type_id::<T>());
                 debug_assert!(component.borrows()[idx].borrow_mut::<T>().is_some());
 
                 let data = unsafe { component.data_mut() };

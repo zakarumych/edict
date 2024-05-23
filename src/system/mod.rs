@@ -88,7 +88,7 @@ pub unsafe trait System {
     /// Runs the system with exclusive access to [`World`] and flushes action buffers immediately.
     fn run_alone(&mut self, world: &mut World) {
         let mut buffers = Vec::new();
-        unsafe { self.run_unchecked(NonNull::from(&mut *world), &mut buffers) };
+        self.run(world, &mut buffers);
         buffers.execute_all(world);
     }
 }

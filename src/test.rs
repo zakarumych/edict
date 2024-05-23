@@ -2,7 +2,7 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     component::Component,
-    flow::{execute_flows, Flows},
+    flow::Flows,
     query::{Entities, ImmutableQuery, Modified, Not, With, Without},
     relation::{ChildOf, Relation},
     spawn_block,
@@ -576,19 +576,21 @@ fn add_relation() {
 #[test]
 fn test_flow() {
     let mut world = World::new();
+    Flows::init(&mut world);
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
     spawn_block! {in world -> world.spawn((U32(42),)); };
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
-    execute_flows(&mut world, &mut Flows::default());
+    Flows::default().execute(&mut world);
     assert_eq!(world.view::<&U32>().iter().count(), 1);
 }
 
 #[test]
 fn test_entity_flow() {
     let mut world = World::new();
+    Flows::init(&mut world);
 
     let e = world.spawn(()).id();
 
@@ -597,7 +599,7 @@ fn test_entity_flow() {
     spawn_block! {in world for e -> e.insert(U32(42)).unwrap(); };
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
-    execute_flows(&mut world, &mut Flows::default());
+    Flows::default().execute(&mut world);
     assert_eq!(world.view::<&U32>().iter().count(), 1);
 }
 

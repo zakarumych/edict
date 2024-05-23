@@ -1,18 +1,14 @@
 use core::{
     future::Future,
     marker::PhantomData,
-    mem::MaybeUninit,
     ops::{Deref, DerefMut},
     pin::Pin,
-    ptr::addr_of_mut,
     task::{Context, Poll},
 };
 
-use alloc::sync::Arc;
-
 use crate::world::World;
 
-use super::{flow_world, Flow, NewFlowTask, NewFlows};
+use super::{flow_world, Flow, IntoFlow};
 
 /// World reference that is updated when flow is polled.
 pub struct FlowWorld<'a> {
@@ -31,14 +27,15 @@ impl Deref for FlowWorld<'_> {
 }
 
 impl DerefMut for FlowWorld<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+    fn deref_mut(&mut self) -> &mut World {
         unsafe { flow_world() }
     }
 }
 
 /// Future wrapped to be used as a flow.
 #[repr(transparent)]
-struct FutureFlow<F> {
+#[doc(hidden)]
+pub struct FutureFlow<F> {
     fut: F,
 }
 
@@ -69,30 +66,6 @@ pub trait WorldFlowFn<'a> {
     fn run(self, world: FlowWorld<'a>) -> Self::Fut;
 }
 
-#[doc(hidden)]
-pub fn insert_world_flow<F>(world: &mut World, f: F)
-where
-    F: WorldFlowFn<'static>,
-{
-    let mut new_flow_task: NewFlowTask<FutureFlow<F::Fut>> = Arc::new(MaybeUninit::uninit());
-    let new_flow_task_mut = Arc::get_mut(&mut new_flow_task).unwrap();
-
-    unsafe {
-        let flow_ptr =
-            addr_of_mut!((*new_flow_task_mut.as_mut_ptr()).flow).cast::<FutureFlow<F::Fut>>();
-
-        let fut = f.run(FlowWorld::new());
-        let fut_ptr = addr_of_mut!((*flow_ptr).fut);
-        fut_ptr.write(fut);
-    }
-
-    world
-        .with_default_resource::<NewFlows>()
-        .typed_new_flows()
-        .array
-        .push(new_flow_task);
-}
-
 // Must be callable with any lifetime of `FlowWorld` borrow.
 impl<'a, F, Fut> WorldFlowFn<'a> for F
 where
@@ -106,27 +79,46 @@ where
     }
 }
 
-pub trait WorldFlowSpawn {
-    fn spawn(self, world: &mut World);
-}
-
-impl<F> WorldFlowSpawn for F
+impl<F> IntoFlow for F
 where
-    F: for<'a> WorldFlowFn<'a>,
+    F: for<'a> WorldFlowFn<'a> + Send + 'static,
 {
-    fn spawn(self, world: &mut World) {
-        insert_world_flow(world, self);
+    type Flow = FutureFlow<<F as WorldFlowFn<'static>>::Fut>;
+
+    unsafe fn into_flow(self) -> Self::Flow {
+        FutureFlow {
+            fut: self.run(FlowWorld::new()),
+        }
     }
 }
 
-pub struct WorldClosureSpawn<F>(pub F);
+struct BadFutureFlow<F, Fut> {
+    f: F,
+    _phantom: PhantomData<Fut>,
+}
 
-impl<F> WorldFlowSpawn for WorldClosureSpawn<F>
+impl<F, Fut> IntoFlow for BadFutureFlow<F, Fut>
 where
-    F: FnOnce(&mut World),
+    F: FnOnce(FlowWorld<'static>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
-    fn spawn(self, world: &mut World) {
-        (self.0)(world)
+    type Flow = FutureFlow<Fut>;
+
+    unsafe fn into_flow(self) -> Self::Flow {
+        FutureFlow {
+            fut: (self.f)(FlowWorld::new()),
+        }
+    }
+}
+
+pub unsafe fn bad_world_flow_closure<F, Fut>(f: F) -> impl IntoFlow
+where
+    F: FnOnce(FlowWorld<'static>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    BadFutureFlow {
+        f,
+        _phantom: PhantomData,
     }
 }
 
@@ -142,37 +134,24 @@ where
 #[macro_export]
 macro_rules! flow_closure {
     (|mut $world:ident $(: $FlowWorld:ty)?| -> $ret:ty $code:block) => {
-        $crate::private::WorldClosureSpawn(|world: &mut $crate::world::World| {
-            $crate::private::insert_world_flow(
-                world,
-                |mut world: $crate::flow::FlowWorld<'static>| async move {
-                    #[allow(unused_mut)]
-                    let mut $world $(: $FlowWorld)? = world.reborrow();
-                    let res: $ret = { $code };
-                    res
-                },
-            )
-        })
+        unsafe {
+            $crate::flow::bad_world_flow_closure(|mut world: $crate::flow::FlowWorld<'static>| async move {
+                #[allow(unused_mut)]
+                let mut $world $(: $FlowWorld)? = world.reborrow();
+                let res: $ret = { $code };
+                res
+            })
+        }
     };
     (|mut $world:ident $(: $FlowWorld:ty)?| $code:expr) => {
-        $crate::private::WorldClosureSpawn(|world: &mut $crate::world::World| {
-            $crate::private::insert_world_flow(
-                world,
-                |mut world: $crate::flow::FlowWorld<'static>| async move {
-                    #[allow(unused_mut)]
-                    let mut  $world $(: $FlowWorld)? = world.reborrow();
-                    $code
-                },
-            )
-        })
+        unsafe {
+            $crate::flow::bad_world_flow_closure(|mut world: $crate::flow::FlowWorld<'static>| async move {
+                #[allow(unused_mut)]
+                let mut $world $(: $FlowWorld)? = world.reborrow();
+                $code
+            })
+        }
     };
-}
-
-pub fn spawn<F>(world: &mut World, flow_fn: F)
-where
-    F: WorldFlowSpawn,
-{
-    flow_fn.spawn(world);
 }
 
 pub struct PollWorld<F> {

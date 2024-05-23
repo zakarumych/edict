@@ -401,12 +401,7 @@ pub mod private {
     };
 
     use crate::system::{IntoSystem, IsFunctionSystem};
-    pub use crate::{
-        flow::{
-            insert_entity_flow, insert_world_flow, EntityClosureSpawn, WorldClosureSpawn, YieldNow,
-        },
-        system::FnArg,
-    };
+    pub use crate::{flow::YieldNow, system::FnArg};
 
     #[inline(always)]
     pub fn is_fn_arg<A: FnArg>() {}

@@ -3,7 +3,7 @@ use core::{any::TypeId, fmt, marker::PhantomData, num::NonZeroU64};
 use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    flow::EntityFlowSpawn,
+    flow::{spawn_for, IntoEntityFlow},
     // flow::FlowEntityFn,
     query::{DefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
     view::ViewOne,
@@ -1153,8 +1153,8 @@ impl<'a> EntityRef<'a> {
 
     pub fn spawn<F>(&mut self, flow_fn: F)
     where
-        F: EntityFlowSpawn,
+        F: IntoEntityFlow,
     {
-        flow_fn.spawn(self.id, self.world);
+        spawn_for(self.id, self.world, flow_fn);
     }
 }

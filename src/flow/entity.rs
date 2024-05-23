@@ -2,13 +2,10 @@ use core::{
     any::TypeId,
     future::Future,
     marker::PhantomData,
-    mem::MaybeUninit,
     pin::Pin,
-    ptr::addr_of_mut,
     task::{Context, Poll, Waker},
 };
 
-use alloc::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::{
@@ -21,7 +18,7 @@ use crate::{
     EntityError, NoSuchEntity,
 };
 
-use super::{flow_world, Flow, FlowWorld, NewFlowTask, NewFlows};
+use super::{flow_world, Flow, FlowWorld};
 
 /// Entity reference usable in flows.
 ///
@@ -51,12 +48,13 @@ impl PartialEq<EntityBound<'_>> for FlowEntity<'_> {
 }
 
 /// Future wrapped to be used as a flow.
-struct FutureFlow<F> {
+#[doc(hidden)]
+pub struct FutureEntityFlow<F> {
     id: EntityId,
     fut: F,
 }
 
-impl<F> Flow for FutureFlow<F>
+impl<F> Flow for FutureEntityFlow<F>
 where
     F: Future<Output = ()> + Send + 'static,
 {
@@ -96,6 +94,12 @@ where
     }
 }
 
+pub trait IntoEntityFlow: Send + 'static {
+    type Flow: Flow;
+
+    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow;
+}
+
 /// Trait implemented by functions that can be used to spawn flows.
 ///
 /// First argument represents the enitity itself. It can reference a number of components
@@ -111,33 +115,6 @@ pub trait EntityFlowFn<'a> {
     fn run(self, entity: FlowEntity<'a>) -> Self::Fut;
 }
 
-#[doc(hidden)]
-pub fn insert_entity_flow<F>(id: EntityId, world: &mut World, f: F)
-where
-    F: EntityFlowFn<'static>,
-{
-    let mut new_flow_task: NewFlowTask<FutureFlow<F::Fut>> = Arc::new(MaybeUninit::uninit());
-    let new_flow_task_mut = Arc::get_mut(&mut new_flow_task).unwrap();
-
-    unsafe {
-        let flow_ptr =
-            addr_of_mut!((*new_flow_task_mut.as_mut_ptr()).flow).cast::<FutureFlow<F::Fut>>();
-
-        let fut = f.run(FlowEntity::new(id));
-        let fut_ptr = addr_of_mut!((*flow_ptr).fut);
-        fut_ptr.write(fut);
-
-        let id_ptr = addr_of_mut!((*flow_ptr).id);
-        id_ptr.write(id);
-    }
-
-    world
-        .with_default_resource::<NewFlows>()
-        .typed_new_flows()
-        .array
-        .push(new_flow_task);
-}
-
 // Must be callable with any lifetime of `FlowEntity` borrow.
 impl<'a, F, Fut> EntityFlowFn<'a> for F
 where
@@ -151,27 +128,49 @@ where
     }
 }
 
-pub trait EntityFlowSpawn {
-    fn spawn(self, id: EntityId, world: &mut World);
-}
-
-impl<F> EntityFlowSpawn for F
+impl<F> IntoEntityFlow for F
 where
-    F: for<'a> EntityFlowFn<'a>,
+    for<'a> F: EntityFlowFn<'a> + Send + 'static,
 {
-    fn spawn(self, id: EntityId, world: &mut World) {
-        insert_entity_flow(id, world, self);
+    type Flow = FutureEntityFlow<<F as EntityFlowFn<'static>>::Fut>;
+
+    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
+        FutureEntityFlow {
+            id,
+            fut: self.run(FlowEntity::new(id)),
+        }
     }
 }
 
-pub struct EntityClosureSpawn<F>(pub F);
+struct BadEntityFlow<F, Fut> {
+    f: F,
+    _phantom: PhantomData<Fut>,
+}
 
-impl<F> EntityFlowSpawn for EntityClosureSpawn<F>
+impl<F, Fut> IntoEntityFlow for BadEntityFlow<F, Fut>
 where
-    F: FnOnce(EntityId, &mut World),
+    F: FnOnce(FlowEntity<'static>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
-    fn spawn(self, id: EntityId, world: &mut World) {
-        (self.0)(id, world)
+    type Flow = FutureEntityFlow<Fut>;
+
+    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
+        FutureEntityFlow {
+            id,
+            fut: (self.f)(FlowEntity::new(id)),
+        }
+    }
+}
+
+#[doc(hidden)]
+pub unsafe fn bad_entity_flow_closure<F, Fut>(f: F) -> impl IntoEntityFlow
+where
+    F: FnOnce(FlowEntity<'static>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    BadEntityFlow {
+        f,
+        _phantom: PhantomData,
     }
 }
 
@@ -187,39 +186,24 @@ where
 #[macro_export]
 macro_rules! flow_closure_for {
     (|mut $entity:ident $(: $FlowEntity:ty)?| -> $ret:ty $code:block) => {
-        $crate::private::EntityClosureSpawn(|id: $crate::entity::EntityId, world: &mut $crate::world::World| {
-            $crate::private::insert_entity_flow(
-                id,
-                world,
-                |mut entity: $crate::flow::FlowEntity<'static>| async move {
-                    #[allow(unused_mut)]
-                    let mut $entity $(: $FlowEntity)? = entity.reborrow();
-                    let res: $ret = { $code };
-                    res
-                },
-            )
-        })
+        unsafe {
+            $crate::flow::bad_entity_flow_closure(|mut entity: $crate::flow::FlowEntity<'static>| async move {
+                #[allow(unused_mut)]
+                let mut $entity $(: $FlowEntity)? = entity.reborrow();
+                let res: $ret = { $code };
+                res
+            })
+        }
     };
     (|mut $entity:ident $(: $FlowEntity:ty)?| $code:expr) => {
-        $crate::private::EntityClosureSpawn(|id: $crate::entity::EntityId, world: &mut $crate::world::World| {
-            $crate::private::insert_entity_flow(
-                id,
-                world,
-                |mut entity: $crate::flow::FlowEntity<'static>| async move {
-                    #[allow(unused_mut)]
-                    let mut $entity $(: $FlowEntity)? = entity.reborrow();
-                    $code
-                },
-            )
-        })
+        unsafe {
+            $crate::flow::bad_entity_flow_closure(|mut entity: $crate::flow::FlowEntity<'static>| async move {
+                #[allow(unused_mut)]
+                let mut $entity $(: $FlowEntity)? = entity.reborrow();
+                $code
+            })
+        }
     };
-}
-
-pub fn spawn_for<F>(id: EntityId, world: &mut World, flow_fn: F)
-where
-    F: EntityFlowSpawn,
-{
-    flow_fn.spawn(id, world);
 }
 
 /// This component is used to wake all entity flows when entity is removed.
@@ -587,6 +571,14 @@ impl FlowEntity<'_> {
     #[inline(always)]
     pub fn has_component<T: 'static>(&self) -> Result<bool, NoSuchEntity> {
         unsafe { flow_world().try_has_component::<T>(self.id) }
+    }
+
+    /// Spawns a new flow for the entity.
+    pub fn spawn<F>(&self, f: F)
+    where
+        F: for<'a> EntityFlowFn<'a> + Send + 'static,
+    {
+        super::spawn_for(self.id, unsafe { flow_world() }, f);
     }
 }
 

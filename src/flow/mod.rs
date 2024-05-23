@@ -18,9 +18,8 @@ use core::{
     any::TypeId,
     cell::UnsafeCell,
     future::Future,
-    mem::{ManuallyDrop, MaybeUninit},
+    mem::ManuallyDrop,
     pin::Pin,
-    ptr::{addr_of, addr_of_mut},
     task::{Context, Poll, Waker},
 };
 
@@ -31,7 +30,7 @@ use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use hashbrown::HashMap;
 use slab::Slab;
 
-use crate::{system::State, tls, type_id, world::World};
+use crate::{system::State, tls, type_id, world::World, EntityId};
 
 mod entity;
 mod world;
@@ -41,6 +40,13 @@ pub use self::{entity::*, world::*};
 /// Task that access world when polled.
 pub trait Flow: Send + 'static {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()>;
+}
+
+pub trait IntoFlow: Send + 'static {
+    type Flow: Flow;
+
+    /// Converts flow into the inner flow type.
+    unsafe fn into_flow(self) -> Self::Flow;
 }
 
 /// Call only from flow context.
@@ -53,131 +59,107 @@ pub unsafe fn flow_world<'a>() -> &'a mut World {
 }
 
 /// Type-erased array of newly inserted flows of a single type.
-trait AnyNewFlows: Send {
-    /// Returns type of the flow.
+trait AnyIntoFlows: Send {
+    /// Returns type of the IntoFlow.
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId;
 
     /// Drains the array into the queue.
-    fn drain(&mut self, flows: &mut Flows);
+    fn drain(&mut self, flows: &mut HashMap<TypeId, AnyQueue>);
 }
 
-impl<'a> dyn AnyNewFlows + 'a {
+impl<'a> dyn AnyIntoFlows + 'a {
     #[inline(always)]
-    unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedNewFlows<F> {
-        #[cfg(debug_assertions)]
-        assert_eq!(self.flow_id(), type_id::<F>());
+    unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedIntoFlows<F> {
+        debug_assert_eq!(self.flow_id(), type_id::<F>());
 
-        unsafe { &mut *(self as *mut Self as *mut TypedNewFlows<F>) }
+        unsafe { &mut *(self as *mut Self as *mut TypedIntoFlows<F>) }
     }
 }
-
-type SharedFlowTask<F> = Arc<FlowTask<F>>;
-
-type NewFlowTask<F> = Arc<MaybeUninit<FlowTask<F>>>;
 
 /// Typed array of newly inserted flows of a single type.
-struct TypedNewFlows<F> {
-    array: Vec<NewFlowTask<F>>,
+struct TypedIntoFlows<F> {
+    array: Vec<F>,
 }
 
-impl<F> Drop for TypedNewFlows<F> {
-    fn drop(&mut self) {
-        for task in self.array.drain(..) {
-            // Only flow field is initialized.
-            unsafe {
-                let flow = addr_of!((*task.as_ptr()).flow);
-                ManuallyDrop::drop(&mut *(*flow).get());
-            }
-        }
-    }
-}
-
-impl<F> AnyNewFlows for TypedNewFlows<F>
+impl<F> AnyIntoFlows for TypedIntoFlows<F>
 where
-    F: Flow,
+    F: IntoFlow,
 {
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId {
         type_id::<F>()
     }
 
-    fn drain(&mut self, flows: &mut Flows) {
+    fn drain(&mut self, flows: &mut HashMap<TypeId, AnyQueue>) {
         // Short-circuit if there are no new flows.
         if self.array.is_empty() {
             return;
         }
 
+        let flow_id = type_id::<F::Flow>();
+
         // Find queue for this type of flows or create new one.
-        let queue = flows.map.entry(type_id::<F>()).or_insert_with(|| AnyQueue {
-            queue: Arc::new(FlipQueue::new()),
-            ready: RingBuffer::new(),
-            flows: Box::new(TypedFlows::<F> { array: Slab::new() }),
-        });
+        let queue = flows
+            .entry(flow_id)
+            .or_insert_with(AnyQueue::new::<F::Flow>);
 
         // Safety: TypedFlows<F> is at index `type_id::<F>()` in `flows.map`.
-        let typed_flows = unsafe { queue.flows.downcast_mut::<F>() };
+        let typed_flows = unsafe { queue.flows.downcast_mut::<F::Flow>() };
 
         // Reserve space to ensure oom can't happen in the loop below.
         typed_flows.array.reserve(self.array.len());
 
-        for mut task in self.array.drain(..) {
+        for into_flow in self.array.drain(..) {
             let id = typed_flows.array.vacant_key();
 
-            // Finish construction of the FlowTask value.
-            let task = unsafe {
-                // Safety: `task` is still unique.
-                let flow_mut = Arc::get_mut(&mut task).unwrap_unchecked();
-                addr_of_mut!((*flow_mut.as_mut_ptr()).id).write(id);
-                addr_of_mut!((*flow_mut.as_mut_ptr()).queue).write(queue.queue.clone());
-
-                // All three fields of the FlowTask are initialized. Cast to MaybeUninit away.
-                // This is valid because Arc does not use niche optimizations and so layout is the same.
-                Arc::from_raw(Arc::<MaybeUninit<FlowTask<F>>>::into_raw(task) as *const FlowTask<F>)
+            let task = FlowTask {
+                flow: UnsafeCell::new(ManuallyDrop::new(unsafe { into_flow.into_flow() })),
+                id,
+                queue: queue.queue.clone(),
             };
 
-            typed_flows.array.insert(task);
+            typed_flows.array.insert(Arc::new(task));
             queue.ready.push(id);
         }
     }
 }
 
 struct NewFlows {
-    map: HashMap<TypeId, Box<dyn AnyNewFlows>>,
+    map: HashMap<TypeId, Box<dyn AnyIntoFlows>>,
 }
 
 impl Default for NewFlows {
     fn default() -> Self {
-        NewFlows {
-            map: HashMap::new(),
-        }
+        Self::new()
     }
 }
 
 impl NewFlows {
-    pub fn typed_new_flows<F>(&mut self) -> &mut TypedNewFlows<F>
+    fn new() -> Self {
+        NewFlows {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn typed_new_flows<F>(&mut self) -> &mut TypedIntoFlows<F>
     where
-        F: Flow,
+        F: IntoFlow,
     {
         let new_flows = self
             .map
             .entry(type_id::<F>())
-            .or_insert_with(|| Box::new(TypedNewFlows::<F> { array: Vec::new() }));
+            .or_insert_with(|| Box::new(TypedIntoFlows::<F> { array: Vec::new() }));
 
         unsafe { new_flows.downcast_mut::<F>() }
     }
 
     pub fn add<F>(&mut self, flow: F)
     where
-        F: Flow,
+        F: IntoFlow,
     {
         let typed_new_flows = self.typed_new_flows();
-
-        let mut task = MaybeUninit::<FlowTask<F>>::uninit();
-        unsafe {
-            addr_of_mut!((*task.as_mut_ptr()).flow).write(UnsafeCell::new(ManuallyDrop::new(flow)));
-        }
-        typed_new_flows.array.push(Arc::new(task));
+        typed_new_flows.array.push(flow);
     }
 }
 
@@ -210,7 +192,10 @@ struct FlowTask<F> {
 unsafe impl<F> Send for FlowTask<F> {}
 unsafe impl<F> Sync for FlowTask<F> {}
 
-impl<F> Wake for FlowTask<F> {
+impl<F> Wake for FlowTask<F>
+where
+    F: Flow,
+{
     fn wake(self: Arc<Self>) {
         self.queue.push(self.id);
     }
@@ -220,19 +205,18 @@ impl<F> Wake for FlowTask<F> {
     }
 }
 
-/// Container of spawned flows of specific type.
-struct TypedFlows<F> {
-    array: Slab<SharedFlowTask<F>>,
+impl<F> FlowTask<F>
+where
+    F: Flow,
+{
+    fn waker(self: &Arc<Self>) -> Waker {
+        Waker::from(self.clone())
+    }
 }
 
-impl<F> Drop for TypedFlows<F> {
-    fn drop(&mut self) {
-        for task in self.array.drain() {
-            unsafe {
-                ManuallyDrop::drop(&mut *task.flow.get());
-            }
-        }
-    }
+/// Container of spawned flows of specific type.
+struct TypedFlows<F> {
+    array: Slab<Arc<FlowTask<F>>>,
 }
 
 impl<F> TypedFlows<F>
@@ -246,7 +230,7 @@ where
                 continue;
             };
 
-            let waker = Waker::from(task.clone());
+            let waker = task.waker();
             let mut cx = Context::from_waker(&waker);
 
             // Safety: This is the only code that can access `task.flow`.
@@ -289,88 +273,151 @@ struct AnyQueue {
     flows: Box<dyn AnyFlows>,
 }
 
-/// Queues of all types of flows.
+impl AnyQueue {
+    fn new<F: Flow>() -> Self {
+        AnyQueue {
+            queue: Arc::new(FlipQueue::new()),
+            ready: RingBuffer::new(),
+            flows: Box::new(TypedFlows::<F> { array: Slab::new() }),
+        }
+    }
+}
+
+/// Flows container manages running flows,
+/// collects spawned flows and executes them.
 pub struct Flows {
+    new_flows: NewFlows,
     map: HashMap<TypeId, AnyQueue>,
 }
 
 impl Default for Flows {
     fn default() -> Self {
-        Flows {
-            map: HashMap::new(),
-        }
+        Self::new()
     }
 }
 
-pub fn execute_flows(world: &mut World, flows: &mut Flows) {
-    {
-        let mut new_flows = match world.get_resource_mut::<NewFlows>() {
-            None => return,
+impl Flows {
+    pub fn new() -> Self {
+        Flows {
+            new_flows: NewFlows::new(),
+            map: HashMap::new(),
+        }
+    }
+
+    /// Call at least once prior to spawning flows.
+    pub fn init(world: &mut World) {
+        world.with_resource(NewFlows::new);
+    }
+
+    fn collect_new_flows<'a>(&mut self, world: &'a mut World) -> Option<tls::Guard<'a>> {
+        let mut new_flows_res = match world.get_resource_mut::<NewFlows>() {
+            None => return None,
             Some(new_flows) => new_flows,
         };
 
+        std::mem::swap(&mut self.new_flows, &mut *new_flows_res);
+        drop(new_flows_res);
+
+        let guard = tls::Guard::new(world);
+
         // First swap all queues with ready buffer.
-        for typed in flows.map.values_mut() {
+        for typed in self.map.values_mut() {
             debug_assert!(typed.ready.is_empty());
             typed.queue.swap_buffer(&mut typed.ready);
         }
 
         // Then drain all new flows into queues.
         // New flow ids are added to ready buffer.
-        for (_, typed) in &mut new_flows.map {
-            typed.drain(flows);
+        for (_, typed) in &mut self.new_flows.map {
+            typed.drain(&mut self.map);
         }
+
+        Some(guard)
     }
 
-    let _guard = tls::Guard::new(world);
+    pub fn execute(&mut self, world: &mut World) {
+        let Some(_guard) = self.collect_new_flows(world) else {
+            return;
+        };
 
-    // Execute all ready flows.
-    for typed in flows.map.values_mut() {
-        let (front, back) = typed.ready.as_slices();
-        unsafe {
-            typed.flows.execute(front, back);
+        // Execute all ready flows.
+        for typed in self.map.values_mut() {
+            let (front, back) = typed.ready.as_slices();
+            unsafe {
+                typed.flows.execute(front, back);
+            }
+
+            // Clear ready buffer.
+            typed.ready.clear();
         }
-
-        // Clear ready buffer.
-        typed.ready.clear();
     }
 }
 
+/// System that executes flows spawned in the world.
 pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
     let flows = &mut *flows;
-    execute_flows(world, flows);
+    flows.execute(world);
 }
 
 /// Spawn a flow into the world.
 ///
 /// The flow will be polled by the `flows_system`.
-pub fn spawn_flow<F>(world: &mut World, flow: F)
+pub fn spawn<F>(world: &World, flow: F)
 where
-    F: Flow,
+    F: IntoFlow,
 {
-    world.with_default_resource::<NewFlows>().add(flow);
+    world.expect_resource_mut::<NewFlows>().add(flow);
+}
+
+/// Spawn a flow for the entity into the world.
+///
+/// The flow will be polled by the `flows_system`.
+pub fn spawn_for<F>(id: EntityId, world: &World, flow: F)
+where
+    F: IntoEntityFlow,
+{
+    struct AdHoc<F> {
+        id: EntityId,
+        f: F,
+    }
+
+    impl<F> IntoFlow for AdHoc<F>
+    where
+        F: IntoEntityFlow,
+    {
+        type Flow = F::Flow;
+
+        unsafe fn into_flow(self) -> F::Flow {
+            unsafe { self.f.into_entity_flow(self.id) }
+        }
+    }
+
+    spawn(world, AdHoc { id, f: flow });
 }
 
 /// Spawns code block as a flow.
 #[macro_export]
 macro_rules! spawn_block {
     (in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn(&mut $world, $crate::flow_closure!(|mut $world| { $($closure)* }));
+        $crate::flow::spawn(&$world, $crate::flow_closure!(|mut $world| { $($closure)* }));
     };
     (in ref $world:ident -> $($closure:tt)*) => {
         $crate::flow::spawn($world, $crate::flow_closure!(|mut $world| { $($closure)* }));
     };
     (in $world:ident for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, &mut $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+        $crate::flow::spawn_for($entity, &$world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
     (in ref $world:ident for $entity:ident -> $($closure:tt)*) => {
         $crate::flow::spawn_for($entity, $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
     (for $entity:ident in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, &mut $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+        $crate::flow::spawn_for($entity, &$world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
     (for $entity:ident in ref $world:ident -> $($closure:tt)*) => {
         $crate::flow::spawn_for($entity, $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+    };
+    (for $entity:ident -> $($closure:tt)*) => {
+        $crate::flow::spawn_for($entity.id(), &$entity.world(), $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
 }
 

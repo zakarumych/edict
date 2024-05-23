@@ -3,7 +3,11 @@
 use core::marker::PhantomData;
 use std::{cell::Cell, ptr::NonNull};
 
-use crate::world::World;
+use crate::{
+    flow::{FlowEntity, FlowWorld},
+    world::World,
+    Entity, NoSuchEntity,
+};
 
 std::thread_local! {
     static WORLD_TLS: Cell<Option<NonNull<World>>> = const { Cell::new(None) };
@@ -28,6 +32,21 @@ impl<'a> Guard<'a> {
             this,
             prev,
             marker: PhantomData,
+        }
+    }
+
+    pub fn world(&self) -> FlowWorld<'_> {
+        FlowWorld::make()
+    }
+
+    pub fn entity(&self, entity: impl Entity) -> Result<FlowEntity<'_>, NoSuchEntity> {
+        let id = entity.id();
+        unsafe {
+            if get_world().is_alive(id) {
+                Ok(FlowEntity::make(id))
+            } else {
+                Err(NoSuchEntity)
+            }
         }
     }
 }

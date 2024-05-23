@@ -6,9 +6,9 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::world::World;
+use crate::{world::World, Entity, NoSuchEntity};
 
-use super::{flow_world, Flow, IntoFlow};
+use super::{flow_world, Flow, FlowEntity, IntoFlow};
 
 /// World reference that is updated when flow is polled.
 pub struct FlowWorld<'a> {
@@ -87,7 +87,7 @@ where
 
     unsafe fn into_flow(self) -> Self::Flow {
         FutureFlow {
-            fut: self.run(FlowWorld::new()),
+            fut: self.run(FlowWorld::make()),
         }
     }
 }
@@ -106,7 +106,7 @@ where
 
     unsafe fn into_flow(self) -> Self::Flow {
         FutureFlow {
-            fut: (self.f)(FlowWorld::new()),
+            fut: (self.f)(FlowWorld::make()),
         }
     }
 }
@@ -173,7 +173,7 @@ where
 }
 
 impl<'a> FlowWorld<'a> {
-    fn new() -> Self {
+    pub(crate) fn make() -> Self {
         FlowWorld {
             marker: PhantomData,
         }
@@ -192,5 +192,16 @@ impl<'a> FlowWorld<'a> {
         F: FnMut(&mut World, &mut Context) -> Poll<R>,
     {
         PollWorld { f }
+    }
+
+    pub fn entity(&self, entity: impl Entity) -> Result<FlowEntity<'_>, NoSuchEntity> {
+        let id = entity.id();
+        unsafe {
+            if !flow_world().is_alive(id) {
+                Err(NoSuchEntity)
+            } else {
+                Ok(FlowEntity::make(id))
+            }
+        }
     }
 }

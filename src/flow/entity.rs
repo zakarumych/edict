@@ -137,7 +137,7 @@ where
     unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
         FutureEntityFlow {
             id,
-            fut: self.run(FlowEntity::new(id)),
+            fut: self.run(FlowEntity::make(id)),
         }
     }
 }
@@ -157,7 +157,7 @@ where
     unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
         FutureEntityFlow {
             id,
-            fut: (self.f)(FlowEntity::new(id)),
+            fut: (self.f)(FlowEntity::make(id)),
         }
     }
 }
@@ -251,7 +251,7 @@ impl Component for AutoWake {
 }
 
 impl FlowEntity<'_> {
-    pub(super) fn new(id: EntityId) -> Self {
+    pub(crate) fn make(id: EntityId) -> Self {
         FlowEntity {
             id,
             marker: PhantomData,
@@ -389,7 +389,7 @@ impl FlowEntity<'_> {
     ///
     /// Returns clone of the component value.
     #[inline(always)]
-    pub fn get_clone<T>(&self) -> Result<T, EntityError>
+    pub fn get_cloned<T>(&self) -> Result<T, EntityError>
     where
         T: Clone + Sync + 'static,
     {

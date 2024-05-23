@@ -135,7 +135,7 @@ where
 macro_rules! flow_closure {
     (|mut $world:ident $(: $FlowWorld:ty)?| -> $ret:ty $code:block) => {
         unsafe {
-            $crate::flow::bad_world_flow_closure(|mut world: $crate::flow::FlowWorld<'static>| async move {
+            $crate::flow::bad_world_flow_closure(move |mut world: $crate::flow::FlowWorld<'static>| async move {
                 #[allow(unused_mut)]
                 let mut $world $(: $FlowWorld)? = world.reborrow();
                 let res: $ret = { $code };
@@ -145,7 +145,7 @@ macro_rules! flow_closure {
     };
     (|mut $world:ident $(: $FlowWorld:ty)?| $code:expr) => {
         unsafe {
-            $crate::flow::bad_world_flow_closure(|mut world: $crate::flow::FlowWorld<'static>| async move {
+            $crate::flow::bad_world_flow_closure(move |mut world: $crate::flow::FlowWorld<'static>| async move {
                 #[allow(unused_mut)]
                 let mut $world $(: $FlowWorld)? = world.reborrow();
                 $code

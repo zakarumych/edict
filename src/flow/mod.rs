@@ -1,6 +1,6 @@
 //! Flow module provides API to create high-level async workflows on top of the Edict ECS.
 //!
-//! Typical example would be a flow that caues an entity to move towards a target.
+//! Typical example would be a flow that causes an entity to move towards a target.
 //! It is resolved when the entity reaches the target or target is destroyed.
 //!
 //! Spawning a flow also returns a handle that can be used to await or cancel the flow.
@@ -242,7 +242,7 @@ where
 
             if let Poll::Ready(()) = poll {
                 let task = self.array.remove(id);
-                // Safety: Removed from array. `task.flow` is inaccessbile anywhere but here.
+                // Safety: Removed from array. `task.flow` is inaccessible anywhere but here.
                 unsafe {
                     ManuallyDrop::drop(&mut *task.flow.get());
                 }

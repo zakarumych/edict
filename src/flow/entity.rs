@@ -187,7 +187,7 @@ where
 macro_rules! flow_closure_for {
     (|mut $entity:ident $(: $FlowEntity:ty)?| -> $ret:ty $code:block) => {
         unsafe {
-            $crate::flow::bad_entity_flow_closure(|mut entity: $crate::flow::FlowEntity<'static>| async move {
+            $crate::flow::bad_entity_flow_closure(move |mut entity: $crate::flow::FlowEntity<'static>| async move {
                 #[allow(unused_mut)]
                 let mut $entity $(: $FlowEntity)? = entity.reborrow();
                 let res: $ret = { $code };
@@ -197,7 +197,7 @@ macro_rules! flow_closure_for {
     };
     (|mut $entity:ident $(: $FlowEntity:ty)?| $code:expr) => {
         unsafe {
-            $crate::flow::bad_entity_flow_closure(|mut entity: $crate::flow::FlowEntity<'static>| async move {
+            $crate::flow::bad_entity_flow_closure(move |mut entity: $crate::flow::FlowEntity<'static>| async move {
                 #[allow(unused_mut)]
                 let mut $entity $(: $FlowEntity)? = entity.reborrow();
                 $code

@@ -30,7 +30,12 @@ use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use hashbrown::HashMap;
 use slab::Slab;
 
-use crate::{system::State, tls, type_id, world::World, EntityId};
+use crate::{
+    system::State,
+    tls, type_id,
+    world::{World, WorldLocal},
+    EntityId,
+};
 
 mod entity;
 mod world;
@@ -38,11 +43,11 @@ mod world;
 pub use self::{entity::*, world::*};
 
 /// Task that access world when polled.
-pub trait Flow: Send + 'static {
+pub trait Flow: 'static {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()>;
 }
 
-pub trait IntoFlow: Send + 'static {
+pub trait IntoFlow: 'static {
     type Flow: Flow;
 
     /// Converts flow into the inner flow type.
@@ -59,7 +64,7 @@ pub unsafe fn flow_world<'a>() -> &'a mut World {
 }
 
 /// Type-erased array of newly inserted flows of a single type.
-trait AnyIntoFlows: Send {
+trait AnyIntoFlows {
     /// Returns type of the IntoFlow.
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId;
@@ -69,6 +74,15 @@ trait AnyIntoFlows: Send {
 }
 
 impl<'a> dyn AnyIntoFlows + 'a {
+    #[inline(always)]
+    unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedIntoFlows<F> {
+        debug_assert_eq!(self.flow_id(), type_id::<F>());
+
+        unsafe { &mut *(self as *mut Self as *mut TypedIntoFlows<F>) }
+    }
+}
+
+impl<'a> dyn AnyIntoFlows + Send + 'a {
     #[inline(always)]
     unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedIntoFlows<F> {
         debug_assert_eq!(self.flow_id(), type_id::<F>());
@@ -125,19 +139,57 @@ where
     }
 }
 
-struct NewFlows {
-    map: HashMap<TypeId, Box<dyn AnyIntoFlows>>,
+struct NewSendFlows {
+    map: HashMap<TypeId, Box<dyn AnyIntoFlows + Send>>,
 }
 
-impl Default for NewFlows {
+impl Default for NewSendFlows {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl NewFlows {
+impl NewSendFlows {
     fn new() -> Self {
-        NewFlows {
+        NewSendFlows {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn typed_new_flows<F>(&mut self) -> &mut TypedIntoFlows<F>
+    where
+        F: IntoFlow + Send,
+    {
+        let new_flows = self
+            .map
+            .entry(type_id::<F>())
+            .or_insert_with(|| Box::new(TypedIntoFlows::<F> { array: Vec::new() }));
+
+        unsafe { new_flows.downcast_mut::<F>() }
+    }
+
+    pub fn add<F>(&mut self, flow: F)
+    where
+        F: IntoFlow + Send,
+    {
+        let typed_new_flows = self.typed_new_flows();
+        typed_new_flows.array.push(flow);
+    }
+}
+
+struct NewLocalFlows {
+    map: HashMap<TypeId, Box<dyn AnyIntoFlows>>,
+}
+
+impl Default for NewLocalFlows {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NewLocalFlows {
+    fn new() -> Self {
+        NewLocalFlows {
             map: HashMap::new(),
         }
     }
@@ -164,7 +216,7 @@ impl NewFlows {
 }
 
 /// Trait implemented by `TypedFlows` with `F: Flow`
-trait AnyFlows: Send {
+trait AnyFlows {
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId;
 
@@ -286,7 +338,7 @@ impl AnyQueue {
 /// Flows container manages running flows,
 /// collects spawned flows and executes them.
 pub struct Flows {
-    new_flows: NewFlows,
+    new_flows: NewSendFlows,
     map: HashMap<TypeId, AnyQueue>,
 }
 
@@ -299,18 +351,18 @@ impl Default for Flows {
 impl Flows {
     pub fn new() -> Self {
         Flows {
-            new_flows: NewFlows::new(),
+            new_flows: NewSendFlows::new(),
             map: HashMap::new(),
         }
     }
 
     /// Call at least once prior to spawning flows.
     pub fn init(world: &mut World) {
-        world.with_resource(NewFlows::new);
+        world.with_resource(NewSendFlows::new);
     }
 
     fn collect_new_flows<'a>(&mut self, world: &'a mut World) -> Option<tls::Guard<'a>> {
-        let mut new_flows_res = match world.get_resource_mut::<NewFlows>() {
+        let mut new_flows_res = match world.local().get_resource_mut::<NewSendFlows>() {
             None => return None,
             Some(new_flows) => new_flows,
         };
@@ -364,17 +416,27 @@ pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
 /// The flow will be polled by the `flows_system`.
 pub fn spawn<F>(world: &World, flow: F)
 where
+    F: IntoFlow + Send,
+{
+    world.expect_resource_mut::<NewSendFlows>().add(flow);
+}
+
+/// Spawn a flow into the world.
+///
+/// The flow will be polled by the `flows_system`.
+pub fn spawn_local<F>(world: &WorldLocal, flow: F)
+where
     F: IntoFlow,
 {
-    world.expect_resource_mut::<NewFlows>().add(flow);
+    world.expect_resource_mut::<NewLocalFlows>().add(flow);
 }
 
 /// Spawn a flow for the entity into the world.
 ///
 /// The flow will be polled by the `flows_system`.
-pub fn spawn_for<F>(id: EntityId, world: &World, flow: F)
+pub fn spawn_for<F>(world: &World, id: EntityId, flow: F)
 where
-    F: IntoEntityFlow,
+    F: IntoEntityFlow + Send,
 {
     struct AdHoc<F> {
         id: EntityId,
@@ -395,30 +457,58 @@ where
     spawn(world, AdHoc { id, f: flow });
 }
 
+/// Spawn a flow for the entity into the world.
+///
+/// The flow will be polled by the `flows_system`.
+pub fn spawn_local_for<F>(world: &WorldLocal, id: EntityId, flow: F)
+where
+    F: IntoEntityFlow,
+{
+    struct AdHoc<F> {
+        id: EntityId,
+        f: F,
+    }
+
+    impl<F> IntoFlow for AdHoc<F>
+    where
+        F: IntoEntityFlow,
+    {
+        type Flow = F::Flow;
+
+        unsafe fn into_flow(self) -> F::Flow {
+            unsafe { self.f.into_entity_flow(self.id) }
+        }
+    }
+
+    spawn_local(world, AdHoc { id, f: flow });
+}
+
 /// Spawns code block as a flow.
 #[macro_export]
 macro_rules! spawn_block {
     (in $world:ident -> $($closure:tt)*) => {
         $crate::flow::spawn(&$world, $crate::flow_closure!(|mut $world| { $($closure)* }));
     };
-    (in ref $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn($world, $crate::flow_closure!(|mut $world| { $($closure)* }));
-    };
     (in $world:ident for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, &$world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    };
-    (in ref $world:ident for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+        $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
     (for $entity:ident in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, &$world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+        $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
-    (for $entity:ident in ref $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity, $world, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+    (local $world:ident -> $($closure:tt)*) => {
+        $crate::flow::spawn_local(&$world, $crate::flow_closure!(|mut $world| { $($closure)* }));
     };
-    (for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for($entity.id(), &$entity.world(), $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+    (local $world:ident for $entity:ident -> $($closure:tt)*) => {
+        $crate::flow::spawn_local_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
+    (for $entity:ident local $world:ident -> $($closure:tt)*) => {
+        $crate::flow::spawn_local_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+    };
+    (for $entity:ident -> $($closure:tt)*) => {{
+        let e = $entity.id();
+        let mut w = $entity.world();
+        $crate::flow::spawn_local_for(w.local(), e, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+    }};
 }
 
 pub struct YieldNow {

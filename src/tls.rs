@@ -36,7 +36,7 @@ impl<'a> Guard<'a> {
     }
 
     pub fn world(&self) -> FlowWorld<'_> {
-        FlowWorld::make()
+        unsafe { FlowWorld::make() }
     }
 
     pub fn entity(&self, entity: impl Entity) -> Result<FlowEntity<'_>, NoSuchEntity> {

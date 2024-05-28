@@ -3,7 +3,7 @@ use core::{any::TypeId, fmt, marker::PhantomData, num::NonZeroU64};
 use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    flow::{spawn_for, IntoEntityFlow},
+    flow::{spawn_local_for, IntoEntityFlow},
     // flow::FlowEntityFn,
     query::{DefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
     view::ViewOne,
@@ -134,25 +134,25 @@ impl EntityId {
     }
 
     #[inline(always)]
-    pub(super) fn new(id: NonZeroU64) -> Self {
+    pub(super) const fn new(id: NonZeroU64) -> Self {
         EntityId { id }
     }
 
     #[inline(always)]
-    pub(super) fn non_zero(&self) -> NonZeroU64 {
+    pub(super) const fn non_zero(&self) -> NonZeroU64 {
         self.id
     }
 
     /// Returns the raw bits of the entity ID.
     #[inline(always)]
-    pub fn bits(&self) -> u64 {
+    pub const fn bits(&self) -> u64 {
         self.id.get()
     }
 
     /// Returns the entity ID from the raw bits.
     /// Returns none if the bits are zero.
     #[inline(always)]
-    pub fn from_bits(bits: u64) -> Option<Self> {
+    pub const fn from_bits(bits: u64) -> Option<Self> {
         match NonZeroU64::new(bits) {
             Some(id) => Some(EntityId { id }),
             None => None,
@@ -1155,6 +1155,6 @@ impl<'a> EntityRef<'a> {
     where
         F: IntoEntityFlow,
     {
-        spawn_for(self.id, self.world, flow_fn);
+        spawn_local_for(self.world.local(), self.id, flow_fn);
     }
 }

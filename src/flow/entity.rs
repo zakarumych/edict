@@ -94,7 +94,7 @@ where
     }
 }
 
-pub trait IntoEntityFlow: Send + 'static {
+pub trait IntoEntityFlow: 'static {
     type Flow: Flow;
 
     unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow;
@@ -130,7 +130,7 @@ where
 
 impl<F> IntoEntityFlow for F
 where
-    for<'a> F: EntityFlowFn<'a> + Send + 'static,
+    for<'a> F: EntityFlowFn<'a> + 'static,
 {
     type Flow = FutureEntityFlow<<F as EntityFlowFn<'static>>::Fut>;
 
@@ -251,7 +251,8 @@ impl Component for AutoWake {
 }
 
 impl FlowEntity<'_> {
-    pub(crate) fn make(id: EntityId) -> Self {
+    #[doc(hidden)]
+    pub unsafe fn make(id: EntityId) -> Self {
         FlowEntity {
             id,
             marker: PhantomData,
@@ -576,9 +577,9 @@ impl FlowEntity<'_> {
     /// Spawns a new flow for the entity.
     pub fn spawn<F>(&self, f: F)
     where
-        F: for<'a> EntityFlowFn<'a> + Send + 'static,
+        F: for<'a> EntityFlowFn<'a> + 'static,
     {
-        super::spawn_for(self.id, unsafe { flow_world() }, f);
+        super::spawn_local_for(unsafe { flow_world() }.local(), self.id, f);
     }
 }
 

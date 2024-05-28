@@ -99,7 +99,7 @@ struct BadFutureFlow<F, Fut> {
 
 impl<F, Fut> IntoFlow for BadFutureFlow<F, Fut>
 where
-    F: FnOnce(FlowWorld<'static>) -> Fut + Send + 'static,
+    F: FnOnce(FlowWorld<'static>) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     type Flow = FutureFlow<Fut>;
@@ -113,7 +113,7 @@ where
 
 pub unsafe fn bad_world_flow_closure<F, Fut>(f: F) -> impl IntoFlow
 where
-    F: FnOnce(FlowWorld<'static>) -> Fut + Send + 'static,
+    F: FnOnce(FlowWorld<'static>) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     BadFutureFlow {
@@ -173,7 +173,8 @@ where
 }
 
 impl<'a> FlowWorld<'a> {
-    pub(crate) fn make() -> Self {
+    #[doc(hidden)]
+    pub unsafe fn make() -> Self {
         FlowWorld {
             marker: PhantomData,
         }

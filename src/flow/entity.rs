@@ -15,7 +15,7 @@ use crate::{
     entity::{EntityBound, EntityId, EntityRef},
     query::{DefaultQuery, ImmutableQuery, QueryItem, SendQuery},
     world::World,
-    EntityError, NoSuchEntity,
+    Entity, EntityError, NoSuchEntity,
 };
 
 use super::{flow_world, Flow, FlowWorld};
@@ -70,12 +70,14 @@ where
         let poll = fut.poll(cx);
 
         let world = flow_world();
-        let Some(loc) = world.entities().get_location(this.id) else {
-            // Terminate flow if entity is removed.
-            return Poll::Ready(());
-        };
 
-        let mut e = EntityRef::from_parts(this.id, loc, world.local());
+        let mut e = match world.entity(this.id) {
+            Err(NoSuchEntity) => {
+                // Terminate flow if entity is removed.
+                return Poll::Ready(());
+            }
+            Ok(e) => e,
+        };
 
         match poll {
             Poll::Pending => {

@@ -152,6 +152,8 @@ impl World {
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        dbg!(src_loc);
+        dbg!(entity.id().lookup(&self.entities));
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         let epoch = self.epoch.next_mut();

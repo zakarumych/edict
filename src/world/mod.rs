@@ -226,6 +226,7 @@ impl World {
     /// insert or remove components, despawn entity etc.
     #[inline(always)]
     pub fn entity(&mut self, entity: impl Entity) -> Result<EntityRef<'_>, NoSuchEntity> {
+        self.maintenance();
         entity.entity_ref(self).ok_or(NoSuchEntity)
     }
 
@@ -361,7 +362,7 @@ impl World {
     /// The only observable effect of manual call to this method
     /// is execution of actions encoded with [`ActionSender`].
     #[inline(always)]
-    fn maintenance(&mut self) {
+    pub(crate) fn maintenance(&mut self) {
         let archetype = &mut self.archetypes[0];
         self.entities
             .spawn_allocated(|id| archetype.spawn_empty(id));

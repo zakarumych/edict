@@ -651,6 +651,7 @@ impl Archetype {
     /// `src_idx` must be in bounds of this archetype.
     /// This archetype must not contain specified type.
     /// `dst` archetype must contain all component types from this archetype and specified type.
+    #[track_caller]
     pub(crate) unsafe fn insert<T>(
         &mut self,
         id: EntityId,

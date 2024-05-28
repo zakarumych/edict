@@ -51,8 +51,8 @@ pub trait AliveEntity: Entity {
 
     /// Returns entity reference if it is alive.
     #[inline(always)]
-    fn entity_ref<'a>(&self, world: &'a mut World) -> EntityRef<'a> {
-        EntityRef::from_alive(*self, world)
+    fn entity_ref<'a>(&self, _world: &'a mut World) -> EntityRef<'a> {
+        unreachable!()
     }
 }
 
@@ -184,11 +184,7 @@ impl Entity for EntityId {
     /// Returns entity reference if it is alive.
     #[inline(always)]
     fn entity_ref<'a>(&self, world: &'a mut World) -> Option<EntityRef<'a>> {
-        Some(EntityRef::from_parts(
-            *self,
-            world.entities().get_location(*self)?,
-            world,
-        ))
+        EntityRef::new(*self, world).ok()
     }
 }
 
@@ -280,8 +276,8 @@ impl<'a> Entity for EntityBound<'a> {
 
     /// Returns entity reference if it is alive.
     #[inline(always)]
-    fn entity_ref<'b>(&self, world: &'b mut World) -> Option<EntityRef<'b>> {
-        Some(EntityRef::from_alive(*self, world))
+    fn entity_ref<'b>(&self, _world: &'b mut World) -> Option<EntityRef<'b>> {
+        unreachable!()
     }
 }
 
@@ -391,8 +387,8 @@ impl<'a> Entity for EntityLoc<'a> {
 
     /// Returns entity reference if it is alive.
     #[inline(always)]
-    fn entity_ref<'b>(&self, world: &'b mut World) -> Option<EntityRef<'b>> {
-        Some(EntityRef::from_parts(self.id, self.loc, world.local()))
+    fn entity_ref<'b>(&self, _world: &'b mut World) -> Option<EntityRef<'b>> {
+        unreachable!();
     }
 }
 
@@ -409,8 +405,8 @@ impl<'a> AliveEntity for EntityLoc<'a> {
 
     /// Returns entity reference if it is alive.
     #[inline(always)]
-    fn entity_ref<'b>(&self, world: &'b mut World) -> EntityRef<'b> {
-        EntityRef::from_parts(self.id, self.loc, world.local())
+    fn entity_ref<'b>(&self, _world: &'b mut World) -> EntityRef<'b> {
+        unreachable!()
     }
 }
 
@@ -469,21 +465,13 @@ impl<'a> EntityRef<'a> {
     /// Returns entity reference if it is alive.
     #[inline(always)]
     pub fn new(id: EntityId, world: &'a mut World) -> Result<Self, NoSuchEntity> {
+        world.maintenance();
         let loc = world.entities().get_location(id).ok_or(NoSuchEntity)?;
         Ok(EntityRef {
             id,
             loc,
             world: world.local(),
         })
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_alive(entity: impl AliveEntity, world: &'a mut World) -> Self {
-        EntityRef {
-            id: entity.id(),
-            loc: entity.locate(world.entities()),
-            world: world.local(),
-        }
     }
 
     #[inline(always)]

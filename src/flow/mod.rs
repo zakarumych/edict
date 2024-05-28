@@ -339,6 +339,7 @@ impl AnyQueue {
 /// collects spawned flows and executes them.
 pub struct Flows {
     new_flows: NewSendFlows,
+    new_local_flows: NewLocalFlows,
     map: HashMap<TypeId, AnyQueue>,
 }
 
@@ -352,6 +353,7 @@ impl Flows {
     pub fn new() -> Self {
         Flows {
             new_flows: NewSendFlows::new(),
+            new_local_flows: NewLocalFlows::new(),
             map: HashMap::new(),
         }
     }
@@ -359,16 +361,27 @@ impl Flows {
     /// Call at least once prior to spawning flows.
     pub fn init(world: &mut World) {
         world.with_resource(NewSendFlows::new);
+        world.with_resource(NewLocalFlows::new);
     }
 
     fn collect_new_flows<'a>(&mut self, world: &'a mut World) -> Option<tls::Guard<'a>> {
-        let mut new_flows_res = match world.local().get_resource_mut::<NewSendFlows>() {
+        let world = world.local();
+
+        let mut new_flows_res = match world.get_resource_mut::<NewSendFlows>() {
             None => return None,
             Some(new_flows) => new_flows,
         };
 
         std::mem::swap(&mut self.new_flows, &mut *new_flows_res);
         drop(new_flows_res);
+
+        let mut new_local_flows_res = match world.get_resource_mut::<NewLocalFlows>() {
+            None => return None,
+            Some(new_local_flows) => new_local_flows,
+        };
+
+        std::mem::swap(&mut self.new_local_flows, &mut *new_local_flows_res);
+        drop(new_local_flows_res);
 
         let guard = tls::Guard::new(world);
 
@@ -381,6 +394,9 @@ impl Flows {
         // Then drain all new flows into queues.
         // New flow ids are added to ready buffer.
         for (_, typed) in &mut self.new_flows.map {
+            typed.drain(&mut self.map);
+        }
+        for (_, typed) in &mut self.new_local_flows.map {
             typed.drain(&mut self.map);
         }
 

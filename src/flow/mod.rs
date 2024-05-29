@@ -59,8 +59,17 @@ pub trait IntoFlow: 'static {
 /// This is public for use by custom flows.
 /// Built-in flows use it internally from `FlowWorld` and `FlowEntity`.
 #[inline(always)]
-pub unsafe fn flow_world<'a>() -> &'a mut World {
-    unsafe { tls::get_world() }
+pub unsafe fn flow_world_ref<'a>() -> &'a WorldLocal {
+    unsafe { tls::get_world_ref() }
+}
+
+/// Call only from flow context.
+///
+/// This is public for use by custom flows.
+/// Built-in flows use it internally from `FlowWorld` and `FlowEntity`.
+#[inline(always)]
+pub unsafe fn flow_world_mut<'a>() -> &'a mut WorldLocal {
+    unsafe { tls::get_world_mut() }
 }
 
 /// Type-erased array of newly inserted flows of a single type.
@@ -520,8 +529,8 @@ macro_rules! spawn_block {
     };
     (for $entity:ident -> $($closure:tt)*) => {{
         let e = $entity.id();
-        let mut w = $entity.world();
-        $crate::flow::spawn_local_for(w.local(), e, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
+        let w = $entity.get_world();
+        $crate::flow::spawn_local_for(w, e, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     }};
 }
 

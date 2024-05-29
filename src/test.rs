@@ -596,7 +596,7 @@ fn test_entity_flow() {
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
-    spawn_block! {in world for e -> e.insert(U32(42)).unwrap(); };
+    spawn_block! {in world for e -> e.insert(U32(42)); };
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
     Flows::default().execute(&mut world);

@@ -66,7 +66,6 @@ pub unsafe fn flow_world<'a>() -> &'a mut World {
 /// Type-erased array of newly inserted flows of a single type.
 trait AnyIntoFlows {
     /// Returns type of the IntoFlow.
-    #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId;
 
     /// Drains the array into the queue.
@@ -100,7 +99,6 @@ impl<F> AnyIntoFlows for TypedIntoFlows<F>
 where
     F: IntoFlow,
 {
-    #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId {
         type_id::<F>()
     }

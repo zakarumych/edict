@@ -510,7 +510,7 @@ where
 #[macro_export]
 macro_rules! spawn_block {
     (in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn(&$world, $crate::flow_closure!(|mut $world| { $($closure)* }));
+        $crate::flow::spawn(&$world, $crate::flow_closure!(|$world: &mut $crate::flow::FlowWorld| { $($closure)* }));
     };
     (in $world:ident for $entity:ident -> $($closure:tt)*) => {
         $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
@@ -519,7 +519,7 @@ macro_rules! spawn_block {
         $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
     };
     (local $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_local(&$world, $crate::flow_closure!(|mut $world| { $($closure)* }));
+        $crate::flow::spawn_local(&$world, $crate::flow_closure!(|$world: &mut $crate::flow::FlowWorld| { $($closure)* }));
     };
     (local $world:ident for $entity:ident -> $($closure:tt)*) => {
         $crate::flow::spawn_local_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));

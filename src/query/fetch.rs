@@ -86,7 +86,7 @@ impl VerifyFetch {
         }
     }
 
-    /// This method must be called in [`Fetch:visit_item`] implementation.
+    /// This method must be called in [`Fetch::visit_item`] implementation.
     ///
     /// # Panics
     ///

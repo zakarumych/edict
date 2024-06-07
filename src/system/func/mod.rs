@@ -85,7 +85,7 @@ pub unsafe trait FnArgState: Send + 'static {
     /// Extracts argument from the world.
     /// This method is called with synchronization guarantees provided
     /// according to requirements returned by [`FnArgState::is_local`], [`FnArgState::world_access`],
-    /// [`FnArgState::visit_archetype`], [`FnArgState::access_component`] and [`FnArgState::access_resource`].
+    /// [`FnArgState::visit_archetype`], [`FnArgState::component_access`] and [`FnArgState::resource_type_access`].
     ///
     /// # Safety
     ///

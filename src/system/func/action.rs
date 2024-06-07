@@ -14,7 +14,7 @@ impl FnArg for ActionEncoder<'_> {
     type State = ActionEncoderState;
 }
 
-/// [`FnArgCache`] for `ActionEncoder` argument.
+/// [`FnArgState`] for `ActionEncoder` argument.
 #[derive(Default)]
 pub struct ActionEncoderState {
     buffer: Option<ActionBuffer>,

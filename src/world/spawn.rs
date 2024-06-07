@@ -127,8 +127,8 @@ impl World {
     /// Component must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -267,8 +267,8 @@ impl World {
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -303,8 +303,8 @@ impl World {
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -449,8 +449,8 @@ impl World {
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     #[inline(always)]
     pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
@@ -811,8 +811,8 @@ impl WorldLocal {
     /// Component must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -859,7 +859,7 @@ impl WorldLocal {
     /// Component must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
     ///
     /// This is deferred version of [`World::spawn`].
     /// It can be used on shared `WorldLocal` reference.
@@ -905,8 +905,8 @@ impl WorldLocal {
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// This is deferred version of [`World::spawn_external`].
     /// It can be used on shared `WorldLocal` reference.
@@ -995,8 +995,8 @@ impl WorldLocal {
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`] or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`] or later by [`World::ensure_external_registered`].
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
     ///
     /// This is deferred version of [`World::spawn_batch_external`].
     /// It can be used on shared `WorldLocal` reference.

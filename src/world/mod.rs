@@ -319,7 +319,7 @@ impl World {
     /// [`ActionSender`] can be used to send actions to the [`World`] from
     /// other threads and async tasks.
     ///
-    /// [`ActionSender`] API is similar to [`ActionEncoder`]
+    /// [`ActionSender`] API is similar to [`ActionEncoder`](crate::action::ActionEncoder)
     /// except that it can't return [`EntityId`]s of spawned entities.
     ///
     /// To take effect actions must be executed with [`World::execute_received_actions`].
@@ -372,7 +372,7 @@ impl World {
     /// Executes actions received from [`ActionSender`] instances
     /// bound to this [`World`].
     ///
-    /// See [`World::action_sender`] for more information.
+    /// See [`World::new_action_sender`] for more information.
     pub fn execute_received_actions(&mut self) {
         self.maintenance();
         self.action_channel.fetch();

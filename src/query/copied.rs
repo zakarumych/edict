@@ -38,7 +38,9 @@ where
 marker_type! {
     /// Query for fetching a copy of a component.
     /// Borrows component immutably and yields a copy.
-    /// Prefer this over [`&T`] or [`Read<T>`] for small `Copy` types.
+    /// Prefer this over `&T` or [`Read<T>`] for small `Copy` types.
+    ///
+    /// [`Read<T>`]: crate::query::Read
     pub struct Cpy<T>;
 }
 

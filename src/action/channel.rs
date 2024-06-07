@@ -20,11 +20,18 @@ use super::ActionFn;
 struct Shared {
     queue: FlipQueue<ActionFn<'static>>,
     non_empty: AtomicBool,
+    connected: AtomicBool,
 }
 
 pub(crate) struct ActionChannel {
     shared: Arc<Shared>,
     spare_buffer: RingBuffer<ActionFn<'static>>,
+}
+
+impl Drop for ActionChannel {
+    fn drop(&mut self) {
+        self.shared.connected.store(false, Ordering::Relaxed);
+    }
 }
 
 impl ActionChannel {
@@ -34,6 +41,7 @@ impl ActionChannel {
             shared: Arc::new(Shared {
                 queue: FlipQueue::new(),
                 non_empty: AtomicBool::new(false),
+                connected: AtomicBool::new(true),
             }),
             spare_buffer: RingBuffer::new(),
         }
@@ -66,12 +74,12 @@ impl ActionChannel {
 /// Use this when actions need to be encoded not in a system
 /// but in a thread separate from ECS executor or in async task.
 ///
-/// The API is similar to [`ActionEncoder`], but entity allocation is not supported
+/// The API is similar to [`crate::action::ActionEncoder`], but entity allocation is not supported
 /// and [`spawn`](ActionSender::spawn) and other methods do not return [`EntityId`]s.
 ///
-/// Unlike [`ActionBuffer`], the channel is bound to a specific [`World`] instance.
+/// Unlike [`crate::action::ActionBuffer`], the channel is bound to a specific [`World`] instance.
 /// If bound [`World`] is dropped, encoded actions will not be executed.
-/// See [`ActionSender::disconnected`](ActionSender::disconnected) to check
+/// See [`ActionSender::is_connected`](ActionSender::is_connected) to check
 /// if the channel is still connected to a world.
 #[derive(Clone)]
 pub struct ActionSender {
@@ -264,6 +272,12 @@ impl ActionSender {
         let action = ActionFn::new(fun);
         self.shared.queue.push(action);
         self.shared.non_empty.store(true, Ordering::Relaxed);
+    }
+
+    /// Returns `true` if the channel is still connected to a [`World`] instance.
+    #[inline(always)]
+    pub fn is_connected(&self) -> bool {
+        self.shared.connected.load(Ordering::Relaxed)
     }
 }
 

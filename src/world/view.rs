@@ -9,7 +9,7 @@ impl World {
     /// Starts building new view.
     ///
     /// Returned query matches all entities and yields `()` for every one of them.
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn new_view<'a>(&'a self) -> ViewCell<'a, ()> {
         ViewValue::new_cell(self, (), ())
@@ -33,7 +33,7 @@ impl World {
     ///
     /// Returned query matches all entities and yields `()` for every one of them.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     ///
     /// # Safety
     ///
@@ -48,7 +48,7 @@ impl World {
     ///
     /// It requires default-constructible query type.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view<'a, Q>(&'a self) -> ViewCell<'a, (Q,)>
     where
@@ -63,7 +63,7 @@ impl World {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view_mut<'a, Q>(&'a mut self) -> ViewMut<'a, (Q,)>
     where
@@ -78,7 +78,7 @@ impl World {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     ///
     /// # Safety
     ///
@@ -98,7 +98,7 @@ impl World {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view_with<'a, Q>(&'a self, query: Q) -> ViewCell<'a, (Q,)>
     where
@@ -113,7 +113,7 @@ impl World {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view_with_mut<'a, Q>(&'a mut self, query: Q) -> ViewMut<'a, (Q,)>
     where
@@ -128,7 +128,7 @@ impl World {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
     ///
     /// # Safety
     ///
@@ -148,7 +148,7 @@ impl WorldLocal {
     ///
     /// It requires default-constructible query type.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view<'a, Q>(&'a self) -> ViewCell<'a, (Q,)>
     where
@@ -163,7 +163,7 @@ impl WorldLocal {
     ///
     /// Borrows world mutably to avoid runtime borrow checks.
     ///
-    /// Use [`View`]'s methods to add sub-queries and filters.
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
     #[inline(always)]
     pub fn view_with<'a, Q>(&'a self, query: Q) -> ViewCell<'a, (Q,)>
     where

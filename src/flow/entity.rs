@@ -804,7 +804,7 @@ impl FlowEntity<'_> {
 pub struct PollRef<'a, F> {
     entity: EntityId,
     f: F,
-    marker: PhantomData<&'a mut World>,
+    marker: PhantomData<fn() -> &'a mut World>,
 }
 
 impl<F, R> Future for PollRef<'_, F>
@@ -829,7 +829,7 @@ pub struct PollView<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<&'a World>,
+    marker: PhantomData<fn() -> &'a World>,
 }
 
 impl<Q, F, R> Future for PollView<'_, Q, F>
@@ -861,7 +861,7 @@ pub struct PollViewMut<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<&'a mut World>,
+    marker: PhantomData<fn() -> &'a mut World>,
 }
 
 impl<Q, F, R> Future for PollViewMut<'_, Q, F>
@@ -891,7 +891,7 @@ pub struct TryPollView<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<&'a World>,
+    marker: PhantomData<fn() -> &'a World>,
 }
 
 impl<Q, F, R> Future for TryPollView<'_, Q, F>
@@ -920,7 +920,7 @@ pub struct TryPollViewMut<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<&'a mut World>,
+    marker: PhantomData<fn() -> &'a mut World>,
 }
 
 impl<Q, F, R> Future for TryPollViewMut<'_, Q, F>

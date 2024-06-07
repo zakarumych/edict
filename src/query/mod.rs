@@ -34,6 +34,10 @@
 //! [`View`] can also be indexed with [`Entity`] to fetch data from
 //! a specific entity.
 //!
+//! [`World`]: crate::world::World
+//! [`View`]: crate::view::View
+//! [`Entity`]: crate::entity::Entity
+//!
 
 use core::any::TypeId;
 

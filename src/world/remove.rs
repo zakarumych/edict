@@ -214,7 +214,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::drop`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -249,7 +249,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::drop_erased`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     #[inline(always)]
     pub fn drop_erased_defer(&self, entity: impl Entity, ty: TypeId) {
@@ -272,7 +272,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::drop_bundle`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example

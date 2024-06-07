@@ -249,8 +249,8 @@ impl BorrowState for RuntimeBorrowState {
 impl ExtendableBorrowState for RuntimeBorrowState {}
 
 /// Borrow state for statically borrowed views.
-/// These can be created from [`&mut World`](World)
-/// or unsafely from [`&World`](World).
+/// These can be created from [`&mut World`](crate::world::World)
+/// or unsafely from [`&World`](crate::world::World).
 #[derive(Copy, Clone, Debug)]
 pub struct StaticallyBorrowed;
 
@@ -274,8 +274,8 @@ impl BorrowState for StaticallyBorrowed {
 }
 
 /// Borrow state for statically borrowed views.
-/// These can be created from [`&mut World`](World)
-/// or unsafely from [`&World`](World).
+/// These can be created from [`&mut World`](crate::world::World)
+/// or unsafely from [`&World`](crate::world::World).
 #[derive(Copy, Clone, Debug)]
 pub struct ExclusivelyBorrowed;
 

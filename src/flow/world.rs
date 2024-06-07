@@ -137,7 +137,7 @@ where
 /// This macro is a workaround for this limitation.
 #[macro_export]
 macro_rules! flow_closure {
-    (|mut $world:ident $(: &mut $FlowWorld:ty)?| -> $ret:ty $code:block) => {
+    (|$world:ident $(: &mut $FlowWorld:ty)?| -> $ret:ty $code:block) => {
         unsafe {
             $crate::flow::bad_world_flow_closure(move |world: &'static mut $crate::flow::FlowWorld| async move {
                 #[allow(unused_mut)]
@@ -147,7 +147,7 @@ macro_rules! flow_closure {
             })
         }
     };
-    (|mut $world:ident $(: &mut $FlowWorld:ty)?| $code:expr) => {
+    (|$world:ident $(: &mut $FlowWorld:ty)?| $code:expr) => {
         unsafe {
             $crate::flow::bad_world_flow_closure(move |world: &'static mut $crate::flow::FlowWorld| async move {
                 #[allow(unused_mut)]
@@ -160,7 +160,7 @@ macro_rules! flow_closure {
 
 pub struct PollWorld<'a, F> {
     f: F,
-    _world: PhantomData<&'a World>,
+    _world: PhantomData<fn() -> &'a World>,
 }
 
 impl<'a, F, R> Future for PollWorld<'a, F>
@@ -179,7 +179,7 @@ where
 
 pub struct PollWorldMut<'a, F> {
     f: F,
-    _world: PhantomData<&'a mut World>,
+    _world: PhantomData<fn() -> &'a mut World>,
 }
 
 impl<'a, F, R> Future for PollWorldMut<'a, F>

@@ -267,7 +267,7 @@ unsafe impl<T> ImmutableQuery for Not<T> where T: ImmutableQuery {}
 unsafe impl<T> SendQuery for Not<T> where T: SendQuery {}
 
 marker_type! {
-    /// [`Filter`] that allows only archetypes with specified component.
+    /// [`Query`] that allows only archetypes with specified component.
     pub struct With<T>;
 }
 
@@ -339,6 +339,6 @@ where
 unsafe impl<T> ImmutableQuery for With<T> where T: 'static {}
 unsafe impl<T> SendQuery for With<T> where T: 'static {}
 
-/// [`Filter`] that allows only archetypes without specified component.
+/// [`Query`] that allows only archetypes without specified component.
 /// Inverse of [`With`].
 pub type Without<T> = Not<With<T>>;

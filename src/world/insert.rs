@@ -452,7 +452,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::insert`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -490,7 +490,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::insert_external`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -529,7 +529,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::with`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -567,7 +567,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::with_external`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -625,7 +625,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::insert_bundle`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -665,7 +665,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::insert_external_bundle`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -711,7 +711,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::with_bundle`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example
@@ -748,7 +748,7 @@ impl WorldLocal {
     ///
     /// This is deferred version of [`World::with_external_bundle`].
     /// It can be used on shared `WorldLocal` reference.
-    /// Operation is queued and executed on next call to [`WorldLocal::run_deferred`]
+    /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
     ///
     /// # Example

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use edict::{system, ResNoSync, View};
+use edict::{system, system::ResNoSync, view::View};
 
 struct A(*mut u8);
 

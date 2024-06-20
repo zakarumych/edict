@@ -23,8 +23,10 @@ use hashbrown::HashMap;
 
 use crate::{
     action::LocalActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    epoch::EpochId, hash::NoOpHasherBuilder, idx::MAX_IDX_USIZE, type_id, Access,
+    epoch::EpochId, hash::NoOpHasherBuilder, type_id, Access,
 };
+
+pub const MAX_IDX_USIZE: usize = u32::MAX as usize;
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,

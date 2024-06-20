@@ -60,6 +60,14 @@ Written in Rust by your fellow 🦀
 
 * [`Scheduler`] that can run [`System`]s in parallel using provided executor.
 
+* Coroutines support.
+  Edict provides [`flow`] module that allows spawning coroutines that can access [`World`] when they are running.
+  Coroutines can be spawned attached to an entity in which case they will be cancelled automatically when polled if entity is despawned.
+  Edict intentionally doesn't provide any low-level futures that will do the waiting,
+  this is left to the user or other libraries (engine) to implement.
+  [`Flows`] instance is the executor type that takes care of collecting and running coroutines.
+  Simply call [`Flows::execute`] each tick using the same [`World`] instance.
+
 ### no_std support
 
 `edict` can be used in `no_std` environment but requires `alloc`.
@@ -84,6 +92,9 @@ and optionally enable `"std"` if needed.
 [`IntoSystem`]: https://docs.rs/edict/latest/edict/system/struct.IntoSystem.html
 [`FnArg`]: https://docs.rs/edict/latest/edict/system/struct.FnArg.html
 [`Scheduler`]: https://docs.rs/edict/latest/edict/scheduler/struct.Scheduler.html
+[`flow`]: https://docs.rs/edict/latest/edict/flow/index.html
+[`Flows`]: https://docs.rs/edict/latest/edict/flow/struct.Flows.html
+[`Flows::execute`]: https://docs.rs/edict/latest/edict/flow/struct.Flows.html#method.execute
 
 ## License
 

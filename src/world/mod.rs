@@ -23,9 +23,12 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
-    res::Res,
+    flow::NewFlows,
+    resources::Resources,
     type_id, NoSuchEntity,
 };
+
+pub use crate::resources::{Res, ResMut};
 
 use self::edges::Edges;
 
@@ -182,7 +185,7 @@ pub struct World {
 
     registry: ComponentRegistry,
 
-    res: Res,
+    resources: Resources,
 
     /// Internal action encoder.
     /// This encoder is used to record commands from component hooks.
@@ -190,6 +193,8 @@ pub struct World {
     action_buffer: UnsafeCell<LocalActionBuffer>,
 
     action_channel: ActionChannel,
+
+    pub(crate) new_flows: NewFlows,
 }
 
 impl Default for World {
@@ -392,7 +397,7 @@ impl World {
     #[inline(always)]
     fn execute_local_actions(&mut self) {
         while let Some(action) = self.action_buffer.get_mut().pop() {
-            action.call(self);
+            action.call(self.local());
         }
     }
 

@@ -14,9 +14,9 @@ use crate::{
 
 /// Query that borrows from components.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct QueryBorrowAny<T>(pub T);
+pub struct BorrowAny<T>(pub T);
 
-/// [`Fetch`] for [`QueryBorrowAny<&T>`].
+/// [`Fetch`] for [`BorrowAny<&T>`].
 pub struct FetchBorrowAnyRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -51,31 +51,31 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowAny<&T>
+impl<T> AsQuery for BorrowAny<&T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowAny<Read<T>>;
+    type Query = BorrowAny<Read<T>>;
 }
 
-impl<T> DefaultQuery for QueryBorrowAny<&T>
+impl<T> DefaultQuery for BorrowAny<&T>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
-    fn default_query() -> QueryBorrowAny<Read<T>> {
-        QueryBorrowAny(Read)
+    fn default_query() -> BorrowAny<Read<T>> {
+        BorrowAny(Read)
     }
 }
 
-impl<T> AsQuery for QueryBorrowAny<Read<T>>
+impl<T> AsQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowAny<Read<T>>
+impl<T> IntoQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -85,27 +85,27 @@ where
     }
 }
 
-impl<T> DefaultQuery for QueryBorrowAny<Read<T>>
+impl<T> DefaultQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
-        QueryBorrowAny(Read)
+        BorrowAny(Read)
     }
 }
 
-impl<T> QueryArg for QueryBorrowAny<Read<T>>
+impl<T> QueryArg for BorrowAny<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryBorrowAny(Read)
+        BorrowAny(Read)
     }
 }
 
-unsafe impl<T> Query for QueryBorrowAny<Read<T>>
+unsafe impl<T> Query for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -161,10 +161,10 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowAny<Read<T>> where T: ?Sized + 'static {}
-unsafe impl<T> SendQuery for QueryBorrowAny<Read<T>> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for BorrowAny<Read<T>> where T: ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowAny<Read<T>> where T: Sync + ?Sized + 'static {}
 
-/// [`Fetch`] for [`QueryBorrowAny<&mut T>`].
+/// [`Fetch`] for [`BorrowAny<&mut T>`].
 pub struct FetchBorrowAnyWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -212,31 +212,31 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowAny<&mut T>
+impl<T> AsQuery for BorrowAny<&mut T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowAny<Write<T>>;
+    type Query = BorrowAny<Write<T>>;
 }
 
-impl<T> DefaultQuery for QueryBorrowAny<&mut T>
+impl<T> DefaultQuery for BorrowAny<&mut T>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
-    fn default_query() -> QueryBorrowAny<Write<T>> {
-        QueryBorrowAny(Write)
+    fn default_query() -> BorrowAny<Write<T>> {
+        BorrowAny(Write)
     }
 }
 
-impl<T> AsQuery for QueryBorrowAny<Write<T>>
+impl<T> AsQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowAny<Write<T>>
+impl<T> IntoQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -246,27 +246,27 @@ where
     }
 }
 
-impl<T> DefaultQuery for QueryBorrowAny<Write<T>>
+impl<T> DefaultQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
-        QueryBorrowAny(Write)
+        BorrowAny(Write)
     }
 }
 
-impl<T> QueryArg for QueryBorrowAny<Write<T>>
+impl<T> QueryArg for BorrowAny<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryBorrowAny(Write)
+        BorrowAny(Write)
     }
 }
 
-unsafe impl<T> Query for QueryBorrowAny<Write<T>>
+unsafe impl<T> Query for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -329,4 +329,4 @@ where
     }
 }
 
-unsafe impl<T> SendQuery for QueryBorrowAny<Write<T>> where T: Send + ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowAny<Write<T>> where T: Send + ?Sized + 'static {}

@@ -6,31 +6,28 @@ use core::{
     task::{Context, Poll},
 };
 
-use crate::{
-    world::{World, WorldLocal},
-    Entity, NoSuchEntity,
-};
+use crate::{world::WorldLocal, NoSuchEntity};
 
-use super::{Flow, FlowEntity, IntoFlow};
+use super::{BadContext, BadFlowClosure, Entity, Flow, IntoFlow};
 
 /// World reference that is updated when flow is polled.
 #[repr(transparent)]
-pub struct FlowWorld {
-    pub(super) marker: PhantomData<World>,
+pub struct World {
+    pub(super) marker: PhantomData<WorldLocal>,
 }
 
-unsafe impl Send for FlowWorld {}
-unsafe impl Sync for FlowWorld {}
+unsafe impl Send for World {}
+unsafe impl Sync for World {}
 
-impl Deref for FlowWorld {
+impl Deref for World {
     type Target = WorldLocal;
 
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &WorldLocal {
         unsafe { self.world_ref() }
     }
 }
 
-impl DerefMut for FlowWorld {
+impl DerefMut for World {
     fn deref_mut(&mut self) -> &mut WorldLocal {
         unsafe { self.world_mut() }
     }
@@ -45,7 +42,7 @@ pub struct FutureFlow<F> {
 
 impl<F> Flow for FutureFlow<F>
 where
-    F: Future<Output = ()> + Send + 'static,
+    F: Future<Output = ()> + Send,
 {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = unsafe { self.get_unchecked_mut() };
@@ -67,18 +64,18 @@ where
 /// It can be used to access other entities and their components.
 pub trait WorldFlowFn<'a> {
     type Fut: Future<Output = ()> + Send + 'a;
-    fn run(self, world: &'a mut FlowWorld) -> Self::Fut;
+    fn run(self, world: &'a mut World) -> Self::Fut;
 }
 
-// Must be callable with any lifetime of `FlowWorld` borrow.
+// Must be callable with any lifetime of `World` borrow.
 impl<'a, F, Fut> WorldFlowFn<'a> for F
 where
-    F: FnOnce(&'a mut FlowWorld) -> Fut,
+    F: FnOnce(&'a mut World) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn run(self, world: &'a mut FlowWorld) -> Fut {
+    fn run(self, world: &'a mut World) -> Fut {
         self(world)
     }
 }
@@ -87,77 +84,16 @@ impl<F> IntoFlow for F
 where
     F: for<'a> WorldFlowFn<'a> + Send + 'static,
 {
-    type Flow = FutureFlow<<F as WorldFlowFn<'static>>::Fut>;
+    type Flow<'a> = FutureFlow<<F as WorldFlowFn<'a>>::Fut>;
 
-    unsafe fn into_flow(self) -> Self::Flow {
-        FutureFlow {
-            fut: self.run(FlowWorld::make_mut()),
-        }
+    fn into_flow<'a>(self, world: &'a mut World) -> Option<Self::Flow<'a>> {
+        Some(FutureFlow {
+            fut: self.run(world),
+        })
     }
 }
 
-struct BadFutureFlow<F, Fut> {
-    f: F,
-    _phantom: PhantomData<Fut>,
-}
-
-impl<F, Fut> IntoFlow for BadFutureFlow<F, Fut>
-where
-    F: FnOnce(&'static mut FlowWorld) -> Fut + 'static,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    type Flow = FutureFlow<Fut>;
-
-    unsafe fn into_flow(self) -> Self::Flow {
-        FutureFlow {
-            fut: (self.f)(FlowWorld::make_mut()),
-        }
-    }
-}
-
-pub unsafe fn bad_world_flow_closure<F, Fut>(f: F) -> impl IntoFlow
-where
-    F: FnOnce(&'static mut FlowWorld) -> Fut + 'static,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    BadFutureFlow {
-        f,
-        _phantom: PhantomData,
-    }
-}
-
-/// Converts closure syntax to flow fn.
-///
-/// There's limitation that makes following `|world: FlowWorld<'_>| async move { /*use world*/ }`
-/// to be noncompilable.
-///
-/// On nightly it is possible to use `async move |world: FlowWorld<'_>| { /*use world*/ }`
-/// But this syntax is not stable yet and edict avoids requiring too many nighty features.
-///
-/// This macro is a workaround for this limitation.
-#[macro_export]
-macro_rules! flow_closure {
-    (|$world:ident $(: &mut $FlowWorld:ty)?| -> $ret:ty $code:block) => {
-        unsafe {
-            $crate::flow::bad_world_flow_closure(move |world: &'static mut $crate::flow::FlowWorld| async move {
-                #[allow(unused_mut)]
-                let $world $(: &mut $FlowWorld)? = &mut*world;
-                let res: $ret = { $code };
-                res
-            })
-        }
-    };
-    (|$world:ident $(: &mut $FlowWorld:ty)?| $code:expr) => {
-        unsafe {
-            $crate::flow::bad_world_flow_closure(move |world: &'static mut $crate::flow::FlowWorld| async move {
-                #[allow(unused_mut)]
-                let $world $(: &mut $FlowWorld)? = &mut*world;
-                $code
-            })
-        }
-    };
-}
-
+/// Flow future that provides world to the bound closure on each poll.
 pub struct PollWorld<'a, F> {
     f: F,
     _world: PhantomData<fn() -> &'a World>,
@@ -165,7 +101,7 @@ pub struct PollWorld<'a, F> {
 
 impl<'a, F, R> Future for PollWorld<'a, F>
 where
-    F: FnMut(&World, &mut Context) -> Poll<R>,
+    F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
 {
     type Output = R;
 
@@ -177,6 +113,7 @@ where
     }
 }
 
+/// Flow future that provides world to the bound closure on each poll.
 pub struct PollWorldMut<'a, F> {
     f: F,
     _world: PhantomData<fn() -> &'a mut World>,
@@ -184,7 +121,7 @@ pub struct PollWorldMut<'a, F> {
 
 impl<'a, F, R> Future for PollWorldMut<'a, F>
 where
-    F: FnMut(&mut World, &mut Context) -> Poll<R>,
+    F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
 {
     type Output = R;
 
@@ -196,7 +133,7 @@ where
     }
 }
 
-impl FlowWorld {
+impl World {
     #[inline(always)]
     fn world_ref(&self) -> &WorldLocal {
         unsafe { super::flow_world_ref() }
@@ -207,11 +144,10 @@ impl FlowWorld {
         unsafe { super::flow_world_mut() }
     }
 
-    #[doc(hidden)]
     #[inline(always)]
-    pub unsafe fn make_mut() -> &'static mut Self {
+    pub(super) unsafe fn make_mut() -> &'static mut Self {
         // ZST allocation is no-op.
-        Box::leak(Box::new(FlowWorld {
+        Box::leak(Box::new(World {
             marker: PhantomData,
         }))
     }
@@ -219,7 +155,7 @@ impl FlowWorld {
     #[doc(hidden)]
     #[inline(always)]
     pub unsafe fn make_ref() -> &'static Self {
-        &FlowWorld {
+        &World {
             marker: PhantomData,
         }
     }
@@ -228,7 +164,7 @@ impl FlowWorld {
     #[inline(always)]
     pub fn poll_fn<F, R>(&self, f: F) -> PollWorld<F>
     where
-        F: FnMut(&World, &mut Context) -> Poll<R>,
+        F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
     {
         PollWorld {
             f,
@@ -240,7 +176,7 @@ impl FlowWorld {
     #[inline(always)]
     pub fn poll_fn_mut<F, R>(&mut self, f: F) -> PollWorldMut<F>
     where
-        F: FnMut(&World, &mut Context) -> Poll<R>,
+        F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
     {
         PollWorldMut {
             f,
@@ -249,14 +185,42 @@ impl FlowWorld {
     }
 
     #[inline]
-    pub fn flow_entity(&mut self, entity: impl Entity) -> Result<FlowEntity<'_>, NoSuchEntity> {
+    pub fn entity(
+        &mut self,
+        entity: impl crate::entity::Entity,
+    ) -> Result<Entity<'_>, NoSuchEntity> {
         let id = entity.id();
         unsafe {
             if self.world_ref().is_alive(id) {
-                Ok(FlowEntity::make(id))
+                Ok(Entity::make(id))
             } else {
                 Err(NoSuchEntity)
             }
         }
+    }
+}
+
+#[doc(hidden)]
+pub struct BadWorld;
+
+impl BadContext for BadWorld {
+    type Context<'a> = &'a mut World;
+
+    fn bad<'a>(&'a self) -> &'a mut World {
+        unsafe { World::make_mut() }
+    }
+}
+
+impl<F, Fut> IntoFlow for BadFlowClosure<F, Fut>
+where
+    F: FnOnce(BadWorld) -> Fut + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    type Flow<'a> = FutureFlow<Fut>;
+
+    fn into_flow(self, _world: &mut World) -> Option<FutureFlow<Fut>> {
+        Some(FutureFlow {
+            fut: (self.f)(BadWorld),
+        })
     }
 }

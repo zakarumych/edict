@@ -1,9 +1,9 @@
 //! Provides world serialization integration with serialization crates.
 //!
 //! Supports
-//! - `serde`
-//! - `nanoserde`
-//! - `alkahest`
+//! - [`serde`]
+//! - [`nanoserde`]
+//! - [`alkahest`]
 //!
 //! Each can be enabled with a feature named as serialization crate.
 

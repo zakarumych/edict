@@ -3,44 +3,41 @@ use core::{
     future::Future,
     marker::PhantomData,
     pin::Pin,
-    task::{Context, Poll, Waker},
+    task::{Context, Poll},
 };
 
-use smallvec::SmallVec;
-
 use crate::{
-    action::LocalActionEncoder,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{EntityBound, EntityId, EntityRef},
-    query::{DefaultQuery, ImmutableQuery, QueryItem, SendQuery},
-    world::World,
+    query::{DefaultQuery, ImmutableQuery, Query, QueryItem},
+    world::WorldLocal,
     EntityError, NoSuchEntity,
 };
 
-use super::{Flow, FlowWorld};
+use super::{flow_entity, tls::EntityGuard, BadContext, BadFlowClosure, Flow, WakeOnDrop, World};
 
 /// Entity reference usable in flows.
 ///
 /// It can be used to access entity's components,
 /// insert and remove components.
 #[derive(Debug, PartialEq, Eq)]
-pub struct FlowEntity<'a> {
+pub struct Entity<'a> {
     id: EntityId,
-    marker: PhantomData<&'a mut World>,
+    marker: PhantomData<&'a mut WorldLocal>,
 }
 
-unsafe impl Send for FlowEntity<'_> {}
-unsafe impl Sync for FlowEntity<'_> {}
+unsafe impl Send for Entity<'_> {}
+unsafe impl Sync for Entity<'_> {}
 
-impl PartialEq<EntityId> for FlowEntity<'_> {
+impl PartialEq<EntityId> for Entity<'_> {
     #[inline(always)]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
-impl PartialEq<EntityBound<'_>> for FlowEntity<'_> {
+impl PartialEq<EntityBound<'_>> for Entity<'_> {
     #[inline(always)]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         self.id == other.id()
@@ -56,7 +53,7 @@ pub struct FutureEntityFlow<F> {
 
 impl<F> Flow for FutureEntityFlow<F>
 where
-    F: Future<Output = ()> + Send + 'static,
+    F: Future<Output = ()> + Send,
 {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = unsafe { self.get_unchecked_mut() };
@@ -66,8 +63,13 @@ where
             return Poll::Ready(());
         };
 
-        let fut = unsafe { Pin::new_unchecked(&mut this.fut) };
-        let poll = fut.poll(cx);
+        let poll = {
+            let _guard = EntityGuard::new(this.id);
+
+            // Safety: pin projection
+            let fut = unsafe { Pin::new_unchecked(&mut this.fut) };
+            fut.poll(cx)
+        };
 
         let world = super::flow_world_mut();
 
@@ -81,13 +83,15 @@ where
 
         match poll {
             Poll::Pending => {
-                // Ensure to wake on entity drop.
-                let auto_wake = e.with(AutoWake::new);
+                // When entity is despawned, this task needs to be woken up
+                // to cancel the flow.
+
+                let auto_wake = e.with(WakeOnDrop::new);
                 auto_wake.add_waker(cx.waker());
             }
             Poll::Ready(()) => {
-                // Remove auto-waker for this future.
-                if let Some(auto_wake) = e.get_mut::<&mut AutoWake>() {
+                // If waker is registered, remove it for clean up.
+                if let Some(auto_wake) = e.get_mut::<&mut WakeOnDrop>() {
                     auto_wake.remove_waker(cx.waker());
                 }
             }
@@ -97,9 +101,9 @@ where
 }
 
 pub trait IntoEntityFlow: 'static {
-    type Flow: Flow;
+    type Flow<'a>: Flow + 'a;
 
-    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow;
+    fn into_entity_flow<'a>(self, e: Entity<'a>) -> Option<Self::Flow<'a>>;
 }
 
 /// Trait implemented by functions that can be used to spawn flows.
@@ -114,18 +118,18 @@ pub trait IntoEntityFlow: 'static {
 /// It can be used to access other entities and their components.
 pub trait EntityFlowFn<'a> {
     type Fut: Future<Output = ()> + Send + 'a;
-    fn run(self, entity: FlowEntity<'a>) -> Self::Fut;
+    fn run(self, entity: Entity<'a>) -> Self::Fut;
 }
 
-// Must be callable with any lifetime of `FlowEntity` borrow.
+// Must be callable with any lifetime of `Entity` borrow.
 impl<'a, F, Fut> EntityFlowFn<'a> for F
 where
-    F: FnOnce(FlowEntity<'a>) -> Fut,
+    F: FnOnce(Entity<'a>) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn run(self, entity: FlowEntity<'a>) -> Fut {
+    fn run(self, entity: Entity<'a>) -> Fut {
         self(entity)
     }
 }
@@ -134,138 +138,58 @@ impl<F> IntoEntityFlow for F
 where
     for<'a> F: EntityFlowFn<'a> + 'static,
 {
-    type Flow = FutureEntityFlow<<F as EntityFlowFn<'static>>::Fut>;
+    type Flow<'a> = FutureEntityFlow<<F as EntityFlowFn<'a>>::Fut>;
 
-    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
-        FutureEntityFlow {
-            id,
-            fut: self.run(FlowEntity::make(id)),
-        }
-    }
-}
-
-struct BadEntityFlow<F, Fut> {
-    f: F,
-    _phantom: PhantomData<Fut>,
-}
-
-impl<F, Fut> IntoEntityFlow for BadEntityFlow<F, Fut>
-where
-    F: FnOnce(FlowEntity<'static>) -> Fut + Send + 'static,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    type Flow = FutureEntityFlow<Fut>;
-
-    unsafe fn into_entity_flow(self, id: EntityId) -> Self::Flow {
-        FutureEntityFlow {
-            id,
-            fut: (self.f)(FlowEntity::make(id)),
-        }
+    fn into_entity_flow<'a>(self, e: Entity<'a>) -> Option<Self::Flow<'a>> {
+        Some(FutureEntityFlow {
+            id: e.id(),
+            fut: self.run(e),
+        })
     }
 }
 
 #[doc(hidden)]
-pub unsafe fn bad_entity_flow_closure<F, Fut>(f: F) -> impl IntoEntityFlow
+pub struct BadEntity(EntityId);
+
+impl BadContext for BadEntity {
+    type Context<'a> = Entity<'a>;
+
+    fn bad<'a>(&'a self) -> Entity<'a> {
+        Entity {
+            id: self.0,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<F, Fut> IntoEntityFlow for BadFlowClosure<F, Fut>
 where
-    F: FnOnce(FlowEntity<'static>) -> Fut + Send + 'static,
+    F: FnOnce(BadEntity) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    BadEntityFlow {
-        f,
-        _phantom: PhantomData,
+    type Flow<'a> = FutureEntityFlow<Fut>;
+
+    fn into_entity_flow(self, e: Entity<'_>) -> Option<FutureEntityFlow<Fut>> {
+        Some(FutureEntityFlow {
+            id: e.id(),
+            fut: (self.f)(BadEntity(e.id())),
+        })
     }
 }
 
-/// Converts closure syntax to flow fn.
-///
-/// There's limitation that makes following `|world: FlowEntity<'_>| async move { /*use world*/ }`
-/// to be noncompilable.
-///
-/// On nightly it is possible to use `async move |world: FlowEntity<'_>| { /*use world*/ }`
-/// But this syntax is not stable yet and edict avoids requiring too many nighty features.
-///
-/// This macro is a workaround for this limitation.
-#[macro_export]
-macro_rules! flow_closure_for {
-    (|mut $entity:ident $(: $FlowEntity:ty)?| -> $ret:ty $code:block) => {
-        unsafe {
-            $crate::flow::bad_entity_flow_closure(move |mut entity: $crate::flow::FlowEntity<'static>| async move {
-                #[allow(unused_mut)]
-                let mut $entity $(: $FlowEntity)? = entity.reborrow();
-                let res: $ret = { $code };
-                res
-            })
-        }
-    };
-    (|mut $entity:ident $(: $FlowEntity:ty)?| $code:expr) => {
-        unsafe {
-            $crate::flow::bad_entity_flow_closure(move |mut entity: $crate::flow::FlowEntity<'static>| async move {
-                #[allow(unused_mut)]
-                let mut $entity $(: $FlowEntity)? = entity.reborrow();
-                $code
-            })
-        }
-    };
-}
-
-/// This component is used to wake all entity flows when entity is removed.
-struct AutoWake {
-    wakers: SmallVec<[Waker; 4]>,
-}
-
-impl AutoWake {
-    fn new() -> Self {
-        AutoWake {
-            wakers: SmallVec::new(),
-        }
-    }
-
-    fn add_waker(&mut self, other: &Waker) {
-        for waker in &mut self.wakers {
-            if waker.will_wake(other) {
-                return;
-            }
-        }
-        self.wakers.push(other.clone());
-    }
-
-    fn remove_waker(&mut self, other: &Waker) {
-        if let Some(idx) = self.wakers.iter().position(|waker| waker.will_wake(other)) {
-            self.wakers.swap_remove(idx);
-        }
-    }
-}
-
-impl Component for AutoWake {
-    #[inline(always)]
-    fn name() -> &'static str {
-        "AutoWake"
-    }
-
-    #[inline(always)]
-    fn on_drop(&mut self, _id: EntityId, _encoder: LocalActionEncoder) {
-        // Wake all flows bound to this entity to
-        // allow them to terminate.
-        for waker in self.wakers.drain(..) {
-            waker.wake();
-        }
-    }
-}
-
-impl FlowEntity<'_> {
+impl Entity<'_> {
     #[doc(hidden)]
     #[inline(always)]
     pub unsafe fn make(id: EntityId) -> Self {
-        FlowEntity {
+        Entity {
             id,
             marker: PhantomData,
         }
     }
 
-    #[doc(hidden)]
     #[inline(always)]
-    pub fn reborrow(&mut self) -> FlowEntity<'_> {
-        FlowEntity {
+    pub fn reborrow(&mut self) -> Entity<'_> {
+        Entity {
             id: self.id,
             marker: PhantomData,
         }
@@ -277,18 +201,19 @@ impl FlowEntity<'_> {
     }
 
     #[inline(always)]
-    pub fn get_world(&self) -> &FlowWorld {
-        unsafe { FlowWorld::make_ref() }
+    pub fn get_world(&self) -> &World {
+        unsafe { World::make_ref() }
     }
 
     #[inline(always)]
-    pub fn get_world_mut(&mut self) -> &mut FlowWorld {
-        unsafe { FlowWorld::make_mut() }
+    pub fn get_world_mut(&mut self) -> &mut World {
+        unsafe { World::make_mut() }
     }
 
     /// Polls with entity ref until closure returns [`Poll::Ready`].
+    /// Will never resolve if entity is despawned.
     #[inline(always)]
-    pub fn poll_ref<F, Q, R>(&mut self, f: F) -> PollRef<'_, F>
+    pub fn poll_ref<F, R>(&mut self, f: F) -> PollRef<'_, F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
@@ -299,8 +224,23 @@ impl FlowEntity<'_> {
         }
     }
 
+    /// Polls with entity ref until closure returns [`Poll::Ready`].
+    /// Resolves to `None` if entity is despawned.
+    #[inline(always)]
+    pub fn try_poll_ref<F, R>(&mut self, f: F) -> TryPollRef<'_, F>
+    where
+        F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+    {
+        TryPollRef {
+            entity: self.id,
+            f,
+            marker: PhantomData,
+        }
+    }
+
     /// Polls with view until closure returns [`Poll::Ready`].
     /// Waits until query is satisfied.
+    /// Will never resolve if entity is despawned.
     pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -317,6 +257,7 @@ impl FlowEntity<'_> {
 
     /// Polls with view until closure returns [`Poll::Ready`].
     /// Waits until query is satisfied.
+    /// Will never resolve if entity is despawned.
     pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollViewMut<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -331,7 +272,7 @@ impl FlowEntity<'_> {
     }
 
     /// Polls with view until closure returns [`Poll::Ready`].
-    /// If query is not satisfied, resolves to `None`.
+    /// Resolves to `None` if query is not satisfied or entity is despawned .
     pub fn try_poll_view<Q, F, R>(&self, f: F) -> TryPollView<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -346,7 +287,7 @@ impl FlowEntity<'_> {
     }
 
     /// Polls with view until closure returns [`Poll::Ready`].
-    /// If query is not satisfied, resolves to `None`.
+    /// Resolves to `None` if query is not satisfied or entity is despawned .
     pub fn try_poll_view_mut<Q, F, R>(&mut self, f: F) -> TryPollViewMut<'_, Q::Query, F>
     where
         Q: DefaultQuery,
@@ -371,7 +312,7 @@ impl FlowEntity<'_> {
     #[inline(always)]
     pub fn try_get_ref(&mut self) -> Result<EntityRef<'_>, NoSuchEntity> {
         let id = self.id;
-        self.get_world_mut().entity(id)
+        EntityRef::new(id, self.get_world_mut())
     }
 
     /// Queries component from the entity.
@@ -569,7 +510,7 @@ impl FlowEntity<'_> {
     }
 
     /// Inserts bundle of components to the entity.
-    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// This is moral equivalent to calling `WorldLocal::insert` with each component separately,
     /// but more efficient.
     ///
     /// For each component type in bundle:
@@ -590,7 +531,7 @@ impl FlowEntity<'_> {
     }
 
     /// Inserts bundle of components to the entity.
-    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// This is moral equivalent to calling `WorldLocal::insert` with each component separately,
     /// but more efficient.
     ///
     /// For each component type in bundle:
@@ -609,7 +550,7 @@ impl FlowEntity<'_> {
     }
 
     /// Inserts bundle of components to the entity.
-    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// This is moral equivalent to calling `WorldLocal::insert` with each component separately,
     /// but more efficient.
     ///
     /// For each component type in bundle:
@@ -630,7 +571,7 @@ impl FlowEntity<'_> {
     }
 
     /// Inserts bundle of components to the entity.
-    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// This is moral equivalent to calling `WorldLocal::insert` with each component separately,
     /// but more efficient.
     ///
     /// For each component type in bundle:
@@ -792,19 +733,23 @@ impl FlowEntity<'_> {
     }
 
     /// Spawns a new flow for the entity.
-    pub fn spawn_flow<F>(&self, f: F)
+    pub fn spawn_flow<F>(&mut self, f: F)
     where
-        F: for<'a> EntityFlowFn<'a> + 'static,
+        F: IntoEntityFlow,
     {
-        super::spawn_local_for(self.get_world(), self.id, f);
+        let id = self.id;
+        self.get_world_mut().spawn_flow_for(id, f);
     }
 }
 
+/// Flow future that provides [`EntityRef`] to the bound closure on each poll.
+/// Resolves to the ready result of the closure.
+/// Never resolves if entity is despawned.
 #[must_use = "Future does nothing unless polled"]
 pub struct PollRef<'a, F> {
     entity: EntityId,
     f: F,
-    marker: PhantomData<fn() -> &'a mut World>,
+    marker: PhantomData<fn() -> &'a mut WorldLocal>,
 }
 
 impl<F, R> Future for PollRef<'_, F>
@@ -817,24 +762,56 @@ where
         unsafe {
             let me = self.get_unchecked_mut();
             let Ok(e) = super::flow_world_mut().entity(me.entity) else {
-                return on_no_such_entity(cx);
+                return on_no_such_entity(me.entity, cx);
             };
             (me.f)(e, cx)
         }
     }
 }
 
+/// Flow future that provides [`EntityRef`] to the bound closure on each poll.
+/// Resolves to the ready result of the closure wrapped in `Some`.
+/// Resolves to `None` if entity is despawned.
+#[must_use = "Future does nothing unless polled"]
+pub struct TryPollRef<'a, F> {
+    entity: EntityId,
+    f: F,
+    marker: PhantomData<fn() -> &'a mut WorldLocal>,
+}
+
+impl<F, R> Future for TryPollRef<'_, F>
+where
+    F: FnMut(EntityRef, &mut Context) -> Poll<R>,
+{
+    type Output = Option<R>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
+        unsafe {
+            let me = self.get_unchecked_mut();
+            let Ok(e) = super::flow_world_mut().entity(me.entity) else {
+                return Poll::Ready(None);
+            };
+            (me.f)(e, cx).map(Some)
+        }
+    }
+}
+
+/// Flow future that provides view to the entity's components to the bound closure on each poll.
+/// Limited to immutable queries.
+/// Resolves to the ready result of the closure.
+/// Yields until query is satisfied.
+/// Never resolves if entity is despawned.
 #[must_use = "Future does nothing unless polled"]
 pub struct PollView<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a World>,
+    marker: PhantomData<fn() -> &'a WorldLocal>,
 }
 
 impl<Q, F, R> Future for PollView<'_, Q, F>
 where
-    Q: SendQuery,
+    Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
     type Output = R;
@@ -843,7 +820,7 @@ where
         unsafe {
             let me = self.get_unchecked_mut();
             match super::flow_world_ref().try_view_one_with(me.entity, me.query) {
-                Err(NoSuchEntity) => on_no_such_entity(cx),
+                Err(NoSuchEntity) => on_no_such_entity(me.entity, cx),
                 Ok(mut view_one) => match view_one.get_mut() {
                     None => {
                         cx.waker().wake_by_ref();
@@ -856,17 +833,22 @@ where
     }
 }
 
+/// Flow future that provides view to the entity's components to the bound closure on each poll.
+/// Not limited to immutable queries.
+/// Resolves to the ready result of the closure.
+/// Yields until query is satisfied.
+/// Never resolves if entity is despawned.
 #[must_use = "Future does nothing unless polled"]
 pub struct PollViewMut<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a mut World>,
+    marker: PhantomData<fn() -> &'a mut WorldLocal>,
 }
 
 impl<Q, F, R> Future for PollViewMut<'_, Q, F>
 where
-    Q: SendQuery,
+    Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
     type Output = R;
@@ -875,7 +857,7 @@ where
         unsafe {
             let me = self.get_unchecked_mut();
             match super::flow_world_mut().get_with(me.entity, me.query) {
-                Err(EntityError::NoSuchEntity) => on_no_such_entity(cx),
+                Err(EntityError::NoSuchEntity) => on_no_such_entity(me.entity, cx),
                 Err(EntityError::Mismatch) => {
                     cx.waker().wake_by_ref();
                     return Poll::Pending;
@@ -886,17 +868,21 @@ where
     }
 }
 
+/// Flow future that provides view to the entity's components to the bound closure on each poll.
+/// Limited to immutable queries.
+/// Resolves to the ready result of the closure wrapped in `Some`.
+/// Resolves to `None` if query is not satisfied or entity is despawned.
 #[must_use = "Future does nothing unless polled"]
 pub struct TryPollView<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a World>,
+    marker: PhantomData<fn() -> &'a WorldLocal>,
 }
 
 impl<Q, F, R> Future for TryPollView<'_, Q, F>
 where
-    Q: SendQuery,
+    Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
     type Output = Option<R>;
@@ -905,7 +891,7 @@ where
         unsafe {
             let me = self.get_unchecked_mut();
             match super::flow_world_ref().try_view_one_with(me.entity, me.query) {
-                Err(NoSuchEntity) => on_no_such_entity(cx),
+                Err(NoSuchEntity) => return Poll::Ready(None),
                 Ok(mut view_one) => match view_one.get_mut() {
                     None => Poll::Ready(None),
                     Some(item) => (me.f)(item, cx).map(Some),
@@ -915,17 +901,21 @@ where
     }
 }
 
+/// Flow future that provides view to the entity's components to the bound closure on each poll.
+/// Not limited to immutable queries.
+/// Resolves to the ready result of the closure wrapped in `Some`.
+/// Resolves to `None` if query is not satisfied or entity is despawned.
 #[must_use = "Future does nothing unless polled"]
 pub struct TryPollViewMut<'a, Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a mut World>,
+    marker: PhantomData<fn() -> &'a mut WorldLocal>,
 }
 
 impl<Q, F, R> Future for TryPollViewMut<'_, Q, F>
 where
-    Q: SendQuery,
+    Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
     type Output = Option<R>;
@@ -934,7 +924,7 @@ where
         unsafe {
             let me = self.get_unchecked_mut();
             match super::flow_world_mut().get_with(me.entity, me.query) {
-                Err(EntityError::NoSuchEntity) => on_no_such_entity(cx),
+                Err(EntityError::NoSuchEntity) => return Poll::Ready(None),
                 Err(EntityError::Mismatch) => Poll::Ready(None),
                 Ok(item) => (me.f)(item, cx).map(Some),
             }
@@ -942,15 +932,24 @@ where
     }
 }
 
-fn on_no_such_entity<T>(cx: &mut Context) -> Poll<T> {
-    // Entity is removed.
-    // Wake and pending.
-    // To jump out of the future
-    // and drop it on next flow run.
-    cx.waker().wake_by_ref();
+/// Handles despawned entity in futures.
+fn on_no_such_entity<T>(entity: EntityId, cx: &mut Context) -> Poll<T> {
+    match flow_entity() {
+        Some(id) if id == entity => {
+            // Entity is removed.
+            // Wake and pending.
+            // Flow will resume next tick and cancel itself.
+            cx.waker().wake_by_ref();
+        }
+        _ => {
+            // Entity is removed.
+            // Flow will never resume.
+        }
+    }
     Poll::Pending
 }
 
+/// Handles despawned entity in methods that assume entity is alive.
 #[cold]
 #[inline(never)]
 fn entity_not_alive() -> ! {

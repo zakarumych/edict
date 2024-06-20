@@ -167,6 +167,6 @@ impl ActionBufferSliceExt for [LocalActionBuffer] {
     #[inline(always)]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut()
-            .fold(false, |acc, encoder| acc | encoder.execute(world))
+            .fold(false, |acc, encoder| acc | encoder.execute(world.local()))
     }
 }

@@ -12,14 +12,14 @@ use crate::{
 };
 
 /// [`Query`] that fetches components with specific `TypeId` as specified borrow.
-pub struct QueryBorrowOne<T> {
+pub struct BorrowOne<T> {
     ty: TypeId,
     marker: PhantomData<T>,
 }
 
-impl<T> Copy for QueryBorrowOne<T> {}
+impl<T> Copy for BorrowOne<T> {}
 
-impl<T> Clone for QueryBorrowOne<T> {
+impl<T> Clone for BorrowOne<T> {
     fn clone(&self) -> Self {
         *self
     }
@@ -29,18 +29,18 @@ impl<T> Clone for QueryBorrowOne<T> {
     }
 }
 
-impl<T> QueryBorrowOne<T> {
+impl<T> BorrowOne<T> {
     /// Construct a new query that fetches component with specified id.
     /// Borrowing it as `T`.
     pub fn new(ty: TypeId) -> Self {
-        QueryBorrowOne {
+        BorrowOne {
             ty,
             marker: PhantomData,
         }
     }
 }
 
-/// [`Fetch`] for [`QueryBorrowOne<&T>`].
+/// [`Fetch`] for [`BorrowOne<&T>`].
 pub struct FetchBorrowOneRead<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -73,21 +73,21 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowOne<&T>
+impl<T> AsQuery for BorrowOne<&T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowOne<Read<T>>;
+    type Query = BorrowOne<Read<T>>;
 }
 
-impl<T> AsQuery for QueryBorrowOne<Read<T>>
+impl<T> AsQuery for BorrowOne<Read<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowOne<Read<T>>
+impl<T> IntoQuery for BorrowOne<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -96,7 +96,7 @@ where
     }
 }
 
-unsafe impl<T> Query for QueryBorrowOne<Read<T>>
+unsafe impl<T> Query for BorrowOne<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -155,10 +155,10 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowOne<Read<T>> where T: ?Sized + 'static {}
-unsafe impl<T> SendQuery for QueryBorrowOne<Read<T>> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for BorrowOne<Read<T>> where T: ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowOne<Read<T>> where T: Sync + ?Sized + 'static {}
 
-/// [`Fetch`] for [`QueryBorrowOne<&mut T>`].
+/// [`Fetch`] for [`BorrowOne<&mut T>`].
 pub struct FetchBorrowOneWrite<'a, T: ?Sized> {
     ptr: NonNull<u8>,
     size: usize,
@@ -206,21 +206,21 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowOne<&mut T>
+impl<T> AsQuery for BorrowOne<&mut T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowOne<Write<T>>;
+    type Query = BorrowOne<Write<T>>;
 }
 
-impl<T> AsQuery for QueryBorrowOne<Write<T>>
+impl<T> AsQuery for BorrowOne<Write<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowOne<Write<T>>
+impl<T> IntoQuery for BorrowOne<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -229,7 +229,7 @@ where
     }
 }
 
-unsafe impl<T> Query for QueryBorrowOne<Write<T>>
+unsafe impl<T> Query for BorrowOne<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -295,4 +295,4 @@ where
     }
 }
 
-unsafe impl<T> SendQuery for QueryBorrowOne<Write<T>> where T: Send + ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowOne<Write<T>> where T: Send + ?Sized + 'static {}

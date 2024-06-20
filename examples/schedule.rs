@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use edict::{
-    query::{Modified, QueryBorrowAll, With, Without},
+    query::{BorrowAll, Modified, With, Without},
     scheduler::Scheduler,
     system::State,
     view::{View, ViewCell},
@@ -39,11 +39,11 @@ fn main() {
 }
 
 fn system_a(
-    // `ViewCell` is required because `&mut A` conflicts with `QueryBorrowAll`
+    // `ViewCell` is required because `&mut A` conflicts with `BorrowAll`
     view: ViewCell<(
         &mut A,
         Option<&B>,
-        Option<QueryBorrowAll<&(dyn Debug + Sync + 'static)>>,
+        Option<BorrowAll<&(dyn Debug + Sync + 'static)>>,
     )>,
     mut counter: State<u32>,
 ) {

@@ -16,10 +16,7 @@ use super::{Access, ActionBufferQueue, IntoSystem, System};
 
 pub use self::{
     action::ActionEncoderState,
-    res::{
-        Res, ResMut, ResMutNoSend, ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState,
-        ResState,
-    },
+    res::{ResMutNoSend, ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState},
     state::{State, StateState},
     view::QueryArg,
 };

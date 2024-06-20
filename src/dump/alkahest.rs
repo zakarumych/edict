@@ -1,6 +1,4 @@
-//! Serialization support for the entire [`World`](crate::world::World).
-//!
-//! This module provides the [`ComponentDump`](ComponentDump) trait, which can be implemented for
+//! World serialization with [`alkahest`].
 
 use alkahest::{
     advanced::{slice_writer, write_field, BareFormula, Buffer, Deserializer, Sizes, SliceWriter},

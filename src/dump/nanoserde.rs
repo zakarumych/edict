@@ -1,6 +1,4 @@
-//! Serialization support for the entire [`World`](crate::world::World).
-//!
-//! This module provides the [`ComponentDump`](ComponentDump) trait, which can be implemented for
+//! World serialization with [`nanoserde`].
 
 use core::convert::Infallible;
 

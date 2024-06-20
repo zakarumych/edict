@@ -5,46 +5,16 @@ use core::{
     ptr::NonNull,
 };
 
-use atomicell::{Ref, RefMut};
-
 use crate::{
     archetype::Archetype,
     component::ComponentInfo,
+    resources::{Res, ResMut},
     system::{Access, ActionBufferQueue},
     type_id,
     world::World,
 };
 
 use super::{FnArg, FnArgState};
-
-/// Function-system argument to fetch resource immutably.
-#[repr(transparent)]
-pub struct Res<'a, T: ?Sized> {
-    inner: Ref<'a, T>,
-}
-
-impl<'a, T> Deref for Res<'a, T>
-where
-    T: ?Sized,
-{
-    type Target = T;
-
-    #[inline(always)]
-    fn deref(&self) -> &T {
-        self.inner.deref()
-    }
-}
-
-impl<'a, T> Res<'a, T>
-where
-    T: ?Sized,
-{
-    /// Returns inner `Ref` guard.
-    #[inline(always)]
-    pub fn inner(self) -> Ref<'a, T> {
-        self.inner
-    }
-}
 
 /// State for [`Res`] argument.
 pub struct ResState<T> {
@@ -123,47 +93,9 @@ where
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
         match world.get_resource() {
-            Some(r) => Res { inner: r },
+            Some(r) => r,
             None => missing_resource::<T>(),
         }
-    }
-}
-
-/// Function-system argument to fetch resource mutably.
-pub struct ResMut<'a, T: ?Sized> {
-    inner: RefMut<'a, T>,
-}
-
-impl<'a, T> Deref for ResMut<'a, T>
-where
-    T: ?Sized,
-{
-    type Target = T;
-
-    #[inline(always)]
-    fn deref(&self) -> &T {
-        self.inner.deref()
-    }
-}
-
-impl<'a, T> DerefMut for ResMut<'a, T>
-where
-    T: ?Sized,
-{
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut T {
-        self.inner.deref_mut()
-    }
-}
-
-impl<'a, T> ResMut<'a, T>
-where
-    T: ?Sized,
-{
-    /// Returns inner `Ref` guard.
-    #[inline(always)]
-    pub fn inner(self) -> RefMut<'a, T> {
-        self.inner
     }
 }
 
@@ -244,7 +176,7 @@ where
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
         match world.get_resource_mut() {
-            Some(r) => ResMut { inner: r },
+            Some(r) => r,
             None => missing_resource::<T>(),
         }
     }
@@ -253,8 +185,9 @@ where
 /// Function-system argument to fetch resource immutably from "main" thread.
 /// Can fetch `!Sync` resources.
 /// Prefer using `Res` for `Sync` resources for better parallelism.
+#[repr(transparent)]
 pub struct ResNoSync<'a, T: ?Sized> {
-    inner: Ref<'a, T>,
+    inner: Res<'a, T>,
 }
 
 impl<'a, T> Deref for ResNoSync<'a, T>
@@ -275,7 +208,7 @@ where
 {
     /// Returns inner `Ref` guard.
     #[inline(always)]
-    pub fn inner(self) -> Ref<'a, T> {
+    pub fn inner(self) -> Res<'a, T> {
         self.inner
     }
 }
@@ -368,8 +301,9 @@ where
 /// Function-system argument to fetch resource mutably from "main" thread.
 /// Can fetch `!Send` resources.
 /// Prefer using `ResMut` for `Send` resources for better parallelism.
+#[repr(transparent)]
 pub struct ResMutNoSend<'a, T: ?Sized> {
-    inner: RefMut<'a, T>,
+    inner: ResMut<'a, T>,
 }
 
 impl<'a, T> Deref for ResMutNoSend<'a, T>
@@ -400,7 +334,7 @@ where
 {
     /// Returns inner `Ref` guard.
     #[inline(always)]
-    pub fn inner(self) -> RefMut<'a, T> {
+    pub fn inner(self) -> ResMut<'a, T> {
         self.inner
     }
 }

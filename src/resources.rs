@@ -1,27 +1,239 @@
-//! Provides `Res` - a type-map for singleton type values called "resources".
+//! Provides `Resources` - a type-map for singleton type values called "resources".
 //!
-//! `Res` supports both `Send`, `Sync` and also `!Send`, `!Sync` resource types.
-//! To be sound `Res` intentionally does not implement `Send`. The thread where `Res` is created is considered "main" thread,
+//! `Resources` supports both `Send`, `Sync` and also `!Send`, `!Sync` resource types.
+//! To be sound `Resources` intentionally does not implement `Send`. The thread where `Resources` is created is considered "main" thread,
 //! but it doesn't have to be main thread of the process.
 //!
-//! `Res` is still usable in multithreaded programs as it implements `Sync`
+//! `Resources` is still usable in multithreaded programs as it implements `Sync`
 //! and uses type bounds on API to ensure that immutable reference to `!Sync`
 //! and mutable references to `!Send` types is not obtainable from outside "main" thread.
 //!
-//! Internally `Res` acts as collection of thread-safe `RefCell`s, so an attempt to fetch mutable reference
+//! Internally `Resources` acts as collection of thread-safe `RefCell`s, so an attempt to fetch mutable reference
 //! to the same value twice or mutable and immutable references at the same time is prohibited and cause panics.
 //!
 
 use alloc::boxed::Box;
 use core::{
     any::{type_name, Any, TypeId},
-    fmt::{self, Debug},
+    borrow::{Borrow, BorrowMut},
+    cmp::Ordering,
+    fmt::{self, Debug, Display},
+    hash::{Hash, Hasher},
+    ops::{Deref, DerefMut},
 };
 
 use atomicell::{AtomicCell, Ref, RefMut};
 use hashbrown::HashMap;
 
 use crate::type_id;
+
+/// Function-system argument to fetch resource immutably.
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct Res<'a, T: ?Sized> {
+    inner: Ref<'a, T>,
+}
+
+impl<'a, T> Deref for Res<'a, T>
+where
+    T: ?Sized,
+{
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &T {
+        self.inner.deref()
+    }
+}
+
+impl<T> fmt::Debug for Res<'_, T>
+where
+    T: Debug + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as Debug>::fmt(self, f)
+    }
+}
+
+impl<T> fmt::Display for Res<'_, T>
+where
+    T: Display + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as Display>::fmt(self, f)
+    }
+}
+
+impl<'a, T, U> PartialEq<U> for Res<'a, T>
+where
+    T: PartialEq<U> + ?Sized,
+{
+    #[inline(always)]
+    fn eq(&self, other: &U) -> bool {
+        <T as PartialEq<U>>::eq(self, other)
+    }
+}
+
+impl<'a, T, U> PartialOrd<U> for Res<'a, T>
+where
+    T: PartialOrd<U> + ?Sized,
+{
+    #[inline(always)]
+    fn partial_cmp(&self, other: &U) -> Option<Ordering> {
+        <T as PartialOrd<U>>::partial_cmp(self, other)
+    }
+}
+
+impl<'a, T> Hash for Res<'a, T>
+where
+    T: Hash + ?Sized,
+{
+    #[inline(always)]
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        <T as Hash>::hash(self, state)
+    }
+}
+
+impl<'a, T> Borrow<T> for Res<'a, T>
+where
+    T: ?Sized,
+{
+    #[inline(always)]
+    fn borrow(&self) -> &T {
+        self
+    }
+}
+
+impl<'a, T, U> AsRef<U> for Res<'a, T>
+where
+    T: AsRef<U> + ?Sized,
+{
+    #[inline(always)]
+    fn as_ref(&self) -> &U {
+        <T as AsRef<U>>::as_ref(self)
+    }
+}
+
+/// Function-system argument to fetch resource mutably.
+pub struct ResMut<'a, T: ?Sized> {
+    inner: RefMut<'a, T>,
+}
+
+impl<'a, T> Deref for ResMut<'a, T>
+where
+    T: ?Sized,
+{
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &T {
+        self.inner.deref()
+    }
+}
+
+impl<'a, T> DerefMut for ResMut<'a, T>
+where
+    T: ?Sized,
+{
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut T {
+        self.inner.deref_mut()
+    }
+}
+
+impl<T> fmt::Debug for ResMut<'_, T>
+where
+    T: Debug + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as Debug>::fmt(self, f)
+    }
+}
+
+impl<T> fmt::Display for ResMut<'_, T>
+where
+    T: Display + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as Display>::fmt(self, f)
+    }
+}
+
+impl<'a, T, U> PartialEq<U> for ResMut<'a, T>
+where
+    T: PartialEq<U> + ?Sized,
+{
+    #[inline(always)]
+    fn eq(&self, other: &U) -> bool {
+        <T as PartialEq<U>>::eq(self, other)
+    }
+}
+
+impl<'a, T, U> PartialOrd<U> for ResMut<'a, T>
+where
+    T: PartialOrd<U> + ?Sized,
+{
+    #[inline(always)]
+    fn partial_cmp(&self, other: &U) -> Option<Ordering> {
+        <T as PartialOrd<U>>::partial_cmp(self, other)
+    }
+}
+
+impl<'a, T> Hash for ResMut<'a, T>
+where
+    T: Hash + ?Sized,
+{
+    #[inline(always)]
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        <T as Hash>::hash(self, state)
+    }
+}
+
+impl<'a, T> Borrow<T> for ResMut<'a, T>
+where
+    T: ?Sized,
+{
+    #[inline(always)]
+    fn borrow(&self) -> &T {
+        self
+    }
+}
+
+impl<'a, T> BorrowMut<T> for ResMut<'a, T>
+where
+    T: ?Sized,
+{
+    #[inline(always)]
+    fn borrow_mut(&mut self) -> &mut T {
+        self
+    }
+}
+
+impl<'a, T, U> AsRef<U> for ResMut<'a, T>
+where
+    T: AsRef<U> + ?Sized,
+{
+    #[inline(always)]
+    fn as_ref(&self) -> &U {
+        <T as AsRef<U>>::as_ref(self)
+    }
+}
+
+impl<'a, T, U> AsMut<U> for ResMut<'a, T>
+where
+    T: AsMut<U> + ?Sized,
+{
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut U {
+        <T as AsMut<U>>::as_mut(self)
+    }
+}
 
 struct Resource {
     // Box<AtomicCell> instead of AtomicCell<Box> to avoid false sharing
@@ -45,21 +257,21 @@ impl Debug for Resource {
 unsafe impl Sync for Resource {}
 
 /// Type-erased container for singleton resources.
-pub struct Res {
+pub struct Resources {
     resources: HashMap<TypeId, Resource>,
 }
 
-impl Debug for Res {
+impl Debug for Resources {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.resources)
     }
 }
 
-impl Res {
+impl Resources {
     /// Returns a new empty resource container.
     #[inline(always)]
     pub fn new() -> Self {
-        Res {
+        Resources {
             resources: HashMap::new(),
         }
     }
@@ -67,10 +279,10 @@ impl Res {
     /// Inserts resource into container.
     /// Old value is replaced.
     ///
-    /// For `Res<Send>` resource type have to implement `Send`.
-    /// Allowing `Res<Send>` to be moved into another thread and drop resources there.
+    /// For `Resources<Send>` resource type have to implement `Send`.
+    /// Allowing `Resources<Send>` to be moved into another thread and drop resources there.
     ///
-    /// `Res<NoSend>` accepts any `'static` resource type.
+    /// `Resources<NoSend>` accepts any `'static` resource type.
     pub fn insert<T: 'static>(&mut self, resource: T) {
         let id = type_id::<T>();
         self.resources.insert(
@@ -85,10 +297,10 @@ impl Res {
     /// Inserts resource into container.
     /// Old value is replaced.
     ///
-    /// For `Res<Send>` resource type have to implement `Send`.
-    /// Allowing `Res<Send>` to be moved into another thread and drop resources there.
+    /// For `Resources<Send>` resource type have to implement `Send`.
+    /// Allowing `Resources<Send>` to be moved into another thread and drop resources there.
     ///
-    /// `Res<NoSend>` accepts any `'static` resource type.
+    /// `Resources<NoSend>` accepts any `'static` resource type.
     pub fn with<T: 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
         let id = type_id::<T>();
         self.resources
@@ -121,7 +333,7 @@ impl Res {
     /// Returns none if resource is not found.
     #[inline(always)]
     #[track_caller]
-    pub fn get<T: Sync + 'static>(&self) -> Option<Ref<T>> {
+    pub fn get<T: Sync + 'static>(&self) -> Option<Res<T>> {
         unsafe {
             // # Safety
             //
@@ -134,7 +346,7 @@ impl Res {
     /// Returns none if resource is not found.
     #[inline(always)]
     #[track_caller]
-    pub fn get_mut<T: Send + 'static>(&self) -> Option<RefMut<T>> {
+    pub fn get_mut<T: Send + 'static>(&self) -> Option<ResMut<T>> {
         unsafe {
             // # Safety
             //
@@ -155,7 +367,7 @@ impl Res {
     /// In this case prefer to use [`get`] method instead.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn get_local<T: 'static>(&self) -> Option<Ref<T>> {
+    pub unsafe fn get_local<T: 'static>(&self) -> Option<Res<T>> {
         let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;
@@ -175,7 +387,7 @@ impl Res {
         };
 
         let r = Ref::map(r, |r| r.downcast_ref::<T>().unwrap());
-        Some(r)
+        Some(Res { inner: r })
     }
 
     /// Returns some mutable reference to potentially `!Send` resource.
@@ -190,7 +402,7 @@ impl Res {
     /// In this case prefer to use [`get_mut`] method instead.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<RefMut<T>> {
+    pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<ResMut<T>> {
         let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;
@@ -210,7 +422,7 @@ impl Res {
         };
 
         let r = RefMut::map(r, |r| r.downcast_mut::<T>().unwrap());
-        Some(r)
+        Some(ResMut { inner: r })
     }
 
     /// Reset all possible leaks on resources.

@@ -106,15 +106,18 @@ struct ScheduledSystem {
     is_local: bool,
 }
 
+#[cfg(feature = "std")]
 struct QueueInner<T> {
     items: Mutex<VecDeque<T>>,
     thread: Thread,
 }
 
+#[cfg(feature = "std")]
 struct Queue<T> {
     inner: Arc<QueueInner<T>>,
 }
 
+#[cfg(feature = "std")]
 impl<T> Clone for Queue<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -124,6 +127,7 @@ impl<T> Clone for Queue<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T> Drop for Queue<T> {
     #[inline(always)]
     fn drop(&mut self) {
@@ -133,6 +137,7 @@ impl<T> Drop for Queue<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T> Queue<T> {
     #[inline(always)]
     fn new() -> Self {
@@ -169,6 +174,7 @@ impl<T> Queue<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl ActionBufferQueue for Queue<ActionBuffer> {
     #[inline(always)]
     fn get<'a>(&self) -> ActionBuffer {
@@ -285,6 +291,7 @@ impl Scheduler {
         self.schedule_cache_id = None;
     }
 
+    #[cfg(feature = "std")]
     pub fn run_threaded(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         let buffers = std::thread::scope(|scope| self.run_with(world, &scope));
@@ -292,6 +299,7 @@ impl Scheduler {
     }
 
     #[cfg(feature = "rayon")]
+    #[cfg(feature = "std")]
     pub fn run_rayon(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         let buffers = rayon::in_place_scope(|scope| self.run_with(world, scope));
@@ -320,6 +328,7 @@ impl Scheduler {
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
     #[must_use]
+    #[cfg(feature = "std")]
     pub fn run_with<'scope, 'later: 'scope>(
         &'later mut self,
         world: &'scope mut World,

@@ -9,7 +9,8 @@ use crate::{
         ExternalSetHook,
     },
     entity::{EntitySet, IdRangeAllocator},
-    res::Res,
+    flow::NewFlows,
+    resources::Resources,
 };
 
 use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World};
@@ -47,10 +48,11 @@ impl WorldBuilder {
             entities,
             archetypes: ArchetypeSet::new(),
             edges: Edges::new(),
-            res: Res::new(),
+            resources: Resources::new(),
             registry: self.registry,
             action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
+            new_flows: NewFlows::new(),
         }
     }
 

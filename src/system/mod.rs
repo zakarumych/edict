@@ -6,14 +6,16 @@ use alloc::vec::Vec;
 use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
-    action::ActionBuffer, archetype::Archetype, component::ComponentInfo, world::World, Access,
-    ActionBufferSliceExt,
+    action::{ActionBuffer, ActionBufferSliceExt},
+    archetype::Archetype,
+    component::ComponentInfo,
+    world::World,
+    Access,
 };
 
 pub use self::func::{
-    ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, Res, ResMut,
-    ResMutNoSend, ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState, State,
-    StateState,
+    ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, ResMutNoSend,
+    ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState, State, StateState,
 };
 
 /// A queue of `ActionEncoder` instances.

@@ -53,8 +53,8 @@ pub use self::{
         Or, Or2, Or3, Or4, Or5, Or6, Or7, Or8, Xor, Xor2, Xor3, Xor4, Xor5, Xor6, Xor7, Xor8,
     },
     borrow::{
-        FetchBorrowAllRead, FetchBorrowAnyRead, FetchBorrowAnyWrite, FetchBorrowOneRead,
-        FetchBorrowOneWrite, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne,
+        BorrowAll, BorrowAny, BorrowOne, FetchBorrowAllRead, FetchBorrowAnyRead,
+        FetchBorrowAnyWrite, FetchBorrowOneRead, FetchBorrowOneWrite,
     },
     copied::{Cpy, FetchCopied},
     entities::{Entities, EntitiesFetch},

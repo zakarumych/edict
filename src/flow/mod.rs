@@ -16,60 +16,62 @@
 
 use core::{
     any::TypeId,
-    cell::UnsafeCell,
     future::Future,
-    mem::ManuallyDrop,
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll, Waker},
 };
 
-use alloc::task::Wake;
+use alloc::{boxed::Box, sync::Arc, task::Wake, vec::Vec};
 
-use alloc::sync::Arc;
 use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use hashbrown::HashMap;
 use slab::Slab;
 
-use crate::{
-    system::State,
-    tls, type_id,
-    world::{World, WorldLocal},
-    EntityId,
-};
+use crate::{entity::EntityId, system::State, type_id, world::WorldLocal};
 
 mod entity;
+mod futures;
+mod tls;
 mod world;
 
-pub use self::{entity::*, world::*};
+pub use self::{entity::*, futures::*, world::*};
 
 /// Task that access world when polled.
-pub trait Flow: 'static {
+pub trait Flow {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()>;
 }
 
 pub trait IntoFlow: 'static {
-    type Flow: Flow;
+    type Flow<'a>: Flow + 'a;
 
     /// Converts flow into the inner flow type.
-    unsafe fn into_flow(self) -> Self::Flow;
+    fn into_flow<'a>(self, world: &'a mut World) -> Option<Self::Flow<'a>>;
 }
 
-/// Call only from flow context.
+/// Call only from flow context when mutable references to world do not exist.
 ///
 /// This is public for use by custom flows.
-/// Built-in flows use it internally from `FlowWorld` and `FlowEntity`.
+/// Built-in flows use it internally from `World` and `Entity`.
 #[inline(always)]
 pub unsafe fn flow_world_ref<'a>() -> &'a WorldLocal {
     unsafe { tls::get_world_ref() }
 }
 
-/// Call only from flow context.
+/// Call only from flow context when other references to world do not exist.
 ///
 /// This is public for use by custom flows.
-/// Built-in flows use it internally from `FlowWorld` and `FlowEntity`.
+/// Built-in flows use it internally from `World` and `Entity`.
 #[inline(always)]
 pub unsafe fn flow_world_mut<'a>() -> &'a mut WorldLocal {
     unsafe { tls::get_world_mut() }
+}
+
+/// Returns current flow's entity id.
+/// If called outside entity flow poll it returns `None`.
+#[inline(always)]
+pub fn flow_entity() -> Option<EntityId> {
+    tls::get_entity()
 }
 
 /// Type-erased array of newly inserted flows of a single type.
@@ -90,14 +92,7 @@ impl<'a> dyn AnyIntoFlows + 'a {
     }
 }
 
-impl<'a> dyn AnyIntoFlows + Send + 'a {
-    #[inline(always)]
-    unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedIntoFlows<F> {
-        debug_assert_eq!(self.flow_id(), type_id::<F>());
-
-        unsafe { &mut *(self as *mut Self as *mut TypedIntoFlows<F>) }
-    }
-}
+type FlowInto<F> = <F as IntoFlow>::Flow<'static>;
 
 /// Typed array of newly inserted flows of a single type.
 struct TypedIntoFlows<F> {
@@ -118,90 +113,50 @@ where
             return;
         }
 
-        let flow_id = type_id::<F::Flow>();
+        let flow_id = type_id::<FlowInto<F>>();
 
         // Find queue for this type of flows or create new one.
         let queue = flows
             .entry(flow_id)
-            .or_insert_with(AnyQueue::new::<F::Flow>);
+            .or_insert_with(AnyQueue::new::<FlowInto<F>>);
 
         // Safety: TypedFlows<F> is at index `type_id::<F>()` in `flows.map`.
-        let typed_flows = unsafe { queue.flows.downcast_mut::<F::Flow>() };
+        let typed_flows = unsafe { queue.flows.downcast_mut::<FlowInto<F>>() };
 
         // Reserve space to ensure oom can't happen in the loop below.
         typed_flows.array.reserve(self.array.len());
 
         for into_flow in self.array.drain(..) {
-            let id = typed_flows.array.vacant_key();
+            if let Some(flow) = unsafe { into_flow.into_flow(World::make_mut()) } {
+                let task_id = typed_flows.array.vacant_key();
 
-            let task = FlowTask {
-                flow: UnsafeCell::new(ManuallyDrop::new(unsafe { into_flow.into_flow() })),
-                id,
-                queue: queue.queue.clone(),
-            };
+                let task = FlowTask {
+                    flow: Box::pin(flow),
+                    waker: Waker::from(Arc::new(FlowWaker {
+                        task_id,
+                        queue: queue.queue.clone(),
+                    })),
+                };
 
-            typed_flows.array.insert(Arc::new(task));
-            queue.ready.push(id);
+                typed_flows.array.insert(task);
+                queue.ready.push(task_id);
+            }
         }
     }
 }
 
-struct NewSendFlows {
-    map: HashMap<TypeId, Box<dyn AnyIntoFlows + Send>>,
-}
-
-impl Default for NewSendFlows {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl NewSendFlows {
-    fn new() -> Self {
-        NewSendFlows {
-            map: HashMap::new(),
-        }
-    }
-
-    pub fn typed_new_flows<F>(&mut self) -> &mut TypedIntoFlows<F>
-    where
-        F: IntoFlow + Send,
-    {
-        let new_flows = self
-            .map
-            .entry(type_id::<F>())
-            .or_insert_with(|| Box::new(TypedIntoFlows::<F> { array: Vec::new() }));
-
-        unsafe { new_flows.downcast_mut::<F>() }
-    }
-
-    pub fn add<F>(&mut self, flow: F)
-    where
-        F: IntoFlow + Send,
-    {
-        let typed_new_flows = self.typed_new_flows();
-        typed_new_flows.array.push(flow);
-    }
-}
-
-struct NewLocalFlows {
+pub(crate) struct NewFlows {
     map: HashMap<TypeId, Box<dyn AnyIntoFlows>>,
 }
 
-impl Default for NewLocalFlows {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl NewLocalFlows {
-    fn new() -> Self {
-        NewLocalFlows {
+impl NewFlows {
+    pub fn new() -> Self {
+        NewFlows {
             map: HashMap::new(),
         }
     }
 
-    pub fn typed_new_flows<F>(&mut self) -> &mut TypedIntoFlows<F>
+    fn typed_new_flows<F>(&mut self) -> &mut TypedIntoFlows<F>
     where
         F: IntoFlow,
     {
@@ -240,71 +195,54 @@ impl dyn AnyFlows {
     }
 }
 
-struct FlowTask<F> {
-    flow: UnsafeCell<ManuallyDrop<F>>,
-    id: usize,
+struct FlowWaker {
+    task_id: usize,
     queue: Arc<FlipQueue<usize>>,
 }
 
-/// Safety: `FlowTask` can be sent to another thread as `Waker`
-/// which does not access `flow` field.
-unsafe impl<F> Send for FlowTask<F> {}
-unsafe impl<F> Sync for FlowTask<F> {}
-
-impl<F> Wake for FlowTask<F>
-where
-    F: Flow,
-{
+impl Wake for FlowWaker {
     fn wake(self: Arc<Self>) {
-        self.queue.push(self.id);
+        self.queue.push(self.task_id);
     }
 
     fn wake_by_ref(self: &Arc<Self>) {
-        self.queue.push(self.id);
+        self.queue.push(self.task_id);
     }
 }
 
-impl<F> FlowTask<F>
-where
-    F: Flow,
-{
-    fn waker(self: &Arc<Self>) -> Waker {
-        Waker::from(self.clone())
-    }
+struct FlowTask<F> {
+    flow: Pin<Box<F>>,
+    waker: Waker,
 }
 
 /// Container of spawned flows of specific type.
 struct TypedFlows<F> {
-    array: Slab<Arc<FlowTask<F>>>,
+    array: Slab<FlowTask<F>>,
 }
 
 impl<F> TypedFlows<F>
 where
-    F: Flow,
+    F: Flow + 'static,
 {
     #[inline(always)]
     unsafe fn execute(&mut self, ids: &[usize]) {
         for &id in ids {
-            let Some(task) = self.array.get(id) else {
+            let Some(task) = self.array.get_mut(id) else {
                 continue;
             };
 
-            let waker = task.waker();
-            let mut cx = Context::from_waker(&waker);
+            let mut cx = Context::from_waker(&task.waker);
 
             // Safety: This is the only code that can access `task.flow`.
             // It is destroyed in-place when it is ready or TypedFlows is dropped.
-            let poll = unsafe {
-                let pinned = Pin::new_unchecked(&mut **task.flow.get());
-                unsafe { pinned.poll(&mut cx) }
-            };
+
+            let pinned = task.flow.as_mut();
+
+            // This is the only safe place to poll the flow.
+            let poll = unsafe { F::poll(pinned, &mut cx) };
 
             if let Poll::Ready(()) = poll {
-                let task = self.array.remove(id);
-                // Safety: Removed from array. `task.flow` is inaccessible anywhere but here.
-                unsafe {
-                    ManuallyDrop::drop(&mut *task.flow.get());
-                }
+                self.array.remove(id);
             }
         }
     }
@@ -312,7 +250,7 @@ where
 
 impl<F> AnyFlows for TypedFlows<F>
 where
-    F: Flow,
+    F: Flow + 'static,
 {
     #[cfg(debug_assertions)]
     fn flow_id(&self) -> TypeId {
@@ -333,7 +271,10 @@ struct AnyQueue {
 }
 
 impl AnyQueue {
-    fn new<F: Flow>() -> Self {
+    fn new<F>() -> Self
+    where
+        F: Flow + 'static,
+    {
         AnyQueue {
             queue: Arc::new(FlipQueue::new()),
             ready: RingBuffer::new(),
@@ -345,8 +286,7 @@ impl AnyQueue {
 /// Flows container manages running flows,
 /// collects spawned flows and executes them.
 pub struct Flows {
-    new_flows: NewSendFlows,
-    new_local_flows: NewLocalFlows,
+    new_flows: NewFlows,
     map: HashMap<TypeId, AnyQueue>,
 }
 
@@ -359,38 +299,20 @@ impl Default for Flows {
 impl Flows {
     pub fn new() -> Self {
         Flows {
-            new_flows: NewSendFlows::new(),
-            new_local_flows: NewLocalFlows::new(),
+            new_flows: NewFlows::new(),
             map: HashMap::new(),
         }
     }
 
-    /// Call at least once prior to spawning flows.
-    pub fn init(world: &mut World) {
-        world.with_resource(NewSendFlows::new);
-        world.with_resource(NewLocalFlows::new);
-    }
-
-    fn collect_new_flows<'a>(&mut self, world: &'a mut World) -> Option<tls::Guard<'a>> {
+    fn collect_new_flows<'a>(
+        &mut self,
+        world: &'a mut crate::world::World,
+    ) -> Option<tls::WorldGuard<'a>> {
         let world = world.local();
 
-        let mut new_flows_res = match world.get_resource_mut::<NewSendFlows>() {
-            None => return None,
-            Some(new_flows) => new_flows,
-        };
+        std::mem::swap(&mut self.new_flows, &mut world.new_flows);
 
-        std::mem::swap(&mut self.new_flows, &mut *new_flows_res);
-        drop(new_flows_res);
-
-        let mut new_local_flows_res = match world.get_resource_mut::<NewLocalFlows>() {
-            None => return None,
-            Some(new_local_flows) => new_local_flows,
-        };
-
-        std::mem::swap(&mut self.new_local_flows, &mut *new_local_flows_res);
-        drop(new_local_flows_res);
-
-        let guard = tls::Guard::new(world);
+        let guard = tls::WorldGuard::new(world);
 
         // First swap all queues with ready buffer.
         for typed in self.map.values_mut() {
@@ -403,14 +325,11 @@ impl Flows {
         for (_, typed) in &mut self.new_flows.map {
             typed.drain(&mut self.map);
         }
-        for (_, typed) in &mut self.new_local_flows.map {
-            typed.drain(&mut self.map);
-        }
 
         Some(guard)
     }
 
-    pub fn execute(&mut self, world: &mut World) {
+    pub fn execute(&mut self, world: &mut crate::world::World) {
         let Some(_guard) = self.collect_new_flows(world) else {
             return;
         };
@@ -428,140 +347,123 @@ impl Flows {
     }
 }
 
-/// System that executes flows spawned in the world.
-pub fn flows_system(world: &mut World, mut flows: State<Flows>) {
+/// Function that can be used as a [`System`](crate::system::System)
+/// to execute flows in the ECS world.
+pub fn flows_system(world: &mut crate::world::World, mut flows: State<Flows>) {
     let flows = &mut *flows;
     flows.execute(world);
 }
 
-/// Spawn a flow into the world.
-///
-/// The flow will be polled by the `flows_system`.
-pub fn spawn<F>(world: &World, flow: F)
-where
-    F: IntoFlow + Send,
-{
-    world.expect_resource_mut::<NewSendFlows>().add(flow);
+struct EntityIntoFlow<F> {
+    entity: EntityId,
+    f: F,
 }
 
-/// Spawn a flow into the world.
-///
-/// The flow will be polled by the `flows_system`.
-pub fn spawn_local<F>(world: &WorldLocal, flow: F)
-where
-    F: IntoFlow,
-{
-    world.expect_resource_mut::<NewLocalFlows>().add(flow);
-}
-
-/// Spawn a flow for the entity into the world.
-///
-/// The flow will be polled by the `flows_system`.
-pub fn spawn_for<F>(world: &World, id: EntityId, flow: F)
-where
-    F: IntoEntityFlow + Send,
-{
-    struct AdHoc<F> {
-        id: EntityId,
-        f: F,
-    }
-
-    impl<F> IntoFlow for AdHoc<F>
-    where
-        F: IntoEntityFlow,
-    {
-        type Flow = F::Flow;
-
-        unsafe fn into_flow(self) -> F::Flow {
-            unsafe { self.f.into_entity_flow(self.id) }
-        }
-    }
-
-    spawn(world, AdHoc { id, f: flow });
-}
-
-/// Spawn a flow for the entity into the world.
-///
-/// The flow will be polled by the `flows_system`.
-pub fn spawn_local_for<F>(world: &WorldLocal, id: EntityId, flow: F)
+impl<F> IntoFlow for EntityIntoFlow<F>
 where
     F: IntoEntityFlow,
 {
-    struct AdHoc<F> {
-        id: EntityId,
-        f: F,
+    type Flow<'a> = F::Flow<'a>;
+
+    fn into_flow<'a>(self, world: &'a mut World) -> Option<F::Flow<'a>> {
+        let e = world.entity(self.entity).ok()?;
+
+        unsafe { self.f.into_entity_flow(e) }
+    }
+}
+
+impl crate::world::World {
+    pub fn spawn_flow<F>(&mut self, flow: F)
+    where
+        F: IntoFlow,
+    {
+        self.new_flows.add(flow);
     }
 
-    impl<F> IntoFlow for AdHoc<F>
+    pub fn spawn_flow_for<F>(&mut self, entity: EntityId, flow: F)
     where
         F: IntoEntityFlow,
     {
-        type Flow = F::Flow;
-
-        unsafe fn into_flow(self) -> F::Flow {
-            unsafe { self.f.into_entity_flow(self.id) }
-        }
-    }
-
-    spawn_local(world, AdHoc { id, f: flow });
-}
-
-/// Spawns code block as a flow.
-#[macro_export]
-macro_rules! spawn_block {
-    (in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn(&$world, $crate::flow_closure!(|$world: &mut $crate::flow::FlowWorld| { $($closure)* }));
-    };
-    (in $world:ident for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    };
-    (for $entity:ident in $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    };
-    (local $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_local(&$world, $crate::flow_closure!(|$world: &mut $crate::flow::FlowWorld| { $($closure)* }));
-    };
-    (local $world:ident for $entity:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_local_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    };
-    (for $entity:ident local $world:ident -> $($closure:tt)*) => {
-        $crate::flow::spawn_local_for(&$world, $entity, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    };
-    (for $entity:ident -> $($closure:tt)*) => {{
-        let e = $entity.id();
-        let w = $entity.get_world();
-        $crate::flow::spawn_local_for(w, e, $crate::flow_closure_for!(|mut $entity| { $($closure)* }));
-    }};
-}
-
-pub struct YieldNow {
-    yielded: bool,
-}
-
-impl YieldNow {
-    pub fn new() -> Self {
-        YieldNow { yielded: false }
+        self.spawn_flow(EntityIntoFlow { entity, f: flow });
     }
 }
 
-impl Future for YieldNow {
-    type Output = ();
+impl WorldLocal {
+    pub fn defer_spawn_flow<F>(&self, flow: F)
+    where
+        F: IntoFlow,
+    {
+        self.defer(move |w| w.spawn_flow(flow))
+    }
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let me = self.get_mut();
-        if !me.yielded {
-            me.yielded = true;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            Poll::Ready(())
+    pub fn defer_spawn_flow_for<F>(&self, entity: EntityId, flow: F)
+    where
+        F: IntoEntityFlow,
+    {
+        self.defer(move |w| w.spawn_flow_for(entity, flow))
+    }
+}
+
+#[doc(hidden)]
+pub struct BadFlowClosure<F, Fut> {
+    f: F,
+    _phantom: PhantomData<Fut>,
+}
+
+impl<F, Fut> BadFlowClosure<F, Fut> {
+    pub fn new<C>(f: F) -> Self
+    where
+        C: BadContext,
+        F: FnOnce(C) -> Fut + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        BadFlowClosure {
+            f,
+            _phantom: PhantomData,
         }
     }
 }
 
+#[doc(hidden)]
+pub trait BadContext {
+    type Context<'a>: 'a
+    where
+        Self: 'a;
+
+    fn bad<'a>(&'a self) -> Self::Context<'a>;
+}
+
+/// Converts closure syntax to flow fn.
+///
+/// There's limitation that makes following `|world: World<'_>| async move { /*use world*/ }`
+/// to be noncompilable.
+///
+/// On nightly it is possible to use `async move |world: World<'_>| { /*use world*/ }`
+/// But this syntax is not stable yet and edict avoids requiring too many nighty features.
+///
+/// This macro is a workaround for this limitation.
 #[macro_export]
-macro_rules! yield_now {
-    () => {
-        $crate::private::YieldNow::new().await
+macro_rules! flow {
+    (|$arg:ident $(: $ty:ty)?| $code:expr) => {
+        unsafe {
+            $crate::flow::BadFlowClosure::new(move |cx| async move {
+                #[allow(unused)]
+                let $arg $(: $ty)? = $crate::flow::BadContext::bad(&cx);
+                {
+                    $code
+                }
+            })
+        }
+    };
+    (|mut $arg:ident $(: $ty:ty)?| $code:expr) => {
+        unsafe {
+            $crate::flow::BadFlowClosure::new(move |cx| async move {
+                #[allow(unused)]
+                let mut $arg $(: $ty)? = $crate::flow::BadContext::bad(&cx);
+                {
+                    $code
+                }
+            })
+        }
     };
 }

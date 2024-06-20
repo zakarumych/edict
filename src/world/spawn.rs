@@ -4,10 +4,10 @@ use crate::{
     action::LocalActionEncoder,
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
-    component::ComponentRegistry,
+    component::{Component, ComponentRegistry},
     entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
-    type_id, Component, NoSuchEntity,
+    type_id, NoSuchEntity,
 };
 
 use super::{

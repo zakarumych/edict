@@ -3,7 +3,7 @@ use core::{any::TypeId, fmt, marker::PhantomData, num::NonZeroU64};
 use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    flow::{spawn_local_for, IntoEntityFlow},
+    flow::IntoEntityFlow,
     // flow::FlowEntityFn,
     query::{DefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
     view::ViewOne,
@@ -54,13 +54,6 @@ pub trait AliveEntity: Entity {
     fn entity_ref<'a>(&self, _world: &'a mut World) -> EntityRef<'a> {
         unreachable!()
     }
-}
-
-/// Entity which is guaranteed to be alive
-/// and has known location.
-pub trait LocatedEntity: AliveEntity {
-    /// Returns entity location.
-    fn location(&self) -> Location;
 }
 
 /// Entity ID.
@@ -407,13 +400,6 @@ impl<'a> AliveEntity for EntityLoc<'a> {
     #[inline(always)]
     fn entity_ref<'b>(&self, _world: &'b mut World) -> EntityRef<'b> {
         unreachable!()
-    }
-}
-
-impl<'a> LocatedEntity for EntityLoc<'a> {
-    #[inline(always)]
-    fn location(&self) -> Location {
-        self.loc
     }
 }
 
@@ -1139,10 +1125,12 @@ impl<'a> EntityRef<'a> {
         self.world.has_component::<T>(loc)
     }
 
-    pub fn spawn<F>(&mut self, flow_fn: F)
+    /// Spawns a new flow for the entity.
+    pub fn spawn_flow<F>(&mut self, f: F)
     where
         F: IntoEntityFlow,
     {
-        spawn_local_for(self.world.local(), self.id, flow_fn);
+        let id = self.id;
+        self.world.spawn_flow_for(id, f);
     }
 }

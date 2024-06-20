@@ -4,7 +4,7 @@ use crate::{
     entity::Entity,
     epoch::EpochId,
     query::{
-        AsQuery, Modified, Not, Query, QueryBorrowAll, QueryBorrowAny, QueryBorrowOne, Read,
+        AsQuery, Modified, Not, Query, BorrowAll, BorrowAny, BorrowOne, Read,
         SendQuery, With, Without, Write,
     },
     relation::{
@@ -114,11 +114,11 @@ where
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
     #[inline(always)]
-    pub fn borrow_any<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAny<&'a T>>, F, B>
+    pub fn borrow_any<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a T>>, F, B>
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAny(Read::<T>))
+        self.extend(BorrowAny(Read::<T>))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -128,11 +128,11 @@ where
     #[inline(always)]
     pub fn borrow_any_mut<T>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAny<&'a mut T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B>
     where
         T: Send + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAny(Write::<T>))
+        self.extend(BorrowAny(Write::<T>))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -147,11 +147,11 @@ where
     pub fn borrow_one<T>(
         self,
         ty: TypeId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowOne<&'a T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a T>>, F, B>
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowOne::<Read<T>>::new(ty))
+        self.extend(BorrowOne::<Read<T>>::new(ty))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -166,11 +166,11 @@ where
     pub fn borrow_one_mut<T>(
         self,
         ty: TypeId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowOne<&'a mut T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a mut T>>, F, B>
     where
         T: Send + ?Sized + 'static,
     {
-        self.extend(QueryBorrowOne::<Write<T>>::new(ty))
+        self.extend(BorrowOne::<Write<T>>::new(ty))
     }
 
     /// Extends query tuple with a query element that fetches borrows `T`
@@ -182,11 +182,11 @@ where
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
     #[inline(always)]
-    pub fn borrow_all<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, QueryBorrowAll<&'a T>>, F, B>
+    pub fn borrow_all<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAll<&'a T>>, F, B>
     where
         T: Sync + ?Sized + 'static,
     {
-        self.extend(QueryBorrowAll(Read::<T>))
+        self.extend(BorrowAll(Read::<T>))
     }
 
     /// Queries for origin entities in relation of type `R`.

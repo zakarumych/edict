@@ -1,6 +1,4 @@
 {
-    "rust-analyzer.cargo.cfgs": {
-        "no_edict_prelude": ""
-    },
     "editor.formatOnSave": true,
+    "rust-analyzer.cargo.noDefaultFeatures": true,
 }

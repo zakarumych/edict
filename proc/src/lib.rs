@@ -14,16 +14,10 @@ pub fn derive_relation(item: TokenStream) -> TokenStream {
     edict_proc_lib::derive_relation(item.into(), &path, path.get_ident().unwrap()).into()
 }
 
-// #[proc_macro_derive(Query, attributes(edict))]
-// pub fn derive_query(item: TokenStream) -> TokenStream {
-//     let path: syn::Path = syn::parse_quote!(edict);
-//     edict_proc_lib::derive_query(item.into(), &path, path.get_ident().unwrap()).into()
-// }
-
 /// This attribute adds checks for system functions.
 /// Only applicable to function items.
 ///
-/// Generates compilation error if function is has type parameters,
+/// Generates compilation error if function has type parameters,
 /// is async, unsafe, has return type or is a method.
 ///
 /// Checks that all function arguments are valid system arguments.

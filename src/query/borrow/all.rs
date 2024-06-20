@@ -15,7 +15,7 @@ use crate::{
 
 /// Query that borrows from components.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct QueryBorrowAll<T>(pub T);
+pub struct BorrowAll<T>(pub T);
 
 struct FetchBorrowAllComponent<T: ?Sized> {
     ptr: NonNull<u8>,
@@ -144,7 +144,7 @@ where
 
 impl<'a, T> FusedIterator for BorrowAllRead<'a, T> where T: ?Sized {}
 
-/// [`Fetch`] for [`QueryBorrowAll<&T>`].
+/// [`Fetch`] for [`BorrowAll<&T>`].
 pub struct FetchBorrowAllRead<'a, T: ?Sized> {
     components: Rc<[FetchBorrowAllComponent<T>]>,
     marker: PhantomData<&'a T>,
@@ -175,31 +175,31 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowAll<&T>
+impl<T> AsQuery for BorrowAll<&T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowAll<Read<T>>;
+    type Query = BorrowAll<Read<T>>;
 }
 
-impl<T> DefaultQuery for QueryBorrowAll<&T>
+impl<T> DefaultQuery for BorrowAll<&T>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
-    fn default_query() -> QueryBorrowAll<Read<T>> {
-        QueryBorrowAll(Read)
+    fn default_query() -> BorrowAll<Read<T>> {
+        BorrowAll(Read)
     }
 }
 
-impl<T> AsQuery for QueryBorrowAll<Read<T>>
+impl<T> AsQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowAll<Read<T>>
+impl<T> IntoQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -209,27 +209,27 @@ where
     }
 }
 
-impl<T> DefaultQuery for QueryBorrowAll<Read<T>>
+impl<T> DefaultQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
-        QueryBorrowAll(Read)
+        BorrowAll(Read)
     }
 }
 
-impl<T> QueryArg for QueryBorrowAll<Read<T>>
+impl<T> QueryArg for BorrowAll<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryBorrowAll(Read)
+        BorrowAll(Read)
     }
 }
 
-unsafe impl<T> Query for QueryBorrowAll<Read<T>>
+unsafe impl<T> Query for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
@@ -294,8 +294,8 @@ where
     }
 }
 
-unsafe impl<T> ImmutableQuery for QueryBorrowAll<Read<T>> where T: ?Sized + 'static {}
-unsafe impl<T> SendQuery for QueryBorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}
+unsafe impl<T> ImmutableQuery for BorrowAll<Read<T>> where T: ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}
 
 pub struct BorrowAllWrite<'a, T: ?Sized> {
     idx: u32,
@@ -427,7 +427,7 @@ where
 
 impl<'a, T> FusedIterator for BorrowAllWrite<'a, T> where T: ?Sized {}
 
-/// [`Fetch`] for [`QueryBorrowAll<&mut T>`].
+/// [`Fetch`] for [`BorrowAll<&mut T>`].
 pub struct FetchBorrowAllWrite<'a, T: ?Sized> {
     components: Rc<[FetchBorrowAllComponent<T>]>,
     epoch: EpochId,
@@ -469,31 +469,31 @@ where
     }
 }
 
-impl<T> AsQuery for QueryBorrowAll<&mut T>
+impl<T> AsQuery for BorrowAll<&mut T>
 where
     T: ?Sized + 'static,
 {
-    type Query = QueryBorrowAll<Write<T>>;
+    type Query = BorrowAll<Write<T>>;
 }
 
-impl<T> DefaultQuery for QueryBorrowAll<&mut T>
+impl<T> DefaultQuery for BorrowAll<&mut T>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
-    fn default_query() -> QueryBorrowAll<Write<T>> {
-        QueryBorrowAll(Write)
+    fn default_query() -> BorrowAll<Write<T>> {
+        BorrowAll(Write)
     }
 }
 
-impl<T> AsQuery for QueryBorrowAll<Write<T>>
+impl<T> AsQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
     type Query = Self;
 }
 
-impl<T> IntoQuery for QueryBorrowAll<Write<T>>
+impl<T> IntoQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -503,27 +503,27 @@ where
     }
 }
 
-impl<T> DefaultQuery for QueryBorrowAll<Write<T>>
+impl<T> DefaultQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
     #[inline(always)]
     fn default_query() -> Self {
-        QueryBorrowAll(Write)
+        BorrowAll(Write)
     }
 }
 
-impl<T> QueryArg for QueryBorrowAll<Write<T>>
+impl<T> QueryArg for BorrowAll<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
     #[inline(always)]
     fn new() -> Self {
-        QueryBorrowAll(Write)
+        BorrowAll(Write)
     }
 }
 
-unsafe impl<T> Query for QueryBorrowAll<Write<T>>
+unsafe impl<T> Query for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
@@ -599,4 +599,4 @@ where
     }
 }
 
-unsafe impl<T> SendQuery for QueryBorrowAll<Write<T>> where T: Send + ?Sized + 'static {}
+unsafe impl<T> SendQuery for BorrowAll<Write<T>> where T: Send + ?Sized + 'static {}

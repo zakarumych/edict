@@ -6,6 +6,8 @@ use core::{
     task::{Context, Poll},
 };
 
+use alloc::boxed::Box;
+
 use crate::{world::WorldLocal, NoSuchEntity};
 
 use super::{BadContext, BadFlowClosure, Entity, Flow, IntoFlow};

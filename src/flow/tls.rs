@@ -1,60 +1,24 @@
 //! Provides a thread-local storage for the current world pointer.
 
-use core::{cell::Cell, marker::PhantomData, ptr::NonNull};
+use core::{marker::PhantomData, ptr::NonNull};
 
 use crate::{entity::EntityId, world::WorldLocal};
 
-#[cfg(feature = "std")]
-std::thread_local! {
-    static WORLD_TLS: Cell<Option<NonNull<WorldLocal>>> = const { Cell::new(None) };
-    static ENTITY_TLS: Cell<Option<EntityId>> = const { Cell::new(None) };
-}
-
-#[cfg(feature = "std")]
-fn set_edict_flow_world_tls(world: NonNull<WorldLocal>) -> Option<NonNull<WorldLocal>> {
-    WORLD_TLS.with(|tls| tls.replace(Some(world)))
-}
-
-#[cfg(feature = "std")]
-fn get_edict_flow_world_tls() -> Option<NonNull<WorldLocal>> {
-    WORLD_TLS.with(|tls| tls.get())
-}
-
-#[cfg(feature = "std")]
-fn reset_edict_flow_world_tls(prev: Option<NonNull<WorldLocal>>, world: NonNull<WorldLocal>) {
-    WORLD_TLS.with(|tls| {
-        assert_eq!(tls.get(), Some(world));
-        tls.set(prev)
-    });
-}
-
-#[cfg(feature = "std")]
-fn set_edict_flow_entity_tls(entity: EntityId) -> Option<EntityId> {
-    ENTITY_TLS.with(|tls| tls.replace(Some(entity)))
-}
-
-#[cfg(feature = "std")]
-fn get_edict_flow_entity_tls() -> Option<EntityId> {
-    ENTITY_TLS.with(|tls| tls.get())
-}
-
-#[cfg(feature = "std")]
-fn reset_edict_flow_entity_tls(prev: Option<EntityId>, entity: EntityId) {
-    ENTITY_TLS.with(|tls| {
-        assert_eq!(tls.get(), Some(entity));
-        tls.set(prev)
-    });
-}
-
 #[cfg(not(feature = "std"))]
 extern "C" {
-    fn set_edict_flow_world_tls(world: NonNull<WorldLocal>);
-    fn get_edict_flow_world_tls() -> Option<NonNull<WorldLocal>>;
-    fn reset_edict_flow_world_tls(prev: Option<NonNull<WorldLocal>>, world: NonNull<WorldLocal>);
+    fn edict_set_flow_world_tls(world: NonNull<u8>) -> Option<NonNull<u8>>;
+    fn edict_get_flow_world_tls() -> Option<NonNull<u8>>;
+    fn edict_reset_flow_world_tls(prev: Option<NonNull<u8>>, world: NonNull<u8>);
 
-    fn set_edict_flow_entity_tls(entity: EntityId);
-    fn get_edict_flow_entity_tls() -> Option<EntityId>;
-    fn reset_edict_flow_entity_tls(prev: Option<EntityId>, entity: EntityId);
+    fn edict_set_flow_entity_tls(entity: EntityId) -> Option<EntityId>;
+    fn edict_get_flow_entity_tls() -> Option<EntityId>;
+    fn edict_reset_flow_entity_tls(prev: Option<EntityId>, entity: EntityId);
+}
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    static WORLD_TLS: std::cell::Cell<Option<NonNull<WorldLocal>>> = const { std::cell::Cell::new(None) };
+    static ENTITY_TLS: std::cell::Cell<Option<EntityId>> = const { std::cell::Cell::new(None) };
 }
 
 /// Guard for setting and resetting the current world pointer.
@@ -69,7 +33,13 @@ impl<'a> WorldGuard<'a> {
     /// Keeps previous pointer and resets it back on drop.
     pub fn new(world: &'a mut WorldLocal) -> Self {
         let this = NonNull::from(world);
-        let prev = set_edict_flow_world_tls(this);
+
+        #[cfg(feature = "std")]
+        let prev = WORLD_TLS.with(|cell| cell.replace(Some(this)));
+
+        #[cfg(not(feature = "std"))]
+        let prev = unsafe { edict_set_flow_world_tls(this.cast()).map(NonNull::cast) };
+
         WorldGuard {
             this,
             prev,
@@ -80,7 +50,16 @@ impl<'a> WorldGuard<'a> {
 
 impl Drop for WorldGuard<'_> {
     fn drop(&mut self) {
-        reset_edict_flow_world_tls(self.prev, self.this);
+        #[cfg(feature = "std")]
+        WORLD_TLS.with(|cell| {
+            let top = cell.replace(self.prev);
+            debug_assert_eq!(top, Some(self.this));
+        });
+
+        #[cfg(not(feature = "std"))]
+        unsafe {
+            edict_reset_flow_world_tls(self.prev.map(NonNull::cast), self.this.cast());
+        }
     }
 }
 
@@ -94,7 +73,13 @@ impl Drop for WorldGuard<'_> {
 /// The caller is responsible to ensure that the reference
 /// is not used after current `Guard` is dropped.
 pub(super) unsafe fn get_world_ref<'a>() -> &'a WorldLocal {
-    get_edict_flow_world_tls().unwrap_unchecked().as_ref()
+    #[cfg(feature = "std")]
+    let world = WORLD_TLS.with(|cell| cell.get());
+
+    #[cfg(not(feature = "std"))]
+    let world = edict_get_flow_world_tls().map(NonNull::cast);
+
+    world.unwrap_unchecked().as_ref()
 }
 
 /// Returns the current world reference.
@@ -107,7 +92,13 @@ pub(super) unsafe fn get_world_ref<'a>() -> &'a WorldLocal {
 /// The caller is responsible to ensure that the reference
 /// is not used after current `Guard` is dropped.
 pub(super) unsafe fn get_world_mut<'a>() -> &'a mut WorldLocal {
-    get_edict_flow_world_tls().unwrap_unchecked().as_mut()
+    #[cfg(feature = "std")]
+    let world = WORLD_TLS.with(|cell| cell.get());
+
+    #[cfg(not(feature = "std"))]
+    let world = edict_get_flow_world_tls().map(NonNull::cast);
+
+    world.unwrap_unchecked().as_mut()
 }
 
 /// Guard for setting and resetting the current world pointer.
@@ -120,14 +111,27 @@ impl EntityGuard {
     /// Sets the current world pointer.
     /// Keeps previous pointer and resets it back on drop.
     pub fn new(entity: EntityId) -> Self {
-        let prev = set_edict_flow_entity_tls(entity);
+        #[cfg(feature = "std")]
+        let prev = ENTITY_TLS.with(|cell| cell.replace(Some(entity)));
+
+        #[cfg(not(feature = "std"))]
+        let prev = unsafe { edict_set_flow_entity_tls(entity) };
         EntityGuard { entity, prev }
     }
 }
 
 impl Drop for EntityGuard {
     fn drop(&mut self) {
-        reset_edict_flow_entity_tls(self.prev, self.entity);
+        #[cfg(feature = "std")]
+        ENTITY_TLS.with(|cell| {
+            let top = cell.replace(self.prev);
+            debug_assert_eq!(top, Some(self.entity));
+        });
+
+        #[cfg(not(feature = "std"))]
+        unsafe {
+            edict_reset_flow_entity_tls(self.prev, self.entity);
+        }
     }
 }
 
@@ -141,5 +145,11 @@ impl Drop for EntityGuard {
 /// The caller is responsible to ensure that the reference
 /// is not used after current `Guard` is dropped.
 pub(super) fn get_entity() -> Option<EntityId> {
-    get_edict_flow_entity_tls()
+    #[cfg(feature = "std")]
+    let entity = ENTITY_TLS.with(|cell| cell.get());
+
+    #[cfg(not(feature = "std"))]
+    let entity = unsafe { edict_get_flow_entity_tls() };
+
+    entity
 }

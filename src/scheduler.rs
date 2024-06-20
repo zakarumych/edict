@@ -17,8 +17,6 @@
 //!     to observe modifications made by writing system that was added before.
 //!
 
-#![allow(missing_docs)]
-
 use alloc::{boxed::Box, collections::VecDeque, sync::Arc, vec::Vec};
 use core::{
     cell::UnsafeCell,
@@ -27,18 +25,67 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use std::thread::Thread;
-
 use hashbrown::HashSet;
+
+#[repr(transparent)]
+pub struct Thread {
+    #[cfg(feature = "std")]
+    thread: std::thread::Thread,
+
+    #[cfg(not(feature = "std"))]
+    thread: *mut u8,
+}
+
+unsafe impl Send for Thread {}
+unsafe impl Sync for Thread {}
+
+#[cfg(not(feature = "std"))]
+extern "C" {
+    fn edict_current_thread() -> *mut u8;
+    fn edict_park_thread();
+    fn edict_unpark_thread(thread: *mut u8);
+}
+
+impl Thread {
+    pub fn unpark(&self) {
+        #[cfg(feature = "std")]
+        self.thread.unpark();
+
+        #[cfg(not(feature = "std"))]
+        unsafe {
+            edict_unpark_thread(self.thread);
+        }
+    }
+
+    pub fn current() -> Self {
+        #[cfg(feature = "std")]
+        let thread = std::thread::current();
+
+        #[cfg(not(feature = "std"))]
+        let thread = unsafe { edict_current_thread() };
+
+        Thread { thread }
+    }
+
+    pub fn park() {
+        #[cfg(feature = "std")]
+        std::thread::park();
+
+        #[cfg(not(feature = "std"))]
+        unsafe {
+            edict_park_thread();
+        }
+    }
+}
+
 use parking_lot::Mutex;
 
 use crate::{
-    action::ActionBuffer,
-    executor::ScopedExecutor,
-    system::{ActionBufferQueue, IntoSystem, System},
+    system::{IntoSystem, System},
     world::World,
-    Access,
 };
+
+use crate::{action::ActionBuffer, executor::ScopedExecutor, system::ActionBufferQueue, Access};
 
 /// Scheduler that starts systems in order of their registration.
 /// And executes as many non-conflicting systems in parallel as possible.
@@ -106,18 +153,15 @@ struct ScheduledSystem {
     is_local: bool,
 }
 
-#[cfg(feature = "std")]
 struct QueueInner<T> {
     items: Mutex<VecDeque<T>>,
     thread: Thread,
 }
 
-#[cfg(feature = "std")]
 struct Queue<T> {
     inner: Arc<QueueInner<T>>,
 }
 
-#[cfg(feature = "std")]
 impl<T> Clone for Queue<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -127,7 +171,6 @@ impl<T> Clone for Queue<T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T> Drop for Queue<T> {
     #[inline(always)]
     fn drop(&mut self) {
@@ -137,14 +180,13 @@ impl<T> Drop for Queue<T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T> Queue<T> {
     #[inline(always)]
     fn new() -> Self {
         Queue {
             inner: Arc::new(QueueInner {
                 items: Mutex::new(VecDeque::new()),
-                thread: std::thread::current(),
+                thread: Thread::current(),
             }),
         }
     }
@@ -169,12 +211,11 @@ impl<T> Queue<T> {
             if Arc::strong_count(&self.inner) == 1 {
                 return Err(());
             }
-            std::thread::park();
+            Thread::park();
         }
     }
 }
 
-#[cfg(feature = "std")]
 impl ActionBufferQueue for Queue<ActionBuffer> {
     #[inline(always)]
     fn get<'a>(&self) -> ActionBuffer {
@@ -299,7 +340,6 @@ impl Scheduler {
     }
 
     #[cfg(feature = "rayon")]
-    #[cfg(feature = "std")]
     pub fn run_rayon(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         let buffers = rayon::in_place_scope(|scope| self.run_with(world, scope));
@@ -328,7 +368,6 @@ impl Scheduler {
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
     #[must_use]
-    #[cfg(feature = "std")]
     pub fn run_with<'scope, 'later: 'scope>(
         &'later mut self,
         world: &'scope mut World,
@@ -493,8 +532,15 @@ impl Scheduler {
     }
 }
 
+fn conflicts(lhs: Option<Access>, rhs: Option<Access>) -> bool {
+    matches!(
+        (lhs, rhs),
+        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write))
+    )
+}
+
+#[cfg(test)]
 mod test {
-    #![cfg(test)]
 
     use super::*;
 
@@ -510,16 +556,8 @@ mod test {
         let mut scheduler = Scheduler::new();
         scheduler.add_system(|mut q: State<i32>| {
             *q = 11;
-            println!("{}", *q);
         });
 
         scheduler.run_sequential(&mut world);
     }
-}
-
-fn conflicts(lhs: Option<Access>, rhs: Option<Access>) -> bool {
-    matches!(
-        (lhs, rhs),
-        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write))
-    )
 }

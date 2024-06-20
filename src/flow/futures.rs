@@ -102,7 +102,7 @@ pub async fn wait_despawned(mut entity: Entity<'_>) {
     // If this is entity flow and this is the entity we're waiting for,
     // flow is cancelled anyway when this condition is met.
     if super::flow_entity() == Some(entity.id()) {
-        let _: Never = std::future::pending().await;
+        let _: Never = core::future::pending().await;
     }
 
     entity

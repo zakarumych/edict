@@ -310,7 +310,7 @@ impl Flows {
     ) -> Option<tls::WorldGuard<'a>> {
         let world = world.local();
 
-        std::mem::swap(&mut self.new_flows, &mut world.new_flows);
+        core::mem::swap(&mut self.new_flows, &mut world.new_flows);
 
         let guard = tls::WorldGuard::new(world);
 

@@ -1,8 +1,6 @@
 //! Built-in scheduling for systems.
 //!
-//! Users are free to use their own scheduling.
-//!
-//! Built-in [`Scheduler`] has following properties:
+//! [`Scheduler`] has following properties:
 //! * Separates execution of conflicting systems temporally.
 //! * Executes non-conflicting systems in parallel on available worker threads.
 //! * Conflicting systems are executed in order of their registration.
@@ -125,7 +123,7 @@ use crate::nostd::scheduler::{edict_current_thread, edict_park_thread, edict_unp
 /// # Example
 ///
 /// ```
-/// # use edict::{world::{World, Res}, scheduler::Scheduler, system::IntoSystem};
+/// # use edict::{world::World, resources::Res, scheduler::Scheduler, system::IntoSystem};
 ///
 /// let mut world = World::new();
 /// let mut scheduler = Scheduler::new();

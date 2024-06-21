@@ -1,9 +1,9 @@
 //! Self-contained ECS [`World`].
 //!
 //! There's 3 kinds of `World`s which are wrap one another:
-//! `World`         - non-shareable world that is pinned to a thread where it is accessed.
-//! `WorldShare`    - shareable world. Derefs to `World`.
-//! `WorldLocal`    - World that is guaranteed to be on the main thread. Derefs for `World`.
+//! * [`World`]         - non-shareable world that is pinned to a thread where it is accessed.
+//! * [`WorldShare`]    - shareable world. Derefs to `World`.
+//! * [`WorldLocal`]    - World that is known to be on the "main" thread. Derefs for `World`.
 //!
 
 use alloc::{vec, vec::Vec};
@@ -26,8 +26,6 @@ use crate::{
     resources::Resources,
     type_id, NoSuchEntity,
 };
-
-pub use crate::resources::{Res, ResMut};
 
 use self::edges::Edges;
 

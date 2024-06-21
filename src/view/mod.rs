@@ -1,7 +1,10 @@
 //! A view over [`World`] that may be used to access specific components.
 //!
 //! The world can be seen as a table. Then entities would be rows and components would be columns.
-//! Then [`View`] is a columnar slice of the table with filtering.
+//! And [`View`] is a columnar slice of the table with filtering.
+//!
+//! [`View`] are parameterized with a query and a filter to select entities and fetch data from them.
+//!
 
 use crate::{
     archetype::{chunk_idx, Archetype},

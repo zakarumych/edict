@@ -1,6 +1,6 @@
 //! This module defines [`Bundle`], [`ComponentBundle`], [`DynamicBundle`] and [`DynamicComponentBundle`] traits.
 //!
-//! Tuples of up to 26 elements implement [`Bundle`] and [`DynamicBundle`] if all elements are `'static`.
+//! Tuples of up to 16 elements implement [`Bundle`] and [`DynamicBundle`] if all elements are `'static`.
 //! They additionally implement [`ComponentBundle`] and [`DynamicComponentBundle`] if all elements implement [`Component`].
 //!
 //! Bundles can be used to spawn entities with a set of components or insert multiple components at once.

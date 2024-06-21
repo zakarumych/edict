@@ -233,6 +233,7 @@
 //! [`EntityRef`]: crate::entity::EntityRef
 //! [`EntityRef::spawn_flow`]: crate::entity::EntityRef::spawn_flow
 //! [`flow`]: crate::flow
+//! [`flow_fn!`]: crate::flow::flow_fn
 //! [`Flows`]: crate::flow::Flows
 //! [`Flows::execute`]: crate::flow::Flows::execute
 //! [`FnArg`]: crate::system::FnArg
@@ -243,8 +244,8 @@
 //! [`Modified`]: crate::query::Modified
 //! [`Query`]: crate::query::Query
 //! [`Relation`]: crate::relation::Relation
-//! [`Res`]: crate::world::Res
-//! [`ResMut`]: crate::world::ResMut
+//! [`Res`]: crate::resources::Res
+//! [`ResMut`]: crate::resources::ResMut
 //! [`ResNoSync`]: crate::system::ResNoSync
 //! [`ResMutNoSend`]: crate::system::ResMutNoSend
 //! [`Scheduler`]: crate::scheduler::Scheduler
@@ -458,7 +459,6 @@ macro_rules! marker_type {
 }
 
 mod hash;
-mod resources;
 
 pub mod action;
 pub mod archetype;
@@ -470,6 +470,7 @@ pub mod epoch;
 pub mod executor;
 pub mod query;
 pub mod relation;
+pub mod resources;
 pub mod system;
 pub mod view;
 pub mod world;

@@ -1,38 +1,27 @@
 //! Queries are used to fetch data from the [`World`].
 //!
-//! Basic query types are `&T`, `&mut T`, and `Entities`.
-//! `&T` fetches component `T` for reading. It yields `&T`, so it also
-//! filters out entities that don't have component `T`.
-//! `&mut T` fetches component `T` for writing. And filters same way as `&T`.
-//! `Entities` fetches [`EntityId`]s. All entities have an ID,
-//! so it doesn't filter anything.
+//! Queries implement [`Query`] trait and are passed into methods by value.
 //!
-//! Queries are divided into two categories: stateful and stateless.
+//! For convenience, `AsQuery` and `IntoQuery` traits are implemented for some types
+//! to be used instead of queries in generic parameters.
+//! For example [`Read<T>`] is a query to fetch `T` for reading, but `&T` implements [`AsQuery`]
 //!
-//! Stateful queries implement `Query` trait and are passed into methods by value.
-//! Some of them have `DefaultQuery` implementation, and can be used in methods
-//! that do not accept query as an argument and only as a type parameter.
+//! [`IntoQuery`] extends this to add conversion from type to a query carrying the state.
+//! This trait is used extensively in the API to pass query by value.
 //!
-//! Stateless queries implement `PhantomQuery` trait, and `PhantomData<Q>`
-//! is stateful counterpart for stateless query `Q`.
-//!
-//! All basic queries are stateless.
-//! Advanced queries like `Modified` - that filter entities based on
-//! component modification - and `RelatedTo` - that filter entities based on
-//! entity relation - are stateful.
+//! Stateless queries and some stateful queries with default state implement [`DefaultQuery`].
+//! This trait is used extensively in the API to specify query type.
 //!
 //! Queries can be combined into tuples producing a new query that yields
 //! a tuple of items from the original queries and filtering out entities
 //! that don't satisfy all queries.
 //!
-//! TODO: Derive impl for structures with named fields.
-//!
-//!
-//! Queries can be used with [`World`] to produce a [`View`].
+//! Query can be used with [`World`] to produce a [`View`] parameterized with the query.
 //! A [`View`] can be iterated to visit all matching entities and fetch
 //! data from them.
 //! [`View`] can also be indexed with [`Entity`] to fetch data from
 //! a specific entity.
+//! [`View`]s can also be used as function-system arguments.
 //!
 //! [`World`]: crate::world::World
 //! [`View`]: crate::view::View

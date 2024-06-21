@@ -23,7 +23,7 @@ use super::{FnArg, FnArgState};
 /// which is automatically initialized with [`Default`]
 /// on first access.
 ///
-/// [`ResMut`]: crate::world::ResMut
+/// [`ResMut`]: crate::resources::ResMut
 /// [`System`]: crate::system::System
 #[repr(transparent)]
 pub struct State<'a, T> {

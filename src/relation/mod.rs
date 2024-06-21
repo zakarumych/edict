@@ -1,10 +1,6 @@
-//! [`Relation`] is a concept that is similar to [`Component`].
-//! The main difference is that they are not components, but rather relations.
+//! [`Relation`] is like [`Component`] but they are bound to a pair of entities.
 //!
-//! [`Component`] is data that can be attached to individual entity
-//! and [`Relation`] is data that connects two entities together.
-//!
-//! [`Component`]: ../component/trait.Component.html
+//! [`Component`]: crate::component::Component
 
 use alloc::{vec, vec::Vec};
 use core::{marker::PhantomData, mem::ManuallyDrop};

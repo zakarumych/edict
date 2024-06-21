@@ -1,15 +1,5 @@
-//! Provides `Resources` - a type-map for singleton type values called "resources".
 //!
-//! `Resources` supports both `Send`, `Sync` and also `!Send`, `!Sync` resource types.
-//! To be sound `Resources` intentionally does not implement `Send`. The thread where `Resources` is created is considered "main" thread,
-//! but it doesn't have to be main thread of the process.
-//!
-//! `Resources` is still usable in multithreaded programs as it implements `Sync`
-//! and uses type bounds on API to ensure that immutable reference to `!Sync`
-//! and mutable references to `!Send` types is not obtainable from outside "main" thread.
-//!
-//! Internally `Resources` acts as collection of thread-safe `RefCell`s, so an attempt to fetch mutable reference
-//! to the same value twice or mutable and immutable references at the same time is prohibited and cause panics.
+//! Resources are singleton values that can be fetched from the [`World`](crate::world::World).
 //!
 
 use alloc::boxed::Box;
@@ -27,7 +17,20 @@ use hashbrown::HashMap;
 
 use crate::type_id;
 
-/// Function-system argument to fetch resource immutably.
+/// Resource borrowed immutably.
+/// Derefs to the resource type.
+///
+/// # Example
+///
+/// ```
+/// # use edict::{world::World, resources::Res};
+///
+/// let mut world = World::new();
+///
+/// world.insert_resource(42i32);
+/// let value: Res<i32> = world.expect_resource();
+/// assert_eq!(42, *value);
+/// ```
 #[repr(transparent)]
 #[derive(Clone)]
 pub struct Res<'a, T: ?Sized> {
@@ -131,7 +134,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use edict::world::{World, Res};
+    /// # use edict::{world::World, resources::Res};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///
@@ -145,7 +148,7 @@ where
     /// ```
     ///
     /// ```should_panic
-    /// # use edict::world::{World, Res};
+    /// # use edict::{world::World, resources::Res};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///
@@ -163,7 +166,20 @@ where
     }
 }
 
-/// Function-system argument to fetch resource mutably.
+/// Resource borrowed mutably.
+/// Derefs to the resource type.
+///
+/// # Example
+///
+/// ```
+/// # use edict::{world::World, resources::ResMut};
+///
+/// let mut world = World::new();
+///
+/// world.insert_resource(42i32);
+/// let mut value: ResMut<i32> = world.expect_resource_mut();
+/// *value = 11;
+/// ```
 pub struct ResMut<'a, T: ?Sized> {
     inner: RefMut<'a, T>,
 }
@@ -295,7 +311,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use edict::world::{World, ResMut};
+    /// # use edict::{world::World, resources::ResMut};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///
@@ -306,7 +322,7 @@ where
     /// ```
     ///
     /// ```should_panic
-    /// # use edict::world::{World, ResMut};
+    /// # use edict::{world::World, resources::ResMut};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///
@@ -344,7 +360,7 @@ impl Debug for Resource {
 unsafe impl Sync for Resource {}
 
 /// Type-erased container for singleton resources.
-pub struct Resources {
+pub(crate) struct Resources {
     resources: HashMap<TypeId, Resource>,
 }
 

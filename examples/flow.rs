@@ -5,9 +5,10 @@ use edict::{
     component::Component,
     flow::{flow_fn, Entity, Flows},
     query::Entities,
+    resources::Res,
     scheduler::Scheduler,
     view::View,
-    world::{Res, World},
+    world::World,
 };
 use smallvec::SmallVec;
 

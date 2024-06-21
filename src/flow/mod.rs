@@ -1,17 +1,16 @@
 //! Flow module provides API to create high-level async workflows on top of the Edict ECS.
 //!
-//! Typical example would be a flow that causes an entity to move towards a target.
-//! It is resolved when the entity reaches the target or target is destroyed.
-//!
-//! Spawning a flow also returns a handle that can be used to await or cancel the flow.
-//! Spawned flow wraps flow result in a `Result` type where `Err` signals that the flow was cancelled.
-//! Flows are canceled when handle is dropped or entity is despawned.
+//! A typical use case for flows is to implement game logic where unit moves to a target.
+//! An async function can be constructed that causes the unit to move to the target position
+//! and resolves when the unit reaches the target or the target is unreachable.
 //!
 //! # Example
 //!
 //! ```ignore
 //! unit.move_to(target).await
 //! ```
+//!
+//! See the "flow" example for a demonstration.
 //!
 
 // There's one possibility to end up with `flow::World` or `flow::Entity` on different thread

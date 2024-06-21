@@ -319,7 +319,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::world::{World, ResMut};
+    /// # use edict::{world::World, resources::ResMut};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///

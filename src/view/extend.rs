@@ -4,8 +4,8 @@ use crate::{
     entity::Entity,
     epoch::EpochId,
     query::{
-        AsQuery, Modified, Not, Query, BorrowAll, BorrowAny, BorrowOne, Read,
-        SendQuery, With, Without, Write,
+        AsQuery, BorrowAll, BorrowAny, BorrowOne, Modified, Not, Query, Read, SendQuery, With,
+        Without, Write,
     },
     relation::{
         ExclusiveRelation, FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related,
@@ -126,9 +126,7 @@ where
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
     #[inline(always)]
-    pub fn borrow_any_mut<T>(
-        self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B>
+    pub fn borrow_any_mut<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B>
     where
         T: Send + ?Sized + 'static,
     {

@@ -129,15 +129,19 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchWith<'a, T> {
-        let component = unsafe{ archetype.component(type_id::<T>()).unwrap_unchecked() };
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         let data = unsafe { component.data() };
 
         debug_assert!(data.epoch.after(self.after_epoch));
 
         ModifiedFetchWith {
             after_epoch: self.after_epoch,
-            entity_epochs: unsafe{ NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) },
-            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId) },
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId)
+            },
             marker: PhantomData,
         }
     }

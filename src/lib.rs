@@ -260,8 +260,8 @@
 //! [`World::spawn_flow_for`]: crate::world::World::spawn_flow_for
 //! [`WorldBuilder`]: crate::world::WorldBuilder
 //! [`WorldLocal`]: crate::world::WorldLocal
-//! [`WorldShare`]: crate::world::WorldShare
 //! [`WorldLocal::defer*`]: crate::world::WorldLocal::defer
+//! [`WorldShare`]: crate::world::WorldShare
 //!
 
 #![cfg_attr(not(feature = "std"), no_std)]

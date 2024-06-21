@@ -34,16 +34,16 @@ where
 
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        &mut *self.ptr.as_ptr().add(idx as usize)
+        unsafe { &mut *self.ptr.as_ptr().add(idx as usize) }
     }
 }
 
@@ -141,16 +141,16 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchWrite<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         debug_assert_eq!(component.id(), type_id::<T>());
 
-        let data = component.data_mut();
+        let data = unsafe { component.data_mut() };
         data.epoch.bump(epoch);
 
         FetchWrite {
             ptr: data.ptr.cast(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
+            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
             epoch,
             marker: PhantomData,
         }

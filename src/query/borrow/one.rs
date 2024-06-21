@@ -66,10 +66,12 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
-        (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
-            self.marker,
-        )
+        unsafe {
+            (self.borrow_fn)(
+                NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
+                self.marker,
+            )
+        }
     }
 }
 
@@ -136,7 +138,7 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchBorrowOneRead<'a, T> {
-        let component = archetype.component(self.ty).unwrap_unchecked();
+        let component = unsafe { archetype.component(self.ty).unwrap_unchecked() };
 
         let cb = component
             .borrows()
@@ -144,7 +146,7 @@ where
             .find(|&cb| cb.target() == type_id::<T>())
             .unwrap();
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         FetchBorrowOneRead {
             ptr: data.ptr,
@@ -190,19 +192,21 @@ where
 
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        let chunk_version = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
+        let chunk_version = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_version.bump(self.epoch);
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
-        let entity_version = &mut *self.entity_epochs.as_ptr().add(idx as usize);
+        let entity_version = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_version.bump(self.epoch);
 
-        (self.borrow_fn)(
-            NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
-            self.marker,
-        )
+        unsafe {
+            (self.borrow_fn)(
+                NonNull::new_unchecked(self.ptr.as_ptr().add(idx as usize * self.size)),
+                self.marker,
+            )
+        }
     }
 }
 
@@ -269,7 +273,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchBorrowOneWrite<'a, T> {
-        let component = archetype.component(self.ty).unwrap_unchecked();
+        let component = unsafe { archetype.component(self.ty).unwrap_unchecked() };
 
         let cb = component
             .borrows()
@@ -279,16 +283,16 @@ where
 
         assert!(cb.borrow_mut::<T>().is_some());
 
-        let data = component.data_mut();
+        let data = unsafe { component.data_mut() };
 
         data.epoch.bump(epoch);
 
         FetchBorrowOneWrite {
             ptr: data.ptr,
             size: component.layout().size(),
-            borrow_fn: cb.borrow_mut().unwrap_unchecked(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+            borrow_fn: unsafe { cb.borrow_mut().unwrap_unchecked() },
+            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
+            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
             epoch,
             marker: PhantomData::<&mut T>,
         }

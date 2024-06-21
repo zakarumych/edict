@@ -361,6 +361,10 @@ impl ComponentBorrow {
 /// [`World::spawn_external`]: edict::world::World::spawn_external
 /// [`World::insert_external`]: edict::world::World::insert_external
 /// [`World::insert_external_bundle`]: edict::world::World::insert_external_bundle
+#[diagnostic::on_unimplemented(
+    label = "Implementation of `Component` is required here",
+    note = "`Component` can be derived with `#[derive(Component)]`"
+)]
 pub trait Component: Sized + 'static {
     /// Returns name of the component type.
     #[inline(always)]
@@ -468,31 +472,37 @@ impl ComponentInfo {
         }
     }
 
+    /// Returns component's `TypeId`.
     #[inline(always)]
     pub fn id(&self) -> TypeId {
         self.ty
     }
 
+    /// Returns component's memory layout.
     #[inline(always)]
     pub fn layout(&self) -> Layout {
         self.layout
     }
 
+    /// Returns component's name.
     #[inline(always)]
     pub fn name(&self) -> &'static str {
         self.name
     }
 
+    /// Returns list of borrows supported by the component.
     #[inline(always)]
     pub fn borrows(&self) -> &[ComponentBorrow] {
         &self.borrows
     }
 
+    /// Returns `true` if specified type can be borrowed from this component.
     #[inline(always)]
     pub fn has_borrow(&self, ty: TypeId) -> bool {
         self.borrows.iter().any(|b| b.target() == ty)
     }
 
+    /// Returns `true` if specified type can be mutably borrowed from this component.
     #[inline(always)]
     pub fn has_borrow_mut(&self, ty: TypeId) -> bool {
         self.borrows

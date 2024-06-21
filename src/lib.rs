@@ -264,8 +264,8 @@
 //!
 
 #![cfg_attr(not(feature = "std"), no_std)]
-// #![deny(missing_docs)]
-// #![deny(unsafe_op_in_unsafe_fn)]
+#![deny(missing_docs)]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_must_use)]
 #![allow(unused_unsafe)]
 

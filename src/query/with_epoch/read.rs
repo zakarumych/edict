@@ -38,8 +38,8 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a T, EpochId) {
-        let epoch = *self.epochs.as_ptr().add(idx as usize);
-        let item = &*self.ptr.as_ptr().add(idx as usize);
+        let epoch = unsafe { *self.epochs.as_ptr().add(idx as usize) };
+        let item = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         (item, epoch)
     }
 }
@@ -116,7 +116,9 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        self.0.access_archetype(archetype, f);
+        unsafe {
+            self.0.access_archetype(archetype, f);
+        }
     }
 
     #[inline(always)]
@@ -126,14 +128,14 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> WithEpochFetchRead<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         debug_assert_eq!(component.id(), type_id::<T>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         WithEpochFetchRead {
             ptr: data.ptr.cast(),
-            epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
+            epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) },
             marker: PhantomData,
         }
     }

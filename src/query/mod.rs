@@ -56,7 +56,7 @@ pub use self::{
         BorrowAll, BorrowAny, BorrowOne, FetchBorrowAllRead, FetchBorrowAnyRead,
         FetchBorrowAnyWrite, FetchBorrowOneRead, FetchBorrowOneWrite,
     },
-    copied::{Cpy, FetchCopied},
+    copied::{Cpy, FetchCpy},
     entities::{Entities, EntitiesFetch},
     fetch::{Fetch, UnitFetch, VerifyFetch},
     filter::{FilteredFetch, Not, With, Without},
@@ -86,6 +86,10 @@ mod with_epoch;
 mod write;
 
 /// Types associated with a query type.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a query type",
+    note = "If `{Self}` is a component type, use `&{Self}` or `&mut {Self}` instead"
+)]
 pub trait AsQuery {
     /// Associated query type.
     type Query: Query;
@@ -102,6 +106,7 @@ pub unsafe trait IntoSendQuery: IntoQuery + AsSendQuery {}
 unsafe impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
 
 /// Types associated with default-constructible query type.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not a stateless query type")]
 pub trait DefaultQuery: AsQuery {
     /// Returns default query instance.
     fn default_query() -> Self::Query;
@@ -213,6 +218,7 @@ pub unsafe trait ImmutableQuery: Query {
 /// Query that can be used from non-main thread.
 pub unsafe trait SendQuery: Query {}
 
+/// Query that does not mutate any components and can be used from non-main thread.
 pub unsafe trait SendImmutableQuery: SendQuery + ImmutableQuery {}
 unsafe impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
 

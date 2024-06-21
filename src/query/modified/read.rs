@@ -43,19 +43,19 @@ where
 
     #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
-        let chunk_epoch = *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
+        let chunk_epoch = unsafe { *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.after(self.after_epoch)
     }
 
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        let epoch = *self.entity_epochs.as_ptr().add(idx as usize);
+        let epoch = unsafe { *self.entity_epochs.as_ptr().add(idx as usize) };
         epoch.after(self.after_epoch)
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
-        &*self.ptr.as_ptr().add(idx as usize)
+        unsafe { &*self.ptr.as_ptr().add(idx as usize) }
     }
 }
 
@@ -123,7 +123,7 @@ where
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), type_id::<T>());
-                let data = component.data();
+                let data = unsafe { component.data() };
                 data.epoch.after(self.after_epoch)
             },
         }
@@ -141,16 +141,20 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> ModifiedFetchRead<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
-        let data = component.data();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data() };
 
         debug_assert!(data.epoch.after(self.after_epoch));
 
         ModifiedFetchRead {
             after_epoch: self.after_epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
-            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId),
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId)
+            },
             marker: PhantomData,
         }
     }
@@ -223,7 +227,7 @@ where
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), type_id::<T>());
-                let data = component.data();
+                let data = unsafe { component.data() };
                 data.epoch.after(self.after_epoch)
             },
         }
@@ -235,7 +239,7 @@ where
             debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
             debug_assert_eq!(component.id(), type_id::<T>());
-            let data = component.data();
+            let data = unsafe { component.data() };
             if data.epoch.after(self.after_epoch) {
                 f(type_id::<T>(), Access::Read)
             }
@@ -252,17 +256,19 @@ where
         match archetype.component(type_id::<T>()) {
             None => None,
             Some(component) => {
-                let data = component.data();
+                let data = unsafe { component.data() };
 
                 debug_assert!(data.epoch.after(self.after_epoch));
 
                 Some(ModifiedFetchRead {
                     after_epoch: self.after_epoch,
                     ptr: data.ptr.cast(),
-                    entity_epochs: NonNull::new_unchecked(
-                        data.entity_epochs.as_ptr() as *mut EpochId
-                    ),
-                    chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId),
+                    entity_epochs: unsafe {
+                        NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+                    },
+                    chunk_epochs: unsafe {
+                        NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId)
+                    },
                     marker: PhantomData,
                 })
             }

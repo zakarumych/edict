@@ -194,7 +194,7 @@ pub struct World {
     action_channel: ActionChannel,
 
     #[cfg(feature = "flow")]
-    pub(crate) new_flows: crate::flow::NewFlows,
+    pub(crate) new_flows: UnsafeCell<crate::flow::NewFlows>,
 }
 
 impl Default for World {
@@ -314,12 +314,6 @@ impl World {
         WorldLocal::wrap_mut(self)
     }
 
-    /// Converts [`World`] into [`WorldLocal`].
-    #[inline(always)]
-    pub fn into_local(self) -> WorldLocal {
-        WorldLocal::wrap(self)
-    }
-
     /// Returns [`ActionSender`] instance bound to this [`World`].\
     /// [`ActionSender`] can be used to send actions to the [`World`] from
     /// other threads and async tasks.
@@ -407,6 +401,8 @@ impl World {
     }
 }
 
+/// Wrapper for [`World`] that can be shared between threads.
+/// User who intends to share [`World`] between threads should wrap it in [`WorldShare`].
 #[repr(transparent)]
 pub struct WorldShare {
     inner: World,
@@ -450,12 +446,14 @@ impl From<World> for WorldShare {
 }
 
 impl WorldShare {
+    /// Creates a new shareable [`World`] instance.
     pub fn new() -> Self {
         WorldShare {
             inner: World::new(),
         }
     }
 
+    /// Wraps [`World`] into [`WorldShare`].
     #[inline(always)]
     pub fn wrap(world: World) -> Self {
         WorldShare { inner: world }
@@ -540,17 +538,6 @@ impl Debug for WorldLocal {
 }
 
 impl WorldLocal {
-    pub fn new() -> Self {
-        WorldLocal {
-            inner: World::new(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn wrap(world: World) -> Self {
-        WorldLocal { inner: world }
-    }
-
     #[inline(always)]
     fn wrap_mut(world: &mut World) -> &mut Self {
         // Safety: #[repr(transparent)] allows this cast.

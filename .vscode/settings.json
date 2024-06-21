@@ -2,7 +2,9 @@
     "editor.formatOnSave": true,
     "rust-analyzer.cargo.noDefaultFeatures": true,
     "rust-analyzer.cargo.features": [
-        "scheduler"
+        "scheduler",
+        "flow",
+        "std"
     ],
     "cSpell.words": [
         "despawn",

@@ -281,8 +281,10 @@ where
                     size: component.layout().size(),
                     borrow_fn: component.borrows()[idx].borrow(),
                     borrow_mut_fn: None,
-                    entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-                    chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+                    entity_epochs: unsafe {
+                        NonNull::new_unchecked(data.entity_epochs.as_mut_ptr())
+                    },
+                    chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
                 }
             })
             .collect();
@@ -452,7 +454,7 @@ where
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         self.components.iter().for_each(|c| {
-            let chunk_epoch = &mut *c.chunk_epochs.as_ptr().add(chunk_idx as usize);
+            let chunk_epoch = unsafe { &mut *c.chunk_epochs.as_ptr().add(chunk_idx as usize) };
             chunk_epoch.bump(self.epoch);
         })
     }
@@ -585,8 +587,10 @@ where
                     size: component.layout().size(),
                     borrow_fn: component.borrows()[idx].borrow(),
                     borrow_mut_fn: component.borrows()[idx].borrow_mut(),
-                    entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-                    chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()),
+                    entity_epochs: unsafe {
+                        NonNull::new_unchecked(data.entity_epochs.as_mut_ptr())
+                    },
+                    chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
                 }
             })
             .collect();

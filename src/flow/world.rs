@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 
 use crate::{world::WorldLocal, NoSuchEntity};
 
-use super::{BadContext, BadFlowClosure, Entity, Flow, IntoFlow};
+use super::{Entity, Flow, FlowClosure, FlowContext, IntoFlow};
 
 /// World reference that is updated when flow is polled.
 #[repr(transparent)]
@@ -55,17 +55,12 @@ where
 }
 
 /// Trait implemented by functions that can be used to spawn flows.
-///
-/// First argument represents the enitity itself. It can reference a number of components
-/// that are required by the flow.
-/// These components will be fetched each time flow is resumed.
-/// If non-optional component is missing flow is canceled.
-/// Flow declares if it reads or writes into components.
-///
-/// Second argument is optional and represents the rest of the world.
-/// It can be used to access other entities and their components.
+/// Argument represents the world that can be used to fetch entities, components and resources.
 pub trait WorldFlowFn<'a> {
+    /// Future type returned from the function.
     type Fut: Future<Output = ()> + Send + 'a;
+
+    /// Runs the function with world reference.
     fn run(self, world: &'a mut World) -> Self::Fut;
 }
 
@@ -162,7 +157,8 @@ impl World {
         }
     }
 
-    /// Polls the world until closure returns [`Poll::Ready`].
+    /// Polls provided closure until it returns [`Poll::Ready`].
+    /// Provides reference to the world to the closure on each call.
     #[inline(always)]
     pub fn poll_fn<F, R>(&self, f: F) -> PollWorld<F>
     where
@@ -174,11 +170,12 @@ impl World {
         }
     }
 
-    /// Polls the world until closure returns [`Poll::Ready`].
+    /// Polls provided closure until it returns [`Poll::Ready`].
+    /// Provides mutable reference to the world to the closure on each call.
     #[inline(always)]
     pub fn poll_fn_mut<F, R>(&mut self, f: F) -> PollWorldMut<F>
     where
-        F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
+        F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
     {
         PollWorldMut {
             f,
@@ -186,6 +183,8 @@ impl World {
         }
     }
 
+    /// Returns entity reference.
+    /// Returns [`NoSuchEntity`] error if entity is not alive.
     #[inline]
     pub fn entity(
         &mut self,
@@ -203,26 +202,26 @@ impl World {
 }
 
 #[doc(hidden)]
-pub struct BadWorld;
+pub struct FlowWorld;
 
-impl BadContext for BadWorld {
-    type Context<'a> = &'a mut World;
+impl<'a> FlowContext<'a> for &'a mut World {
+    type Token = FlowWorld;
 
-    fn bad<'a>(&'a self) -> &'a mut World {
+    fn cx(_token: &'a FlowWorld) -> Self {
         unsafe { World::make_mut() }
     }
 }
 
-impl<F, Fut> IntoFlow for BadFlowClosure<F, Fut>
+impl<F, Fut> IntoFlow for FlowClosure<F, Fut>
 where
-    F: FnOnce(BadWorld) -> Fut + 'static,
+    F: FnOnce(FlowWorld) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     type Flow<'a> = FutureFlow<Fut>;
 
     fn into_flow(self, _world: &mut World) -> Option<FutureFlow<Fut>> {
         Some(FutureFlow {
-            fut: (self.f)(BadWorld),
+            fut: (self.f)(FlowWorld),
         })
     }
 }

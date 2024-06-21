@@ -30,7 +30,7 @@ unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> EpochId {
-        *self.entity_epochs.as_ptr().add(idx as usize)
+        unsafe { *self.entity_epochs.as_ptr().add(idx as usize) }
     }
 }
 
@@ -111,11 +111,13 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchEpoch<'a> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
-        let data = component.data();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data() };
 
         FetchEpoch {
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId),
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+            },
             marker: PhantomData,
         }
     }

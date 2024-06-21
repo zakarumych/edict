@@ -15,7 +15,7 @@ use crate::{
     EntityError, NoSuchEntity,
 };
 
-use super::{flow_entity, tls::EntityGuard, BadContext, BadFlowClosure, Flow, WakeOnDrop, World};
+use super::{flow_entity, tls::EntityGuard, Flow, FlowClosure, FlowContext, WakeOnDrop, World};
 
 /// Entity reference usable in flows.
 ///
@@ -58,7 +58,7 @@ where
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = unsafe { self.get_unchecked_mut() };
 
-        if !super::flow_world_ref().is_alive(this.id) {
+        if !unsafe { super::flow_world_ref() }.is_alive(this.id) {
             // Terminate flow if entity is removed.
             return Poll::Ready(());
         };
@@ -71,7 +71,7 @@ where
             fut.poll(cx)
         };
 
-        let world = super::flow_world_mut();
+        let world = unsafe { super::flow_world_mut() };
 
         let mut e = match world.entity(this.id) {
             Err(NoSuchEntity) => {
@@ -100,24 +100,42 @@ where
     }
 }
 
+/// Type that can be spawned as a flow for an entity.
+/// It can be an async function or a closure inside `flow_fn!` macro.
+/// It must accept [`Entity`] as the only argument.
+///
+/// # Example
+///
+/// ```
+/// # use edict::{world::World, flow::{Entity, flow}};
+///
+/// let mut world = edict::world::World::new();
+///
+/// let e = world.spawn(()).id();
+///
+/// world.spawn_flow_for(e, flow_fn!(|e: Entity| {
+///   e.despawn();
+/// })
+/// ```
+#[diagnostic::on_unimplemented(
+    note = "Try `async fn(e: flow::Entity)` or `flow_fn!(|e: flow::Entity| {{ ... }})`"
+)]
 pub trait IntoEntityFlow: 'static {
+    /// Flow type that will be polled.
     type Flow<'a>: Flow + 'a;
 
+    /// Converts self into a flow.
     fn into_entity_flow<'a>(self, e: Entity<'a>) -> Option<Self::Flow<'a>>;
 }
 
 /// Trait implemented by functions that can be used to spawn flows.
-///
-/// First argument represents the enitity itself. It can reference a number of components
-/// that are required by the flow.
-/// These components will be fetched each time flow is resumed.
-/// If non-optional component is missing flow is canceled.
-/// Flow declares if it reads or writes into components.
-///
-/// Second argument is optional and represents the rest of the world.
-/// It can be used to access other entities and their components.
+/// Argument represents the entity that can be used to fetch its components.
+/// The world can be accessed through the entity.
 pub trait EntityFlowFn<'a> {
+    /// Future type returned from the function.
     type Fut: Future<Output = ()> + Send + 'a;
+
+    /// Runs the function with given entity.
     fn run(self, entity: Entity<'a>) -> Self::Fut;
 }
 
@@ -149,22 +167,22 @@ where
 }
 
 #[doc(hidden)]
-pub struct BadEntity(EntityId);
+pub struct FlowEntity(EntityId);
 
-impl BadContext for BadEntity {
-    type Context<'a> = Entity<'a>;
+impl<'a> FlowContext<'a> for Entity<'a> {
+    type Token = FlowEntity;
 
-    fn bad<'a>(&'a self) -> Entity<'a> {
+    fn cx(token: &'a FlowEntity) -> Self {
         Entity {
-            id: self.0,
+            id: token.0,
             marker: PhantomData,
         }
     }
 }
 
-impl<F, Fut> IntoEntityFlow for BadFlowClosure<F, Fut>
+impl<F, Fut> IntoEntityFlow for FlowClosure<F, Fut>
 where
-    F: FnOnce(BadEntity) -> Fut + 'static,
+    F: FnOnce(FlowEntity) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     type Flow<'a> = FutureEntityFlow<Fut>;
@@ -172,7 +190,7 @@ where
     fn into_entity_flow(self, e: Entity<'_>) -> Option<FutureEntityFlow<Fut>> {
         Some(FutureEntityFlow {
             id: e.id(),
-            fut: (self.f)(BadEntity(e.id())),
+            fut: (self.f)(FlowEntity(e.id())),
         })
     }
 }
@@ -187,6 +205,7 @@ impl Entity<'_> {
         }
     }
 
+    /// Creates a new [`Entity`] value that borrows from this.
     #[inline(always)]
     pub fn reborrow(&mut self) -> Entity<'_> {
         Entity {
@@ -195,16 +214,19 @@ impl Entity<'_> {
         }
     }
 
+    /// Returns the entity id.
     #[inline(always)]
     pub fn id(&self) -> EntityId {
         self.id
     }
 
+    /// Returns reference to the world.
     #[inline(always)]
     pub fn get_world(&self) -> &World {
         unsafe { World::make_ref() }
     }
 
+    /// Returns mutable reference to the world.
     #[inline(always)]
     pub fn get_world_mut(&mut self) -> &mut World {
         unsafe { World::make_mut() }
@@ -301,6 +323,11 @@ impl Entity<'_> {
         }
     }
 
+    /// Returns normal entity reference.
+    ///
+    /// # Panics
+    ///
+    /// Panics if entity is not alive.
     #[inline(always)]
     pub fn get_ref(&mut self) -> EntityRef<'_> {
         match self.try_get_ref() {
@@ -309,6 +336,8 @@ impl Entity<'_> {
         }
     }
 
+    /// Returns normal entity reference.
+    /// Returns error if entity is not alive.
     #[inline(always)]
     pub fn try_get_ref(&mut self) -> Result<EntityRef<'_>, NoSuchEntity> {
         let id = self.id;

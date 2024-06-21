@@ -26,6 +26,7 @@ use crate::{
     epoch::EpochId, hash::NoOpHasherBuilder, type_id, Access,
 };
 
+/// Maximum index of the entity in the archetype.
 pub const MAX_IDX_USIZE: usize = u32::MAX as usize;
 
 pub(crate) struct ComponentData {
@@ -231,19 +232,19 @@ impl Archetype {
         }
     }
 
-    /// Returns `true` if archetype contains compoment with specified id.
+    /// Returns `true` if archetype contains component with specified id.
     #[inline(always)]
     pub fn has_component(&self, ty: TypeId) -> bool {
         self.components.contains_key(&ty)
     }
 
-    /// Returns `true` if archetype contains compoment with specified id.
+    /// Returns `true` if archetype contains component with specified id.
     #[inline(always)]
     pub fn contains_borrow(&self, ty: TypeId) -> bool {
         self.borrows.contains_key(&ty)
     }
 
-    /// Returns `true` if archetype contains compoment with specified id.
+    /// Returns `true` if archetype contains component with specified id.
     #[inline(always)]
     pub fn contains_borrow_mut(&self, ty: TypeId) -> bool {
         self.borrows_mut.contains_key(&ty)

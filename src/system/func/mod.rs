@@ -106,6 +106,7 @@ pub unsafe trait FnArgState: Send + 'static {
 }
 
 /// Types that can be used as arguments for function-systems.
+#[diagnostic::on_unimplemented(label = "`{Self}` cannot be used as function-system argument")]
 pub trait FnArg {
     /// State for an argument that is stored between calls to function-system.
     type State: FnArgState;

@@ -30,7 +30,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
-        let id = *self.entities.get_unchecked(idx as usize);
+        let id = unsafe { *self.entities.get_unchecked(idx as usize) };
         EntityLoc::from_parts(id, Location::new(self.archetype, idx))
     }
 }

@@ -163,7 +163,7 @@ macro_rules! impl_boolean {
                 let mut mi = 1;
                 ($({
                     let elem = if self.item & mi != 0 {
-                        Some($a.get_item(idx))
+                        Some(unsafe { $a.get_item(idx) })
                     } else {
                         None
                     };
@@ -179,7 +179,7 @@ macro_rules! impl_boolean {
                 let mut count = 0;
                 $(
                     if self.chunk & mi != 0 {
-                        if $a.visit_item(idx) {
+                        if unsafe { $a.visit_item(idx) } {
                             self.item |= mi;
                         }
                     }
@@ -196,7 +196,7 @@ macro_rules! impl_boolean {
                 let mut count = 0;
                 $(
                     if self.archetype & mi != 0 {
-                        if $a.visit_chunk(chunk_idx) {
+                        if unsafe { $a.visit_chunk(chunk_idx) } {
                             self.chunk |= mi;
                         }
                     }
@@ -212,7 +212,7 @@ macro_rules! impl_boolean {
                 let mut mi = 1;
                 $(
                     if self.chunk & mi != 0 {
-                        $a.touch_chunk(chunk_idx);
+                        unsafe { $a.touch_chunk(chunk_idx) };
                     }
                     mi <<= 1;
                 )+
@@ -317,7 +317,7 @@ macro_rules! impl_boolean {
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = &self.tuple;
                 $(if $a.visit_archetype(archetype) {
-                    $a.access_archetype(archetype, &mut f);
+                    unsafe { $a.access_archetype(archetype, &mut f); }
                 })+
             }
 
@@ -342,7 +342,7 @@ macro_rules! impl_boolean {
                 $(
                     let $a = if $a.visit_archetype(archetype) {
                         mask |= (1 << mi);
-                        $a.fetch(arch_idx, archetype, epoch)
+                        unsafe { $a.fetch(arch_idx, archetype, epoch) }
                     } else {
                         Fetch::dangling()
                     };

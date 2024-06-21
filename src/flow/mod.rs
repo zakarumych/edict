@@ -19,10 +19,10 @@
 // `flow::World` and `flow::Entity` implement `Send` to allow `Send` bound on the `Future`s which won't be implemented
 // if reference to real `World` is kept between awaits that would be unsound.
 //
-// User-defined autotrait would be great here to make it instead of `Send` to guard against world reference keeping,
+// User-defined auto-trait would be great here to make it instead of `Send` to guard against world reference keeping,
 // while making futures `!Send` as well as `flow::World` and `flow::Entity`.
 //
-// However user-defined autotraits are far from stable.
+// However user-defined auto-traits are far from stable.
 
 use core::{
     any::TypeId,
@@ -45,17 +45,43 @@ mod futures;
 mod tls;
 mod world;
 
+pub use edict_proc::flow_fn;
+
 pub use self::{entity::*, futures::*, world::*};
 
 /// Task that access world when polled.
 pub trait Flow {
+    /// Polls the flow.
+    ///
+    /// # Safety
+    ///
+    /// Must be called only from flow execution context.
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()>;
 }
 
+/// Type that can be spawned as a flow.
+/// It can be an async function or a closure inside `flow_fn!` macro.
+/// It must accept [`&mut World`](World) as the only argument.
+///
+/// # Example
+///
+/// ```
+/// # use edict::{world::World, flow::{Entity, flow}};
+///
+/// let mut world = edict::world::World::new();
+///
+/// world.spawn_flow(flow_fn!(|world: &mut World| {
+///   let entity = world.spawn(());
+/// })
+/// ```
+#[diagnostic::on_unimplemented(
+    note = "Try `async fn(world: &mut flow::World)` or `flow_fn!(|world: &mut flow::World| {{ ... }})`"
+)]
 pub trait IntoFlow: 'static {
+    /// Flow type that will be polled.
     type Flow<'a>: Flow + 'a;
 
-    /// Converts flow into the inner flow type.
+    /// Converts self into a flow.
     fn into_flow<'a>(self, world: &'a mut World) -> Option<Self::Flow<'a>>;
 }
 
@@ -268,8 +294,12 @@ where
     }
 
     unsafe fn execute(&mut self, front: &[usize], back: &[usize]) {
-        self.execute(front);
-        self.execute(back);
+        unsafe {
+            self.execute(front);
+        }
+        unsafe {
+            self.execute(back);
+        }
     }
 }
 
@@ -307,6 +337,10 @@ impl Default for Flows {
 }
 
 impl Flows {
+    /// Creates a new instance of `Flows`.
+    ///
+    /// There should be instance of `Flows` for each `World` to execute flows spawned in the world.
+    /// One `Flows` should be used with single `World` instance.
     pub fn new() -> Self {
         Flows {
             new_flows: NewFlows::new(),
@@ -320,7 +354,7 @@ impl Flows {
     ) -> Option<tls::WorldGuard<'a>> {
         let world = world.local();
 
-        core::mem::swap(&mut self.new_flows, &mut world.new_flows);
+        core::mem::swap(&mut self.new_flows, world.new_flows.get_mut());
 
         let guard = tls::WorldGuard::new(world);
 
@@ -339,7 +373,13 @@ impl Flows {
         Some(guard)
     }
 
+    /// Executes all ready flows in the world.
+    ///
+    /// Flows spawned in the world are drained into this instance,
+    /// so this function should be called with the same world instance.
     pub fn execute(&mut self, world: &mut crate::world::World) {
+        world.maintenance();
+
         let Some(_guard) = self.collect_new_flows(world) else {
             return;
         };
@@ -383,97 +423,116 @@ where
 }
 
 impl crate::world::World {
+    /// Spawns a flow in the world.
+    /// It will be polled during [`Flows::execute`] until completion.
     pub fn spawn_flow<F>(&mut self, flow: F)
     where
         F: IntoFlow,
     {
-        self.new_flows.add(flow);
+        self.new_flows.get_mut().add(flow);
     }
 
+    /// Spawns a flow for an entity in the world.
+    /// It will be polled during [`Flows::execute`] until completion
+    /// or until the entity is despawned.
     pub fn spawn_flow_for<F>(&mut self, entity: EntityId, flow: F)
     where
         F: IntoEntityFlow,
     {
-        self.spawn_flow(EntityIntoFlow { entity, f: flow });
+        self.new_flows
+            .get_mut()
+            .add(EntityIntoFlow { entity, f: flow });
     }
 }
 
 impl WorldLocal {
-    pub fn defer_spawn_flow<F>(&self, flow: F)
+    /// Spawn a flow in the world.
+    /// It will be polled during [`Flows::execute`] until completion.
+    pub fn spawn_flow<F>(&self, flow: F)
     where
         F: IntoFlow,
     {
-        self.defer(move |w| w.spawn_flow(flow))
+        // Safety: accessed only from "main" thread.
+        unsafe { &mut *self.new_flows.get() }.add(flow);
     }
 
-    pub fn defer_spawn_flow_for<F>(&self, entity: EntityId, flow: F)
+    /// Spawns a flow for an entity in the world.
+    /// It will be polled during [`Flows::execute`] until completion
+    /// or until the entity is despawned.
+    pub fn spawn_flow_for<F>(&self, entity: EntityId, flow: F)
     where
         F: IntoEntityFlow,
     {
-        self.defer(move |w| w.spawn_flow_for(entity, flow))
+        // Safety: accessed only from "main" thread.
+        unsafe { &mut *self.new_flows.get() }.add(EntityIntoFlow { entity, f: flow });
     }
 }
 
 #[doc(hidden)]
-pub struct BadFlowClosure<F, Fut> {
+pub struct FlowClosure<F, Fut> {
     f: F,
     _phantom: PhantomData<Fut>,
 }
 
-impl<F, Fut> BadFlowClosure<F, Fut> {
+impl<F, Fut> FlowClosure<F, Fut> {
     pub fn new<C>(f: F) -> Self
     where
-        C: BadContext,
         F: FnOnce(C) -> Fut + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        BadFlowClosure {
+        FlowClosure {
             f,
             _phantom: PhantomData,
         }
     }
 }
 
+#[diagnostic::on_unimplemented(
+    message = "Expected `&mut flow::World` or `Entity<'_>`",
+    label = "Closure inside `flow_fn!` macro must have `&mut flow::World` or `Entity<'_>` argument",
+    note = "When `flow_fn!` is used with `World::spawn_flow` closure must have `&mut flow::World` argument",
+    note = "When `flow_fn!` is used with `Entity::spawn_flow` closure must have `Entity<'_>` argument"
+)]
 #[doc(hidden)]
-pub trait BadContext {
-    type Context<'a>: 'a
-    where
-        Self: 'a;
+pub trait FlowContext<'a> {
+    type Token;
 
-    fn bad<'a>(&'a self) -> Self::Context<'a>;
+    fn cx(token: &'a Self::Token) -> Self;
 }
 
-/// Converts closure syntax to flow fn.
-///
-/// There's limitation that makes following `|world: World<'_>| async move { /*use world*/ }`
-/// to be noncompilable.
-///
-/// On nightly it is possible to use `async move |world: World<'_>| { /*use world*/ }`
-/// But this syntax is not stable yet and edict avoids requiring too many nighty features.
-///
-/// This macro is a workaround for this limitation.
-#[macro_export]
-macro_rules! flow_fn {
-    (|$arg:ident $(: $ty:ty)?| $code:expr) => {
-        unsafe {
-            $crate::flow::BadFlowClosure::new(move |cx| async move {
-                #[allow(unused)]
-                let $arg $(: $ty)? = $crate::flow::BadContext::bad(&cx);
-                {
-                    $code
-                }
-            })
-        }
-    };
-    (|mut $arg:ident $(: $ty:ty)?| $code:expr) => {
-        unsafe {
-            $crate::flow::BadFlowClosure::new(move |cx| async move {
-                #[allow(unused)]
-                let mut $arg $(: $ty)? = $crate::flow::BadContext::bad(&cx);
-                {
-                    $code
-                }
-            })
-        }
-    };
-}
+// Changed into proc-macro
+// /// Converts closure syntax to flow fn.
+// ///
+// /// There's limitation that makes following `|world: World<'_>| async move { /*use world*/ }`
+// /// to be non-compilable.
+// /// Currently it requires `async |world: World<'_>| { /*use world*/ }` syntax which is not stable.
+// ///
+// /// On nightly it is possible to use `async move |world: World<'_>| { /*use world*/ }`
+// /// But this syntax is not stable yet and edict avoids requiring too many nighty features.
+// ///
+// /// This macro is a workaround for this limitation.
+// #[macro_export]
+// macro_rules! flow_fn {
+//     (|$arg:ident $(: $ty:ty)?| $code:expr) => {
+//         unsafe {
+//             $crate::flow::FlowClosure::new(move |cx| async move {
+//                 #[allow(unused)]
+//                 let $arg $(: $ty)? = $crate::flow::FlowContext::cx(&cx);
+//                 {
+//                     $code
+//                 }
+//             })
+//         }
+//     };
+//     (|mut $arg:ident $(: $ty:ty)?| $code:expr) => {
+//         unsafe {
+//             $crate::flow::FlowClosure::new(move |cx| async move {
+//                 #[allow(unused)]
+//                 let mut $arg $(: $ty)? = $crate::flow::FlowContext::cx(&cx);
+//                 {
+//                     $code
+//                 }
+//             })
+//         }
+//     };
+// }

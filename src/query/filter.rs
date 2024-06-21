@@ -34,23 +34,27 @@ where
 
     #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
-        self.filter.visit_chunk(chunk_idx) && self.query.visit_chunk(chunk_idx)
+        unsafe { self.filter.visit_chunk(chunk_idx) && self.query.visit_chunk(chunk_idx) }
     }
 
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        self.filter.touch_chunk(chunk_idx);
-        self.query.touch_chunk(chunk_idx);
+        unsafe {
+            self.filter.touch_chunk(chunk_idx);
+        }
+        unsafe {
+            self.query.touch_chunk(chunk_idx);
+        }
     }
 
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        self.filter.visit_item(idx) && self.query.visit_item(idx)
+        unsafe { self.filter.visit_item(idx) && self.query.visit_item(idx) }
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> Self::Item {
-        self.query.get_item(idx)
+        unsafe { self.query.get_item(idx) }
     }
 }
 
@@ -161,7 +165,9 @@ where
     #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         match self {
-            NotFetch::Fetch { fetch, visit_chunk } => *visit_chunk = fetch.visit_chunk(chunk_idx),
+            NotFetch::Fetch { fetch, visit_chunk } => {
+                *visit_chunk = unsafe { fetch.visit_chunk(chunk_idx) }
+            }
             NotFetch::None => {}
         }
         true
@@ -173,7 +179,9 @@ where
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         match self {
-            NotFetch::Fetch { fetch, visit_chunk } if *visit_chunk => fetch.visit_item(idx),
+            NotFetch::Fetch { fetch, visit_chunk } if *visit_chunk => unsafe {
+                fetch.visit_item(idx)
+            },
             _ => true,
         }
     }
@@ -254,7 +262,7 @@ where
     ) -> NotFetch<T::Fetch<'a>> {
         if self.0.visit_archetype(archetype) {
             NotFetch::Fetch {
-                fetch: self.0.fetch(arch_idx, archetype, epoch),
+                fetch: unsafe { self.0.fetch(arch_idx, archetype, epoch) },
                 visit_chunk: false,
             }
         } else {

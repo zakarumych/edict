@@ -220,9 +220,10 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     ///
-    /// let mut world = WorldLocal::new();
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -278,11 +279,12 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     ///
     /// struct OtherComponent;
     ///
-    /// let mut world = WorldLocal::new();
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let mut entity = world.spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());

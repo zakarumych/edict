@@ -29,7 +29,7 @@ use hashbrown::HashSet;
 
 #[derive(Clone)]
 #[repr(transparent)]
-pub struct Thread {
+struct Thread {
     #[cfg(feature = "std")]
     thread: std::thread::Thread,
 
@@ -364,6 +364,7 @@ impl Scheduler {
         self.schedule_cache_id = None;
     }
 
+    /// Runs all systems in the scheduler using std threads.
     #[cfg(feature = "std")]
     pub fn run_threaded(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
@@ -371,6 +372,7 @@ impl Scheduler {
         buffers.execute_all(world);
     }
 
+    /// Runs all systems in the scheduler using rayon.
     #[cfg(feature = "rayon")]
     pub fn run_rayon(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
@@ -378,6 +380,7 @@ impl Scheduler {
         buffers.execute_all(world);
     }
 
+    /// Runs all systems in the scheduler sequentially.
     pub fn run_sequential(&mut self, world: &mut World) {
         use crate::action::ActionBufferSliceExt;
         // let buffers = self.run_with(world, &mut MockExecutor);
@@ -576,10 +579,7 @@ mod test {
 
     use super::*;
 
-    use crate::{component::Component, system::State};
-    struct Foo;
-
-    impl Component for Foo {}
+    use crate::system::State;
 
     #[test]
     fn test() {

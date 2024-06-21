@@ -21,7 +21,7 @@ where
     #[inline(always)]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         if let Some(fetch) = self {
-            fetch.visit_chunk(chunk_idx)
+            unsafe { fetch.visit_chunk(chunk_idx) }
         } else {
             true
         }
@@ -31,7 +31,9 @@ where
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         if let Some(fetch) = self {
-            fetch.touch_chunk(chunk_idx);
+            unsafe {
+                fetch.touch_chunk(chunk_idx);
+            }
         }
     }
 
@@ -39,7 +41,7 @@ where
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         if let Some(fetch) = self {
-            fetch.visit_item(idx)
+            unsafe { fetch.visit_item(idx) }
         } else {
             true
         }
@@ -49,7 +51,7 @@ where
     unsafe fn get_item(&mut self, idx: u32) -> Option<T::Item> {
         match self {
             None => None,
-            Some(fetch) => Some(fetch.get_item(idx)),
+            Some(fetch) => Some(unsafe { fetch.get_item(idx) }),
         }
     }
 }
@@ -132,7 +134,9 @@ where
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         if self.0.visit_archetype(archetype) {
-            self.0.access_archetype(archetype, f);
+            unsafe {
+                self.0.access_archetype(archetype, f);
+            }
         }
     }
 
@@ -144,7 +148,7 @@ where
         epoch: EpochId,
     ) -> Option<T::Fetch<'a>> {
         if self.0.visit_archetype(archetype) && self.0.visit_archetype_late(archetype) {
-            Some(self.0.fetch(arch_idx, archetype, epoch))
+            Some(unsafe { self.0.fetch(arch_idx, archetype, epoch) })
         } else {
             None
         }

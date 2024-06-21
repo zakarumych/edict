@@ -560,7 +560,7 @@ impl World {
     pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
         self.maintenance();
 
-        let real_loc = self.entities.despawn(id).unwrap_unchecked();
+        let real_loc = unsafe { self.entities.despawn(id).unwrap_unchecked() };
         debug_assert_eq!(real_loc, loc, "Entity location mismatch");
 
         let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
@@ -780,8 +780,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn_one_defer(ExampleComponent);
     ///
     /// // Entity is alive when reserved.
@@ -829,8 +830,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::world::{WorldLocal};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// world.ensure_external_registered::<u32>();
     /// let mut entity = world.spawn_one_external_defer(42u32);
     ///
@@ -876,8 +878,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let mut entity = world.spawn_defer((ExampleComponent,));
     ///
     /// assert!(world.is_alive(entity));
@@ -921,8 +924,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::world::WorldLocal;
-    /// let mut world = WorldLocal::new();
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// world.ensure_external_registered::<u32>();
     /// let mut entity = world.spawn_external_defer((42u32,));
     ///
@@ -1024,8 +1028,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn((ExampleComponent,)).id();
     /// world.despawn_defer(entity);
     /// assert!(world.is_alive(entity), "Despawn is deferred and entity is still alive");

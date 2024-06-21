@@ -1,8 +1,10 @@
-[package]
-name = "edict"
-version = "0.7.0"
+[workspace]
+members = ["proc-lib", "proc"]
+
+[workspace.package]
+version = "1.0.0-rc1"
 edition = "2021"
-authors = ["Zakarum <zakarumych@ya.ru>"]
+authors = ["Zakarum <zaq.dev@icloud.com>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/edict"
 homepage = "https://github.com/zakarumych/edict"
@@ -11,6 +13,20 @@ readme = "README.md"
 description = "Experimental entity-component-system library"
 keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
+
+[package]
+name = "edict"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [features]
 # Enables support for async executor with ECS access
@@ -27,7 +43,7 @@ default = ["std", "scheduler", "flow"]
 rayon = ["dep:rayon", "std"]
 
 [dependencies]
-edict-proc = { version = "=0.6.0", path = "proc" }
+edict-proc = { version = "1.0.0-rc1", path = "proc" }
 amity = { version = "0.2.1", default-features = false, features = ["alloc"] }
 hashbrown = { version = "0.14" }
 smallvec = { version = "1.10", features = ["union"], default-features = false }
@@ -44,8 +60,6 @@ lock_api = { version = "0.4", default-features = false }
 [dev-dependencies]
 alkahest-proc = { version = "0.3.0" }
 
-[workspace]
-members = ["proc-lib", "proc"]
 
 [[example]]
 name = "allocate"

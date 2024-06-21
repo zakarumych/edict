@@ -10,10 +10,7 @@ use crate::{
 };
 
 #[cfg(feature = "flow")]
-use crate::{
-    flow::{self, Flows},
-    flow_fn,
-};
+use crate::flow::{self, flow_fn, Flows};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Str(&'static str);

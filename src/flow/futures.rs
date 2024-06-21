@@ -10,12 +10,14 @@ use crate::component::Component;
 
 use super::Entity;
 
+/// Future that yields control to the executor once.
 pub struct YieldNow {
     yielded: bool,
 }
 
 impl YieldNow {
-    pub fn new() -> Self {
+    /// Create a new instance of [`YieldNow`] future.
+    pub const fn new() -> Self {
         YieldNow { yielded: false }
     }
 }
@@ -35,7 +37,7 @@ impl Future for YieldNow {
     }
 }
 
-/// Yield control to the executor.
+/// Yield control to the executor once.
 /// Useful for implementing waiting in loops
 /// when there's no where to add a [`Waker`].
 #[macro_export]

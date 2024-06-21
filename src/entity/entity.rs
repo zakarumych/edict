@@ -14,6 +14,7 @@ use crate::{
 use super::{EntitySet, Location};
 
 /// General entity reference.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not an Entity type")]
 pub trait Entity: Copy {
     /// Returns entity id which is the weakest reference to the entity.
     fn id(&self) -> EntityId;
@@ -33,6 +34,7 @@ pub trait Entity: Copy {
 
 /// Entity which must stay alive while the reference is alive.
 /// Produced by queries that yield related entities.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not an Entity type that proves it is alive")]
 pub trait AliveEntity: Entity {
     /// Returns entity location.
     #[inline(always)]

@@ -1,14 +1,16 @@
 [package]
 name = "edict-proc-lib"
-version = "0.6.0"
-edition = "2021"
-authors = ["Zakarum <zakarumych@ya.ru>"]
-license = "MIT OR Apache-2.0"
-documentation = "https://docs.rs/edict"
-homepage = "https://github.com/zakarumych/edict"
-repository = "https://github.com/zakarumych/edict"
-readme = "../README.md"
-description = "Procedural macros library for edict"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 proc-macro2 = "1.0"

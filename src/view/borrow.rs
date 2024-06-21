@@ -23,6 +23,7 @@ pub trait BorrowState {
     ) -> R;
 }
 
+/// A view borrow state that allows view to be extended.
 pub trait ExtendableBorrowState: BorrowState {}
 
 /// Borrow state for runtime borrowing.

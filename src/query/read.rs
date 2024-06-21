@@ -32,7 +32,7 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
-        &*self.ptr.as_ptr().add(idx as usize)
+        unsafe { &*self.ptr.as_ptr().add(idx as usize) }
     }
 }
 
@@ -130,10 +130,10 @@ where
         archetype: &'a Archetype,
         _epoch: EpochId,
     ) -> FetchRead<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         debug_assert_eq!(component.id(), type_id::<T>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
         FetchRead {
             ptr: data.ptr.cast(),

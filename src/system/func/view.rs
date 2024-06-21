@@ -20,6 +20,9 @@ use crate::view::{acquire, release};
 use super::{FnArg, FnArgState};
 
 /// Query suitable for [`View`] args for function-systems.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` cannot be used as query in function-system argument"
+)]
 pub trait QueryArg: SendQuery {
     /// Creates new query state.
     fn new() -> Self;

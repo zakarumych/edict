@@ -10,12 +10,12 @@ use super::{
 
 /// [`Fetch`] type for the `&T` query.
 
-pub struct FetchCopied<'a, T> {
+pub struct FetchCpy<'a, T> {
     ptr: NonNull<T>,
     marker: PhantomData<&'a [T]>,
 }
 
-unsafe impl<'a, T> Fetch<'a> for FetchCopied<'a, T>
+unsafe impl<'a, T> Fetch<'a> for FetchCpy<'a, T>
 where
     T: Copy + 'a,
 {
@@ -23,7 +23,7 @@ where
 
     #[inline(always)]
     fn dangling() -> Self {
-        FetchCopied {
+        FetchCpy {
             ptr: NonNull::dangling(),
             marker: PhantomData,
         }
@@ -31,7 +31,7 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> T {
-        *self.ptr.as_ptr().add(idx as usize)
+        unsafe { *self.ptr.as_ptr().add(idx as usize) }
     }
 }
 
@@ -86,7 +86,7 @@ where
     T: Copy + 'static,
 {
     type Item<'a> = T;
-    type Fetch<'a> = FetchCopied<'a, T>;
+    type Fetch<'a> = FetchCpy<'a, T>;
 
     const MUTABLE: bool = false;
 
@@ -115,13 +115,13 @@ where
         _arch_idx: u32,
         archetype: &'a Archetype,
         _epoch: EpochId,
-    ) -> FetchCopied<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+    ) -> FetchCpy<'a, T> {
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         debug_assert_eq!(component.id(), type_id::<T>());
 
-        let data = component.data();
+        let data = unsafe { component.data() };
 
-        FetchCopied {
+        FetchCpy {
             ptr: data.ptr.cast(),
             marker: PhantomData,
         }

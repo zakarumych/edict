@@ -127,13 +127,15 @@ where
     unsafe fn _get(&self, loc: Location) -> Option<QueryItem<Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
-        get_at(
-            self.query,
-            self.filter,
-            self.epochs,
-            &self.archetypes[loc.arch as usize],
-            loc,
-        )
+        unsafe {
+            get_at(
+                self.query,
+                self.filter,
+                self.epochs,
+                &self.archetypes[loc.arch as usize],
+                loc,
+            )
+        }
     }
 }
 

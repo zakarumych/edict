@@ -171,7 +171,7 @@ macro_rules! impl_dump_query {
                             DumpFetch {
                                 after_epoch: self.after_epoch,
                                 ptr: Some(data.ptr.cast()),
-                                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) },
+                                entity_epochs: unsafe { unsafe{ NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) } },
                                 marker: PhantomData,
                             }
                         }

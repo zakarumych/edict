@@ -74,7 +74,7 @@ pub(super) unsafe fn get_world_ref<'a>() -> &'a WorldLocal {
     #[cfg(not(feature = "std"))]
     let world = edict_get_flow_world_tls().map(NonNull::cast);
 
-    world.unwrap().as_ref()
+    unsafe { world.unwrap().as_ref() }
 }
 
 /// Returns the current world reference.
@@ -93,7 +93,7 @@ pub(super) unsafe fn get_world_mut<'a>() -> &'a mut WorldLocal {
     #[cfg(not(feature = "std"))]
     let world = edict_get_flow_world_tls().map(NonNull::cast);
 
-    world.unwrap().as_mut()
+    unsafe { world.unwrap().as_mut() }
 }
 
 /// Guard for setting and resetting the current world pointer.

@@ -96,27 +96,27 @@ macro_rules! impl_fetch {
             #[inline(always)]
             unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = self;
-                $($a.visit_chunk(chunk_idx) &&)+ true
+                unsafe { $($a.visit_chunk(chunk_idx) &&)+ true }
             }
 
             /// Checks if item with specified index must be visited or skipped.
             #[inline(always)]
             unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = self;
-                $($a.visit_item(idx) &&)+ true
+                unsafe { $($a.visit_item(idx) &&)+ true }
             }
 
             /// Notifies this fetch that it visits a chunk.
             #[inline(always)]
             unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = self;
-                $($a.touch_chunk(chunk_idx);)+
+                $(unsafe { $a.touch_chunk(chunk_idx); })+
             }
 
             #[inline(always)]
             unsafe fn get_item(&mut self, idx: u32) -> ($($a::Item),+) {
                 let ($($a,)+) = self;
-                ($( $a.get_item(idx) ),+)
+                unsafe {($( $a.get_item(idx) ),+) }
             }
         }
 
@@ -196,7 +196,7 @@ macro_rules! impl_fetch {
             #[inline(always)]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = self;
-                $( <$a as Query>::access_archetype($a, archetype, &mut f); )+
+                $( unsafe { <$a as Query>::access_archetype($a, archetype, &mut f); } )+
             }
 
             #[inline(always)]
@@ -208,7 +208,7 @@ macro_rules! impl_fetch {
             #[inline(always)]
             unsafe fn fetch<'a>(&self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
-                ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+)
+                unsafe { ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+) }
             }
 
             #[inline(always)]

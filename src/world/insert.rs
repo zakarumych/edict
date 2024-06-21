@@ -458,8 +458,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -496,8 +497,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::world::WorldLocal;
-    /// let mut world = WorldLocal::new();
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
@@ -535,8 +537,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -573,8 +576,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
@@ -631,8 +635,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -671,8 +676,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -717,8 +723,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -754,8 +761,9 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::WorldLocal, ExampleComponent};
-    /// let mut world = WorldLocal::new();
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let world = world.local();;
     /// let entity = world.spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());

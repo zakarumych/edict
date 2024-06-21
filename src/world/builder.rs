@@ -53,7 +53,7 @@ impl WorldBuilder {
             action_channel: ActionChannel::new(),
 
             #[cfg(feature = "flow")]
-            new_flows: crate::flow::NewFlows::new(),
+            new_flows: UnsafeCell::new(crate::flow::NewFlows::new()),
         }
     }
 

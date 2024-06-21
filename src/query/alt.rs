@@ -77,20 +77,20 @@ where
 
     #[inline(always)]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize);
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         debug_assert!((*chunk_epoch).get().before(self.epoch));
     }
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> RefMut<'a, T> {
-        let archetype_epoch = &mut *self.archetype_epoch.as_ptr();
-        let chunk_epoch = &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx) as usize);
-        let entity_epoch = &mut *self.entity_epochs.as_ptr().add(idx as usize);
+        let archetype_epoch = unsafe { &mut *self.archetype_epoch.as_ptr() };
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx) as usize) };
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
 
         debug_assert!(entity_epoch.before(self.epoch));
 
         RefMut {
-            component: &mut *self.ptr.as_ptr().add(idx as usize),
+            component: unsafe { &mut *self.ptr.as_ptr().add(idx as usize) },
             entity_epoch,
             chunk_epoch,
             archetype_epoch,
@@ -183,16 +183,16 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> FetchAlt<'a, T> {
-        let component = archetype.component(type_id::<T>()).unwrap_unchecked();
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         debug_assert_eq!(component.id(), type_id::<T>());
-        let data = component.data_mut();
+        let data = unsafe { component.data_mut() };
         debug_assert!(data.epoch.before(epoch));
 
         FetchAlt {
             epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()),
-            chunk_epochs: NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast(),
+            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
+            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) }.cast(),
             archetype_epoch: NonNull::from(&mut data.epoch).cast(),
             marker: PhantomData,
         }

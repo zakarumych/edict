@@ -97,7 +97,7 @@ When this is not required, [`View`]s with compile time checks should be used ins
 ### Deferred actions
 
 Use [`ActionEncoder`] for recording actions and run them later with mutable access to [`World`].
-Or [`LocalActionEncoder`] instead when action is not `Send`.
+Or [`LocalActionEncoder`] instead when action is not [`Send`].
 Or convenient [`WorldLocal::defer*`] methods to defer actions to internal [`LocalActionEncoder`].
 
 ### Customizable
@@ -195,7 +195,7 @@ Futures may use `await` syntax to wait for certain conditions or events.
 Futures that can access ECS data are referred in Edict as "flows".
 
 Flows can be spawned in the [`World`] using [`World::spawn_flow`] method.
-`Flows` type is used as an executor to run spawned flows.
+[`Flows`] type is used as an executor to run spawned flows.
 
 Flows can be bound to an entity and spawned using [`World::spawn_flow_for`] method, [`EntityRef::spawn_flow`] or [`flow::Entity::spawn_flow`]
 Such flows will be cancelled if entity is despawned.
@@ -203,7 +203,7 @@ Such flows will be cancelled if entity is despawned.
 Due to borrow checker limitations, closures can't be spawned as flows directly,
 To work around this issue [`flow_fn!`] macro accepts valid closure syntax and produces a flow that can be spawned.
 
-User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access taks [`Context`](std::task::Context).
+User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access tasks [`Context`].
 Edict provides only a couple of low-level futures that will do the waiting:
 [`yield_now!`] yields control to the executor once and resumes on next execution.
 
@@ -216,10 +216,10 @@ Requires `"flow"` feature which is enabled by default.
 
 # no_std support
 
-Edict can be used in `no_std` environment but requires `alloc`.
+Edict can be used in `no_std` environment but requires `alloc` crate.
 `"std"` feature is enabled by default.
 
-If "std" feature is disabled, error types will not implement `std::error::Error`.
+If "std" feature is disabled, error types will not implement [`std::error::Error`].
 And "flow" and "scheduler" feature would require extern functions to be provided.
 
 [`!Send`]: https://doc.rust-lang.org/std/marker/trait.Send.html
@@ -233,6 +233,7 @@ And "flow" and "scheduler" feature would require extern functions to be provided
 [`Component`]: https://docs.rs/edict/1.0.0-rc1/edict/component/trait.Component.html
 [`Component::on_drop`]: https://docs.rs/edict/1.0.0-rc1/edict/component/trait.Component.html#method.on_drop
 [`Component::on_replace`]: https://docs.rs/edict/1.0.0-rc1/edict/component/trait.Component.html#method.on_replace
+[`Context`]: https://doc.rust-lang.org/std/task/struct.Context.html
 [`Entity`]: https://docs.rs/edict/1.0.0-rc1/edict/entity/trait.Entity.html
 [`EntityBound`]: https://docs.rs/edict/1.0.0-rc1/edict/entity/trait.EntityBound.html
 [`EntityId`]: https://docs.rs/edict/1.0.0-rc1/edict/entity/struct.EntityId.html
@@ -240,6 +241,9 @@ And "flow" and "scheduler" feature would require extern functions to be provided
 [`EntityRef`]: https://docs.rs/edict/1.0.0-rc1/edict/entity/struct.EntityRef.html
 [`EntityRef::spawn_flow`]: https://docs.rs/edict/1.0.0-rc1/edict/entity/struct.EntityRef.html#method.spawn_flow
 [`flow`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/index.html
+[`flow::Entity`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/struct.Entity.html
+[`flow::Entity::spawn_flow`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/struct.Entity.html#method.spawn_flow
+[`flow::World`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/struct.World.html
 [`flow_fn!`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/macro.flow_fn.html
 [`Flows`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/struct.Flows.html
 [`Flows::execute`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/struct.Flows.html#method.execute
@@ -257,8 +261,12 @@ And "flow" and "scheduler" feature would require extern functions to be provided
 [`ResMutNoSend`]: https://docs.rs/edict/1.0.0-rc1/edict/system/struct.ResMutNoSend.html
 [`Scheduler`]: https://docs.rs/edict/1.0.0-rc1/edict/scheduler/struct.Scheduler.html
 [`ScopedExecutor`]: https://docs.rs/edict/1.0.0-rc1/edict/executor/trait.ScopedExecutor.html
-[`System`]: https://docs.rs/edict/1.0.0-rc1/edict/system/trait.System.html
+[`Send`]: https://doc.rust-lang.org/std/marker/trait.Send.html
+[`Sized`]: https://doc.rust-lang.org/std/marker/trait.Sized.html
 [`State`]: https://docs.rs/edict/1.0.0-rc1/edict/system/struct.State.html
+[`std::error::Error`]: https://doc.rust-lang.org/std/error/trait.Error.html
+[`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
+[`System`]: https://docs.rs/edict/1.0.0-rc1/edict/system/trait.System.html
 [`View`]: https://docs.rs/edict/1.0.0-rc1/edict/view/type.View.html
 [`ViewCell`]: https://docs.rs/edict/1.0.0-rc1/edict/view/type.ViewCell.html
 [`World`]: https://docs.rs/edict/1.0.0-rc1/edict/world/struct.World.html
@@ -269,6 +277,7 @@ And "flow" and "scheduler" feature would require extern functions to be provided
 [`WorldLocal`]: https://docs.rs/edict/1.0.0-rc1/edict/world/struct.WorldLocal.html
 [`WorldLocal::defer*`]: https://docs.rs/edict/1.0.0-rc1/edict/world/struct.WorldLocal.html#method.defer
 [`WorldShare`]: https://docs.rs/edict/1.0.0-rc1/edict/world/struct.WorldShare.html
+[`yield_now!`]: https://docs.rs/edict/1.0.0-rc1/edict/flow/macro.yield_now.html
 
 ## License
 

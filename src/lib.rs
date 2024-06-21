@@ -90,7 +90,7 @@
 //! ### Deferred actions
 //!
 //! Use [`ActionEncoder`] for recording actions and run them later with mutable access to [`World`].
-//! Or [`LocalActionEncoder`] instead when action is not `Send`.
+//! Or [`LocalActionEncoder`] instead when action is not [`Send`].
 //! Or convenient [`WorldLocal::defer*`] methods to defer actions to internal [`LocalActionEncoder`].
 //!
 //! ### Customizable
@@ -188,7 +188,7 @@
 //! Futures that can access ECS data are referred in Edict as "flows".
 //!
 //! Flows can be spawned in the [`World`] using [`World::spawn_flow`] method.
-//! `Flows` type is used as an executor to run spawned flows.
+//! [`Flows`] type is used as an executor to run spawned flows.
 //!
 //! Flows can be bound to an entity and spawned using [`World::spawn_flow_for`] method, [`EntityRef::spawn_flow`] or [`flow::Entity::spawn_flow`]
 //! Such flows will be cancelled if entity is despawned.
@@ -196,7 +196,7 @@
 //! Due to borrow checker limitations, closures can't be spawned as flows directly,
 //! To work around this issue [`flow_fn!`] macro accepts valid closure syntax and produces a flow that can be spawned.
 //!
-//! User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access taks [`Context`](std::task::Context).
+//! User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access tasks [`Context`].
 //! Edict provides only a couple of low-level futures that will do the waiting:
 //! [`yield_now!`] yields control to the executor once and resumes on next execution.
 //!
@@ -209,10 +209,10 @@
 //!
 //! # no_std support
 //!
-//! Edict can be used in `no_std` environment but requires `alloc`.
+//! Edict can be used in `no_std` environment but requires `alloc` crate.
 //! `"std"` feature is enabled by default.
 //!
-//! If "std" feature is disabled, error types will not implement `std::error::Error`.
+//! If "std" feature is disabled, error types will not implement [`std::error::Error`].
 //! And "flow" and "scheduler" feature would require extern functions to be provided.
 //!
 //! [`!Send`]: core::marker::Send
@@ -226,6 +226,7 @@
 //! [`Component`]: crate::component::Component
 //! [`Component::on_drop`]: crate::component::Component::on_drop
 //! [`Component::on_replace`]: crate::component::Component::on_replace
+//! [`Context`]: std::task::Context
 //! [`Entity`]: crate::entity::Entity
 //! [`EntityBound`]: crate::entity::EntityBound
 //! [`EntityId`]: crate::entity::EntityId
@@ -250,8 +251,8 @@
 //! [`ResMutNoSend`]: crate::system::ResMutNoSend
 //! [`Scheduler`]: crate::scheduler::Scheduler
 //! [`ScopedExecutor`]: crate::executor::ScopedExecutor
-//! [`System`]: crate::system::System
 //! [`State`]: crate::system::State
+//! [`System`]: crate::system::System
 //! [`View`]: crate::view::View
 //! [`ViewCell`]: crate::view::ViewCell
 //! [`World`]: crate::world::World

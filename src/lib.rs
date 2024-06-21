@@ -144,7 +144,7 @@
 //! * [`BorrowAny`] borrows from first suitable component that implements borrowing requested type.
 //!   Yields a single value.
 //!   Skips entities if none of the components provide the requested type.
-//! * [`BorrowOne`] is configured with `TypeId` of component from which it should borrow requested type.
+//! * [`BorrowOne`] is configured with [`TypeId`] of component from which it should borrow requested type.
 //!   Panics if component doesn't provide the requested type.
 //!   Skips entities without the component.
 //!
@@ -253,6 +253,7 @@
 //! [`ScopedExecutor`]: crate::executor::ScopedExecutor
 //! [`State`]: crate::system::State
 //! [`System`]: crate::system::System
+//! [`TypeId`]: core::any::TypeId
 //! [`View`]: crate::view::View
 //! [`ViewCell`]: crate::view::ViewCell
 //! [`World`]: crate::world::World

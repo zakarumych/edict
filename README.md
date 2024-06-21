@@ -151,7 +151,7 @@ Queries that tries to borrow type from suitable components are provided:
 * [`BorrowAny`] borrows from first suitable component that implements borrowing requested type.
   Yields a single value.
   Skips entities if none of the components provide the requested type.
-* [`BorrowOne`] is configured with `TypeId` of component from which it should borrow requested type.
+* [`BorrowOne`] is configured with [`TypeId`] of component from which it should borrow requested type.
   Panics if component doesn't provide the requested type.
   Skips entities without the component.
 
@@ -267,6 +267,7 @@ And "flow" and "scheduler" feature would require extern functions to be provided
 [`std::error::Error`]: https://doc.rust-lang.org/std/error/trait.Error.html
 [`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
 [`System`]: https://docs.rs/edict/1.0.0-rc1/edict/system/trait.System.html
+[`TypeId`]: https://doc.rust-lang.org/std/any/struct.TypeId.html
 [`View`]: https://docs.rs/edict/1.0.0-rc1/edict/view/type.View.html
 [`ViewCell`]: https://docs.rs/edict/1.0.0-rc1/edict/view/type.ViewCell.html
 [`World`]: https://docs.rs/edict/1.0.0-rc1/edict/world/struct.World.html

@@ -66,13 +66,13 @@ pub trait Flow {
 /// # Example
 ///
 /// ```
-/// # use edict::{world::World, flow::{Entity, flow}};
+/// # use edict::flow::{self, flow_fn, World};
 ///
 /// let mut world = edict::world::World::new();
 ///
 /// world.spawn_flow(flow_fn!(|world: &mut World| {
 ///   let entity = world.spawn(());
-/// })
+/// }));
 /// ```
 #[diagnostic::on_unimplemented(
     note = "Try `async fn(world: &mut flow::World)` or `flow_fn!(|world: &mut flow::World| {{ ... }})`"

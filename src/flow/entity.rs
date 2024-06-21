@@ -107,15 +107,15 @@ where
 /// # Example
 ///
 /// ```
-/// # use edict::{world::World, flow::{Entity, flow}};
+/// # use edict::{world::World, flow::{Entity, flow_fn}};
 ///
 /// let mut world = edict::world::World::new();
 ///
 /// let e = world.spawn(()).id();
 ///
-/// world.spawn_flow_for(e, flow_fn!(|e: Entity| {
+/// world.spawn_flow_for(e, flow_fn!(|mut e: Entity| {
 ///   e.despawn();
-/// })
+/// }));
 /// ```
 #[diagnostic::on_unimplemented(
     note = "Try `async fn(e: flow::Entity)` or `flow_fn!(|e: flow::Entity| {{ ... }})`"

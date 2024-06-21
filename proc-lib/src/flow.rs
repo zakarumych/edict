@@ -24,7 +24,7 @@ pub fn flow_fn(closure: syn::ExprClosure, edict_path: &syn::Path) -> syn::Result
 
     Ok(quote::quote! {
         unsafe {
-            #edict_path::flow::FlowClosure::new(|token| async move {
+            #edict_path::flow::FlowClosure::new(move |token| async move {
                 #[allow(unused)]
                 let #arg = #edict_path::flow::FlowContext::cx(&token);
                 {

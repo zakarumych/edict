@@ -3,8 +3,7 @@ use std::task::{Poll, Waker};
 use edict::{
     action::ActionEncoder,
     component::Component,
-    flow::{Entity, Flows},
-    flow_fn,
+    flow::{flow_fn, Entity, Flows},
     query::Entities,
     scheduler::Scheduler,
     view::View,

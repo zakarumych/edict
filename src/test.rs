@@ -2,13 +2,17 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     component::Component,
-    flow,
-    flow::Flows,
     query::{Entities, ImmutableQuery, Modified, Not, With, Without},
     relation::{ChildOf, Relation},
     system::{IntoSystem, System},
     view::View,
     world::World,
+};
+
+#[cfg(feature = "flow")]
+use crate::{
+    flow::{self, Flows},
+    flow_fn,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -573,13 +577,14 @@ fn add_relation() {
     world.add_relation(origin, ChildOf, target).unwrap();
 }
 
+#[cfg(feature = "flow")]
 #[test]
 fn test_flow() {
     let mut world = World::new();
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
-    world.spawn_flow(flow!(|world: &mut flow::World| {
+    world.spawn_flow(flow_fn!(|world: &mut flow::World| {
         world.spawn((U32(42),));
     }));
 
@@ -588,6 +593,7 @@ fn test_flow() {
     assert_eq!(world.view::<&U32>().iter().count(), 1);
 }
 
+#[cfg(feature = "flow")]
 #[test]
 fn test_entity_flow() {
     let mut world = World::new();
@@ -598,7 +604,7 @@ fn test_entity_flow() {
 
     world.spawn_flow_for(
         e,
-        flow!(|mut e: flow::Entity| {
+        flow_fn!(|mut e: flow::Entity| {
             e.insert(U32(42));
         }),
     );

@@ -1,6 +1,11 @@
 //! Provides API to define task executors.
 
 /// Abstract scoped task executor.
+///
+/// Executes provided closures potentially in parallel.
+///
+/// This trait is implemented for `std::thread::Scope` when the `std` feature is enabled,
+/// and for `rayon::Scope` when the `rayon` feature is enabled.
 pub trait ScopedExecutor<'scope> {
     /// Spawns a task on the scope.
     fn spawn<F>(&self, f: F)

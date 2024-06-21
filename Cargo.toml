@@ -13,27 +13,33 @@ keywords = ["ecs", "entity"]
 categories = ["no-std", "game-development", "data-structures"]
 
 [features]
-std = ["serde?/std", "alkahest?/std"]
-default = ["std"]
+# Enables support for async executor with ECS access
+# Without "std" it requires extern "C" functions provided, see `nostd` module
+flow = []
+
+# Enables built-in scheduler
+# Without "std" it requires extern "C" functions provided, see `nostd` module
+scheduler = []
+
+std = ["serde?/std", "alkahest?/std", "dep:parking_lot"]
+default = ["std", "scheduler", "flow"]
+
+rayon = ["dep:rayon", "std"]
 
 [dependencies]
 edict-proc = { version = "=0.6.0", path = "proc" }
-amity = "0.2"
+amity = { version = "0.2.1", default-features = false, features = ["alloc"] }
 hashbrown = { version = "0.14" }
 smallvec = { version = "1.10", features = ["union"], default-features = false }
 tiny-fn = "0.1.5"
 atomicell = "0.2"
 rayon = { version = "1.7", optional = true }
-alkahest = { version = "0.3.0", optional = true, features = [
-    "alloc",
-    "fixed32",
-], default-features = false }
+alkahest = { version = "0.3.0", optional = true, features = ["alloc", "fixed32"], default-features = false }
 nanoserde = { version = "0.1.32", optional = true, default-features = false }
-serde = { version = "1.0", optional = true, default-features = false, features = [
-    "alloc",
-] }
-parking_lot = "0.12"
-slab = "0.4"
+serde = { version = "1.0", optional = true, default-features = false, features = ["alloc"] }
+parking_lot = { version = "0.12", optional = true }
+slab = { version = "0.4", default-features = false }
+lock_api = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 alkahest-proc = { version = "0.3.0" }
@@ -43,8 +49,32 @@ members = ["proc-lib", "proc"]
 
 [[example]]
 name = "allocate"
-required-features = ["std"]
+required-features = ["scheduler", "std"]
+
+[[example]]
+name = "borrow"
+required-features = []
+
+[[example]]
+name = "demo"
+required-features = []
+
+[[example]]
+name = "derive"
+required-features = []
+
+[[example]]
+name = "external"
+required-features = []
+
+[[example]]
+name = "flow"
+required-features = ["scheduler", "flow", "std"]
+
+[[example]]
+name = "relation"
+required-features = []
 
 [[example]]
 name = "schedule"
-required-features = ["std"]
+required-features = ["scheduler", "std"]

@@ -23,7 +23,6 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
-    flow::NewFlows,
     resources::Resources,
     type_id, NoSuchEntity,
 };
@@ -194,7 +193,8 @@ pub struct World {
 
     action_channel: ActionChannel,
 
-    pub(crate) new_flows: NewFlows,
+    #[cfg(feature = "flow")]
+    pub(crate) new_flows: crate::flow::NewFlows,
 }
 
 impl Default for World {

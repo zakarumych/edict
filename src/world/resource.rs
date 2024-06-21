@@ -319,7 +319,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{world::World, atomicell::ResMut};
+    /// # use edict::world::{World, ResMut};
     /// let mut world = World::new();
     /// world.insert_resource(42i32);
     ///
@@ -328,13 +328,13 @@ impl World {
     /// *value = 11;
     ///
     /// // Reset all borrows including leaked ones.
-    /// world.undo_resource_leak();
+    /// world.undo_resource_leaks();
     ///
     /// // Borrow succeeds.
     /// assert_eq!(world.get_resource::<i32>().unwrap(), 11);
     /// ```
-    pub fn undo_resource_leak(&mut self) {
-        self.resources.undo_leak()
+    pub fn undo_resource_leaks(&mut self) {
+        self.resources.undo_leaks()
     }
 
     /// Returns iterator over resource types.

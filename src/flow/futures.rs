@@ -36,12 +36,12 @@ impl Future for YieldNow {
 }
 
 /// Yield control to the executor.
-/// Useful for implemeting waiting in loops
+/// Useful for implementing waiting in loops
 /// when there's no where to add a [`Waker`].
 #[macro_export]
 macro_rules! yield_now {
     () => {
-        $crate::private::YieldNow::new().await
+        $crate::flow::YieldNow::new().await
     };
 }
 

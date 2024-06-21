@@ -117,6 +117,52 @@ where
     }
 }
 
+impl<'a, T> Res<'a, T>
+where
+    T: ?Sized,
+{
+    /// Convert into a reference to the underlying data.
+    /// This function will consume the `Res` and keep data borrowed.
+    /// See [`World::undo_resource_leaks`](crate::world::World::undo_resource_leaks) to undo all leaks.
+    ///
+    /// This is an associated function that needs to be used as Res::leak(...).
+    /// A method would interfere with methods of the same name on the resource used through [`Deref`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::{World, Res};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    ///
+    /// // Leaking reference to resource causes it to stay borrowed.
+    /// let value: &i32 = Res::leak(world.get_resource().unwrap());
+    ///
+    /// assert_eq!(42, *value);
+    ///
+    /// // Immutable borrow succeeds.
+    /// assert_eq!(world.get_resource::<i32>().unwrap(), 42);
+    /// ```
+    ///
+    /// ```should_panic
+    /// # use edict::world::{World, Res};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    ///
+    /// // Leaking reference to resource causes it to stay borrowed.
+    /// let value: &i32 = Res::leak(world.get_resource().unwrap());
+    ///
+    /// assert_eq!(42, *value);
+    ///
+    /// // Immutable borrow panics.
+    /// world.get_resource_mut::<i32>();
+    /// ```
+    #[inline(always)]
+    pub fn leak(r: Res<'a, T>) -> &'a T {
+        Ref::leak(r.inner)
+    }
+}
+
 /// Function-system argument to fetch resource mutably.
 pub struct ResMut<'a, T: ?Sized> {
     inner: RefMut<'a, T>,
@@ -232,6 +278,47 @@ where
     #[inline(always)]
     fn as_mut(&mut self) -> &mut U {
         <T as AsMut<U>>::as_mut(self)
+    }
+}
+
+impl<'a, T> ResMut<'a, T>
+where
+    T: ?Sized,
+{
+    /// Convert into a mutable reference to the underlying data.
+    /// This function will consume the `ResMut` and keep data borrowed.
+    /// See [`World::undo_resource_leaks`](crate::world::World::undo_resource_leaks) to undo all leaks.
+    ///
+    /// This is an associated function that needs to be used as ResMut::leak(...).
+    /// A method would interfere with methods of the same name on the resource used through [`Deref`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::{World, ResMut};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    ///
+    /// // Leaking reference to resource causes it to stay borrowed.
+    /// let value: &mut i32 = ResMut::leak(world.get_resource_mut().unwrap());
+    ///
+    /// *value == 11;
+    /// ```
+    ///
+    /// ```should_panic
+    /// # use edict::world::{World, ResMut};
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    ///
+    /// // Leaking reference to resource causes it to stay borrowed.
+    /// let value: &mut i32 = ResMut::leak(world.get_resource_mut().unwrap());
+    ///
+    /// // Immutable borrow panics.
+    /// world.get_resource::<i32>();
+    /// ```
+    #[inline(always)]
+    pub fn leak(r: ResMut<'a, T>) -> &'a mut T {
+        RefMut::leak(r.inner)
     }
 }
 
@@ -427,7 +514,7 @@ impl Resources {
 
     /// Reset all possible leaks on resources.
     /// Mutable reference guarantees that no borrows are active.
-    pub fn undo_leak(&mut self) {
+    pub fn undo_leaks(&mut self) {
         for (_, r) in self.resources.iter_mut() {
             r.data.undo_leak();
         }

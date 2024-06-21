@@ -22,14 +22,6 @@ pub const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
 pub const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
 
 impl IdRange {
-    /// Returns proper range with `start` less than or equal to `end`.
-    pub fn proper(&self) -> Self {
-        IdRange {
-            start: self.start,
-            end: self.end.max(self.start),
-        }
-    }
-
     /// Returns number of IDs in the range.
     pub fn count(&self) -> u64 {
         debug_assert!(self.start <= self.end);
@@ -90,6 +82,13 @@ impl IdRange {
     }
 }
 
+/// Returns proper range with `start` less than or equal to `end`.
+fn proper_range(range: IdRange) -> IdRange {
+    IdRange {
+        start: range.start,
+        end: range.end.max(range.start),
+    }
+}
 pub(super) struct IdAllocator {
     current: IdRange,
     next: IdRange,
@@ -116,12 +115,12 @@ impl IdAllocator {
     /// Id allocator that allocates IDs from ranges.
     /// And allocate ranges from the given id range allocator.
     pub fn with_range_allocator(mut range_alloc: Box<dyn IdRangeAllocator>) -> Self {
-        let current = range_alloc.allocate_range().proper();
-        let next = range_alloc.allocate_range().proper();
+        let current = range_alloc.allocate_range();
+        let next = range_alloc.allocate_range();
 
         IdAllocator {
-            current,
-            next,
+            current: proper_range(current),
+            next: proper_range(next),
             range_alloc,
         }
     }
@@ -132,7 +131,7 @@ impl IdAllocator {
     pub fn next(&mut self) -> Option<NonZeroU64> {
         if self.current.is_empty() {
             self.current = self.next;
-            self.next = self.range_alloc.allocate_range().proper();
+            self.next = proper_range(self.range_alloc.allocate_range());
         }
 
         self.current.take()
@@ -175,7 +174,7 @@ impl IdAllocator {
         if advanced < count {
             advanced += self.next.advance(count - advanced, &mut f);
             self.current = self.next;
-            self.next = self.range_alloc.allocate_range().proper();
+            self.next = proper_range(self.range_alloc.allocate_range());
         }
         debug_assert_eq!(advanced, count);
     }
@@ -277,8 +276,7 @@ impl OneRangeAllocator {
 unsafe impl IdRangeAllocator for OneRangeAllocator {
     fn allocate_range(&mut self) -> IdRange {
         let range = self.range;
-        self.range.start = END;
-        self.range.end = END;
+        self.range.start = self.range.end;
         range
     }
 }

@@ -9,7 +9,6 @@ use crate::{
         ExternalSetHook,
     },
     entity::{EntitySet, IdRangeAllocator},
-    flow::NewFlows,
     resources::Resources,
 };
 
@@ -52,7 +51,9 @@ impl WorldBuilder {
             registry: self.registry,
             action_buffer: UnsafeCell::new(LocalActionBuffer::new()),
             action_channel: ActionChannel::new(),
-            new_flows: NewFlows::new(),
+
+            #[cfg(feature = "flow")]
+            new_flows: crate::flow::NewFlows::new(),
         }
     }
 

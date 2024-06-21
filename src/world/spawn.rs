@@ -59,7 +59,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn_empty();
     /// assert!(!entity.has_component::<ExampleComponent>());
@@ -89,7 +89,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn_one(ExampleComponent);
     /// assert!(entity.has_component::<ExampleComponent>());
@@ -139,7 +139,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::World;
+    /// # use edict::world::World;
     /// let mut world = World::new();
     /// world.ensure_external_registered::<u32>();
     /// let mut entity = world.spawn_one_external(42u32);
@@ -182,7 +182,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let mut entity = world.spawn((ExampleComponent,));
     /// assert!(entity.has_component::<ExampleComponent>());
@@ -210,7 +210,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent, EntityId};
+    /// # use edict::{world::World, entity::EntityId, ExampleComponent};
     /// let mut world = World::new();
     /// let id = EntityId::from_bits(42).unwrap();
     /// let mut entity = world.spawn_at(id, (ExampleComponent,));
@@ -241,7 +241,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent, EntityId};
+    /// # use edict::{world::World, entity::EntityId, ExampleComponent};
     /// let mut world = World::new();
     /// let id = EntityId::from_bits(42).unwrap();
     /// let mut entity = world.spawn_or_insert(id, (ExampleComponent,));
@@ -277,7 +277,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// world.ensure_external_registered::<u32>();
     /// world.ensure_component_registered::<ExampleComponent>();
@@ -313,7 +313,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// world.ensure_external_registered::<u32>();
     /// world.ensure_component_registered::<ExampleComponent>();
@@ -527,7 +527,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
+    /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let entity = world.spawn((ExampleComponent,)).id();
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
@@ -1024,11 +1024,13 @@ impl WorldLocal {
     /// # Example
     ///
     /// ```
-    /// # use edict::{World, ExampleComponent};
-    /// let mut world = World::new();
+    /// # use edict::{world::WorldLocal, ExampleComponent};
+    /// let mut world = WorldLocal::new();
     /// let entity = world.spawn((ExampleComponent,)).id();
-    /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
-    /// assert!(world.despawn(entity).is_err(), "Already despawned");
+    /// world.despawn_defer(entity);
+    /// assert!(world.is_alive(entity), "Despawn is deferred and entity is still alive");
+    /// world.run_deferred();
+    /// assert!(!world.is_alive(entity), "Finally despawned");
     /// ```
     #[inline(always)]
     pub fn despawn_defer(&self, entity: impl Entity) {

@@ -9,10 +9,13 @@ use crate::{
     component::ComponentInfo,
     query::SendQuery,
     system::ActionBufferQueue,
-    view::{acquire, release, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
+    view::{RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
     Access,
 };
+
+#[cfg(debug_assertions)]
+use crate::view::{acquire, release};
 
 use super::{FnArg, FnArgState};
 

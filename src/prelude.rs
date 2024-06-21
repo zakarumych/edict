@@ -7,7 +7,6 @@ pub use crate::{
     entity::{Entity, EntityBound, EntityId, EntityLoc, EntityRef},
     query::{Alt, Entities, Modified, Query, With, Without},
     relation::{ChildOf, Related, Relates, RelatesExclusive, RelatesTo, Relation},
-    scheduler::Scheduler,
     system::{IntoSystem, ResMutNoSend, ResNoSync, State, System},
     view::{View, ViewCell, ViewIter, ViewOne},
     world::{Res, ResMut, World, WorldBuilder},

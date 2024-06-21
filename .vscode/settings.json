@@ -1,4 +1,15 @@
 {
     "editor.formatOnSave": true,
     "rust-analyzer.cargo.noDefaultFeatures": true,
+    "rust-analyzer.cargo.features": [
+        "scheduler"
+    ],
+    "cSpell.words": [
+        "despawn",
+        "despawned",
+        "despawning",
+        "HEAPLESS",
+        "nanoserde",
+        "reborrow"
+    ]
 }

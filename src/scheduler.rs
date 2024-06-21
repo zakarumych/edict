@@ -27,6 +27,7 @@ use core::{
 
 use hashbrown::HashSet;
 
+#[derive(Clone)]
 #[repr(transparent)]
 pub struct Thread {
     #[cfg(feature = "std")]
@@ -38,13 +39,6 @@ pub struct Thread {
 
 unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
-
-#[cfg(not(feature = "std"))]
-extern "C" {
-    fn edict_current_thread() -> *mut u8;
-    fn edict_park_thread();
-    fn edict_unpark_thread(thread: *mut u8);
-}
 
 impl Thread {
     pub fn unpark(&self) {
@@ -78,14 +72,52 @@ impl Thread {
     }
 }
 
+#[cfg(feature = "std")]
 use parking_lot::Mutex;
 
+#[cfg(not(feature = "std"))]
+pub struct CurrentThread;
+
+#[cfg(not(feature = "std"))]
+impl amity::park::DefaultPark for Thread {
+    type Park = CurrentThread;
+    fn default_park() -> CurrentThread {
+        CurrentThread
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl amity::park::Park<Thread> for CurrentThread {
+    fn unpark_token(&self) -> Thread {
+        Thread::current()
+    }
+
+    fn park(&self) {
+        Thread::park();
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl amity::park::Unpark for Thread {
+    fn unpark(&self) {
+        self.unpark();
+    }
+}
+
+#[cfg(not(feature = "std"))]
+type Mutex<T> = lock_api::Mutex<amity::mutex::RawMutex<Thread>, T>;
+
 use crate::{
+    action::ActionBuffer,
+    executor::ScopedExecutor,
+    system::ActionBufferQueue,
     system::{IntoSystem, System},
     world::World,
+    Access,
 };
 
-use crate::{action::ActionBuffer, executor::ScopedExecutor, system::ActionBufferQueue, Access};
+#[cfg(not(feature = "std"))]
+use crate::nostd::scheduler::{edict_current_thread, edict_park_thread, edict_unpark_thread};
 
 /// Scheduler that starts systems in order of their registration.
 /// And executes as many non-conflicting systems in parallel as possible.
@@ -93,7 +125,7 @@ use crate::{action::ActionBuffer, executor::ScopedExecutor, system::ActionBuffer
 /// # Example
 ///
 /// ```
-/// # use edict::{world::World, scheduler::Scheduler, system::{IntoSystem, Res}};
+/// # use edict::{world::{World, Res}, scheduler::Scheduler, system::IntoSystem};
 ///
 /// let mut world = World::new();
 /// let mut scheduler = Scheduler::new();

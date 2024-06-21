@@ -3,8 +3,8 @@ use std::task::{Poll, Waker};
 use edict::{
     action::ActionEncoder,
     component::Component,
-    flow,
     flow::{Entity, Flows},
+    flow_fn,
     query::Entities,
     scheduler::Scheduler,
     view::View,
@@ -123,29 +123,35 @@ fn main() {
 
     let e = world.spawn((Pos { x: 0.0, y: 1.0 },)).id();
 
-    let target = Pos { x: 1.0, y: 0.0 };
+    let targets = [
+        Pos { x: 1.0, y: 0.0 },
+        Pos { x: 0.0, y: -1.0 },
+        Pos { x: -1.0, y: 0.0 },
+    ];
 
     let mut scheduler = Scheduler::new();
     scheduler.add_system(move_to_system);
 
     world.spawn_flow_for(
         e,
-        flow!(|mut e| {
-            move_to(&mut e, target).await;
+        flow_fn!(|mut e| {
+            for target in targets {
+                move_to(&mut e, target).await;
+            }
             let _ = e.insert(Finish);
         }),
     );
 
     loop {
+        world.insert_resource(DeltaTime(0.1));
+
+        flows.execute(&mut world);
+        scheduler.run_sequential(&mut world);
+
         if world.try_has_component::<Finish>(e).unwrap() {
             return;
         }
 
         println!("{:?}", world.get::<&Pos>(e).unwrap());
-
-        flows.execute(&mut world);
-        world.insert_resource(DeltaTime(0.1));
-
-        scheduler.run_sequential(&mut world);
     }
 }

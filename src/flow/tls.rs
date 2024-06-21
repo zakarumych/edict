@@ -5,15 +5,10 @@ use core::{marker::PhantomData, ptr::NonNull};
 use crate::{entity::EntityId, world::WorldLocal};
 
 #[cfg(not(feature = "std"))]
-extern "C" {
-    fn edict_set_flow_world_tls(world: NonNull<u8>) -> Option<NonNull<u8>>;
-    fn edict_get_flow_world_tls() -> Option<NonNull<u8>>;
-    fn edict_reset_flow_world_tls(prev: Option<NonNull<u8>>, world: NonNull<u8>);
-
-    fn edict_set_flow_entity_tls(entity: EntityId) -> Option<EntityId>;
-    fn edict_get_flow_entity_tls() -> Option<EntityId>;
-    fn edict_reset_flow_entity_tls(prev: Option<EntityId>, entity: EntityId);
-}
+use crate::nostd::flow::{
+    edict_get_flow_entity_tls, edict_get_flow_world_tls, edict_reset_flow_entity_tls,
+    edict_reset_flow_world_tls, edict_set_flow_entity_tls, edict_set_flow_world_tls,
+};
 
 #[cfg(feature = "std")]
 std::thread_local! {
@@ -79,7 +74,7 @@ pub(super) unsafe fn get_world_ref<'a>() -> &'a WorldLocal {
     #[cfg(not(feature = "std"))]
     let world = edict_get_flow_world_tls().map(NonNull::cast);
 
-    world.unwrap_unchecked().as_ref()
+    world.unwrap().as_ref()
 }
 
 /// Returns the current world reference.
@@ -98,7 +93,7 @@ pub(super) unsafe fn get_world_mut<'a>() -> &'a mut WorldLocal {
     #[cfg(not(feature = "std"))]
     let world = edict_get_flow_world_tls().map(NonNull::cast);
 
-    world.unwrap_unchecked().as_mut()
+    world.unwrap().as_mut()
 }
 
 /// Guard for setting and resetting the current world pointer.

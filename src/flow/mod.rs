@@ -14,6 +14,16 @@
 //! ```
 //!
 
+// There's one possibility to end up with `flow::World` or `flow::Entity` on different thread
+// by using scoped threads.
+// `flow::World` and `flow::Entity` implement `Send` to allow `Send` bound on the `Future`s which won't be implemented
+// if reference to real `World` is kept between awaits that would be unsound.
+//
+// User-defined autotrait would be great here to make it instead of `Send` to guard against world reference keeping,
+// while making futures `!Send` as well as `flow::World` and `flow::Entity`.
+//
+// However user-defined autotraits are far from stable.
+
 use core::{
     any::TypeId,
     future::Future,
@@ -443,7 +453,7 @@ pub trait BadContext {
 ///
 /// This macro is a workaround for this limitation.
 #[macro_export]
-macro_rules! flow {
+macro_rules! flow_fn {
     (|$arg:ident $(: $ty:ty)?| $code:expr) => {
         unsafe {
             $crate::flow::BadFlowClosure::new(move |cx| async move {

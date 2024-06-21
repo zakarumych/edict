@@ -1,11 +1,11 @@
 //! Edict is a fast and powerful ECS crate that expands traditional ECS feature set.
 //! Written in Rust by your fellow 🦀
 //!
-//! ## Features
+//! # Features
 //!
 //! ### General purpose
 //!
-//! Archetype based ECS with fast iteration and ergonomic in mind.
+//! Archetype based ECS with fast iteration and ergonomics in mind.
 //!
 //! ### Simple IDs
 //!
@@ -28,7 +28,7 @@
 //! [`Entity`] and [`AliveEntity`] traits implemented for entity types.
 //! Entity types provide convenient guaranties for entity existence and its location.
 //!
-//! [`EntityId`] implments only [`Entity`] as it doesn't provide any guaranties.
+//! [`EntityId`] implements only [`Entity`] as it doesn't provide any guaranties.
 //!
 //! [`EntityBound`] is guaranteed to be alive, allowing using it in methods that doesn't handle entity absence.
 //! Using it with wrong [`World`] may cause panic.
@@ -43,7 +43,7 @@
 //!
 //! ### Flexible queries
 //!
-//! Powerful [`Query`] mechanism that allows to filter entities by components, relations and other criteria.
+//! Powerful [`Query`] mechanism that can filter entities by components, relations and other criteria and fetch entity data.
 //! Queries can be mutable or immutable, sendable or non-sendable, stateful or stateless.
 //! Using query on [`World`] creates [`View`]s that can be used to iterate over entities that match the query yielding query items.
 //!
@@ -55,8 +55,9 @@
 //!
 //! ### Non-thread-safe types
 //!
-//! Supports for [`!Send`] and [`!Sync`] components and resources with some limitations.
-//! [`World`] is not sendable but shareable between threads via [`WorldShare`] wrapper.
+//! Support for [`!Send`] and [`!Sync`] components and resources with some limitations.
+//!
+//! [`World`] itself is not sendable but shareable between threads via [`WorldShare`] wrapper.
 //! Thread owning [`World`] is referred as "main" thread.
 //!
 //! Components and resources that are [`!Send`] can be fetched mutably only from "main" thread.
@@ -73,32 +74,18 @@
 //!
 //! ### Entity relations
 //!
-//! Relations can be added to pair of entities, binding them together.
+//! A relation can be added to pair of entities, binding them together.
+//! Queries may fetch relations and filter entities by their relations to other entities.
 //! When either of the two entities is despawned, relation is dropped.
 //! [`Relation`] type may further configure behavior of the bounded entities.
 //!
-//! ### Runtime and ahead-of-time checks
+//! ### Runtime and compile time checks
 //!
 //! Runtime checks for query validity and mutable aliasing avoidance.
 //! [`ViewCell`] with runtime checks allows multiple views with aliased access coexist,
 //! deferring checks to runtime that prevents invalid aliasing to occur.
 //!
-//! When this is not required, [`View`]s with ahead-of-time checks should be used instead.
-//!
-//! ### Customizable
-//!
-//! [`WorldBuilder`] provides opportunity to override some behavior.
-//! See below on what can be overridden.
-//!
-//! ### Components with trait and without
-//!
-//! Optional [`Component`] trait to allow implicit component type registration by insertion methods.
-//! Implicit registration uses behavior defined by [`Component`] implementation as-is.
-//! When needed, explicit registration can be done using [`WorldBuilder`] to override component behavior.
-//!
-//! Non [`Component`] types require explicit registration.
-//! Only default registration with [`World`] is allowed.
-//! When needed, explicit registration can be done using [`WorldBuilder`] to override component behavior.
+//! When this is not required, [`View`]s with compile time checks should be used instead.
 //!
 //! ### Deferred actions
 //!
@@ -106,38 +93,59 @@
 //! Or [`LocalActionEncoder`] instead when action is not `Send`.
 //! Or convenient [`WorldLocal::defer*`] methods to defer actions to internal [`LocalActionEncoder`].
 //!
+//! ### Customizable
+//!
+//! [`WorldBuilder`] provides opportunity to override some behavior.
+//! See below for details.
+//!
+//! ### Components with trait and without
+//!
+//! Optional [`Component`] trait that allows implicit component type registration when component is inserted first time.
+//! Implicit registration uses behavior defined by [`Component`] implementation as-is.
+//! When needed, explicit registration can be done using [`WorldBuilder`] to override component behavior.
+//!
+//! Non [`Component`] types require explicit registration and
+//! few methods with `_external` suffix is used with them instead of normal ones.
+//! Only default registration is possible when [`World`] is already built.
+//! When needed, explicit registration can be done using [`WorldBuilder`] to override component behavior.
+//!
 //! ### Hooks
 //!
-//! Component replace/drop hooks.
+//! Component replace/drop hooks are called automatically when component is replaced or dropped.
+//!
 //! When component is registered it can be equipped with hooks to be called when component value is replaced or dropped.
+//! Implicit registration of [`Component`] types will register hooks defined on the trait impl.
+//!
 //! Drop hook is called when component is dropped via `World::drop` or entity is despawned and is not
 //! called when component is removed from entity.
-//! Replace hook is called when component is replaced with new value when component is inserted into entity
+//!
+//! Replace hook is called when component is replaced e.g. component is inserted into entity
 //! and entity already has component of the same type.
 //! Replace hook returns boolean value that indicates if drop hook should be called for replaced component.
+//!
 //! Hooks can record actions into provided [`LocalActionEncoder`] that will be executed
 //! before [`World`] method that caused the hook to be called returns.
 //!
 //! When component implements [`Component`] trait, hooks defined on the trait impl are registered automatically to call
 //! [`Component::on_drop`] and [`Component::on_replace`] methods.
-//! They may be overriden with custom hooks using [`WorldBuilder`].
+//! They may be overridden with custom hooks using [`WorldBuilder`].
 //! For non [`Component`] types hooks can be registered only via [`WorldBuilder`].
 //! Default registration with [`World`] will not register any hooks.
 //!
 //! ### Borrows
 //!
 //! Component type may define borrowing operations to borrow another type from it.
-//! Borrowed type may be not sized, allowing slices, dyn traits to be borrowed.
+//! Borrowed type may be not sized, allowing slices and dyn traits to be borrowed.
 //! A macro to help define borrowing operations is provided.
 //! Queries that tries to borrow type from suitable components are provided:
-//! * [`BorrowAll`] borrows from all components that implement borrowing operations for desired type.
+//! * [`BorrowAll`] borrows from all components that implement borrowing requested type.
 //!   Yields a `Vec` with borrowed values since multiple components of the entity may provide it.
-//!   Skips entities if none of the components provide the desired type.
-//! * [`BorrowAny`] borrows from first suitable component that implements borrowing operations for desired type.
+//!   Skips entities if none of the components provide the requested type.
+//! * [`BorrowAny`] borrows from first suitable component that implements borrowing requested type.
 //!   Yields a single value.
-//!   Skips entities if none of the components provide the desired type.
-//! * [`BorrowOne`] is configured with `TypeId` of component from which it should borrow desired type.
-//!   Panics if component doesn't provide the desired type.
+//!   Skips entities if none of the components provide the requested type.
+//! * [`BorrowOne`] is configured with `TypeId` of component from which it should borrow requested type.
+//!   Panics if component doesn't provide the requested type.
 //!   Skips entities without the component.
 //!
 //! ### Systems
@@ -145,8 +153,8 @@
 //! Systems is convenient way to build logic that operates on [`World`].
 //! Edict defines [`System`] trait to run logic on [`World`] and [`IntoSystem`] for types convertible to [`System`].
 //!
-//! Functions with certain bounds implement [`IntoSystem`] automatically.
-//! Function is required to return `()` and accept arguments that implement [`FnArg`] trait.
+//! Functions may implement [`IntoSystem`] automatically -
+//! it is required to return `()` and accept arguments that implement [`FnArg`] trait.
 //! There are [`FnArg`] implementations for [`View`]s to iterate over entities,
 //! [`Res`] and [`ResMut`], [`ResNoSync`] and [`ResMutNoSend`] to access resources,
 //! [`ActionEncoder`] to record actions that mutate [`World`]'s state and [`State`] to store system's local state between runs.
@@ -154,11 +162,17 @@
 //! ### Easy scheduler
 //!
 //! [`Scheduler`] is provided to run [`System`]s.
-//! Systems added the the [`Scheduler`] in parallel, however they act as if executed sequentially in order they were added.
+//! Systems added to the [`Scheduler`] run in parallel where possible,
+//! however they act **as if** executed sequentially in order they were added.
+//!
 //! If systems do not conflict they may be executed in parallel.
+//!
 //! If systems conflict, the one added first will be executed before the one added later can start.
+//!
 //! `std` threads or `rayon` can be used as an executor.
 //! User may provide custom executor by implementing [`ScopedExecutor`] trait.
+//!
+//! Requires `"scheduler"` feature which is enabled by default.
 //!
 //! ### Async
 //!
@@ -180,7 +194,7 @@
 //! Such flows will be cancelled if entity is despawned.
 //!
 //! Due to borrow checker limitations, closures can't be spawned as flows directly,
-//! To work around this issue [`flow!`] macro accepts valid closure syntax and produces a flow that can be spawned.
+//! To work around this issue [`flow_fn!`] macro accepts valid closure syntax and produces a flow that can be spawned.
 //!
 //! User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access taks [`Context`](std::task::Context).
 //! Edict provides only a couple of low-level futures that will do the waiting:
@@ -191,13 +205,15 @@
 //! Flows may request systems to perform operations by adding special components to entities.
 //! And systems may spawn flows to do long-running operations.
 //!
-//! ## no_std support
+//! Requires `"flow"` feature which is enabled by default.
+//!
+//! # no_std support
 //!
 //! Edict can be used in `no_std` environment but requires `alloc`.
-//! With `"std"` feature enabled error types implement `Error` trait.
-//! `"std"` feature is enabled by default and must be turned off for `no_std` environment.
-//! Dependent crates that also support `no_std` should turn off default features
-//! and optionally enable `"std"`.
+//! `"std"` feature is enabled by default.
+//!
+//! If "std" feature is disabled, error types will not implement `std::error::Error`.
+//! And "flow" and "scheduler" feature would require extern functions to be provided.
 //!
 //! [`!Send`]: core::marker::Send
 //! [`!Sized`]: core::marker::Sized
@@ -452,13 +468,20 @@ pub mod dump;
 pub mod entity;
 pub mod epoch;
 pub mod executor;
-pub mod flow;
 pub mod query;
 pub mod relation;
-pub mod scheduler;
 pub mod system;
 pub mod view;
 pub mod world;
+
+#[cfg(feature = "flow")]
+pub mod flow;
+
+#[cfg(feature = "scheduler")]
+pub mod scheduler;
+
+#[cfg(not(feature = "std"))]
+pub mod nostd;
 
 #[cfg(test)]
 mod test;
@@ -566,7 +589,8 @@ pub mod private {
     };
 
     use crate::system::{IntoSystem, IsFunctionSystem};
-    pub use crate::{flow::YieldNow, system::FnArg};
+
+    pub use crate::system::FnArg;
 
     #[inline(always)]
     pub fn is_fn_arg<A: FnArg>() {}
@@ -583,8 +607,6 @@ impl component::Component for ExampleComponent {}
 #[cold]
 #[inline(always)]
 fn cold() {}
-
-pub use edict_proc::system;
 
 /// Shorter version of [`core::any::TypeId::of`].
 fn type_id<T: 'static + ?Sized>() -> TypeId {

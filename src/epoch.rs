@@ -10,7 +10,8 @@ use core::{
 /// It is assumed that underlying value cannot overflow in any reasonable amount of time.
 /// For this purpose only increment operation is possible and counter starts with 0.
 /// If incremented every nanosecond the counter will overflow in 14'029 years.
-/// Before this inevitable event happens, update to new version of this library with 128 bit counter will be required.
+/// Before this inevitable event happens, update to new version of this library with 128 bit counter is required.
+/// Which shall be released before year 14000 to give at least 29 years for migration.
 pub struct EpochCounter {
     value: AtomicU64,
 }

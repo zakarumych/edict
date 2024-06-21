@@ -18,6 +18,8 @@ pub use self::func::{
     ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState, State, StateState,
 };
 
+pub use edict_proc::system;
+
 /// A queue of `ActionEncoder` instances.
 /// The nature of queue depends on scheduler implementation.
 /// Systems must work with any action queue type - the API uses `dyn ActionBufferQueue`.

@@ -129,9 +129,6 @@ fn main() {
         Pos { x: -1.0, y: 0.0 },
     ];
 
-    let mut scheduler = Scheduler::new();
-    scheduler.add_system(move_to_system);
-
     world.spawn_flow_for(
         e,
         flow_fn!(|mut e| {
@@ -141,6 +138,9 @@ fn main() {
             let _ = e.insert(Finish);
         }),
     );
+
+    let mut scheduler = Scheduler::new();
+    scheduler.add_system(move_to_system);
 
     loop {
         world.insert_resource(DeltaTime(0.1));

@@ -25,8 +25,13 @@ pub mod flow {
 #[cfg(feature = "scheduler")]
 pub mod scheduler {
     extern "C" {
+        /// Returns the current thread opaque handle.
         pub fn edict_current_thread() -> *mut u8;
+
+        /// Parks the current thread.
         pub fn edict_park_thread();
+
+        /// Unparks the thread.
         pub fn edict_unpark_thread(thread: *mut u8);
     }
 }

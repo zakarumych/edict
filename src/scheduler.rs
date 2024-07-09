@@ -73,6 +73,7 @@ impl Thread {
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
 
+/// Current thread parker for no-std environment.
 #[cfg(not(feature = "std"))]
 pub struct CurrentThread;
 

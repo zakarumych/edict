@@ -26,20 +26,6 @@ pub trait BorrowState {
 /// A view borrow state that allows view to be extended.
 pub trait ExtendableBorrowState: BorrowState {}
 
-/// Borrow state for runtime borrowing.
-pub struct RuntimeBorrowState {
-    borrowed: Cell<bool>,
-}
-
-impl RuntimeBorrowState {
-    /// Create a new [`RuntimeBorrowState`] in the un-borrowed state.
-    pub const fn new() -> Self {
-        RuntimeBorrowState {
-            borrowed: Cell::new(false),
-        }
-    }
-}
-
 /// Acquire borrow on archetypes.
 #[inline(always)]
 #[track_caller]
@@ -210,6 +196,28 @@ fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     }
 }
 
+/// Borrow state for runtime borrowing.
+///
+/// [`ViewCell`](crate::view::ViewCell) is type alias for view with this borrow state.
+///
+/// Views with this state can be created from shared world reference,
+/// but would require runtime borrow checks for components.
+/// Mutably aliased borrows will result in runtime panic.
+///
+/// [`System`]s may use this type of borrow state when aliasing views are required.
+pub struct RuntimeBorrowState {
+    borrowed: Cell<bool>,
+}
+
+impl RuntimeBorrowState {
+    /// Create a new [`RuntimeBorrowState`] in the un-borrowed state.
+    pub const fn new() -> Self {
+        RuntimeBorrowState {
+            borrowed: Cell::new(false),
+        }
+    }
+}
+
 impl BorrowState for RuntimeBorrowState {
     #[inline(always)]
     fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
@@ -249,9 +257,17 @@ impl BorrowState for RuntimeBorrowState {
 
 impl ExtendableBorrowState for RuntimeBorrowState {}
 
-/// Borrow state for statically borrowed views.
-/// These can be created from [`&mut World`](crate::world::World)
-/// or unsafely from [`&World`](crate::world::World).
+/// Borrow state for static borrowing.
+///
+/// [`View`](crate::view::View) is type alias for view with this borrow state.
+///
+/// Views with this state can be created unsafely from shared world reference.
+/// User must ensure that no mutably aliased borrows are created.
+///
+/// For this reason, this type of borrow state does not allow extending views.
+///
+/// [`System`]s commonly use this type of borrow state.
+/// Scheduler plans systems execution to eliminate any possible mutably aliased borrows.
 #[derive(Copy, Clone, Debug)]
 pub struct StaticallyBorrowed;
 
@@ -274,9 +290,12 @@ impl BorrowState for StaticallyBorrowed {
     }
 }
 
-/// Borrow state for statically borrowed views.
-/// These can be created from [`&mut World`](crate::world::World)
-/// or unsafely from [`&World`](crate::world::World).
+/// Borrow state for exclusive borrowing.
+///
+/// [`ViewMut`](crate::view::ViewMut) is type alias for view with this borrow state.
+///
+/// Views with this state can be created only from mutable world reference.
+/// Therefore no other views can be created at the same time.
 #[derive(Copy, Clone, Debug)]
 pub struct ExclusivelyBorrowed;
 

@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[cfg(feature = "flow")]
-use crate::flow::{self, flow_fn, Flows};
+use crate::flow::{FlowEntity, FlowWorld, Flows};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Str(&'static str);
@@ -581,9 +581,9 @@ fn test_flow() {
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
-    world.spawn_flow(flow_fn!(|world: &mut flow::World| {
+    world.spawn_flow(|world: FlowWorld| async move {
         world.spawn((U32(42),));
-    }));
+    });
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
     Flows::default().execute(&mut world);
@@ -599,12 +599,9 @@ fn test_entity_flow() {
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
 
-    world.spawn_flow_for(
-        e,
-        flow_fn!(|mut e: flow::Entity| {
-            e.insert(U32(42));
-        }),
-    );
+    world.spawn_flow_for(e, |e: FlowEntity| async move {
+        e.insert(U32(42));
+    });
 
     assert_eq!(world.view::<&U32>().iter().count(), 0);
     Flows::default().execute(&mut world);

@@ -3,7 +3,7 @@ use core::{cell::UnsafeCell, marker::PhantomData};
 
 use crate::{
     action::{ActionChannel, LocalActionBuffer},
-    bundle::ComponentBundle,
+    bundle::{Bundle, ComponentBundle},
     component::{
         Component, ComponentInfo, ComponentInfoRef, ComponentRegistry, ExternalDropHook,
         ExternalSetHook,
@@ -12,7 +12,9 @@ use crate::{
     resources::Resources,
 };
 
-use super::{register_bundle, ArchetypeSet, Edges, EpochCounter, World};
+use super::{
+    assert_bundle_registered, ensure_bundle_registered, ArchetypeSet, Edges, EpochCounter, World,
+};
 
 /// Builder for [`World`] value.
 ///
@@ -57,7 +59,7 @@ impl WorldBuilder {
         }
     }
 
-    /// Registers new component type and allows modifying it.
+    /// Registers new component type using raw [`ComponentInfo`].
     pub fn register_raw(&mut self, info: ComponentInfo) {
         self.registry.register_raw(info);
     }
@@ -123,17 +125,6 @@ impl World {
         self.registry.ensure_component_registered::<T>();
     }
 
-    /// Explicitly registers bundle of component types.
-    ///
-    /// This method is only needed if you want to use bundle of component types using
-    /// [`World::insert_external_bundle`] or [`World::spawn_external`].
-    pub fn ensure_bundle_registered<B>(&mut self)
-    where
-        B: ComponentBundle,
-    {
-        register_bundle(&mut self.registry, &PhantomData::<B>);
-    }
-
     /// Explicitly registers external type.
     ///
     /// Unlike [`WorldBuilder::register_external`] method, this method does not return reference to component configuration,
@@ -147,5 +138,24 @@ impl World {
         T: 'static,
     {
         self.registry.ensure_external_registered::<T>();
+    }
+
+    /// Explicitly registers bundle of component types.
+    ///
+    /// This method is only needed if you want to use bundle of component types using
+    /// [`World::insert_external_bundle`] or [`World::spawn_external`].
+    pub fn ensure_bundle_registered<B>(&mut self)
+    where
+        B: ComponentBundle,
+    {
+        ensure_bundle_registered(&mut self.registry, &PhantomData::<B>);
+    }
+
+    /// Asserts that all components from the bundle are registered.
+    pub fn assert_bundle_registered<B>(&self)
+    where
+        B: Bundle,
+    {
+        assert_bundle_registered(&self.registry, &PhantomData::<B>);
     }
 }

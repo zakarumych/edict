@@ -489,7 +489,7 @@ pub mod nostd;
 #[cfg(test)]
 mod test;
 
-pub mod prelude;
+// pub mod prelude;
 
 /// Error that may be returned when an entity is not found in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

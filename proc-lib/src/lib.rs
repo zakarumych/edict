@@ -2,7 +2,6 @@ use proc_macro2::TokenStream;
 
 mod component;
 // mod query;
-mod flow;
 mod relation;
 mod system;
 
@@ -147,8 +146,4 @@ pub fn derive_relation(
 
 pub fn system(item: syn::ItemFn, edict_path: &syn::Path) -> syn::Result<TokenStream> {
     system::system(item, edict_path)
-}
-
-pub fn flow_fn(closure: syn::ExprClosure, edict_path: &syn::Path) -> syn::Result<TokenStream> {
-    flow::flow_fn(closure, edict_path)
 }

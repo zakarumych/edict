@@ -40,15 +40,3 @@ pub fn system(attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(err) => err.to_compile_error().into(),
     }
 }
-
-/// This macro converts closure into flow.
-#[proc_macro]
-pub fn flow_fn(tokens: TokenStream) -> TokenStream {
-    let closure = syn::parse_macro_input!(tokens as syn::ExprClosure);
-
-    let path: syn::Path = syn::parse_quote!(edict);
-    match edict_proc_lib::flow_fn(closure, &path) {
-        Ok(output) => output.into(),
-        Err(err) => err.to_compile_error().into(),
-    }
-}

@@ -57,6 +57,20 @@ impl World {
         ViewValue::new_cell(self, (Q::default_query(),), ())
     }
 
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// It requires default-constructible query and filter types.
+    ///
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter<'a, Q, F>(&'a self) -> ViewCell<'a, (Q,), F>
+    where
+        Q: DefaultSendQuery,
+        F: DefaultSendQuery,
+    {
+        ViewValue::new_cell(self, (Q::default_query(),), F::default_query())
+    }
+
     /// Creates new view with single sub-query.
     ///
     /// It requires default-constructible query type.
@@ -70,6 +84,22 @@ impl World {
         Q: DefaultQuery,
     {
         ViewValue::new(self, (Q::default_query(),), ())
+    }
+
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// It requires default-constructible query and filter types.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter_mut<'a, Q, F>(&'a mut self) -> ViewMut<'a, (Q,), F>
+    where
+        Q: DefaultQuery,
+        F: DefaultQuery,
+    {
+        ViewValue::new(self, (Q::default_query(),), F::default_query())
     }
 
     /// Creates new view with single sub-query.
@@ -92,6 +122,27 @@ impl World {
         unsafe { ViewValue::new_unchecked(self, (Q::default_query(),), ()) }
     }
 
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// It requires default-constructible query and filter types.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible that query won't create
+    /// invalid aliasing of world's components.
+    #[inline(always)]
+    pub unsafe fn view_filter_unchecked<'a, Q, F>(&'a self) -> ViewMut<'a, (Q,), F>
+    where
+        Q: DefaultQuery,
+        F: DefaultQuery,
+    {
+        unsafe { ViewValue::new_unchecked(self, (Q::default_query(),), F::default_query()) }
+    }
+
     /// Creates new view with single sub-query.
     ///
     /// Uses provided query instance to support stateful queries.
@@ -107,6 +158,22 @@ impl World {
         ViewValue::new_cell(self, (query.into_query(),), ())
     }
 
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// Uses provided query and filter instances to support stateful queries.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter_with<'a, Q, F>(&'a self, query: Q, filter: F) -> ViewCell<'a, (Q,), F>
+    where
+        Q: IntoSendQuery,
+        F: IntoSendQuery,
+    {
+        ViewValue::new_cell(self, (query.into_query(),), filter.into_query())
+    }
+
     /// Creates new view with single sub-query.
     ///
     /// Uses provided query instance to support stateful queries.
@@ -120,6 +187,22 @@ impl World {
         Q: IntoQuery,
     {
         ViewValue::new(self, (query.into_query(),), ())
+    }
+
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// Uses provided query and filter instances to support stateful queries.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter_with_mut<'a, Q, F>(&'a mut self, query: Q, filter: F) -> ViewMut<'a, (Q,), F>
+    where
+        Q: IntoQuery,
+        F: IntoQuery,
+    {
+        ViewValue::new(self, (query.into_query(),), filter.into_query())
     }
 
     /// Creates new view with single sub-query.
@@ -141,6 +224,31 @@ impl World {
     {
         unsafe { ViewValue::new_unchecked(self, (query.into_query(),), ()) }
     }
+
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// Uses provided query and filter instances to support stateful queries.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewMut`]'s methods to add sub-queries and filters.
+    ///
+    /// # Safety
+    ///
+    /// The caller is responsible that query won't create
+    /// invalid aliasing of world's components.
+    #[inline(always)]
+    pub unsafe fn view_filter_with_unchecked<'a, Q, F>(
+        &'a self,
+        query: Q,
+        filter: F,
+    ) -> ViewMut<'a, (Q,), F>
+    where
+        Q: IntoQuery,
+        F: IntoQuery,
+    {
+        unsafe { ViewValue::new_unchecked(self, (query.into_query(),), filter.into_query()) }
+    }
 }
 
 impl WorldLocal {
@@ -157,6 +265,20 @@ impl WorldLocal {
         ViewValue::new_cell(self, (Q::default_query(),), ())
     }
 
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// It requires default-constructible query and filter types.
+    ///
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter<'a, Q, F>(&'a self) -> ViewCell<'a, (Q,), F>
+    where
+        Q: DefaultQuery,
+        F: DefaultQuery,
+    {
+        ViewValue::new_cell(self, (Q::default_query(),), F::default_query())
+    }
+
     /// Creates new view with single sub-query.
     ///
     /// Uses provided query instance to support stateful queries.
@@ -170,5 +292,21 @@ impl WorldLocal {
         Q: IntoQuery,
     {
         ViewValue::new_cell(self, (query.into_query(),), ())
+    }
+
+    /// Creates new view with single sub-query and filter.
+    ///
+    /// Uses provided query and filter instances to support stateful queries.
+    ///
+    /// Borrows world mutably to avoid runtime borrow checks.
+    ///
+    /// Use [`ViewCell`]'s methods to add sub-queries and filters.
+    #[inline(always)]
+    pub fn view_filter_with<'a, Q, F>(&'a self, query: Q, filter: F) -> ViewCell<'a, (Q,), F>
+    where
+        Q: IntoQuery,
+        F: IntoQuery,
+    {
+        ViewValue::new_cell(self, (query.into_query(),), filter.into_query())
     }
 }

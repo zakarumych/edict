@@ -3,7 +3,7 @@ use std::task::{Poll, Waker};
 use edict::{
     action::ActionEncoder,
     component::Component,
-    flow::{flow_fn, Entity, Flows},
+    flow::{FlowEntity, Flows},
     query::Entities,
     resources::Res,
     scheduler::Scheduler,
@@ -77,7 +77,7 @@ fn move_to_system(
     }
 }
 
-async fn move_to(e: &mut Entity<'_>, target: Pos) {
+async fn move_to(e: FlowEntity, target: Pos) {
     e.poll_ref(move |mut e, cx| {
         let Some(pos) = e.get::<&Pos>() else {
             return Poll::Ready(());
@@ -129,15 +129,12 @@ fn main() {
         Pos { x: -1.0, y: 0.0 },
     ];
 
-    world.spawn_flow_for(
-        e,
-        flow_fn!(|mut e| {
-            for target in targets {
-                move_to(&mut e, target).await;
-            }
-            let _ = e.insert(Finish);
-        }),
-    );
+    world.spawn_flow_for(e, move |e| async move {
+        for target in targets {
+            move_to(e, target).await;
+        }
+        let _ = e.insert(Finish);
+    });
 
     let mut scheduler = Scheduler::new();
     scheduler.add_system(move_to_system);

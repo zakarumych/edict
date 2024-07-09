@@ -98,17 +98,14 @@ where
 {
     /// Locks query borrows.
     ///
-    /// Allocs to construct statically borrowed view with
+    /// Allows to construct statically borrowed view with
     /// lifetime tied to this view borrow.
     ///
-    /// This can improve performance if view is used multiple times where
-    /// compiler can't figure it is borrowed already and perform check over and over.
+    /// Helpful to satisfy API that requires [`View`].
     ///
-    /// Additionally handy for existing API that requires `View`.
-    ///
-    /// For simmetry this method is avaialble for statically borrowed views too.
+    /// For symmetry this method is available for statically and exclusively borrowed views too.
     #[inline(always)]
-    pub fn lock(&mut self) -> ViewValue<'_, Q, F, StaticallyBorrowed> {
+    pub fn lock(&mut self) -> View<'_, Q, F> {
         self.acquire_borrow();
         ViewValue {
             archetypes: self.archetypes,
@@ -229,6 +226,143 @@ where
             state: RuntimeBorrowState::new(),
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, Q, F, ExclusivelyBorrowed>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(view: ViewValue<'a, Q, F, ExclusivelyBorrowed>) -> Self {
+        ViewValue {
+            archetypes: view.archetypes,
+            query: view.query,
+            filter: view.filter,
+            state: RuntimeBorrowState::new(),
+            entity_set: view.entity_set,
+            epochs: view.epochs,
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, Q, F, ExclusivelyBorrowed>>
+    for ViewValue<'a, Q, F, StaticallyBorrowed>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(value: ViewValue<'a, Q, F, ExclusivelyBorrowed>) -> Self {
+        ViewValue {
+            archetypes: value.archetypes,
+            query: value.query,
+            filter: value.filter,
+            state: StaticallyBorrowed,
+            entity_set: value.entity_set,
+            epochs: value.epochs,
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, Q, F, StaticallyBorrowed>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(value: View<'a, Q, F>) -> Self {
+        ViewValue {
+            archetypes: value.archetypes,
+            query: value.query,
+            filter: value.filter,
+            state: RuntimeBorrowState::new(),
+            entity_set: value.entity_set,
+            epochs: value.epochs,
+        }
+    }
+}
+
+impl<'a, Q, F, B> From<ViewValue<'a, (Q,), F, B>> for ViewValue<'a, Q, F, B>
+where
+    Q: Query,
+    F: Query,
+    B: BorrowState,
+{
+    #[inline(always)]
+    fn from(view: ViewValue<'a, (Q,), F, B>) -> ViewValue<'a, Q, F, B> {
+        let (query,) = view.query;
+        ViewValue {
+            archetypes: view.archetypes,
+            query,
+            filter: view.filter,
+            entity_set: view.entity_set,
+            epochs: view.epochs,
+            state: view.extract_state(),
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, (Q,), F, ExclusivelyBorrowed>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(view: ViewMut<'a, (Q,), F>) -> Self {
+        let (query,) = view.query;
+        ViewValue {
+            archetypes: view.archetypes,
+            query,
+            filter: view.filter,
+            state: RuntimeBorrowState::new(),
+            entity_set: view.entity_set,
+            epochs: view.epochs,
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, (Q,), F, ExclusivelyBorrowed>>
+    for ViewValue<'a, Q, F, StaticallyBorrowed>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(view: ViewMut<'a, (Q,), F>) -> Self {
+        let (query,) = view.query;
+        ViewValue {
+            archetypes: view.archetypes,
+            query,
+            filter: view.filter,
+            state: StaticallyBorrowed,
+            entity_set: view.entity_set,
+            epochs: view.epochs,
+        }
+    }
+}
+
+impl<'a, Q, F> From<ViewValue<'a, (Q,), F, StaticallyBorrowed>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState>
+where
+    Q: Query,
+    F: Query,
+{
+    #[inline(always)]
+    fn from(view: View<'a, (Q,), F>) -> Self {
+        let (query,) = view.query;
+        ViewValue {
+            archetypes: view.archetypes,
+            query,
+            filter: view.filter,
+            state: RuntimeBorrowState::new(),
+            entity_set: view.entity_set,
+            epochs: view.epochs,
         }
     }
 }

@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    assert_registered_bundle, assert_registered_one, register_bundle, register_one, World,
-    WorldLocal,
+    assert_bundle_registered, assert_registered, ensure_bundle_registered, register_component,
+    World, WorldLocal,
 };
 
 /// Limits on reserving of space for entities and components
@@ -108,7 +108,7 @@ impl World {
             &mut self.archetypes,
             0,
             type_id::<T>(),
-            register_one::<T>,
+            register_component::<T>,
         );
 
         let epoch = self.epoch.next_mut();
@@ -157,7 +157,7 @@ impl World {
             &mut self.archetypes,
             0,
             type_id::<T>(),
-            assert_registered_one::<T>,
+            assert_registered::<T>,
         );
 
         let epoch = self.epoch.next_mut();
@@ -195,7 +195,7 @@ impl World {
         B: DynamicComponentBundle,
     {
         self.maintenance();
-        self._spawn(bundle, register_bundle::<B>)
+        self._spawn(bundle, ensure_bundle_registered::<B>)
     }
 
     /// Spawns a new entity in this world with specific ID and bundle of components.
@@ -224,7 +224,7 @@ impl World {
         B: DynamicComponentBundle,
     {
         self.maintenance();
-        let (spawned, entity) = self._spawn_at(id, bundle, register_bundle::<B>);
+        let (spawned, entity) = self._spawn_at(id, bundle, ensure_bundle_registered::<B>);
         assert!(spawned);
         entity
     }
@@ -255,7 +255,7 @@ impl World {
         B: DynamicComponentBundle,
     {
         self.maintenance();
-        let (_spawned, entity) = self._spawn_at(id, bundle, register_bundle::<B>);
+        let (_spawned, entity) = self._spawn_at(id, bundle, ensure_bundle_registered::<B>);
         entity
     }
 
@@ -292,7 +292,9 @@ impl World {
         B: DynamicBundle,
     {
         self.maintenance();
-        self._spawn(bundle, assert_registered_bundle::<B>)
+        self._spawn(bundle, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        })
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -328,13 +330,15 @@ impl World {
         B: DynamicBundle,
     {
         self.maintenance();
-        let (spawned, entity) = self._spawn_at(id, bundle, assert_registered_bundle::<B>);
+        let (spawned, entity) = self._spawn_at(id, bundle, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        });
         assert!(spawned);
         entity
     }
 
     /// Umbrella method for spawning entity with new ID.
-    fn _spawn<B, F>(&mut self, bundle: B, register_bundle: F) -> EntityRef<'_>
+    fn _spawn<B, F>(&mut self, bundle: B, ensure_bundle_registered: F) -> EntityRef<'_>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -351,7 +355,7 @@ impl World {
             &mut self.archetypes,
             0,
             &bundle,
-            |registry| register_bundle(registry, &bundle),
+            |registry| ensure_bundle_registered(registry, &bundle),
         );
 
         let epoch = self.epoch.next_mut();
@@ -371,7 +375,7 @@ impl World {
         &mut self,
         id: EntityId,
         bundle: B,
-        register_bundle: F,
+        ensure_bundle_registered: F,
     ) -> (bool, EntityRef<'_>)
     where
         B: DynamicBundle,
@@ -389,7 +393,7 @@ impl World {
             &mut self.archetypes,
             0,
             &bundle,
-            |registry| register_bundle(registry, &bundle),
+            |registry| ensure_bundle_registered(registry, &bundle),
         );
 
         let epoch = self.epoch.next_mut();
@@ -425,7 +429,7 @@ impl World {
         B: ComponentBundle,
     {
         self.spawn_batch_impl(bundles, |registry| {
-            register_bundle(registry, &PhantomData::<B>)
+            ensure_bundle_registered(registry, &PhantomData::<B>)
         })
     }
 
@@ -458,14 +462,14 @@ impl World {
         B: Bundle,
     {
         self.spawn_batch_impl(bundles, |registry| {
-            assert_registered_bundle(registry, &PhantomData::<B>)
+            assert_bundle_registered(registry, &PhantomData::<B>)
         })
     }
 
     fn spawn_batch_impl<B, I, F>(
         &mut self,
         bundles: I,
-        register_bundle: F,
+        ensure_bundle_registered: F,
     ) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -486,7 +490,7 @@ impl World {
             &mut self.archetypes,
             0,
             &PhantomData::<I::Item>,
-            register_bundle,
+            ensure_bundle_registered,
         );
 
         let epoch = self.epoch.next_mut();
@@ -514,7 +518,7 @@ impl World {
             &mut self.archetypes,
             0,
             &PhantomData::<B>,
-            |registry| assert_registered_bundle(registry, &PhantomData::<B>),
+            |registry| assert_bundle_registered(registry, &PhantomData::<B>),
         );
 
         let archetype = &mut self.archetypes[arch_idx as usize];

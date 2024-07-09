@@ -9,38 +9,105 @@ use core::{
 use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    entity::{EntityBound, EntityId, EntityRef},
-    query::{DefaultQuery, ImmutableQuery, Query, QueryItem},
+    entity::{EntityBound, EntityId, EntityLoc, EntityRef},
+    query::{DefaultQuery, IntoQuery, Query, QueryItem},
     world::WorldLocal,
     EntityError, NoSuchEntity,
 };
 
-use super::{flow_entity, tls::EntityGuard, Flow, FlowClosure, FlowContext, WakeOnDrop, World};
+use super::{get_flow_world, Flow, FlowWorld, WakeOnDrop};
 
 /// Entity reference usable in flows.
 ///
 /// It can be used to access entity's components,
 /// insert and remove components.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Entity<'a> {
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct FlowEntity {
     id: EntityId,
-    marker: PhantomData<&'a mut WorldLocal>,
+    marker: PhantomData<fn() -> &'static mut WorldLocal>,
 }
 
-unsafe impl Send for Entity<'_> {}
-unsafe impl Sync for Entity<'_> {}
+impl crate::entity::Entity for FlowEntity {
+    #[inline(always)]
+    fn id(&self) -> EntityId {
+        self.id
+    }
 
-impl PartialEq<EntityId> for Entity<'_> {
+    #[inline(always)]
+    fn lookup(&self, entities: &crate::entity::EntitySet) -> Option<crate::entity::Location> {
+        self.id.lookup(entities)
+    }
+
+    #[inline(always)]
+    fn is_alive(&self, entities: &crate::entity::EntitySet) -> bool {
+        self.id.is_alive(entities)
+    }
+
+    #[inline(always)]
+    fn entity_loc<'a>(&self, entities: &'a crate::entity::EntitySet) -> Option<EntityLoc<'a>> {
+        self.id.entity_loc(entities)
+    }
+
+    #[inline(always)]
+    fn entity_ref<'a>(&self, world: &'a mut crate::world::World) -> Option<EntityRef<'a>> {
+        self.id.entity_ref(world)
+    }
+}
+
+impl PartialEq<EntityId> for FlowEntity {
     #[inline(always)]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
-impl PartialEq<EntityBound<'_>> for Entity<'_> {
+impl PartialEq<FlowEntity> for EntityId {
+    #[inline(always)]
+    fn eq(&self, other: &FlowEntity) -> bool {
+        *self == other.id
+    }
+}
+
+impl PartialEq<EntityBound<'_>> for FlowEntity {
     #[inline(always)]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         self.id == other.id()
+    }
+}
+
+impl PartialEq<FlowEntity> for EntityBound<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &FlowEntity) -> bool {
+        self.id() == other.id
+    }
+}
+
+impl PartialEq<EntityLoc<'_>> for FlowEntity {
+    #[inline(always)]
+    fn eq(&self, other: &EntityLoc<'_>) -> bool {
+        self.id == other.id()
+    }
+}
+
+impl PartialEq<FlowEntity> for EntityLoc<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &FlowEntity) -> bool {
+        self.id() == other.id
+    }
+}
+
+impl PartialEq<EntityRef<'_>> for FlowEntity {
+    #[inline(always)]
+    fn eq(&self, other: &EntityRef<'_>) -> bool {
+        self.id == other.id()
+    }
+}
+
+impl PartialEq<FlowEntity> for EntityRef<'_> {
+    #[inline(always)]
+    fn eq(&self, other: &FlowEntity) -> bool {
+        self.id() == other.id
     }
 }
 
@@ -56,24 +123,28 @@ where
     F: Future<Output = ()> + Send,
 {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        let this = unsafe { self.get_unchecked_mut() };
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
 
-        if !unsafe { super::flow_world_ref() }.is_alive(this.id) {
-            // Terminate flow if entity is removed.
-            return Poll::Ready(());
-        };
+        {
+            // Safety: world reference does not escape this scope.
+            let world = unsafe { get_flow_world() };
 
-        let poll = {
-            let _guard = EntityGuard::new(this.id);
+            if !world.is_alive(me.id) {
+                // Terminate flow if entity is removed.
+                return Poll::Ready(());
+            };
+        }
 
-            // Safety: pin projection
-            let fut = unsafe { Pin::new_unchecked(&mut this.fut) };
-            fut.poll(cx)
-        };
+        // Safety: Pin projection.
+        let fut = unsafe { Pin::new_unchecked(&mut me.fut) };
 
-        let world = unsafe { super::flow_world_mut() };
+        let poll = fut.poll(cx);
 
-        let mut e = match world.entity(this.id) {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        let mut e = match world.entity(me.id) {
             Err(NoSuchEntity) => {
                 // Terminate flow if entity is removed.
                 return Poll::Ready(());
@@ -122,293 +193,207 @@ where
 )]
 pub trait IntoEntityFlow: 'static {
     /// Flow type that will be polled.
-    type Flow<'a>: Flow + 'a;
+    type Flow: Flow;
 
     /// Converts self into a flow.
-    fn into_entity_flow<'a>(self, e: Entity<'a>) -> Option<Self::Flow<'a>>;
+    fn into_entity_flow(self, e: FlowEntity) -> Option<Self::Flow>;
 }
 
-/// Trait implemented by functions that can be used to spawn flows.
-/// Argument represents the entity that can be used to fetch its components.
-/// The world can be accessed through the entity.
-pub trait EntityFlowFn<'a> {
-    /// Future type returned from the function.
-    type Fut: Future<Output = ()> + Send + 'a;
-
-    /// Runs the function with given entity.
-    fn run(self, entity: Entity<'a>) -> Self::Fut;
-}
-
-// Must be callable with any lifetime of `Entity` borrow.
-impl<'a, F, Fut> EntityFlowFn<'a> for F
-where
-    F: FnOnce(Entity<'a>) -> Fut,
-    Fut: Future<Output = ()> + Send + 'a,
-{
-    type Fut = Fut;
-
-    fn run(self, entity: Entity<'a>) -> Fut {
-        self(entity)
-    }
-}
-
-impl<F> IntoEntityFlow for F
-where
-    for<'a> F: EntityFlowFn<'a> + 'static,
-{
-    type Flow<'a> = FutureEntityFlow<<F as EntityFlowFn<'a>>::Fut>;
-
-    fn into_entity_flow<'a>(self, e: Entity<'a>) -> Option<Self::Flow<'a>> {
-        Some(FutureEntityFlow {
-            id: e.id(),
-            fut: self.run(e),
-        })
-    }
-}
-
-#[doc(hidden)]
-pub struct FlowEntity(EntityId);
-
-impl<'a> FlowContext<'a> for Entity<'a> {
-    type Token = FlowEntity;
-
-    fn cx(token: &'a FlowEntity) -> Self {
-        Entity {
-            id: token.0,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<F, Fut> IntoEntityFlow for FlowClosure<F, Fut>
+impl<F, Fut> IntoEntityFlow for F
 where
     F: FnOnce(FlowEntity) -> Fut + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    type Flow<'a> = FutureEntityFlow<Fut>;
+    type Flow = FutureEntityFlow<Fut>;
 
-    fn into_entity_flow(self, e: Entity<'_>) -> Option<FutureEntityFlow<Fut>> {
+    fn into_entity_flow(self, e: FlowEntity) -> Option<Self::Flow> {
         Some(FutureEntityFlow {
             id: e.id(),
-            fut: (self.f)(FlowEntity(e.id())),
+            fut: self(e),
         })
     }
 }
 
-impl Entity<'_> {
+impl FlowEntity {
     #[doc(hidden)]
     #[inline(always)]
-    pub unsafe fn make(id: EntityId) -> Self {
-        Entity {
+    pub fn new(id: EntityId) -> Self {
+        FlowEntity {
             id,
-            marker: PhantomData,
-        }
-    }
-
-    /// Creates a new [`Entity`] value that borrows from this.
-    #[inline(always)]
-    pub fn reborrow(&mut self) -> Entity<'_> {
-        Entity {
-            id: self.id,
             marker: PhantomData,
         }
     }
 
     /// Returns the entity id.
     #[inline(always)]
-    pub fn id(&self) -> EntityId {
+    pub fn id(self) -> EntityId {
         self.id
     }
 
-    /// Returns reference to the world.
-    #[inline(always)]
-    pub fn get_world(&self) -> &World {
-        unsafe { World::make_ref() }
+    /// Returns the world reference.
+    pub fn world(self) -> FlowWorld {
+        FlowWorld::new()
     }
 
-    /// Returns mutable reference to the world.
+    /// Returns a future that will poll the closure with entity reference.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    ///
+    /// If entity is not alive the future will not poll closure and never resolve.
     #[inline(always)]
-    pub fn get_world_mut(&mut self) -> &mut World {
-        unsafe { World::make_mut() }
-    }
-
-    /// Polls with entity ref until closure returns [`Poll::Ready`].
-    /// Will never resolve if entity is despawned.
-    #[inline(always)]
-    pub fn poll_ref<F, R>(&mut self, f: F) -> PollRef<'_, F>
+    pub fn poll_ref<F, R>(self, f: F) -> PollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
-        PollRef {
+        PollEntityRef {
             entity: self.id,
             f,
-            marker: PhantomData,
+            world: self.world(),
         }
     }
 
-    /// Polls with entity ref until closure returns [`Poll::Ready`].
-    /// Resolves to `None` if entity is despawned.
+    /// Returns a future that will poll the closure with entity reference.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The future will resolve to `Err` if entity is despawned.
+    ///
+    /// The closure may use task context to register wakers.
     #[inline(always)]
-    pub fn try_poll_ref<F, R>(&mut self, f: F) -> TryPollRef<'_, F>
+    pub fn try_poll_ref<F, R>(self, f: F) -> TryPollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
-        TryPollRef {
+        TryPollEntityRef {
             entity: self.id,
             f,
-            marker: PhantomData,
+            world: self.world(),
         }
     }
 
-    /// Polls with view until closure returns [`Poll::Ready`].
-    /// Waits until query is satisfied.
-    /// Will never resolve if entity is despawned.
-    pub fn poll_view<Q, F, R>(&self, f: F) -> PollView<'_, Q::Query, F>
-    where
-        Q: DefaultQuery,
-        Q::Query: ImmutableQuery,
-        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
-    {
-        PollView {
-            entity: self.id,
-            f,
-            query: Q::default_query(),
-            marker: PhantomData,
-        }
-    }
-
-    /// Polls with view until closure returns [`Poll::Ready`].
-    /// Waits until query is satisfied.
-    /// Will never resolve if entity is despawned.
-    pub fn poll_view_mut<Q, F, R>(&mut self, f: F) -> PollViewMut<'_, Q::Query, F>
+    /// Returns a future that will poll the closure with entity view
+    /// constructed with specified query type.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    ///
+    /// If entity is not alive the future will not poll closure and never resolve.
+    /// Future will not poll closure and resolve until query is satisfied.
+    pub fn poll_view<Q, F, R>(self, f: F) -> PollEntityView<Q::Query, F>
     where
         Q: DefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
-        PollViewMut {
+        PollEntityView {
             entity: self.id,
             f,
             query: Q::default_query(),
-            marker: PhantomData,
+            world: self.world(),
         }
     }
 
-    /// Polls with view until closure returns [`Poll::Ready`].
-    /// Resolves to `None` if query is not satisfied or entity is despawned .
-    pub fn try_poll_view<Q, F, R>(&self, f: F) -> TryPollView<'_, Q::Query, F>
+    /// Returns a future that will poll the closure with entity view
+    /// constructed with specified query type.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The future will resolve to `Err` if entity is not alive or query is not satisfied.
+    /// The closure may use task context to register wakers.
+    pub fn try_poll_view<Q, F, R>(self, f: F) -> TryPollEntityView<Q::Query, F>
     where
         Q: DefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
-        TryPollView {
+        TryPollEntityView {
             entity: self.id,
             f,
             query: Q::default_query(),
-            marker: PhantomData,
+            world: self.world(),
         }
     }
 
-    /// Polls with view until closure returns [`Poll::Ready`].
-    /// Resolves to `None` if query is not satisfied or entity is despawned .
-    pub fn try_poll_view_mut<Q, F, R>(&mut self, f: F) -> TryPollViewMut<'_, Q::Query, F>
+    /// Returns a future that will poll the closure with entity view
+    /// constructed with specified query.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    ///
+    /// If entity is not alive the future will not poll closure and never resolve.
+    /// Future will not poll closure and resolve until query is satisfied.
+    pub fn poll_view_with<Q, F, R>(self, query: Q, f: F) -> PollEntityView<Q::Query, F>
     where
-        Q: DefaultQuery,
+        Q: IntoQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
-        TryPollViewMut {
+        PollEntityView {
             entity: self.id,
             f,
-            query: Q::default_query(),
-            marker: PhantomData,
+            query: query.into_query(),
+            world: self.world(),
         }
     }
 
-    /// Returns normal entity reference.
+    /// Returns a future that will poll the closure with entity view
+    /// constructed with specified query.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The future will resolve to `Err` if entity is not alive or query is not satisfied.
+    /// The closure may use task context to register wakers.
+    pub fn try_poll_view_with<Q, F, R>(self, query: Q, f: F) -> TryPollEntityView<Q::Query, F>
+    where
+        Q: IntoQuery,
+        F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
+    {
+        TryPollEntityView {
+            entity: self.id,
+            f,
+            query: query.into_query(),
+            world: self.world(),
+        }
+    }
+
+    /// Checks if entity is alive.
+    pub fn is_alive(self) -> bool {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.is_alive(self.id)
+    }
+
+    /// Returns clone of the entity's component if it exists.
+    /// Otherwise returns `None`.
     ///
     /// # Panics
     ///
     /// Panics if entity is not alive.
     #[inline(always)]
-    pub fn get_ref(&mut self) -> EntityRef<'_> {
-        match self.try_get_ref() {
-            Ok(e) => e,
-            Err(NoSuchEntity) => entity_not_alive(),
-        }
-    }
-
-    /// Returns normal entity reference.
-    /// Returns error if entity is not alive.
-    #[inline(always)]
-    pub fn try_get_ref(&mut self) -> Result<EntityRef<'_>, NoSuchEntity> {
-        let id = self.id;
-        EntityRef::new(id, self.get_world_mut())
-    }
-
-    /// Queries component from the entity.
-    ///
-    /// Returns clone of the component value.
-    #[inline(always)]
-    pub fn get_cloned<T>(&self) -> Option<T>
+    pub fn get_cloned<T>(self) -> Option<T>
     where
         T: Clone + 'static,
     {
-        match self.try_get_cloned() {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        match world.try_get_cloned(self.id) {
             Ok(c) => Some(c),
             Err(EntityError::Mismatch) => None,
             Err(EntityError::NoSuchEntity) => entity_not_alive(),
         }
     }
 
-    /// Queries component from the entity.
-    ///
-    /// Returns clone of the component value.
+    /// Returns clone of the entity's component if it exists.
+    /// Otherwise returns error.
+    /// If entity is not alive, returns `Err(NoSuchEntity)`.
+    /// If entity does not have component of specified type, returns `Err(Mismatch)`.
     #[inline(always)]
-    pub fn try_get_cloned<T>(&self) -> Result<T, EntityError>
+    pub fn try_get_cloned<T>(self) -> Result<T, EntityError>
     where
         T: Clone + 'static,
     {
-        let mut view = self.get_world().try_view_one::<&T>(self.id)?;
-        match view.get_mut() {
-            Some(c) => Ok(c.clone()),
-            None => Err(EntityError::Mismatch),
-        }
-    }
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
 
-    /// Queries component from the entity.
-    ///
-    /// Returns copy of the component value.
-    #[inline(always)]
-    pub fn get_copied<T>(&self) -> Option<T>
-    where
-        T: Copy + Sync + 'static,
-    {
-        match self.try_get_copied() {
-            Ok(c) => Some(c),
-            Err(EntityError::Mismatch) => None,
-            Err(EntityError::NoSuchEntity) => entity_not_alive(),
-        }
-    }
-
-    /// Queries component from the entity.
-    ///
-    /// Returns copy of the component value.
-    #[inline(always)]
-    pub fn try_get_copied<T>(&self) -> Result<T, EntityError>
-    where
-        T: Copy + 'static,
-    {
-        let mut view = self.get_world().try_view_one::<&T>(self.id)?;
-        match view.get_mut() {
-            Some(c) => Ok(*c),
-            None => Err(EntityError::Mismatch),
-        }
+        world.try_get_cloned(self.id)
     }
 
     /// Sets new value for the entity component.
     ///
     /// Returns error if entity does not have component of specified type.
     #[inline(always)]
-    pub fn set<T>(&mut self, value: T) -> Result<(), T>
+    pub fn set<T>(self, value: T) -> Result<(), T>
     where
         T: 'static,
     {
@@ -423,13 +408,16 @@ impl Entity<'_> {
     ///
     /// Returns error if entity does not have component of specified type.
     #[inline(always)]
-    pub fn try_set<T>(&mut self, value: T) -> Result<(), (EntityError, T)>
+    pub fn try_set<T>(self, value: T) -> Result<(), (EntityError, T)>
     where
         T: 'static,
     {
-        let id = self.id;
-        match self.get_world_mut().get::<&mut T>(id) {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        match world.get::<&mut T>(self.id) {
             Ok(c) => {
+                let c: &mut T = c;
                 *c = value;
                 Ok(())
             }
@@ -439,7 +427,7 @@ impl Entity<'_> {
 
     /// Insert a component to the entity.
     #[inline(always)]
-    pub fn insert<T>(&mut self, component: T)
+    pub fn insert<T>(self, component: T)
     where
         T: Component,
     {
@@ -451,12 +439,14 @@ impl Entity<'_> {
 
     /// Insert a component to the entity.
     #[inline(always)]
-    pub fn try_insert<T>(&mut self, component: T) -> Result<(), NoSuchEntity>
+    pub fn try_insert<T>(self, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
     {
-        let id = self.id;
-        self.get_world_mut().insert(id, component)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.insert(self.id, component)
     }
 
     /// Attempts to inserts component to the entity.
@@ -465,7 +455,7 @@ impl Entity<'_> {
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
     #[inline(always)]
-    pub fn insert_external<T>(&mut self, component: T)
+    pub fn insert_external<T>(self, component: T)
     where
         T: 'static,
     {
@@ -481,17 +471,19 @@ impl Entity<'_> {
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
     #[inline(always)]
-    pub fn try_insert_external<T>(&mut self, component: T) -> Result<(), NoSuchEntity>
+    pub fn try_insert_external<T>(self, component: T) -> Result<(), NoSuchEntity>
     where
         T: 'static,
     {
-        let id = self.id;
-        self.get_world_mut().insert_external(id, component)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.insert_external(self.id, component)
     }
 
     /// Inserts a component to the entity if it does not have one.
     #[inline(always)]
-    pub fn with<T>(&mut self, component: impl FnOnce() -> T)
+    pub fn with<T>(self, component: impl FnOnce() -> T)
     where
         T: Component,
     {
@@ -503,18 +495,20 @@ impl Entity<'_> {
 
     /// Inserts a component to the entity if it does not have one.
     #[inline(always)]
-    pub fn try_with<T>(&mut self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
+    pub fn try_with<T>(self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
         T: Component,
     {
-        let id = self.id;
-        self.get_world_mut().with(id, component)?;
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.with(self.id, component)?;
         Ok(())
     }
 
     /// Attempts to insert a component to the entity if it does not have one.
     #[inline(always)]
-    pub fn with_external<T>(&mut self, component: impl FnOnce() -> T)
+    pub fn with_external<T>(self, component: impl FnOnce() -> T)
     where
         T: 'static,
     {
@@ -526,15 +520,14 @@ impl Entity<'_> {
 
     /// Attempts to insert a component to the entity if it does not have one.
     #[inline(always)]
-    pub fn try_with_external<T>(
-        &mut self,
-        component: impl FnOnce() -> T,
-    ) -> Result<(), NoSuchEntity>
+    pub fn try_with_external<T>(self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
         T: 'static,
     {
-        let id = self.id;
-        self.get_world_mut().with_external(id, component)?;
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.with_external(self.id, component)?;
         Ok(())
     }
 
@@ -549,7 +542,7 @@ impl Entity<'_> {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn insert_bundle<B>(&mut self, bundle: B)
+    pub fn insert_bundle<B>(self, bundle: B)
     where
         B: DynamicComponentBundle,
     {
@@ -570,12 +563,14 @@ impl Entity<'_> {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn try_insert_bundle<B>(&mut self, bundle: B) -> Result<(), NoSuchEntity>
+    pub fn try_insert_bundle<B>(self, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
     {
-        let id = self.id;
-        self.get_world_mut().insert_bundle(id, bundle)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.insert_bundle(self.id, bundle)
     }
 
     /// Inserts bundle of components to the entity.
@@ -589,7 +584,7 @@ impl Entity<'_> {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn insert_external_bundle<B>(&mut self, bundle: B)
+    pub fn insert_external_bundle<B>(self, bundle: B)
     where
         B: DynamicBundle,
     {
@@ -610,18 +605,20 @@ impl Entity<'_> {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn try_insert_external_bundle<B>(&mut self, bundle: B) -> Result<(), NoSuchEntity>
+    pub fn try_insert_external_bundle<B>(self, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
     {
-        let id = self.id;
-        self.get_world_mut().insert_external_bundle(id, bundle)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.insert_external_bundle(self.id, bundle)
     }
 
     /// Removes a component from the entity.
     /// Returns the component if it was present.
     #[inline(always)]
-    pub fn remove<T>(&mut self) -> Option<T>
+    pub fn remove<T>(self) -> Option<T>
     where
         T: 'static,
     {
@@ -635,12 +632,14 @@ impl Entity<'_> {
     /// Removes a component from the entity.
     /// Returns the component if it was present.
     #[inline(always)]
-    pub fn try_remove<T>(&mut self) -> Result<T, EntityError>
+    pub fn try_remove<T>(self) -> Result<T, EntityError>
     where
         T: 'static,
     {
-        let id = self.id;
-        let (c, _) = self.get_world_mut().remove::<T>(id)?;
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        let (c, _) = world.remove::<T>(self.id)?;
         match c {
             None => Err(EntityError::Mismatch),
             Some(c) => Ok(c),
@@ -649,7 +648,7 @@ impl Entity<'_> {
 
     /// Drops a component from the entity.
     #[inline(always)]
-    pub fn drop<T>(&mut self)
+    pub fn drop<T>(self)
     where
         T: 'static,
     {
@@ -661,17 +660,19 @@ impl Entity<'_> {
 
     /// Drops a component from the entity.
     #[inline(always)]
-    pub fn try_drop<T>(&mut self) -> Result<(), NoSuchEntity>
+    pub fn try_drop<T>(self) -> Result<(), NoSuchEntity>
     where
         T: 'static,
     {
-        let id = self.id;
-        self.get_world_mut().drop::<T>(id)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.drop::<T>(self.id)
     }
 
     /// Drops a component from the entity.
     #[inline(always)]
-    pub fn drop_erased(&mut self, ty: TypeId) {
+    pub fn drop_erased(self, ty: TypeId) {
         match self.try_drop_erased(ty) {
             Ok(_) => (),
             Err(NoSuchEntity) => entity_not_alive(),
@@ -680,9 +681,11 @@ impl Entity<'_> {
 
     /// Drops a component from the entity.
     #[inline(always)]
-    pub fn try_drop_erased(&mut self, ty: TypeId) -> Result<(), NoSuchEntity> {
-        let id = self.id;
-        self.get_world_mut().drop_erased(id, ty)
+    pub fn try_drop_erased(self, ty: TypeId) -> Result<(), NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.drop_erased(self.id, ty)
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -696,7 +699,7 @@ impl Entity<'_> {
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
     #[inline(always)]
-    pub fn drop_bundle<B>(&mut self)
+    pub fn drop_bundle<B>(self)
     where
         B: Bundle,
     {
@@ -717,17 +720,19 @@ impl Entity<'_> {
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
     #[inline(always)]
-    pub fn try_drop_bundle<B>(&mut self) -> Result<(), NoSuchEntity>
+    pub fn try_drop_bundle<B>(self) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
     {
-        let id = self.id;
-        self.get_world_mut().drop_bundle::<B>(id)
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.drop_bundle::<B>(self.id)
     }
 
     /// Despawns the referenced entity.
     #[inline(always)]
-    pub fn despawn(&mut self) {
+    pub fn despawn(self) {
         match self.try_despawn() {
             Ok(_) => (),
             Err(NoSuchEntity) => entity_not_alive(),
@@ -736,16 +741,18 @@ impl Entity<'_> {
 
     /// Despawns the referenced entity.
     #[inline(always)]
-    pub fn try_despawn(&mut self) -> Result<(), NoSuchEntity> {
-        let id = self.id;
-        self.get_world_mut().despawn(id)
+    pub fn try_despawn(self) -> Result<(), NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.despawn(self.id)
     }
 
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn has_component<T: 'static>(&self) -> bool {
+    pub fn has_component<T: 'static>(self) -> bool {
         match self.try_has_component::<T>() {
             Ok(b) => b,
             Err(NoSuchEntity) => entity_not_alive(),
@@ -756,89 +763,104 @@ impl Entity<'_> {
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     #[inline(always)]
-    pub fn try_has_component<T: 'static>(&self) -> Result<bool, NoSuchEntity> {
-        let id = self.id;
-        self.get_world().try_has_component::<T>(id)
+    pub fn try_has_component<T: 'static>(self) -> Result<bool, NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.try_has_component::<T>(self.id)
     }
 
     /// Spawns a new flow for the entity.
-    pub fn spawn_flow<F>(&mut self, f: F)
+    pub fn spawn_flow<F>(self, f: F)
     where
         F: IntoEntityFlow,
     {
-        let id = self.id;
-        self.get_world_mut().spawn_flow_for(id, f);
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        world.spawn_flow_for(self.id, f);
     }
 }
 
-/// Flow future that provides [`EntityRef`] to the bound closure on each poll.
-/// Resolves to the ready result of the closure.
-/// Never resolves if entity is despawned.
+/// Future that polls the closure with entity reference.
+/// Resolves to closure result in [`Poll::Ready`].
+/// The closure may use task context to register wakers.
+///
+/// If entity is not alive the future will not poll closure and never resolve.
 #[must_use = "Future does nothing unless polled"]
-pub struct PollRef<'a, F> {
+pub struct PollEntityRef<F> {
     entity: EntityId,
     f: F,
-    marker: PhantomData<fn() -> &'a mut WorldLocal>,
+    world: FlowWorld,
 }
 
-impl<F, R> Future for PollRef<'_, F>
+impl<F, R> Future for PollEntityRef<F>
 where
     F: FnMut(EntityRef, &mut Context) -> Poll<R>,
 {
     type Output = R;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            let Ok(e) = super::flow_world_mut().entity(me.entity) else {
-                return on_no_such_entity(me.entity, cx);
-            };
-            (me.f)(e, cx)
-        }
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        let Ok(e) = world.entity(me.entity) else {
+            return Poll::Pending;
+        };
+        (me.f)(e, cx)
     }
 }
 
-/// Flow future that provides [`EntityRef`] to the bound closure on each poll.
-/// Resolves to the ready result of the closure wrapped in `Some`.
-/// Resolves to `None` if entity is despawned.
+/// Future that will poll the closure with entity reference.
+/// Resolves to closure result in [`Poll::Ready`].
+/// Resolves to `Err` if entity is despawned.
+///
+/// The closure may use task context to register wakers.
 #[must_use = "Future does nothing unless polled"]
-pub struct TryPollRef<'a, F> {
+pub struct TryPollEntityRef<F> {
     entity: EntityId,
     f: F,
-    marker: PhantomData<fn() -> &'a mut WorldLocal>,
+    world: FlowWorld,
 }
 
-impl<F, R> Future for TryPollRef<'_, F>
+impl<F, R> Future for TryPollEntityRef<F>
 where
     F: FnMut(EntityRef, &mut Context) -> Poll<R>,
 {
-    type Output = Option<R>;
+    type Output = Result<R, NoSuchEntity>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            let Ok(e) = super::flow_world_mut().entity(me.entity) else {
-                return Poll::Ready(None);
-            };
-            (me.f)(e, cx).map(Some)
-        }
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<R, NoSuchEntity>> {
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        let e = world.entity(me.entity)?;
+        let poll = (me.f)(e, cx);
+        try_poll(poll, me.entity, world, cx)
     }
 }
 
-/// Flow future that provides view to the entity's components to the bound closure on each poll.
-/// Limited to immutable queries.
-/// Resolves to the ready result of the closure.
-/// Yields until query is satisfied.
-/// Never resolves if entity is despawned.
+/// Future that will poll the closure with entity view
+/// constructed with specified query.
+/// Resolves to closure result in [`Poll::Ready`].
+/// The closure may use task context to register wakers.
+///
+/// If entity is not alive the future will not poll closure and never resolve.
+/// Future will not poll closure and resolve until query is satisfied.
 #[must_use = "Future does nothing unless polled"]
-pub struct PollView<'a, Q, F> {
+pub struct PollEntityView<Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a WorldLocal>,
+    world: FlowWorld,
 }
 
-impl<Q, F, R> Future for PollView<'_, Q, F>
+impl<Q, F, R> Future for PollEntityView<Q, F>
 where
     Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
@@ -846,136 +868,85 @@ where
     type Output = R;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            match super::flow_world_ref().try_view_one_with(me.entity, me.query) {
-                Err(NoSuchEntity) => on_no_such_entity(me.entity, cx),
-                Ok(mut view_one) => match view_one.get_mut() {
-                    None => {
-                        cx.waker().wake_by_ref();
-                        return Poll::Pending;
-                    }
-                    Some(item) => (me.f)(item, cx),
-                },
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        match world.get_with(me.entity, me.query) {
+            Err(EntityError::NoSuchEntity) => Poll::Pending,
+            Err(EntityError::Mismatch) => {
+                // TODO: Should archetype change be detected to wake up the task?
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
             }
+            Ok(item) => (me.f)(item, cx),
         }
     }
 }
 
-/// Flow future that provides view to the entity's components to the bound closure on each poll.
-/// Not limited to immutable queries.
-/// Resolves to the ready result of the closure.
-/// Yields until query is satisfied.
-/// Never resolves if entity is despawned.
+/// Future that will poll the closure with entity view
+/// constructed with specified query.
+/// Resolves to closure result in [`Poll::Ready`].
+/// Resolves to `Err` if entity is not alive or query is not satisfied.
+/// The closure may use task context to register wakers.
 #[must_use = "Future does nothing unless polled"]
-pub struct PollViewMut<'a, Q, F> {
+pub struct TryPollEntityView<Q, F> {
     entity: EntityId,
     query: Q,
     f: F,
-    marker: PhantomData<fn() -> &'a mut WorldLocal>,
+    world: FlowWorld,
 }
 
-impl<Q, F, R> Future for PollViewMut<'_, Q, F>
+impl<Q, F, R> Future for TryPollEntityView<Q, F>
 where
     Q: Query,
     for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
 {
-    type Output = R;
+    type Output = Result<R, EntityError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            match super::flow_world_mut().get_with(me.entity, me.query) {
-                Err(EntityError::NoSuchEntity) => on_no_such_entity(me.entity, cx),
-                Err(EntityError::Mismatch) => {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                }
-                Ok(item) => (me.f)(item, cx),
-            }
-        }
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<R, EntityError>> {
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        let item = world.get_with(me.entity, me.query)?;
+        let poll = (me.f)(item, cx);
+        let poll = try_poll(poll, me.entity, world, cx)?;
+        poll.map(Ok)
     }
 }
 
-/// Flow future that provides view to the entity's components to the bound closure on each poll.
-/// Limited to immutable queries.
-/// Resolves to the ready result of the closure wrapped in `Some`.
-/// Resolves to `None` if query is not satisfied or entity is despawned.
-#[must_use = "Future does nothing unless polled"]
-pub struct TryPollView<'a, Q, F> {
+fn try_poll<R>(
+    poll: Poll<R>,
     entity: EntityId,
-    query: Q,
-    f: F,
-    marker: PhantomData<fn() -> &'a WorldLocal>,
-}
+    world: &mut WorldLocal,
+    cx: &mut Context<'_>,
+) -> Poll<Result<R, NoSuchEntity>> {
+    let mut e = world.entity(entity)?;
 
-impl<Q, F, R> Future for TryPollView<'_, Q, F>
-where
-    Q: Query,
-    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
-{
-    type Output = Option<R>;
+    match poll {
+        Poll::Pending => {
+            // When entity is despawned, this task needs to be woken up
+            // to resolve the future.
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            match super::flow_world_ref().try_view_one_with(me.entity, me.query) {
-                Err(NoSuchEntity) => return Poll::Ready(None),
-                Ok(mut view_one) => match view_one.get_mut() {
-                    None => Poll::Ready(None),
-                    Some(item) => (me.f)(item, cx).map(Some),
-                },
+            let auto_wake = e.with(WakeOnDrop::new);
+            auto_wake.add_waker(cx.waker());
+
+            Poll::Pending
+        }
+        Poll::Ready(result) => {
+            // If waker is registered, remove it for clean up.
+            if let Some(auto_wake) = e.get_mut::<&mut WakeOnDrop>() {
+                auto_wake.remove_waker(cx.waker());
             }
+
+            Poll::Ready(Ok(result))
         }
     }
-}
-
-/// Flow future that provides view to the entity's components to the bound closure on each poll.
-/// Not limited to immutable queries.
-/// Resolves to the ready result of the closure wrapped in `Some`.
-/// Resolves to `None` if query is not satisfied or entity is despawned.
-#[must_use = "Future does nothing unless polled"]
-pub struct TryPollViewMut<'a, Q, F> {
-    entity: EntityId,
-    query: Q,
-    f: F,
-    marker: PhantomData<fn() -> &'a mut WorldLocal>,
-}
-
-impl<Q, F, R> Future for TryPollViewMut<'_, Q, F>
-where
-    Q: Query,
-    for<'a> F: FnMut(QueryItem<'a, Q>, &mut Context) -> Poll<R>,
-{
-    type Output = Option<R>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<R>> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            match super::flow_world_mut().get_with(me.entity, me.query) {
-                Err(EntityError::NoSuchEntity) => return Poll::Ready(None),
-                Err(EntityError::Mismatch) => Poll::Ready(None),
-                Ok(item) => (me.f)(item, cx).map(Some),
-            }
-        }
-    }
-}
-
-/// Handles despawned entity in futures.
-fn on_no_such_entity<T>(entity: EntityId, cx: &mut Context) -> Poll<T> {
-    match flow_entity() {
-        Some(id) if id == entity => {
-            // Entity is removed.
-            // Wake and pending.
-            // Flow will resume next tick and cancel itself.
-            cx.waker().wake_by_ref();
-        }
-        _ => {
-            // Entity is removed.
-            // Flow will never resume.
-        }
-    }
-    Poll::Pending
 }
 
 /// Handles despawned entity in methods that assume entity is alive.

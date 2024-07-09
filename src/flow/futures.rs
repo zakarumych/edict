@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 
 use crate::component::Component;
 
-use super::Entity;
+use super::FlowEntity;
 
 /// Future that yields control to the executor once.
 pub struct YieldNow {
@@ -98,34 +98,26 @@ impl Component for WakeOnDrop {
 }
 
 /// Waits until the entity is despawned.
-pub async fn wait_despawned(mut entity: Entity<'_>) {
+pub async fn wait_despawned(entity: FlowEntity) {
     enum Never {}
 
-    // If this is entity flow and this is the entity we're waiting for,
-    // flow is cancelled anyway when this condition is met.
-    if super::flow_entity() == Some(entity.id()) {
-        let _: Never = core::future::pending().await;
-    }
-
-    entity
-        .try_poll_ref(|mut e, cx| {
-            let wake_on_drop = e.with(WakeOnDrop::new);
-            wake_on_drop.add_waker(cx.waker());
+    let r = entity
+        .try_poll_ref(|_e, _cx| {
             Poll::<Never>::Pending // `try_poll_ref` will resolve to None when entity is despawned.
         })
         .await;
+
+    match r {
+        Ok(never) => match never {},
+        Err(_) => return,
+    }
 }
 
 /// Waits until the entity gets a component.
 /// Never resolves if the entity is despawned.
-pub async fn wait_has_component<T>(entity: Entity<'_>)
+pub async fn wait_has_component<T>(entity: FlowEntity)
 where
     T: 'static,
 {
-    entity
-        .poll_view::<&T, _, _>(|_, cx| {
-            cx.waker().wake_by_ref();
-            Poll::Ready(())
-        })
-        .await;
+    entity.poll_view::<&T, _, _>(|_, _cx| Poll::Ready(())).await;
 }

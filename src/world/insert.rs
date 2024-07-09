@@ -9,8 +9,8 @@ use crate::{
 };
 
 use super::{
-    assert_registered_bundle, assert_registered_one, register_bundle, register_one, World,
-    WorldLocal,
+    assert_bundle_registered, assert_registered, ensure_bundle_registered, register_component,
+    World, WorldLocal,
 };
 
 impl World {
@@ -38,14 +38,14 @@ impl World {
     where
         T: Component,
     {
-        self._with(entity, || component, true, register_one::<T>)?;
+        self._with(entity, || component, true, register_component::<T>)?;
         Ok(())
     }
 
     /// Attempts to inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
-    /// old component value is replaced with new one.
+    /// old component value is preserved.
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
@@ -71,14 +71,14 @@ impl World {
     where
         T: 'static,
     {
-        self._with(entity, || component, true, assert_registered_one::<T>)?;
+        self._with(entity, || component, true, assert_registered::<T>)?;
         Ok(())
     }
 
     /// Attempts to inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
-    /// old component value is replaced with new one.
+    /// old component value is preserved.
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
@@ -103,7 +103,7 @@ impl World {
     where
         T: Component,
     {
-        self._with(entity, f, false, register_one::<T>)
+        self._with(entity, f, false, register_component::<T>)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -135,7 +135,7 @@ impl World {
     where
         T: 'static,
     {
-        self._with(entity, f, false, assert_registered_one::<T>)
+        self._with(entity, f, false, assert_registered::<T>)
     }
 
     pub(crate) fn _with<T, F>(
@@ -234,7 +234,7 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        self._with_bundle(entity, bundle, true, register_bundle::<B>)?;
+        self._with_bundle(entity, bundle, true, ensure_bundle_registered::<B>)?;
         Ok(())
     }
 
@@ -275,7 +275,9 @@ impl World {
     where
         B: DynamicBundle,
     {
-        self._with_bundle(entity, bundle, true, assert_registered_bundle::<B>)?;
+        self._with_bundle(entity, bundle, true, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        })?;
         Ok(())
     }
 
@@ -308,7 +310,7 @@ impl World {
     where
         B: DynamicComponentBundle,
     {
-        self._with_bundle(entity, bundle, false, register_bundle::<B>)
+        self._with_bundle(entity, bundle, false, ensure_bundle_registered::<B>)
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -345,7 +347,9 @@ impl World {
     where
         B: DynamicBundle,
     {
-        self._with_bundle(entity, bundle, false, assert_registered_bundle::<B>)
+        self._with_bundle(entity, bundle, false, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        })
     }
 
     fn _with_bundle<B, F>(
@@ -478,7 +482,7 @@ impl WorldLocal {
     where
         T: Component,
     {
-        self._with_defer(entity, || component, true, register_one::<T>)
+        self._with_defer(entity, || component, true, register_component::<T>)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -518,7 +522,7 @@ impl WorldLocal {
     where
         T: 'static,
     {
-        self._with_defer(entity, || component, true, assert_registered_one::<T>)
+        self._with_defer(entity, || component, true, assert_registered::<T>)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -557,7 +561,7 @@ impl WorldLocal {
     where
         T: Component,
     {
-        self._with_defer(entity, f, false, register_one::<T>)
+        self._with_defer(entity, f, false, register_component::<T>)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -597,7 +601,7 @@ impl WorldLocal {
     where
         T: 'static,
     {
-        self._with_defer(entity, f, false, assert_registered_one::<T>)
+        self._with_defer(entity, f, false, assert_registered::<T>)
     }
 
     pub(crate) fn _with_defer<T, F>(
@@ -655,7 +659,7 @@ impl WorldLocal {
     where
         B: DynamicComponentBundle + 'static,
     {
-        self._with_bundle_defer(entity, bundle, true, register_bundle::<B>);
+        self._with_bundle_defer(entity, bundle, true, ensure_bundle_registered::<B>);
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -702,7 +706,9 @@ impl WorldLocal {
     where
         B: DynamicBundle + 'static,
     {
-        self._with_bundle_defer(entity, bundle, true, assert_registered_bundle::<B>);
+        self._with_bundle_defer(entity, bundle, true, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        });
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -743,7 +749,7 @@ impl WorldLocal {
     where
         B: DynamicComponentBundle + 'static,
     {
-        self._with_bundle_defer(entity, bundle, false, register_bundle::<B>);
+        self._with_bundle_defer(entity, bundle, false, ensure_bundle_registered::<B>);
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -787,7 +793,9 @@ impl WorldLocal {
     where
         B: DynamicBundle + 'static,
     {
-        self._with_bundle_defer(entity, bundle, false, assert_registered_bundle::<B>);
+        self._with_bundle_defer(entity, bundle, false, |registry, bundle| {
+            assert_bundle_registered(registry, bundle)
+        });
     }
 
     fn _with_bundle_defer<B, F>(

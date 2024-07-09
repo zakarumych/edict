@@ -1,38 +1,55 @@
 use core::{
+    any::TypeId,
     future::Future,
     marker::PhantomData,
-    ops::{Deref, DerefMut},
     pin::Pin,
     task::{Context, Poll},
 };
 
-use alloc::boxed::Box;
+use crate::{
+    bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
+    component::Component,
+    entity::{Entity, EntityId},
+    query::{DefaultQuery, IntoQuery, Query},
+    relation::Relation,
+    view::View,
+    world::WorldLocal,
+    EntityError, NoSuchEntity,
+};
 
-use crate::{world::WorldLocal, NoSuchEntity};
+use super::{get_flow_world, Flow, FlowEntity};
 
-use super::{Entity, Flow, FlowClosure, FlowContext, IntoFlow};
+/// Type that can be spawned as a flow.
+/// It can be an async function or a closure inside `flow_fn!` macro.
+/// It must accept [`&mut World`](World) as the only argument.
+///
+/// # Example
+///
+/// ```
+/// # use edict::flow::{self, flow_fn, World};
+///
+/// let mut world = edict::world::World::new();
+///
+/// world.spawn_flow(flow_fn!(|world: &mut World| {
+///   let entity = world.spawn(());
+/// }));
+/// ```
+#[diagnostic::on_unimplemented(
+    note = "Try `async fn(world: FlowWorld)` or `|world: FlowWorld| async {{ ... }}`"
+)]
+pub trait IntoFlow: 'static {
+    /// Flow type that will be polled.
+    type Flow: Flow;
+
+    /// Converts self into a flow.
+    fn into_flow(self, world: FlowWorld) -> Option<Self::Flow>;
+}
 
 /// World reference that is updated when flow is polled.
+#[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
-pub struct World {
-    pub(super) marker: PhantomData<WorldLocal>,
-}
-
-unsafe impl Send for World {}
-unsafe impl Sync for World {}
-
-impl Deref for World {
-    type Target = WorldLocal;
-
-    fn deref(&self) -> &WorldLocal {
-        unsafe { self.world_ref() }
-    }
-}
-
-impl DerefMut for World {
-    fn deref_mut(&mut self) -> &mut WorldLocal {
-        unsafe { self.world_mut() }
-    }
+pub struct FlowWorld {
+    marker: PhantomData<fn() -> &'static mut WorldLocal>,
 }
 
 /// Future wrapped to be used as a flow.
@@ -54,174 +71,1271 @@ where
     }
 }
 
-/// Trait implemented by functions that can be used to spawn flows.
-/// Argument represents the world that can be used to fetch entities, components and resources.
-pub trait WorldFlowFn<'a> {
-    /// Future type returned from the function.
-    type Fut: Future<Output = ()> + Send + 'a;
-
-    /// Runs the function with world reference.
-    fn run(self, world: &'a mut World) -> Self::Fut;
-}
-
-// Must be callable with any lifetime of `World` borrow.
-impl<'a, F, Fut> WorldFlowFn<'a> for F
+impl<F, Fut> IntoFlow for F
 where
-    F: FnOnce(&'a mut World) -> Fut,
-    Fut: Future<Output = ()> + Send + 'a,
+    F: FnOnce(FlowWorld) -> Fut + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
-    type Fut = Fut;
+    type Flow = FutureFlow<Fut>;
 
-    fn run(self, world: &'a mut World) -> Fut {
-        self(world)
+    fn into_flow(self, world: FlowWorld) -> Option<Self::Flow> {
+        Some(FutureFlow { fut: self(world) })
     }
 }
 
-impl<F> IntoFlow for F
-where
-    F: for<'a> WorldFlowFn<'a> + Send + 'static,
-{
-    type Flow<'a> = FutureFlow<<F as WorldFlowFn<'a>>::Fut>;
-
-    fn into_flow<'a>(self, world: &'a mut World) -> Option<Self::Flow<'a>> {
-        Some(FutureFlow {
-            fut: self.run(world),
-        })
-    }
-}
-
-/// Flow future that provides world to the bound closure on each poll.
-pub struct PollWorld<'a, F> {
-    f: F,
-    _world: PhantomData<fn() -> &'a World>,
-}
-
-impl<'a, F, R> Future for PollWorld<'a, F>
-where
-    F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
-{
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            (me.f)(super::flow_world_ref(), cx)
-        }
-    }
-}
-
-/// Flow future that provides world to the bound closure on each poll.
-pub struct PollWorldMut<'a, F> {
-    f: F,
-    _world: PhantomData<fn() -> &'a mut World>,
-}
-
-impl<'a, F, R> Future for PollWorldMut<'a, F>
-where
-    F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
-{
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
-        unsafe {
-            let me = self.get_unchecked_mut();
-            (me.f)(super::flow_world_mut(), cx)
-        }
-    }
-}
-
-impl World {
+impl FlowWorld {
     #[inline(always)]
-    fn world_ref(&self) -> &WorldLocal {
-        unsafe { super::flow_world_ref() }
-    }
-
-    #[inline(always)]
-    fn world_mut(&mut self) -> &mut WorldLocal {
-        unsafe { super::flow_world_mut() }
-    }
-
-    #[inline(always)]
-    pub(super) unsafe fn make_mut() -> &'static mut Self {
-        // ZST allocation is no-op.
-        Box::leak(Box::new(World {
-            marker: PhantomData,
-        }))
-    }
-
-    #[doc(hidden)]
-    #[inline(always)]
-    pub unsafe fn make_ref() -> &'static Self {
-        &World {
+    pub(super) fn new() -> Self {
+        FlowWorld {
             marker: PhantomData,
         }
     }
 
-    /// Polls provided closure until it returns [`Poll::Ready`].
-    /// Provides reference to the world to the closure on each call.
-    #[inline(always)]
-    pub fn poll_fn<F, R>(&self, f: F) -> PollWorld<F>
-    where
-        F: FnMut(&WorldLocal, &mut Context) -> Poll<R>,
-    {
-        PollWorld {
-            f,
-            _world: PhantomData,
-        }
+    /// Returns reference to currently bound world.
+    ///
+    /// It is easy to accidentally create aliasing references to the world.
+    /// Prefer to use safe methods provided on this type to interact with the world.
+    ///
+    /// If access to `WorldLocal` is required, consider using [`FlowWorld::poll_world`] first.
+    ///
+    /// # Safety
+    ///
+    /// Creates reference from raw pointer to `WorldLocal` bound to the flow context.
+    /// Returned reference is unbound so it may outlive referenced world and become dangling.
+    /// Creating more than one mutable reference to the world may also cause undefined behavior.
+    ///
+    /// Note that many methods of [`FlowWorld`] or [`FlowEntity`]
+    /// create temporary mutable references to the world.
+    ///
+    /// So calling them while this reference is alive is not allowed.
+    pub unsafe fn get<'a>(self) -> &'a mut WorldLocal {
+        unsafe { get_flow_world() }
     }
 
-    /// Polls provided closure until it returns [`Poll::Ready`].
-    /// Provides mutable reference to the world to the closure on each call.
+    /// Returns a future that will poll the closure with world reference.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
     #[inline(always)]
-    pub fn poll_fn_mut<F, R>(&mut self, f: F) -> PollWorldMut<F>
+    pub fn poll_world<F, R>(self, f: F) -> PollWorld<F>
     where
         F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
     {
-        PollWorldMut {
+        PollWorld { f, world: self }
+    }
+
+    /// Returns a future that will poll the closure with world view
+    /// constructed with specified query type.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    pub fn poll_view<Q, F, R>(self, f: F) -> PollView<Q::Query, (), F>
+    where
+        Q: DefaultQuery,
+        F: FnMut(View<Q>, &mut Context) -> Poll<R>,
+    {
+        PollView {
             f,
-            _world: PhantomData,
+            query: Q::default_query(),
+            filter: (),
+            world: self,
+        }
+    }
+
+    /// Returns a future that will poll the closure with world view
+    /// constructed with specified query type and filter type.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    pub fn poll_view_filter<Q, F, Fun, R>(self, f: Fun) -> PollView<Q::Query, F::Query, Fun>
+    where
+        Q: DefaultQuery,
+        F: DefaultQuery,
+        F: FnMut(View<Q, F>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            f,
+            query: Q::default_query(),
+            filter: F::default_query(),
+            world: self,
+        }
+    }
+
+    /// Returns a future that will poll the closure with world view
+    /// constructed with specified query.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    pub fn poll_view_with<Q, F, R>(self, query: Q, f: F) -> PollView<Q::Query, (), F>
+    where
+        Q: IntoQuery,
+        F: FnMut(View<Q>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            f,
+            query: query.into_query(),
+            filter: (),
+            world: self,
+        }
+    }
+
+    /// Returns a future that will poll the closure with world view
+    /// constructed with specified query and filter.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    pub fn poll_view_filter_with<Q, F, Fun, R>(
+        self,
+        query: Q,
+        filter: F,
+        f: Fun,
+    ) -> PollView<Q::Query, F::Query, Fun>
+    where
+        Q: IntoQuery,
+        F: IntoQuery,
+        Fun: FnMut(View<Q, F>, &mut Context) -> Poll<R>,
+    {
+        PollView {
+            f,
+            query: query.into_query(),
+            filter: filter.into_query(),
+            world: self,
         }
     }
 
     /// Returns entity reference.
     /// Returns [`NoSuchEntity`] error if entity is not alive.
     #[inline]
-    pub fn entity(
-        &mut self,
-        entity: impl crate::entity::Entity,
-    ) -> Result<Entity<'_>, NoSuchEntity> {
-        let id = entity.id();
-        unsafe {
-            if self.world_ref().is_alive(id) {
-                Ok(Entity::make(id))
-            } else {
-                Err(NoSuchEntity)
-            }
+    pub fn entity(self, entity: EntityId) -> Result<FlowEntity, NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        if world.is_alive(entity) {
+            Ok(FlowEntity::new(entity))
+        } else {
+            Err(NoSuchEntity)
         }
     }
-}
 
-#[doc(hidden)]
-pub struct FlowWorld;
+    /// Queries components from specified entity.
+    /// Where query item is a reference to value the implements [`ToOwned`].
+    /// Returns item converted to owned value.
+    ///
+    /// This method locks only archetype to which entity belongs for the duration of the method itself.
+    #[inline(always)]
+    pub fn try_get_cloned<T>(self, entity: impl Entity) -> Result<T, EntityError>
+    where
+        T: Clone + 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
 
-impl<'a> FlowContext<'a> for &'a mut World {
-    type Token = FlowWorld;
+        world.try_get_cloned(entity)
+    }
 
-    fn cx(_token: &'a FlowWorld) -> Self {
-        unsafe { World::make_mut() }
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert(entity, ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert<T>(self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
+    where
+        T: Component,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.insert(entity, component)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.insert_external(entity, 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_external<T>(self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.insert_external(entity, component)
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is preserved.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.with(entity, || ExampleComponent).unwrap();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with<T>(self, entity: impl Entity, f: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
+    where
+        T: Component,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with(entity, f)?;
+
+        Ok(())
+    }
+
+    /// Attempts to inserts component to the specified entity.
+    ///
+    /// If entity already had component of that type,
+    /// old component value is preserved.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    /// world.ensure_external_registered::<u32>();
+    /// world.with_external(entity, || 42u32).unwrap();
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external<T>(
+        self,
+        entity: impl Entity,
+        f: impl FnOnce() -> T,
+    ) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with_external(entity, f)?;
+
+        Ok(())
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// For each component type in bundle:
+    /// If entity already had component of that type,
+    /// old component value is replaced with new one.
+    /// Otherwise new component is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.insert_bundle(entity, bundle)
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// This is moral equivalent to calling `World::insert` with each component separately,
+    /// but more efficient.
+    ///
+    /// If entity has component of any type in bundle already,
+    /// it is replaced with new one.
+    /// Otherwise components is added to the entity.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn insert_external_bundle<B>(
+        self,
+        entity: impl Entity,
+        bundle: B,
+    ) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.insert_external_bundle(entity, bundle)
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// This function guarantees that no hooks are triggered,
+    /// and entity cannot be despawned as a result of this operation.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with_bundle(entity, bundle)?;
+
+        Ok(())
+    }
+
+    /// Inserts bundle of components to the specified entity.
+    /// Adds only components missing from the entity.
+    /// Components that are already present are not replaced,
+    /// if replacing is required use [`World::insert_bundle`].
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn(()).id();
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(false));
+    ///
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// world.ensure_external_registered::<u32>();
+    ///
+    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    ///
+    /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
+    /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
+    /// ```
+    #[inline(always)]
+    pub fn with_external_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
+    where
+        B: DynamicBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with_external_bundle(entity, bundle)?;
+
+        Ok(())
+    }
+
+    /// Removes component from the specified entity and returns its value.
+    ///
+    /// Returns `Ok(Some(comp))` if component was removed.
+    /// Returns `Ok(None)` if entity does not have component of this type.
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn remove<T>(self, entity: impl Entity) -> Result<Option<T>, NoSuchEntity>
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        let (c, _) = world.remove(entity)?;
+        Ok(c)
+    }
+
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn drop<T>(self, entity: impl Entity) -> Result<(), NoSuchEntity>
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.drop::<T>(entity)
+    }
+
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn drop_erased(self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.drop_erased(entity, ty)
+    }
+
+    /// Drops entity's components that are found in the specified bundle.
+    ///
+    /// If entity is not alive, fails with `Err(NoSuchEntity)`.
+    ///
+    /// Unlike other methods that use `Bundle` trait, this method does not require
+    /// all components from bundle to be registered in the world.
+    /// Entity can't have components that are not registered in the world,
+    /// so no need to drop them.
+    ///
+    /// For this reason there's no separate method that uses `ComponentBundle` trait.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    ///
+    /// struct OtherComponent;
+    ///
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn((ExampleComponent,)).id();
+    ///
+    /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// world.drop_bundle::<(ExampleComponent, OtherComponent)>(entity).unwrap();
+    /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
+    /// ```
+    #[inline(always)]
+    pub fn drop_bundle<B>(self, entity: impl Entity) -> Result<(), NoSuchEntity>
+    where
+        B: Bundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.drop_bundle::<B>(entity)
+    }
+
+    /// Adds relation between two entities to the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// When either entity is despawned, relation is removed automatically.
+    ///
+    /// Relations can be queried and filtered using queries from [`edict::relation`] module.
+    ///
+    /// Relation must implement [`Relation`] trait that defines its behavior.
+    ///
+    /// If relation already exists, then instance is replaced.
+    /// If relation is symmetric then it is added in both directions.
+    /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
+    /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
+    #[inline(always)]
+    pub fn add_relation<R>(
+        self,
+        origin: impl Entity,
+        relation: R,
+        target: impl Entity,
+    ) -> Result<(), NoSuchEntity>
+    where
+        R: Relation,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.add_relation(origin, relation, target)
+    }
+
+    /// Removes relation between two entities in the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// If relation does not exist, removes `None`.
+    ///
+    /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
+    /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
+    #[inline(always)]
+    pub fn remove_relation<R>(
+        self,
+        origin: impl Entity,
+        target: impl Entity,
+    ) -> Result<Option<R>, NoSuchEntity>
+    where
+        R: Relation,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.remove_relation(origin, target)
+    }
+
+    /// Drops relation between two entities in the [`World`].
+    ///
+    /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
+    /// If relation does not exist, does nothing.
+    ///
+    /// When relation is dropped, [`Relation::on_drop`] behavior is executed.
+    #[inline(always)]
+    pub fn drop_relation<R>(
+        self,
+        origin: impl Entity,
+        target: impl Entity,
+    ) -> Result<(), NoSuchEntity>
+    where
+        R: Relation,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.drop_relation::<R>(origin, target)
+    }
+
+    /// Inserts resource instance.
+    /// Old value is replaced.
+    ///
+    /// To access resource, use [`World::get_resource`] and [`World::get_resource_mut`] methods.
+    ///
+    /// [`World::get_resource`]: struct.World.html#method.get_resource
+    /// [`World::get_resource_mut`]: struct.World.html#method.get_resource_mut
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// *world.get_resource_mut::<i32>().unwrap() = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
+    pub fn insert_resource<T: 'static>(self, resource: T) {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.insert_resource(resource);
+    }
+
+    /// Returns reference to the resource instance.
+    /// Inserts new instance if it does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let value = world.with_resource(|| 42i32);
+    /// assert_eq!(*value, 42);
+    /// *value = 11;
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
+    /// ```
+    pub fn with_resource<T: 'static>(self, f: impl FnOnce() -> T) {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with_resource(f);
+    }
+
+    /// Returns reference to the resource instance.
+    /// Inserts new instance if it does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// let value = world.with_default_resource::<u32>();
+    /// assert_eq!(*value, 0);
+    /// *value = 11;
+    /// assert_eq!(*world.get_resource::<u32>().unwrap(), 11);
+    /// ```
+    pub fn with_default_resource<T: Default + 'static>(self) {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.with_default_resource::<T>();
+    }
+
+    /// Remove resource instance.
+    /// Returns `None` if resource was not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
+    /// world.remove_resource::<i32>();
+    /// assert!(world.get_resource::<i32>().is_none());
+    /// ```
+    pub fn remove_resource<T: 'static>(self) -> Option<T> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.remove_resource()
+    }
+
+    /// Returns a copy for the `Sync` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.copy_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(world.copy_resource::<i32>(), 42);
+    /// ```
+    #[track_caller]
+    pub fn copy_resource<T: Copy + 'static>(self) -> T {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.copy_resource()
+    }
+
+    /// Returns a clone for the `Sync` resource.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if resource is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.copy_resource::<i32>();
+    /// ```
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.insert_resource(42i32);
+    /// assert_eq!(world.copy_resource::<i32>(), 42);
+    /// ```
+    #[track_caller]
+    pub fn clone_resource<T: Clone + 'static>(self) -> T {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.clone_resource()
+    }
+
+    /// Spawns a new entity in this world without components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_empty();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_empty(self) -> FlowEntity {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_empty().id())
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn_one(ExampleComponent);
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one<T>(self, component: T) -> FlowEntity
+    where
+        T: Component,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_one(component).id())
+    }
+
+    /// Spawns a new entity in this world with provided component.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// Component must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::world::World;
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    /// let mut entity = world.spawn_one_external(42u32);
+    /// assert!(entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_one_external<T>(self, component: T) -> FlowEntity
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_one_external(component).id())
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] for the newly spawned entity.
+    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`World`].
+    ///
+    /// # Panics
+    ///
+    /// If new id cannot be allocated.
+    /// If too many entities are spawned.
+    /// Currently limit is set to `u32::MAX` entities per archetype and `usize::MAX` overall.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let mut entity = world.spawn((ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn<B>(self, bundle: B) -> FlowEntity
+    where
+        B: DynamicComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn(bundle).id())
+    }
+
+    /// Spawns a new entity in this world with specific ID and bundle of components.
+    /// The `World` must be configured to never allocate this ID.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the id is already used by the world.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, entity::EntityId, ExampleComponent};
+    /// let mut world = World::new();
+    /// let id = EntityId::from_bits(42).unwrap();
+    /// let mut entity = world.spawn_at(id, (ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_at<B>(self, id: EntityId, bundle: B) -> FlowEntity
+    where
+        B: DynamicComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_at(id, bundle).id())
+    }
+
+    /// Spawns a new entity in this world with specific ID and bundle of components.
+    /// The `World` must be configured to never allocate this ID.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the id is already used by the world.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, entity::EntityId, ExampleComponent};
+    /// let mut world = World::new();
+    /// let id = EntityId::from_bits(42).unwrap();
+    /// let mut entity = world.spawn_or_insert(id, (ExampleComponent,));
+    /// assert!(entity.has_component::<ExampleComponent>());
+    /// let ExampleComponent = entity.remove().unwrap();
+    /// assert!(!entity.has_component::<ExampleComponent>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_or_insert<B>(self, id: EntityId, bundle: B) -> FlowEntity
+    where
+        B: DynamicComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_or_insert(id, bundle).id())
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// Returns [`EntityRef`] handle to the newly spawned entity.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until despawned.
+    ///
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if new id cannot be allocated.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert!(entity.has_component::<u32>());
+    /// assert_eq!(entity.remove(), Some(42u32));
+    /// assert!(!entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_external<B>(self, bundle: B) -> FlowEntity
+    where
+        B: DynamicBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_external(bundle).id())
+    }
+
+    /// Spawns a new entity in this world with provided bundle of components.
+    /// The id must be unused by the world.
+    /// Spawned entity is populated with all components from the bundle.
+    /// Entity will be alive until despawned.
+    ///
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the id is already used by the world.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// world.ensure_external_registered::<u32>();
+    /// world.ensure_component_registered::<ExampleComponent>();
+    /// let mut entity = world.spawn_external((42u32, ExampleComponent));
+    /// assert!(entity.has_component::<u32>());
+    /// assert_eq!(entity.remove(), Some(42u32));
+    /// assert!(!entity.has_component::<u32>());
+    /// ```
+    #[inline(always)]
+    pub fn spawn_external_at<B>(self, id: EntityId, bundle: B) -> FlowEntity
+    where
+        B: DynamicBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        FlowEntity::new(world.spawn_external_at(id, bundle).id())
+    }
+
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles yielded from provided bundles iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    #[inline(always)]
+    pub fn spawn_batch<B, I>(self, bundles: I) -> SpawnBatch<I::IntoIter>
+    where
+        I: IntoIterator<Item = B>,
+        B: ComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.ensure_bundle_registered::<B>();
+
+        SpawnBatch {
+            bundles: bundles.into_iter(),
+            world: self,
+        }
+    }
+
+    /// Returns an iterator which spawns and yield entities
+    /// using bundles yielded from provided bundles iterator.
+    ///
+    /// When bundles iterator returns `None`, returned iterator returns `None` too.
+    ///
+    /// If bundles iterator is fused, returned iterator is fused too.
+    /// If bundles iterator is double-ended, returned iterator is double-ended too.
+    /// If bundles iterator has exact size, returned iterator has exact size too.
+    ///
+    /// Skipping items on returned iterator will cause bundles iterator skip bundles and not spawn entities.
+    ///
+    /// Returned iterator attempts to optimize storage allocation for entities
+    /// if consumed with functions like `fold`, `rfold`, `for_each` or `collect`.
+    ///
+    /// When returned iterator is dropped, no more entities will be spawned
+    /// even if bundles iterator has items left.
+    ///
+    /// Components must be previously registered.
+    /// If component implements [`Component`] it could be registered implicitly
+    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    #[inline(always)]
+    pub fn spawn_batch_external<B, I>(self, bundles: I) -> SpawnBatch<I::IntoIter>
+    where
+        I: IntoIterator<Item = B>,
+        B: Bundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.assert_bundle_registered::<B>();
+
+        SpawnBatch {
+            bundles: bundles.into_iter(),
+            world: self,
+        }
+    }
+
+    /// Despawns an entity with specified id.
+    /// Returns [`Err(NoSuchEntity)`] if entity does not exists.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity = world.spawn((ExampleComponent,)).id();
+    /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
+    /// assert!(world.despawn(entity).is_err(), "Already despawned");
+    /// ```
+    #[inline(always)]
+    pub fn despawn(self, entity: impl Entity) -> Result<(), NoSuchEntity> {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.despawn(entity)
     }
 }
 
-impl<F, Fut> IntoFlow for FlowClosure<F, Fut>
-where
-    F: FnOnce(FlowWorld) -> Fut + 'static,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    type Flow<'a> = FutureFlow<Fut>;
+/// Future that polls the closure with world reference.
+///
+/// Resolves to closure result in [`Poll::Ready`].
+/// The closure may use task context to register wakers.
+#[must_use = "Future does nothing unless polled"]
+pub struct PollWorld<F> {
+    f: F,
+    world: FlowWorld,
+}
 
-    fn into_flow(self, _world: &mut World) -> Option<FutureFlow<Fut>> {
-        Some(FutureFlow {
-            fut: (self.f)(FlowWorld),
+impl<F, R> Future for PollWorld<F>
+where
+    F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        (me.f)(world, cx)
+    }
+}
+
+/// Future that polls the closure with world view
+/// constructed with specified query.
+///
+/// Resolves to closure result in [`Poll::Ready`].
+/// The closure may use task context to register wakers.
+#[must_use = "Future does nothing unless polled"]
+pub struct PollView<Q, F, Fun> {
+    query: Q,
+    filter: F,
+    f: Fun,
+    world: FlowWorld,
+}
+
+impl<Q, F, Fun, R> Future for PollView<Q, F, Fun>
+where
+    Q: Query,
+    F: Query,
+    for<'a> Fun: FnMut(View<'a, Q, F>, &mut Context) -> Poll<R>,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<R> {
+        // Safety: `me` never moves.
+        let me = unsafe { self.get_unchecked_mut() };
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { me.world.get() };
+
+        let view = world.view_filter_with_mut(me.query, me.filter);
+        (me.f)(view.into(), cx)
+    }
+}
+
+/// Spawning iterator. Produced by [`World::spawn_batch`].
+pub struct SpawnBatch<I> {
+    bundles: I,
+    world: FlowWorld,
+}
+
+impl<B, I> SpawnBatch<I>
+where
+    I: Iterator<Item = B>,
+    B: Bundle,
+{
+    /// Spawns the rest of the entities.
+    /// The bundles iterator will be exhausted.
+    /// If bundles iterator is fused, calling this method again will
+    /// never spawn entities.
+    ///
+    /// This method won't return IDs of spawned entities.
+    #[inline(always)]
+    pub fn spawn_all(&mut self) {
+        self.for_each(|_| {});
+    }
+}
+
+impl<B, I> Iterator for SpawnBatch<I>
+where
+    I: Iterator<Item = B>,
+    B: Bundle,
+{
+    type Item = FlowEntity;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<FlowEntity> {
+        let bundle = self.bundles.next()?;
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.world.get() };
+
+        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+    }
+
+    #[inline(always)]
+    fn nth(&mut self, n: usize) -> Option<FlowEntity> {
+        let bundle = self.bundles.nth(n)?;
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.world.get() };
+
+        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.bundles.size_hint()
+    }
+
+    #[inline(always)]
+    fn fold<T, F>(self, init: T, mut f: F) -> T
+    where
+        F: FnMut(T, FlowEntity) -> T,
+    {
+        self.bundles.fold(init, |acc, bundle| {
+            // Safety: world reference does not escape this scope.
+            // It is not fetched outside because iterator may fetch world as well.
+            let world = unsafe { self.world.get() };
+
+            f(acc, FlowEntity::new(world.spawn_external(bundle).id()))
         })
     }
+}
+
+impl<B, I> ExactSizeIterator for SpawnBatch<I>
+where
+    I: ExactSizeIterator<Item = B>,
+    B: Bundle,
+{
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.bundles.len()
+    }
+}
+
+impl<B, I> DoubleEndedIterator for SpawnBatch<I>
+where
+    I: DoubleEndedIterator<Item = B>,
+    B: Bundle,
+{
+    fn next_back(&mut self) -> Option<FlowEntity> {
+        let bundle = self.bundles.next_back()?;
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.world.get() };
+
+        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<FlowEntity> {
+        let bundle = self.bundles.nth_back(n)?;
+
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.world.get() };
+
+        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+    }
+
+    fn rfold<T, F>(self, init: T, mut f: F) -> T
+    where
+        Self: Sized,
+        F: FnMut(T, FlowEntity) -> T,
+    {
+        self.bundles.rfold(init, |acc, bundle| {
+            // Safety: world reference does not escape this scope.
+            // It is not fetched outside because iterator may fetch world as well.
+            let world = unsafe { self.world.get() };
+
+            f(acc, FlowEntity::new(world.spawn_external(bundle).id()))
+        })
+    }
+}
+
+impl<B, I> core::iter::FusedIterator for SpawnBatch<I>
+where
+    I: core::iter::FusedIterator<Item = B>,
+    B: Bundle,
+{
 }

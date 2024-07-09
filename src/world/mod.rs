@@ -557,7 +557,7 @@ impl WorldLocal {
     }
 }
 
-pub(crate) fn register_bundle<B: ComponentBundleDesc>(
+pub(crate) fn ensure_bundle_registered<B: ComponentBundleDesc>(
     registry: &mut ComponentRegistry,
     bundle: &B,
 ) {
@@ -568,10 +568,7 @@ pub(crate) fn register_bundle<B: ComponentBundleDesc>(
     });
 }
 
-pub(crate) fn assert_registered_bundle<B: BundleDesc>(
-    registry: &mut ComponentRegistry,
-    bundle: &B,
-) {
+pub(crate) fn assert_bundle_registered<B: BundleDesc>(registry: &ComponentRegistry, bundle: &B) {
     bundle.with_ids(|ids| {
         for (idx, id) in ids.iter().enumerate() {
             if registry.get_info(*id).is_none() {
@@ -586,13 +583,11 @@ pub(crate) fn assert_registered_bundle<B: BundleDesc>(
     })
 }
 
-pub(crate) fn register_one<T: Component>(registry: &mut ComponentRegistry) -> &ComponentInfo {
+pub(crate) fn register_component<T: Component>(registry: &mut ComponentRegistry) -> &ComponentInfo {
     registry.get_or_register::<T>()
 }
 
-pub(crate) fn assert_registered_one<T: 'static>(
-    registry: &mut ComponentRegistry,
-) -> &ComponentInfo {
+pub(crate) fn assert_registered<T: 'static>(registry: &mut ComponentRegistry) -> &ComponentInfo {
     match registry.get_info(type_id::<T>()) {
         Some(info) => info,
         None => panic!(

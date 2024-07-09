@@ -220,11 +220,14 @@ impl World {
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
     #[inline(always)]
-    pub fn get_cloned<T>(&self, entity: impl AliveEntity) -> Option<T>
+    pub fn get_cloned<T>(&mut self, entity: impl AliveEntity) -> Option<T>
     where
-        T: Clone + Sync + 'static,
+        T: Clone + 'static,
     {
-        self.view_one::<&T>(entity).map(Clone::clone)
+        match self.get::<&T>(entity) {
+            Ok(item) => Some(item.clone()),
+            Err(_) => None,
+        }
     }
 
     /// Queries components from specified entity.
@@ -233,12 +236,14 @@ impl World {
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
     #[inline(always)]
-    pub fn try_get_cloned<T>(&self, entity: impl Entity) -> Result<Option<T>, NoSuchEntity>
+    pub fn try_get_cloned<T>(&mut self, entity: impl Entity) -> Result<T, EntityError>
     where
-        T: Clone + Sync + 'static,
+        T: Clone + 'static,
     {
-        let entity = self.lookup(entity)?;
-        Ok(self.get_cloned::<T>(entity))
+        match self.get::<&T>(entity) {
+            Ok(item) => Ok(item.clone()),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -318,32 +323,5 @@ impl WorldLocal {
     {
         let entity = self.lookup(entity)?;
         Ok(self.view_one_with::<Q>(entity, query))
-    }
-
-    /// Queries components from specified entity.
-    /// Where query item is a reference to value the implements [`ToOwned`].
-    /// Returns item converted to owned value.
-    ///
-    /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    #[inline(always)]
-    pub fn get_cloned<T>(&self, entity: impl AliveEntity) -> Option<T>
-    where
-        T: Clone + 'static,
-    {
-        self.view_one::<&T>(entity).map(Clone::clone)
-    }
-
-    /// Queries components from specified entity.
-    /// Where query item is a reference to value the implements [`ToOwned`].
-    /// Returns item converted to owned value.
-    ///
-    /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    #[inline(always)]
-    pub fn try_get_cloned<T>(&self, entity: impl Entity) -> Result<Option<T>, NoSuchEntity>
-    where
-        T: Clone + 'static,
-    {
-        let entity = self.lookup(entity)?;
-        Ok(self.get_cloned::<T>(entity))
     }
 }

@@ -61,6 +61,27 @@ for_tuple!(impl_extend);
 
 impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
 where
+    Q: Query,
+    F: Query,
+    B: ExtendableBorrowState,
+{
+    /// Transforms view query into tuple to allow extending it with additional queries.
+    ///
+    /// This also helps if maximum number of queries in the tuple is reached.
+    pub fn into_tuple_query(self) -> ViewValue<'a, (Q,), F, B> {
+        ViewValue {
+            query: (self.query,),
+            filter: self.filter,
+            archetypes: self.archetypes,
+            entity_set: self.entity_set,
+            epochs: self.epochs,
+            state: self.extract_state(),
+        }
+    }
+}
+
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
+where
     Q: TupleQuery,
     F: Query,
     B: ExtendableBorrowState,

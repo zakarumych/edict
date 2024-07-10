@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{ExtendableBorrowState, ViewValue};
+use super::{BorrowState, Extensible, ViewValue};
 
 /// A helper trait to extend tuples of queries to produce a new query.
 pub trait TupleQuery: Query + Sized {
@@ -59,48 +59,65 @@ macro_rules! impl_extend {
 
 for_tuple!(impl_extend);
 
-impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B, Extensible>
 where
     Q: Query,
     F: Query,
-    B: ExtendableBorrowState,
+    B: BorrowState,
 {
     /// Transforms view query into tuple to allow extending it with additional queries.
     ///
     /// This also helps if maximum number of queries in the tuple is reached.
-    pub fn into_tuple_query(self) -> ViewValue<'a, (Q,), F, B> {
+    pub fn into_tuple_query(self) -> ViewValue<'a, (Q,), F, B, Extensible> {
+        let query = (self.query,);
+        let filter = self.filter;
+        let archetypes = self.archetypes;
+        let entity_set = self.entity_set;
+        let epochs = self.epochs;
+        let (state, Extensible) = self.extract();
+
         ViewValue {
-            query: (self.query,),
-            filter: self.filter,
-            archetypes: self.archetypes,
-            entity_set: self.entity_set,
-            epochs: self.epochs,
-            state: self.extract_state(),
+            query,
+            filter,
+            archetypes,
+            entity_set,
+            epochs,
+            state,
+            extensibility: Extensible,
         }
     }
 }
 
-impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B, Extensible>
 where
     Q: TupleQuery,
     F: Query,
-    B: ExtendableBorrowState,
+    B: BorrowState,
 {
     /// Extends query tuple with an additional query element.
     #[inline(always)]
-    pub fn extend<E>(self, ext: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B>
+    pub fn extend<E>(self, ext: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B, Extensible>
     where
         E: SendQuery,
     {
         self.release_borrow();
+        Q::extend_query(self.query, ext);
+
+        let query = Q::extend_query(self.query, ext);
+        let filter = self.filter;
+        let archetypes = self.archetypes;
+        let entity_set = self.entity_set;
+        let epochs = self.epochs;
+        let (state, Extensible) = self.extract();
 
         ViewValue {
-            query: Q::extend_query(self.query, ext),
-            filter: self.filter,
-            archetypes: self.archetypes,
-            entity_set: self.entity_set,
-            epochs: self.epochs,
-            state: self.extract_state(),
+            query,
+            filter,
+            archetypes,
+            entity_set,
+            epochs,
+            state,
+            extensibility: Extensible,
         }
     }
 
@@ -110,7 +127,7 @@ where
     pub fn modified<T>(
         self,
         after_epoch: EpochId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a T>>, F, B, Extensible>
     where
         T: Sync + 'static,
     {
@@ -123,7 +140,7 @@ where
     pub fn modified_mut<T>(
         self,
         after_epoch: EpochId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a mut T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Modified<&'a mut T>>, F, B, Extensible>
     where
         T: Send + 'static,
     {
@@ -135,7 +152,9 @@ where
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
     #[inline(always)]
-    pub fn borrow_any<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a T>>, F, B>
+    pub fn borrow_any<T>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a T>>, F, B, Extensible>
     where
         T: Sync + ?Sized + 'static,
     {
@@ -147,7 +166,9 @@ where
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
     #[inline(always)]
-    pub fn borrow_any_mut<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B>
+    pub fn borrow_any_mut<T>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B, Extensible>
     where
         T: Send + ?Sized + 'static,
     {
@@ -166,7 +187,7 @@ where
     pub fn borrow_one<T>(
         self,
         ty: TypeId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a T>>, F, B, Extensible>
     where
         T: Sync + ?Sized + 'static,
     {
@@ -185,7 +206,7 @@ where
     pub fn borrow_one_mut<T>(
         self,
         ty: TypeId,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a mut T>>, F, B>
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowOne<&'a mut T>>, F, B, Extensible>
     where
         T: Send + ?Sized + 'static,
     {
@@ -201,7 +222,9 @@ where
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
     #[inline(always)]
-    pub fn borrow_all<T>(self) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAll<&'a T>>, F, B>
+    pub fn borrow_all<T>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAll<&'a T>>, F, B, Extensible>
     where
         T: Sync + ?Sized + 'static,
     {
@@ -214,7 +237,7 @@ where
     #[inline(always)]
     pub fn relates<R: Relation + Sync>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B, Extensible> {
         self.extend(Relates::<Read<R>>)
     }
 
@@ -224,7 +247,7 @@ where
     #[inline(always)]
     pub fn relates_mut<R: Relation + Send>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a mut R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a mut R>>, F, B, Extensible> {
         self.extend(Relates::<Write<R>>)
     }
 
@@ -235,7 +258,7 @@ where
     pub fn relates_to<R: Relation + Sync>(
         self,
         target: impl Entity,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a R>>, F, B, Extensible> {
         self.extend(RelatesTo::<Read<R>>::new(target.id()))
     }
 
@@ -246,7 +269,7 @@ where
     pub fn relates_to_mut<R: Relation + Send>(
         self,
         target: impl Entity,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a mut R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesTo<&'a mut R>>, F, B, Extensible> {
         self.extend(RelatesTo::<Write<R>>::new(target.id()))
     }
 
@@ -256,7 +279,7 @@ where
     #[inline(always)]
     pub fn relates_exclusive<R: ExclusiveRelation + Sync>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B, Extensible> {
         self.extend(RelatesExclusive::<Read<R>>)
     }
 
@@ -266,46 +289,54 @@ where
     #[inline(always)]
     pub fn relates_exclusive_mut<R: ExclusiveRelation + Send>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a mut R>>, F, B> {
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a mut R>>, F, B, Extensible> {
         self.extend(RelatesExclusive::<Write<R>>)
     }
 
     /// Queries for target entities in relation of type `R`.
     /// The view will contain origins of the relation.
     #[inline(always)]
-    pub fn related<R: Relation>(self) -> ViewValue<'a, TupleQueryAdd<Q, Related<R>>, F, B> {
+    pub fn related<R: Relation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Related<R>>, F, B, Extensible> {
         self.extend(Related)
     }
 }
 
-impl<'a, Q, F, B> ViewValue<'a, Q, F, B>
+impl<'a, Q, F, B> ViewValue<'a, Q, F, B, Extensible>
 where
     Q: Query,
     F: TupleQuery,
-    B: ExtendableBorrowState,
+    B: BorrowState,
 {
     /// Extends filter tuple with an additional filter element.
     #[inline(always)]
-    pub fn filter<E>(self, ext: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B>
+    pub fn filter<E>(self, ext: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B, Extensible>
     where
         E: SendQuery,
     {
-        self.release_borrow();
+        let query = self.query;
+        let filter = F::extend_query(self.filter, ext);
+        let archetypes = self.archetypes;
+        let entity_set = self.entity_set;
+        let epochs = self.epochs;
+        let (state, Extensible) = self.extract();
 
         ViewValue {
-            query: self.query,
-            filter: F::extend_query(self.filter, ext),
-            archetypes: self.archetypes,
-            entity_set: self.entity_set,
-            epochs: self.epochs,
-            state: self.extract_state(),
+            query,
+            filter,
+            archetypes,
+            entity_set,
+            epochs,
+            state,
+            extensibility: Extensible,
         }
     }
 
     /// Extends filter tuple with a filter element that
     /// filters entities that have the component.
     #[inline(always)]
-    pub fn with<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, With<T>>, B>
+    pub fn with<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, With<T>>, B, Extensible>
     where
         T: 'static,
     {
@@ -315,7 +346,7 @@ where
     /// Extends filter tuple with a filter element that\
     /// filters entities that do not have the component.
     #[inline(always)]
-    pub fn without<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, Without<T>>, B>
+    pub fn without<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, Without<T>>, B, Extensible>
     where
         T: 'static,
     {
@@ -328,7 +359,7 @@ where
     pub fn filter_modified<T>(
         self,
         after_epoch: EpochId,
-    ) -> ViewValue<'a, Q, TupleQueryAdd<F, Modified<With<T>>>, B>
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, Modified<With<T>>>, B, Extensible>
     where
         T: 'static,
     {
@@ -339,7 +370,7 @@ where
     #[inline(always)]
     pub fn filter_related<R: Relation>(
         self,
-    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelated<R>>, B> {
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelated<R>>, B, Extensible> {
         self.filter(FilterRelated)
     }
 
@@ -349,7 +380,7 @@ where
     pub fn filter_related_by<R: Relation>(
         self,
         origin: impl Entity,
-    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatedBy<R>>, B> {
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatedBy<R>>, B, Extensible> {
         self.filter(FilterRelatedBy::new(origin.id()))
     }
 
@@ -357,7 +388,7 @@ where
     #[inline(always)]
     pub fn filter_relates<R: Relation>(
         self,
-    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelates<R>>, B> {
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelates<R>>, B, Extensible> {
         self.filter(FilterRelates)
     }
 
@@ -367,7 +398,7 @@ where
     pub fn filter_relates_to<R: Relation>(
         self,
         target: impl Entity,
-    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatesTo<R>>, B> {
+    ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelatesTo<R>>, B, Extensible> {
         self.filter(FilterRelatesTo::new(target.id()))
     }
 }

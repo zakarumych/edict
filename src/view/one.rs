@@ -13,7 +13,7 @@ use super::{expect_match, get_at, BorrowState, RuntimeBorrowState};
 /// A view over [`World`] that may be used to access specific components
 /// of one entity.
 #[must_use]
-pub struct ViewOneState<'a, Q: Query, F: Query> {
+pub struct ViewOneValue<'a, Q: Query, F: Query> {
     query: Q,
     filter: F,
 
@@ -25,14 +25,14 @@ pub struct ViewOneState<'a, Q: Query, F: Query> {
     epochs: &'a EpochCounter,
 }
 
-impl<'a, Q: Query, F: Query> Drop for ViewOneState<'a, Q, F> {
+impl<'a, Q: Query, F: Query> Drop for ViewOneValue<'a, Q, F> {
     #[inline(always)]
     fn drop(&mut self) {
         self.unlock()
     }
 }
 
-impl<'a, Q: Query, F: Query> ViewOneState<'a, Q, F> {
+impl<'a, Q: Query, F: Query> ViewOneValue<'a, Q, F> {
     /// Unlocks runtime borrows.
     /// Allows usage of conflicting views.
     ///
@@ -54,9 +54,9 @@ impl<'a, Q: Query, F: Query> ViewOneState<'a, Q, F> {
 }
 
 /// View for single entity.
-pub type ViewOne<'a, Q, F = ()> = ViewOneState<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query>;
+pub type ViewOne<'a, Q, F = ()> = ViewOneValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query>;
 
-impl<'a, Q, F> ViewOneState<'a, Q, F>
+impl<'a, Q, F> ViewOneValue<'a, Q, F>
 where
     Q: Query,
     F: Query,
@@ -71,7 +71,7 @@ where
             archetype.write(&world.archetypes()[loc.arch as usize]);
         }
 
-        ViewOneState {
+        ViewOneValue {
             query: query,
             filter: filter,
             archetype,
@@ -83,7 +83,7 @@ where
     }
 }
 
-impl<'a, Q, F> ViewOneState<'a, Q, F>
+impl<'a, Q, F> ViewOneValue<'a, Q, F>
 where
     Q: Query,
     F: Query,
@@ -152,7 +152,7 @@ where
     }
 }
 
-impl<'a, Q, F> ViewOneState<'a, Q, F>
+impl<'a, Q, F> ViewOneValue<'a, Q, F>
 where
     Q: ImmutableQuery,
     F: ImmutableQuery,

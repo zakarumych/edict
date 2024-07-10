@@ -1,4 +1,5 @@
 use core::{
+    convert::Infallible,
     future::Future,
     pin::Pin,
     task::{Context, Poll, Waker},
@@ -97,27 +98,27 @@ impl Component for WakeOnDrop {
     }
 }
 
-/// Waits until the entity is despawned.
-pub async fn wait_despawned(entity: FlowEntity) {
-    enum Never {}
+impl FlowEntity {
+    /// Waits until the entity is despawned.
+    pub async fn wait_despawned(self) {
+        let r = self
+            .try_poll(|_e, _cx| {
+                Poll::<Infallible>::Pending // `try_poll` will resolve to None when entity is despawned.
+            })
+            .await;
 
-    let r = entity
-        .try_poll_ref(|_e, _cx| {
-            Poll::<Never>::Pending // `try_poll_ref` will resolve to None when entity is despawned.
-        })
-        .await;
-
-    match r {
-        Ok(never) => match never {},
-        Err(_) => return,
+        match r {
+            Ok(never) => match never {},
+            Err(_) => return,
+        }
     }
-}
 
-/// Waits until the entity gets a component.
-/// Never resolves if the entity is despawned.
-pub async fn wait_has_component<T>(entity: FlowEntity)
-where
-    T: 'static,
-{
-    entity.poll_view::<&T, _, _>(|_, _cx| Poll::Ready(())).await;
+    /// Waits until the entity gets a component.
+    /// Never resolves if the entity is despawned.
+    pub async fn wait_has_component<T>(self)
+    where
+        T: 'static,
+    {
+        self.poll_view::<&T, _, _>(|_, _cx| Poll::Ready(())).await;
+    }
 }

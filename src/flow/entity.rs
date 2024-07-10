@@ -172,21 +172,21 @@ where
 }
 
 /// Type that can be spawned as a flow for an entity.
-/// It can be an async function or a closure inside `flow_fn!` macro.
-/// It must accept [`Entity`] as the only argument.
+/// It can be an async function or a closure
+/// that accepts [`FlowEntity`] as the only argument.
 ///
 /// # Example
 ///
 /// ```
-/// # use edict::{world::World, flow::{Entity, flow_fn}};
+/// # use edict::{world::World, flow::FlowEntity};
 ///
 /// let mut world = edict::world::World::new();
 ///
 /// let e = world.spawn(()).id();
 ///
-/// world.spawn_flow_for(e, flow_fn!(|mut e: Entity| {
+/// world.spawn_flow_for(e, |e: FlowEntity| async move {
 ///   e.despawn();
-/// }));
+/// });
 /// ```
 #[diagnostic::on_unimplemented(
     note = "Try `async fn(e: flow::Entity)` or `flow_fn!(|e: flow::Entity| {{ ... }})`"
@@ -235,13 +235,49 @@ impl FlowEntity {
         FlowWorld::new()
     }
 
+    /// Access entity reference in the world with closure.
+    /// Returns closure result.
+    ///
+    /// # Panics
+    ///
+    /// If entity is not alive the closure will not be called and the method will panic.
+    /// Use [`FlowEntity::try_map`] to handle entity not alive case.
+    #[inline(always)]
+    pub fn map<F, R>(self, f: F) -> R
+    where
+        F: FnOnce(EntityRef) -> R,
+    {
+        match self.try_map(f) {
+            Ok(r) => r,
+            Err(NoSuchEntity) => entity_not_alive(),
+        }
+    }
+
     /// Returns a future that will poll the closure with entity reference.
     /// The future will resolve to closure result in [`Poll::Ready`].
     /// The closure may use task context to register wakers.
     ///
     /// If entity is not alive the future will not poll closure and never resolve.
     #[inline(always)]
-    pub fn poll_ref<F, R>(self, f: F) -> PollEntityRef<F>
+    pub fn try_map<F, R>(self, f: F) -> Result<R, NoSuchEntity>
+    where
+        F: FnOnce(EntityRef) -> R,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { get_flow_world() };
+
+        let e = world.entity(self.id)?;
+        Ok(f(e))
+    }
+
+    /// Returns a future that will poll the closure with entity reference.
+    /// The future will resolve to closure result in [`Poll::Ready`].
+    /// The closure may use task context to register wakers.
+    ///
+    /// If entity is not alive the future will not poll closure and never resolve.
+    /// Use [`FlowEntity::try_poll`] to handle entity not alive case.
+    #[inline(always)]
+    pub fn poll<F, R>(self, f: F) -> PollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
@@ -258,7 +294,7 @@ impl FlowEntity {
     ///
     /// The closure may use task context to register wakers.
     #[inline(always)]
-    pub fn try_poll_ref<F, R>(self, f: F) -> TryPollEntityRef<F>
+    pub fn try_poll<F, R>(self, f: F) -> TryPollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
     {
@@ -275,6 +311,8 @@ impl FlowEntity {
     /// The closure may use task context to register wakers.
     ///
     /// If entity is not alive the future will not poll closure and never resolve.
+    /// Use [`FlowEntity::try_poll_view`] to handle entity not alive case.
+    ///
     /// Future will not poll closure and resolve until query is satisfied.
     pub fn poll_view<Q, F, R>(self, f: F) -> PollEntityView<Q::Query, F>
     where
@@ -313,6 +351,8 @@ impl FlowEntity {
     /// The closure may use task context to register wakers.
     ///
     /// If entity is not alive the future will not poll closure and never resolve.
+    /// Use [`FlowEntity::try_poll_view_with`] to handle entity not alive case.
+    ///
     /// Future will not poll closure and resolve until query is satisfied.
     pub fn poll_view_with<Q, F, R>(self, query: Q, f: F) -> PollEntityView<Q::Query, F>
     where

@@ -35,7 +35,12 @@ use amity::{flip_queue::FlipQueue, ring_buffer::RingBuffer};
 use hashbrown::HashMap;
 use slab::Slab;
 
-use crate::{entity::EntityId, system::State, type_id, world::WorldLocal};
+use crate::{
+    entity::{EntityId, EntityRef},
+    system::State,
+    type_id,
+    world::WorldLocal,
+};
 
 mod entity;
 mod futures;
@@ -450,5 +455,43 @@ impl WorldLocal {
     {
         // Safety: accessed only from "main" thread.
         unsafe { &mut *self.new_flows.get() }.add(EntityIntoFlow { entity, f: flow });
+    }
+}
+
+impl FlowWorld {
+    /// Spawn a flow in the world.
+    /// It will be polled during [`Flows::execute`] until completion.
+    pub fn spawn_flow<F>(self, flow: F)
+    where
+        F: IntoFlow,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.spawn_flow(flow);
+    }
+
+    /// Spawns a flow for an entity in the world.
+    /// It will be polled during [`Flows::execute`] until completion
+    /// or until the entity is despawned.
+    pub fn spawn_flow_for<F>(&self, entity: EntityId, flow: F)
+    where
+        F: IntoEntityFlow,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.spawn_flow_for(entity, flow);
+    }
+}
+
+impl EntityRef<'_> {
+    /// Spawns a new flow for the entity.
+    pub fn spawn_flow<F>(&mut self, f: F)
+    where
+        F: crate::flow::IntoEntityFlow,
+    {
+        let id = self.id();
+        self.world().spawn_flow_for(id, f);
     }
 }

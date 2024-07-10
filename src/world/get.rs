@@ -4,7 +4,7 @@ use crate::{
     archetype::chunk_idx,
     entity::{AliveEntity, Entity},
     query::{DefaultQuery, DefaultSendQuery, Fetch, IntoQuery, IntoSendQuery, Query, QueryItem},
-    view::{ViewOne, ViewOneState},
+    view::{ViewOne, ViewOneValue},
     EntityError, NoSuchEntity,
 };
 
@@ -151,7 +151,7 @@ impl World {
     where
         Q: DefaultSendQuery,
     {
-        ViewOneState::new(self, entity, Q::default_query(), ())
+        ViewOneValue::new(self, entity, Q::default_query(), ())
     }
 
     /// Queries components from specified entity.
@@ -189,7 +189,7 @@ impl World {
     where
         Q: IntoSendQuery,
     {
-        ViewOneState::new(self, entity, (query.into_query(),), ())
+        ViewOneValue::new(self, entity, (query.into_query(),), ())
     }
 
     /// Queries components from specified entity.
@@ -262,7 +262,7 @@ impl WorldLocal {
     where
         Q: DefaultQuery,
     {
-        ViewOneState::new(self, entity, Q::default_query(), ())
+        ViewOneValue::new(self, entity, Q::default_query(), ())
     }
 
     /// Queries components from specified entity.
@@ -300,7 +300,7 @@ impl WorldLocal {
     where
         Q: IntoQuery,
     {
-        ViewOneState::new(self, entity, (query.into_query(),), ())
+        ViewOneValue::new(self, entity, (query.into_query(),), ())
     }
 
     /// Queries components from specified entity.

@@ -186,11 +186,11 @@ where
 /// Can fetch `!Sync` resources.
 /// Prefer using `Res` for `Sync` resources for better parallelism.
 #[repr(transparent)]
-pub struct ResNoSync<'a, T: ?Sized> {
+pub struct ResLocal<'a, T: ?Sized> {
     inner: Res<'a, T>,
 }
 
-impl<'a, T> Deref for ResNoSync<'a, T>
+impl<'a, T> Deref for ResLocal<'a, T>
 where
     T: ?Sized,
 {
@@ -202,7 +202,7 @@ where
     }
 }
 
-impl<'a, T> ResNoSync<'a, T>
+impl<'a, T> ResLocal<'a, T>
 where
     T: ?Sized,
 {
@@ -213,7 +213,7 @@ where
     }
 }
 
-/// State for [`ResNoSync`] argument
+/// State for [`ResLocal`] argument
 pub struct ResNoSyncState<T> {
     marker: PhantomData<fn() -> T>,
 }
@@ -227,7 +227,7 @@ impl<T> Default for ResNoSyncState<T> {
     }
 }
 
-impl<'a, T> FnArg for ResNoSync<'a, T>
+impl<'a, T> FnArg for ResLocal<'a, T>
 where
     T: 'static,
 {
@@ -238,7 +238,7 @@ unsafe impl<T> FnArgState for ResNoSyncState<T>
 where
     T: 'static,
 {
-    type Arg<'a> = ResNoSync<'a, T>;
+    type Arg<'a> = ResLocal<'a, T>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -286,13 +286,13 @@ where
         &'a mut self,
         world: NonNull<World>,
         _queue: &mut dyn ActionBufferQueue,
-    ) -> ResNoSync<'a, T> {
+    ) -> ResLocal<'a, T> {
         // Safety: Declares read.
         let world = unsafe { world.as_ref() };
 
         // Safety: Declares read access and local execution.
         match unsafe { world.get_local_resource() } {
-            Some(r) => ResNoSync { inner: r },
+            Some(r) => ResLocal { inner: r },
             None => missing_resource::<T>(),
         }
     }
@@ -302,11 +302,11 @@ where
 /// Can fetch `!Send` resources.
 /// Prefer using `ResMut` for `Send` resources for better parallelism.
 #[repr(transparent)]
-pub struct ResMutNoSend<'a, T: ?Sized> {
+pub struct ResMutLocal<'a, T: ?Sized> {
     inner: ResMut<'a, T>,
 }
 
-impl<'a, T> Deref for ResMutNoSend<'a, T>
+impl<'a, T> Deref for ResMutLocal<'a, T>
 where
     T: ?Sized,
 {
@@ -318,7 +318,7 @@ where
     }
 }
 
-impl<'a, T> DerefMut for ResMutNoSend<'a, T>
+impl<'a, T> DerefMut for ResMutLocal<'a, T>
 where
     T: ?Sized,
 {
@@ -328,7 +328,7 @@ where
     }
 }
 
-impl<'a, T> ResMutNoSend<'a, T>
+impl<'a, T> ResMutLocal<'a, T>
 where
     T: ?Sized,
 {
@@ -339,7 +339,7 @@ where
     }
 }
 
-/// State for [`ResMutNoSend`] argument
+/// State for [`ResMutLocal`] argument
 pub struct ResMutNoSendState<T> {
     marker: PhantomData<fn() -> T>,
 }
@@ -353,7 +353,7 @@ impl<T> Default for ResMutNoSendState<T> {
     }
 }
 
-impl<'a, T> FnArg for ResMutNoSend<'a, T>
+impl<'a, T> FnArg for ResMutLocal<'a, T>
 where
     T: 'static,
 {
@@ -364,7 +364,7 @@ unsafe impl<T> FnArgState for ResMutNoSendState<T>
 where
     T: 'static,
 {
-    type Arg<'a> = ResMutNoSend<'a, T>;
+    type Arg<'a> = ResMutLocal<'a, T>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -412,13 +412,13 @@ where
         &'a mut self,
         world: NonNull<World>,
         _queue: &mut dyn ActionBufferQueue,
-    ) -> ResMutNoSend<'a, T> {
+    ) -> ResMutLocal<'a, T> {
         // Safety: Declares read.
         let world = unsafe { world.as_ref() };
 
         // Safety: Declares read access and local execution.
         match unsafe { world.get_local_resource_mut() } {
-            Some(r) => ResMutNoSend { inner: r },
+            Some(r) => ResMutLocal { inner: r },
             None => missing_resource::<T>(),
         }
     }

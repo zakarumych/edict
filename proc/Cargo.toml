@@ -17,4 +17,4 @@ proc-macro = true
 
 [dependencies]
 syn = "2.0"
-edict-proc-lib = { version = "=1.0.0-rc3", path = "../proc-lib" }
+edict-proc-lib = { version = "=1.0.0-rc4", path = "../proc-lib" }

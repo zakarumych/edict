@@ -263,7 +263,7 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        f(self.ty, Access::Read)
+        f(self.ty, Access::Write)
     }
 
     #[inline(always)]

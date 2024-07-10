@@ -1126,13 +1126,9 @@ impl<'a> EntityRef<'a> {
         self.world.has_component::<T>(loc)
     }
 
-    /// Spawns a new flow for the entity.
-    #[cfg(feature = "flow")]
-    pub fn spawn_flow<F>(&mut self, f: F)
-    where
-        F: crate::flow::IntoEntityFlow,
-    {
-        let id = self.id;
-        self.world.spawn_flow_for(id, f);
+    /// Returns a reference to world.
+    #[inline(always)]
+    pub fn world(&mut self) -> &mut World {
+        self.world
     }
 }

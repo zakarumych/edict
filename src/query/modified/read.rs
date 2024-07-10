@@ -121,12 +121,17 @@ where
             None => false,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
-
                 debug_assert_eq!(component.id(), type_id::<T>());
-                let data = unsafe { component.data() };
-                data.epoch.after(self.after_epoch)
+                true
             },
         }
+    }
+
+    #[inline(always)]
+    unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data() };
+        data.epoch.after(self.after_epoch)
     }
 
     #[inline(always)]
@@ -225,8 +230,17 @@ where
             None => true,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
-
                 debug_assert_eq!(component.id(), type_id::<T>());
+                true
+            },
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+        match archetype.component(type_id::<T>()) {
+            None => true,
+            Some(component) => unsafe {
                 let data = unsafe { component.data() };
                 data.epoch.after(self.after_epoch)
             },
@@ -235,14 +249,8 @@ where
 
     #[inline(always)]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
-        if let Some(component) = archetype.component(type_id::<T>()) {
-            debug_assert_eq!(self.query.visit_archetype(archetype), true);
-
-            debug_assert_eq!(component.id(), type_id::<T>());
-            let data = unsafe { component.data() };
-            if data.epoch.after(self.after_epoch) {
-                f(type_id::<T>(), Access::Read)
-            }
+        if archetype.has_component(type_id::<T>()) {
+            f(type_id::<T>(), Access::Read)
         }
     }
 

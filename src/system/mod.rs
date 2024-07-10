@@ -14,8 +14,8 @@ use crate::{
 };
 
 pub use self::func::{
-    ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, ResMutNoSend,
-    ResMutNoSendState, ResMutState, ResNoSync, ResNoSyncState, ResState, State, StateState,
+    ActionEncoderState, FnArg, FnArgState, FromWorld, IsFunctionSystem, QueryArg, ResLocal,
+    ResMutLocal, ResMutNoSendState, ResMutState, ResNoSyncState, ResState, State, StateState,
 };
 
 pub use edict_proc::system;

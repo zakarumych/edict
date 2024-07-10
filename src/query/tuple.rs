@@ -190,7 +190,7 @@ macro_rules! impl_fetch {
             #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
-                $( <$a as Query>::visit_archetype($a, archetype) )&&+
+                true $( && <$a as Query>::visit_archetype($a, archetype) )+
             }
 
             #[inline(always)]
@@ -200,9 +200,9 @@ macro_rules! impl_fetch {
             }
 
             #[inline(always)]
-            fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+            unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
-                $( <$a as Query>::visit_archetype_late($a, archetype) )&&+
+                true $( && unsafe { <$a as Query>::visit_archetype_late($a, archetype) } )+
             }
 
             #[inline(always)]

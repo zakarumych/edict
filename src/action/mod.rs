@@ -19,7 +19,7 @@ tiny_fn::tiny_fn! {
 
 pub use self::{
     buffer::{ActionBuffer, ActionBufferSliceExt, LocalActionBuffer},
-    channel::{ActionSender, SpawnBatchChannel},
+    channel::{ActionSender, SpawnBatchSender},
     encoder::{ActionEncoder, LocalActionEncoder, LocalSpawnBatch, SpawnBatch},
 };
 

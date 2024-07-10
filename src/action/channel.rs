@@ -112,7 +112,7 @@ impl ActionSender {
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
     #[inline(always)]
-    pub fn spawn_batch<I>(&self, bundles: I) -> SpawnBatchChannel<I>
+    pub fn spawn_batch<I>(&self, bundles: I) -> SpawnBatchSender<I>
     where
         I: IntoIterator,
         I::Item: ComponentBundle + Send + 'static,
@@ -121,7 +121,7 @@ impl ActionSender {
             world.ensure_bundle_registered::<I::Item>();
         });
 
-        SpawnBatchChannel {
+        SpawnBatchSender {
             bundles,
             sender: self,
         }
@@ -130,12 +130,12 @@ impl ActionSender {
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
     #[inline(always)]
-    pub fn spawn_external_batch<I>(&self, bundles: I) -> SpawnBatchChannel<I>
+    pub fn spawn_external_batch<I>(&self, bundles: I) -> SpawnBatchSender<I>
     where
         I: IntoIterator,
         I::Item: Bundle + Send + 'static,
     {
-        SpawnBatchChannel {
+        SpawnBatchSender {
             bundles,
             sender: self,
         }
@@ -282,12 +282,12 @@ impl ActionSender {
 }
 
 /// Spawning iterator. Produced by [`World::spawn_batch`].
-pub struct SpawnBatchChannel<'a, I> {
+pub struct SpawnBatchSender<'a, I> {
     bundles: I,
     sender: &'a ActionSender,
 }
 
-impl<B, I> SpawnBatchChannel<'_, I>
+impl<B, I> SpawnBatchSender<'_, I>
 where
     I: Iterator<Item = B>,
     B: Bundle + Send + 'static,
@@ -299,7 +299,7 @@ where
     }
 }
 
-impl<B, I> Iterator for SpawnBatchChannel<'_, I>
+impl<B, I> Iterator for SpawnBatchSender<'_, I>
 where
     I: Iterator<Item = B>,
     B: Bundle + Send + 'static,
@@ -314,7 +314,7 @@ where
 
     #[inline(always)]
     fn nth(&mut self, n: usize) -> Option<()> {
-        // `SpawnBatchChannel` explicitly does NOT spawn entities that are skipped.
+        // `SpawnBatchSender` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
         Some(self.sender.spawn_external(bundle))
     }
@@ -358,7 +358,7 @@ where
     }
 }
 
-impl<B, I> ExactSizeIterator for SpawnBatchChannel<'_, I>
+impl<B, I> ExactSizeIterator for SpawnBatchSender<'_, I>
 where
     I: ExactSizeIterator<Item = B>,
     B: Bundle + Send + 'static,
@@ -369,7 +369,7 @@ where
     }
 }
 
-impl<B, I> DoubleEndedIterator for SpawnBatchChannel<'_, I>
+impl<B, I> DoubleEndedIterator for SpawnBatchSender<'_, I>
 where
     I: DoubleEndedIterator<Item = B>,
     B: Bundle + Send + 'static,
@@ -382,7 +382,7 @@ where
 
     #[inline(always)]
     fn nth_back(&mut self, n: usize) -> Option<()> {
-        // `SpawnBatchChannel` explicitly does NOT spawn entities that are skipped.
+        // `SpawnBatchSender` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth_back(n)?;
         Some(self.sender.spawn_external(bundle))
     }
@@ -404,7 +404,7 @@ where
     }
 }
 
-impl<B, I> FusedIterator for SpawnBatchChannel<'_, I>
+impl<B, I> FusedIterator for SpawnBatchSender<'_, I>
 where
     I: FusedIterator<Item = B>,
     B: Bundle + Send + 'static,

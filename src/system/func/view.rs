@@ -9,7 +9,7 @@ use crate::{
     component::ComponentInfo,
     query::SendQuery,
     system::ActionBufferQueue,
-    view::{RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
+    view::{NonExtensible, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
     Access,
 };
@@ -48,7 +48,7 @@ pub struct ViewState<Q, F, B> {
     marker: PhantomData<B>,
 }
 
-impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, RuntimeBorrowState>
+impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible>
 where
     Q: QueryArg,
     F: QueryArg,
@@ -61,7 +61,7 @@ where
     Q: QueryArg,
     F: QueryArg,
 {
-    type Arg<'a> = ViewValue<'a, Q, F, RuntimeBorrowState>;
+    type Arg<'a> = ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -128,7 +128,17 @@ where
         let world = unsafe { world.as_ref() };
         self.query.before(world);
         self.filter.before(world);
-        ViewValue::new_cell(world, self.query, self.filter)
+
+        // Safety: Declares access for these queries.
+        unsafe {
+            ViewValue::new_unchecked(
+                world,
+                self.query,
+                self.filter,
+                RuntimeBorrowState::new(),
+                NonExtensible,
+            )
+        }
     }
 
     #[inline(always)]
@@ -144,7 +154,7 @@ where
     }
 }
 
-impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, StaticallyBorrowed>
+impl<'a, Q, F> FnArg for ViewValue<'a, Q, F, StaticallyBorrowed, NonExtensible>
 where
     Q: QueryArg,
     F: QueryArg,
@@ -157,7 +167,7 @@ where
     Q: QueryArg,
     F: QueryArg,
 {
-    type Arg<'a> = ViewValue<'a, Q, F, StaticallyBorrowed>;
+    type Arg<'a> = ViewValue<'a, Q, F, StaticallyBorrowed, NonExtensible>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -231,7 +241,15 @@ where
         self.filter.before(world);
 
         // Safety: Declares access for these queries.
-        unsafe { ViewValue::new_static(world, self.query, self.filter) }
+        unsafe {
+            ViewValue::new_unchecked(
+                world,
+                self.query,
+                self.filter,
+                StaticallyBorrowed,
+                NonExtensible,
+            )
+        }
     }
 
     #[inline(always)]

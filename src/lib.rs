@@ -1,20 +1,84 @@
-//! Edict is a fast and powerful ECS crate that expands traditional ECS feature set.
+//! Edict is a fast, powerful and ergonomic ECS crate that expands traditional ECS feature set.
 //! Written in Rust by your fellow 🦀
+//!
+//! # Basic usage 🌱
+//!
+//! ```
+//! use edict::prelude::*;
+//!
+//! // Create world instance.
+//! let mut world = World::new();
+//!
+//! // Declare some components.
+//! #[derive(Component)]
+//! struct Pos(f32, f32);
+//!
+//! // Declare some more.
+//! #[derive(Component)]
+//! struct Vel(f32, f32);
+//!
+//! // Spawn entity with components.
+//! world.spawn((Pos(0.0, 0.0), Vel(1.0, 1.0)));
+//!
+//! // Query components and iterate over views.
+//! for (pos, vel) in world.view::<(&mut Pos, &Vel)>() {
+//!   pos.0 += vel.0;
+//!   pos.1 += vel.1;
+//! }
+//!
+//!
+//! // Define functions that will be used as systems.
+//! #[edict::system::system] // This attribute is optional, but it catches if function is not a system.
+//! fn move_system(pos_vel: View<(&mut Pos, &Vel)>) {
+//!   for (pos, vel) in pos_vel {
+//!     pos.0 += vel.0;
+//!     pos.1 += vel.1;
+//!   }
+//! }
+//!
+//! # #[cfg(feature = "scheduler")]
+//! # {
+//! // Create scheduler to run systems. Requires "scheduler" feature.
+//! use edict::scheduler::Scheduler;
+//!
+//! let mut scheduler = Scheduler::new();
+//! scheduler.add_system(move_system);
+//!
+//! // Run systems without parallelism.
+//! scheduler.run_sequential(&mut world);
+//!
+//! # #[cfg(feature = "std")]
+//! # {
+//! // Run systems using threads. Requires "std" feature.
+//! scheduler.run_threaded(&mut world);
+//! # }
+//!
+//! // Or use custom thread pool.
+//! # }
+//! ```
 //!
 //! # Features
 //!
-//! ### General purpose
-//!
-//! Archetype based ECS with fast iteration and ergonomics in mind.
+//! ## Entities 🧩
 //!
 //! ### Simple IDs
 //!
-//! [`EntityId`] as a unique identifier of an entity.
-//! Edict uses unique IDs without generation and recycling.
+//! In *Entity* Component Systems we create entities and address them to fetch associated data.
+//! Edict provides [`EntityId`] type to address entities.
+//!
+//! [`EntityId`] as a world-unique identifier of an entity.
+//! Edict uses IDs without generation and recycling, for this purpose it employs `u64` underlying type with a niche.
+//! It is enough to create IDs non-stop for hundreds of years before running out of them.
+//!
+//! [`EntityId`] can be converted into bits and from bits.
+//!
 //! This greatly simplifying serialization of the [`World`]'s state as it doesn't require any processing of entity IDs.
 //!
+//! By default entity IDs are unique only within one [`World`].
+//! For multi-world scenarios Edict provides a way to make entity IDs unique between any required combination of worlds.
+//!
 //! IDs are allocated in sequence from [`IdRange`]s that are allocated by [`IdRangeAllocator`].
-//! By default [`IdRange`] that spans from 1 to `u64::MAX` is used.
+//! By default [`IdRange`] that spans from 1 to `u64::MAX - 1` is used. This makes default ID allocation extremely fast.
 //! Custom [`IdRangeAllocator`] can be provided to [`WorldBuilder`] to use custom ID ranges.
 //!
 //! For example in client-server architecture, server and client may use non-overlapping ID ranges.
@@ -25,78 +89,43 @@
 //!
 //! ### Ergonomic entity types
 //!
-//! [`Entity`] and [`AliveEntity`] traits implemented for entity types.
-//! Entity types provide convenient guaranties for entity existence and its location.
+//! Using ECS may lead to lots of `.unwrap()` calls or excessive error handling.
+//! There a lot of situations when entity is guaranteed to exist (for example it just returned from a view).
+//! To avoid handling [`NoSuchEntity`] error when it is unreachable, Edict provides [`AliveEntity`] trait that extends [`Entity`] trait.
+//! Various methods require [`AliveEntity`] handle and skip existence check.
+//!
+//! [`Entity`] and [`AliveEntity`] traits implemented for number of entity types.
 //!
 //! [`EntityId`] implements only [`Entity`] as it doesn't provide any guaranties.
 //!
 //! [`EntityBound`] is guaranteed to be alive, allowing using it in methods that doesn't handle entity absence.
+//! It keeps lifetime of [`World`] borrow, making it impossible to despawn any entity from the world.
 //! Using it with wrong [`World`] may cause panic.
+//! [`EntityBound`] can be acquire from relation queries.
 //!
-//! [`EntityLoc`] not only guarantees entity existence but also provides location of the entity in the archetypes,
+//! [`EntityLoc`] not only guarantees entity existence but also contains location of the entity in the archetypes,
 //! allowing to skip lookup step when accessing its components.
+//! Similarly to [`EntityBound`], it keeps lifetime of [`World`] borrow, making it impossible to despawn any entity from the world.
 //! Using it with wrong [`World`] may cause panic.
+//! [`EntityLoc`] can be acquire from [`Entities`] query.
 //!
 //! [`EntityRef`] is special.
-//! It doesn't implement [`Entity`] or [`AliveEntity`] traits since it should be used in world methods.
+//! It doesn't implement [`Entity`] or [`AliveEntity`] traits since it should not be used in world methods.
 //! Instead it provides direct access to entity's data and allows mutations such as inserting/removing components.
 //!
-//! ### Flexible queries
-//!
-//! Powerful [`Query`] mechanism that can filter entities by components, relations and other criteria and fetch entity data.
-//! Queries can be mutable or immutable, sendable or non-sendable, stateful or stateless.
-//! Using query on [`World`] creates [`View`]s that can be used to iterate over entities that match the query yielding query items.
-//!
-//! ### Resources
-//!
-//! Built-in type-map for singleton values called "resources".
-//! Resources can be inserted into/fetched from [`World`].
-//! Resources live separately from entities and their components.
+//! ## Components 🛠️
 //!
 //! ### Non-thread-safe types
 //!
 //! Support for [`!Send`] and [`!Sync`] components and resources with some limitations.
 //!
-//! [`World`] itself is not sendable but shareable between threads via [`WorldShare`] wrapper.
-//! Thread owning [`World`] is referred as "main" thread.
+//! [`World`] itself is not sendable but shareable between threads.
+//! Thread owning [`World`] is referred as "main" thread in documentation.
 //!
 //! Components and resources that are [`!Send`] can be fetched mutably only from "main" thread.
 //! Components and resources that are [`!Sync`] can be fetched immutably only from "main" thread.
 //! Since reference to [`World`] may exist outside "main" thread, [`WorldLocal`] reference should be used,
 //! it can be created using mutable reference to [`World`].
-//!
-//! ### Automatic change tracking.
-//!
-//! Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
-//! Queries may read and update components epoch to track changes.
-//! Queries to filter recently changed components are provided with [`Modified`] type.
-//! Last epoch can be obtained with [`World::epoch`].
-//!
-//! ### Entity relations
-//!
-//! A relation can be added to pair of entities, binding them together.
-//! Queries may fetch relations and filter entities by their relations to other entities.
-//! When either of the two entities is despawned, relation is dropped.
-//! [`Relation`] type may further configure behavior of the bounded entities.
-//!
-//! ### Runtime and compile time checks
-//!
-//! Runtime checks for query validity and mutable aliasing avoidance.
-//! [`ViewCell`] with runtime checks allows multiple views with aliased access coexist,
-//! deferring checks to runtime that prevents invalid aliasing to occur.
-//!
-//! When this is not required, [`View`]s with compile time checks should be used instead.
-//!
-//! ### Deferred actions
-//!
-//! Use [`ActionEncoder`] for recording actions and run them later with mutable access to [`World`].
-//! Or [`LocalActionEncoder`] instead when action is not [`Send`].
-//! Or convenient [`WorldLocal::defer*`] methods to defer actions to internal [`LocalActionEncoder`].
-//!
-//! ### Customizable
-//!
-//! [`WorldBuilder`] provides opportunity to override some behavior.
-//! See below for details.
 //!
 //! ### Components with trait and without
 //!
@@ -109,28 +138,34 @@
 //! Only default registration is possible when [`World`] is already built.
 //! When needed, explicit registration can be done using [`WorldBuilder`] to override component behavior.
 //!
-//! ### Hooks
+//! ## Entity relations 🔗
 //!
-//! Component replace/drop hooks are called automatically when component is replaced or dropped.
+//! A relation can be added to pair of entities, binding them together.
+//! Queries may fetch relations and filter entities by their relations to other entities.
+//! When either of the two entities is despawned, relation is dropped.
+//! [`Relation`] type may further configure behavior of the bounded entities.
 //!
-//! When component is registered it can be equipped with hooks to be called when component value is replaced or dropped.
-//! Implicit registration of [`Component`] types will register hooks defined on the trait impl.
+//! ## Queries 🔍
 //!
-//! Drop hook is called when component is dropped via `World::drop` or entity is despawned and is not
-//! called when component is removed from entity.
+//! Powerful [`Query`] mechanism that can filter entities by components, relations and other criteria and fetch entity data.
+//! Queries can be mutable or immutable, sendable or non-sendable, stateful or stateless.
 //!
-//! Replace hook is called when component is replaced e.g. component is inserted into entity
-//! and entity already has component of the same type.
-//! Replace hook returns boolean value that indicates if drop hook should be called for replaced component.
+//! Using query on [`World`] creates Views.
+//! Views can be used to iterate over entities that match the query yielding query items.
+//! Or fetch single entity data.
 //!
-//! Hooks can record actions into provided [`LocalActionEncoder`] that will be executed
-//! before [`World`] method that caused the hook to be called returns.
+//! [`ViewRef`] and [`ViewMut`] are convenient type aliases to view types returned from [`World`] methods.
 //!
-//! When component implements [`Component`] trait, hooks defined on the trait impl are registered automatically to call
-//! [`Component::on_drop`] and [`Component::on_replace`] methods.
-//! They may be overridden with custom hooks using [`WorldBuilder`].
-//! For non [`Component`] types hooks can be registered only via [`WorldBuilder`].
-//! Default registration with [`World`] will not register any hooks.
+//! ## Runtime and compile time checks
+//!
+//! Runtime checks are available for query mutable aliasing avoidance.
+//!
+//! [`ViewRef`] and [`ViewCell`] do runtime checks allowing multiple views with aliased access coexist,
+//! deferring checks to runtime that prevents invalid aliasing to occur.
+//!
+//! When this is not required, [`ViewMut`] and [`View`]s with compile time checks should be used instead.
+//!
+//! When [`View`] is expected [`ViewRef`] and [`ViewCell`] can be locked to make a [`View`].
 //!
 //! ### Borrows
 //!
@@ -148,18 +183,44 @@
 //!   Panics if component doesn't provide the requested type.
 //!   Skips entities without the component.
 //!
-//! ### Systems
+//! ## Resources 📦
+//!
+//! Built-in type-map for singleton values called "resources".
+//! Resources can be inserted into/fetched from [`World`].
+//! Resources live separately from entities and their components.
+//!
+//! ## Actions 🏃‍♂️
+//!
+//! Use [`ActionEncoder`] for recording actions and run them later with mutable access to [`World`].
+//! Or [`LocalActionEncoder`] instead when action is not [`Send`].
+//! Or convenient [`WorldLocal::defer*`] methods to defer actions to internal [`LocalActionEncoder`].
+//!
+//! ## Automatic change tracking 🤖
+//!
+//! Each component instance is equipped with epoch counter that tracks last potential mutation of the component.
+//! Queries may read and update components epoch to track changes.
+//! Queries to filter recently changed components are provided with [`Modified`] type.
+//! Last epoch can be obtained with [`World::epoch`].
+//!
+//! ## Systems ⚙️
 //!
 //! Systems is convenient way to build logic that operates on [`World`].
-//! Edict defines [`System`] trait to run logic on [`World`] and [`IntoSystem`] for types convertible to [`System`].
+//! Edict defines [`System`] trait to run logic on [`World`].
+//! And [`IntoSystem`] trait for types convertible to [`System`].
 //!
 //! Functions may implement [`IntoSystem`] automatically -
 //! it is required to return `()` and accept arguments that implement [`FnArg`] trait.
-//! There are [`FnArg`] implementations for [`View`]s to iterate over entities,
-//! [`Res`] and [`ResMut`], [`ResNoSync`] and [`ResMutNoSend`] to access resources,
-//! [`ActionEncoder`] to record actions that mutate [`World`]'s state and [`State`] to store system's local state between runs.
+//! There are [`FnArg`] implementations:
 //!
-//! ### Easy scheduler
+//! - [`View`] and [`ViewCell`] to iterate over entities and their components.
+//!   Use [`View`] unless [`ViewCell`] is required to handle intra-system views conflict.
+//! - [`Res`] and [`ResMut`] to access resources.
+//! - [`ResLocal`] and [`ResMutLocal`] to access no-thread-safe resources.
+//!   This will make system non-sendable and force it to run on main thread.
+//! - [`ActionEncoder`] to record actions that mutate [`World`] state, such as entity spawning, inserting and removing components or resources.
+//! - [`State`] to store system's local state between runs.
+//!
+//! ## Easy scheduler 📅
 //!
 //! [`Scheduler`] is provided to run [`System`]s.
 //! Systems added to the [`Scheduler`] run in parallel where possible,
@@ -174,7 +235,30 @@
 //!
 //! Requires `"scheduler"` feature which is enabled by default.
 //!
-//! ### Async
+//! ## Hooks 🎣
+//!
+//! Component replace/drop hooks are called automatically when component is replaced or dropped.
+//!
+//! When component is registered it can be equipped with hooks to be called when component value is replaced or dropped.
+//! Implicit registration of [`Component`] types will register hooks defined on the trait impl.
+//!
+//! Drop hook is called when component is dropped via [`World::drop`] or entity is despawned and is not
+//! called when component is removed from entity.
+//!
+//! Replace hook is called when component is replaced e.g. component is inserted into entity
+//! and entity already has component of the same type.
+//! Replace hook returns boolean value that indicates if drop hook should be called for replaced component.
+//!
+//! Hooks can record actions into provided [`LocalActionEncoder`] that will be executed
+//! before [`World`] method that caused the hook to be called returns.
+//!
+//! When component implements [`Component`] trait, hooks defined on the trait impl are registered automatically to call
+//! [`Component::on_drop`] and [`Component::on_replace`] methods.
+//! They may be overridden with custom hooks using [`WorldBuilder`].
+//! For non [`Component`] types hooks can be registered only via [`WorldBuilder`].
+//! Default registration with [`World`] will not register any hooks.
+//!
+//! ## Async-await ⏳
 //!
 //! Futures executor to run logic that requires waiting for certain conditions or events
 //! or otherwise spans for multiple ticks.
@@ -187,18 +271,23 @@
 //! Futures may use `await` syntax to wait for certain conditions or events.
 //! Futures that can access ECS data are referred in Edict as "flows".
 //!
-//! Flows can be spawned in the [`World`] using [`World::spawn_flow`] method.
+//! Flows can be spawned in the [`World`] using [`World::spawn_flow`] or [`FlowWorld::spawn_flow`] method.
 //! [`Flows`] type is used as an executor to run spawned flows.
 //!
-//! Flows can be bound to an entity and spawned using [`World::spawn_flow_for`] method, [`EntityRef::spawn_flow`] or [`flow::Entity::spawn_flow`]
+//! Flows can be bound to an entity and spawned using [`World::spawn_flow_for`], [`FlowWorld::spawn_flow_for`], [`EntityRef::spawn_flow`] or [`FlowEntity::spawn_flow`] method.
 //! Such flows will be cancelled if entity is despawned.
 //!
-//! Due to borrow checker limitations, closures can't be spawned as flows directly,
-//! To work around this issue [`flow_fn!`] macro accepts valid closure syntax and produces a flow that can be spawned.
+//! Functions that return futures may serve as flows.
+//! For [`World::spawn_flow`] use function or closure with signature `FnOnce(FlowWorld) -> Future`
+//! For [`World::spawn_flow_for`] use function or closure with signature `FnOnce(FlowEntity) -> Future`
 //!
-//! User may implement low-level futures using `poll*` methods of [`flow::World`] and [`flow::Entity`] to access tasks [`Context`].
+//! User may implement low-level futures using `poll*` methods of [`FlowWorld`] and [`FlowEntity`] to access tasks [`Context`].
 //! Edict provides only a couple of low-level futures that will do the waiting:
-//! [`yield_now!`] yields control to the executor once and resumes on next execution.
+//! - [`yield_now!`] yields control to the executor once and resumes on next execution.
+//! - [`FlowEntity::wait_despawned`] waits until entity is despawned.
+//! - [`FlowEntity::wait_has_component`] waits until entity get a component.
+//!
+//! [`WakeOnDrop`] component can be used when despawning entity should wake a task.
 //!
 //! It is recommended to use flows for high-level logic that spans multiple ticks
 //! and use systems to do low-level logic that runs every tick.
@@ -212,8 +301,13 @@
 //! Edict can be used in `no_std` environment but requires `alloc` crate.
 //! `"std"` feature is enabled by default.
 //!
-//! If "std" feature is disabled, error types will not implement [`std::error::Error`].
-//! And "flow" and "scheduler" feature would require extern functions to be provided.
+//! If "std" feature is not enabled error types will not implement [`std::error::Error`].
+//!
+//! When "flow" feature is enabled and "std" is not, extern functions are used to implement TLS.
+//! Application must provide implementation for these functions or linking will fail.
+//!
+//! When "scheduler" feature is enabled and "std" is not, external functions are used to implement thread parking.
+//! Application must provide implementation for these functions or linking will fail.
 //!
 //! [`!Send`]: core::marker::Send
 //! [`!Sized`]: core::marker::Sized
@@ -227,6 +321,7 @@
 //! [`Component::on_drop`]: crate::component::Component::on_drop
 //! [`Component::on_replace`]: crate::component::Component::on_replace
 //! [`Context`]: std::task::Context
+//! [`Entities`]: crate::query::Entities
 //! [`Entity`]: crate::entity::Entity
 //! [`EntityBound`]: crate::entity::EntityBound
 //! [`EntityId`]: crate::entity::EntityId
@@ -234,9 +329,15 @@
 //! [`EntityRef`]: crate::entity::EntityRef
 //! [`EntityRef::spawn_flow`]: crate::entity::EntityRef::spawn_flow
 //! [`flow`]: crate::flow
-//! [`flow_fn!`]: crate::flow::flow_fn
+//! [`FlowEntity`]: crate::flow::FlowEntity
+//! [`FlowEntity::spawn_flow`]: crate::flow::FlowEntity::spawn_flow
+//! [`FlowEntity::wait_despawned`]: crate::flow::FlowEntity::wait_despawned
+//! [`FlowEntity::wait_has_component`]: crate::flow::FlowEntity::wait_has_component
 //! [`Flows`]: crate::flow::Flows
 //! [`Flows::execute`]: crate::flow::Flows::execute
+//! [`FlowWorld`]: crate::flow::FlowWorld
+//! [`FlowWorld::spawn_flow`]: crate::flow::FlowWorld::spawn_flow
+//! [`FlowWorld::spawn_flow_for`]: crate::flow::FlowWorld::spawn_flow_for
 //! [`FnArg`]: crate::system::FnArg
 //! [`IdRange`]: crate::entity::IdRange
 //! [`IdRangeAllocator`]: crate::entity::IdRangeAllocator
@@ -247,8 +348,8 @@
 //! [`Relation`]: crate::relation::Relation
 //! [`Res`]: crate::resources::Res
 //! [`ResMut`]: crate::resources::ResMut
-//! [`ResNoSync`]: crate::system::ResNoSync
-//! [`ResMutNoSend`]: crate::system::ResMutNoSend
+//! [`ResLocal`]: crate::system::ResLocal
+//! [`ResMutLocal`]: crate::system::ResMutLocal
 //! [`Scheduler`]: crate::scheduler::Scheduler
 //! [`ScopedExecutor`]: crate::executor::ScopedExecutor
 //! [`State`]: crate::system::State
@@ -256,14 +357,18 @@
 //! [`TypeId`]: core::any::TypeId
 //! [`View`]: crate::view::View
 //! [`ViewCell`]: crate::view::ViewCell
+//! [`ViewMut`]: crate::view::ViewMut
+//! [`ViewRef`]: crate::view::ViewRef
+//! [`WakeOnDrop`]: crate::flow::WakeOnDrop
 //! [`World`]: crate::world::World
+//! [`World::drop`]: crate::world::World::drop
 //! [`World::epoch`]: crate::world::World::epoch
 //! [`World::spawn_flow`]: crate::world::World::spawn_flow
 //! [`World::spawn_flow_for`]: crate::world::World::spawn_flow_for
 //! [`WorldBuilder`]: crate::world::WorldBuilder
 //! [`WorldLocal`]: crate::world::WorldLocal
 //! [`WorldLocal::defer*`]: crate::world::WorldLocal::defer
-//! [`WorldShare`]: crate::world::WorldShare
+//!
 //!
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -489,7 +594,7 @@ pub mod nostd;
 #[cfg(test)]
 mod test;
 
-// pub mod prelude;
+pub mod prelude;
 
 /// Error that may be returned when an entity is not found in the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

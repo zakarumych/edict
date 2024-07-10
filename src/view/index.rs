@@ -9,7 +9,7 @@ use crate::{
 
 use super::{expect_alive, expect_match, BorrowState, ViewValue};
 
-impl<Q, F, B> ViewValue<'_, Q, F, B>
+impl<Q, F, B, E> ViewValue<'_, Q, F, B, E>
 where
     Q: Query,
     F: Query,
@@ -139,7 +139,7 @@ where
     }
 }
 
-impl<Q, F, B> ViewValue<'_, Q, F, B>
+impl<Q, F, B, E> ViewValue<'_, Q, F, B, E>
 where
     Q: ImmutableQuery,
     F: ImmutableQuery,
@@ -254,7 +254,7 @@ where
     }
 }
 
-impl<E, T, F, B> Index<E> for ViewValue<'_, Read<T>, F, B>
+impl<E, T, F, B, X> Index<E> for ViewValue<'_, Read<T>, F, B, X>
 where
     E: Entity,
     T: 'static + Sync,

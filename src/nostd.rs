@@ -15,9 +15,6 @@ pub mod flow {
         pub fn edict_set_flow_world_tls(world: NonNull<u8>) -> Option<NonNull<u8>>;
         pub fn edict_get_flow_world_tls() -> Option<NonNull<u8>>;
         pub fn edict_reset_flow_world_tls(prev: Option<NonNull<u8>>, world: NonNull<u8>);
-        pub fn edict_set_flow_entity_tls(entity: EntityId) -> Option<EntityId>;
-        pub fn edict_get_flow_entity_tls() -> Option<EntityId>;
-        pub fn edict_reset_flow_entity_tls(prev: Option<EntityId>, entity: EntityId);
     }
 }
 

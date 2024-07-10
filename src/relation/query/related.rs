@@ -8,7 +8,7 @@ use crate::{
     query::{
         AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
     },
-    relation::{Relation, TargetComponent},
+    relation::{OriginComponent, Relation, TargetComponent},
     system::QueryArg,
     type_id, Access,
 };
@@ -104,7 +104,11 @@ where
 
     #[inline(always)]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        archetype.has_component(type_id::<TargetComponent<R>>())
+        if R::SYMMETRIC {
+            archetype.has_component(type_id::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(type_id::<TargetComponent<R>>())
+        }
     }
 
     #[inline(always)]

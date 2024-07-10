@@ -1,9 +1,30 @@
 //! Provides world serialization integration with serialization crates.
 //!
 //! Supports
-//! - [`serde`]
-//! - [`nanoserde`]
-//! - [`alkahest`]
+#![cfg_attr(
+    feature = "serde",
+    doc = "- [`serde`] when \"serde\" feature is enabled"
+)]
+#![cfg_attr(
+    feature = "nanoserde",
+    doc = "- [`nanoserde`] when \"nanoserde\" feature is enabled"
+)]
+#![cfg_attr(
+    feature = "alkahest",
+    doc = "- [`alkahest`] when \"alkahest\" feature is enabled"
+)]
+#![cfg_attr(
+    not(feature = "serde"),
+    doc = "- `serde` when \"serde\" feature is enabled"
+)]
+#![cfg_attr(
+    not(feature = "nanoserde"),
+    doc = "- `nanoserde` when \"nanoserde\" feature is enabled"
+)]
+#![cfg_attr(
+    not(feature = "alkahest"),
+    doc = "- `alkahest` when \"alkahest\" feature is enabled"
+)]
 //!
 //! Each can be enabled with a feature named as serialization crate.
 

@@ -78,7 +78,7 @@ fn move_to_system(
 }
 
 async fn move_to(e: FlowEntity, target: Pos) {
-    e.poll_ref(move |mut e, cx| {
+    e.poll(move |mut e, cx| {
         let Some(pos) = e.get::<&Pos>() else {
             return Poll::Ready(());
         };

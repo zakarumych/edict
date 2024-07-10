@@ -111,10 +111,16 @@ where
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
 
                 debug_assert_eq!(component.id(), type_id::<T>());
-                let data = unsafe { component.data() };
-                data.epoch.after(self.after_epoch)
+                true
             },
         }
+    }
+
+    #[inline(always)]
+    unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+        let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data() };
+        data.epoch.after(self.after_epoch)
     }
 
     #[inline(always)]

@@ -1,10 +1,17 @@
-//! Self-contained ECS [`World`].
+//! In Edict ECS [`World`] is a container for entities and their components and relations.
+//! As well as for resources and running flows.
 //!
-//! There's 3 kinds of `World`s which are wrap one another:
-//! * [`World`]         - non-shareable world that is pinned to a thread where it is accessed.
-//! * [`WorldShare`]    - shareable world. Derefs to `World`.
-//! * [`WorldLocal`]    - World that is known to be on the "main" thread. Derefs for `World`.
+//! [`World`] has methods to spawn, despawn entities, insert, remove components, relations and resources,
+//! query views and spawn flows.
 //!
+//! It is main entry point.
+//! However in [`System`](crate::system::System)s is is rarely used as an argument.
+//! Instead systems mostly use views, resources and action encoders that are provided to them by scheduler.
+//!
+//! When working with Flow API,
+#![cfg_attr(feature = "flow", doc = "[`FlowWorld`](crate::flow::FlowWorld)")]
+#![cfg_attr(not(feature = "flow"), doc = "`FlowWorld`")]
+//! is used while access to [`World`] is limited to closures.
 
 use alloc::{vec, vec::Vec};
 use core::{
@@ -12,6 +19,7 @@ use core::{
     cell::UnsafeCell,
     convert::TryFrom,
     fmt::{self, Debug},
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -32,33 +40,6 @@ use self::edges::Edges;
 pub(crate) use self::spawn::iter_reserve_hint;
 
 pub use self::builder::WorldBuilder;
-
-// /// Takes internal action buffer and
-// /// runs expression with it.
-// /// After expression completes, action buffer is executed
-// /// and then returned to the world.
-// ///
-// /// While action buffer is taken,
-// /// all paths would either use world's methods with explicit buffer
-// /// or use `with_buffer` method,
-// /// ensuring that action buffer is always present
-// /// when this macro is called.
-// macro_rules! with_buffer {
-//     ($world:ident, $buffer:ident => $expr:expr) => {
-//         unsafe {
-//             let mut buffer = $world.action_buffer.take().unwrap_unchecked();
-//             let result = {
-//                 let $buffer = &mut buffer;
-//                 $expr
-//             };
-//             if $world.execute_action_buffer && !buffer.is_empty() {
-//                 ActionBuffer::execute(&mut buffer, $world);
-//             }
-//             $world.action_buffer = Some(buffer);
-//             result
-//         }
-//     };
-// }
 
 mod builder;
 mod edges;
@@ -130,29 +111,17 @@ impl ArchetypeSet {
 
 /// Container for entities with any sets of components.
 ///
-/// Entities can be spawned in the [`World`] with handle [`EntityId`] returned,
+/// Entities can be spawned using [`World::spawn`] and other `spawn_*` methods with handle [`EntityRef`] returned,
 /// that can be used later to access that entity.
 ///
-/// [`EntityId`] handle can be downgraded to [`EntityId`].
-///
-/// Entity would be despawned after last [`EntityId`] is dropped.
+/// Entity can be despawned with [`World::despawn`].
 ///
 /// Entity's set of components may be modified in any way.
-///
-/// Entities can be fetched directly, using [`EntityId`] or [`EntityId`]
-/// with different guarantees and requirements.
 ///
 /// Entities can be efficiently queried from `World` to iterate over all entities
 /// that match query requirements.
 ///
-/// Internally [`World`] manages entities generations,
-/// maps entity to location of components in archetypes,
-/// moves components of entities between archetypes,
-/// spawns and despawns entities.
-///
-/// [`World`] type is not `Sync` or `Send`, but an instance is allowed to be shared
-/// from [`WorldShare`] references.
-/// However mutable reference [`World`]
+/// [`World`] type is `Sync` but not `Send`.
 ///
 /// ```compile_fail
 /// # use edict::world::World;
@@ -161,7 +130,7 @@ impl ArchetypeSet {
 /// is_send::<World>();
 /// ```
 ///
-/// ```compile_fail
+/// ```
 /// # use edict::world::World;
 ///
 /// fn is_sync<T: core::marker::Sync>() {}
@@ -194,6 +163,10 @@ pub struct World {
     #[cfg(feature = "flow")]
     pub(crate) new_flows: UnsafeCell<crate::flow::NewFlows>,
 }
+
+// World is only Sync, not Send.
+// Safety: API guarantees that non-thread-safe methods are only callable from owning thread.
+unsafe impl Sync for World {}
 
 impl Default for World {
     fn default() -> Self {
@@ -399,65 +372,6 @@ impl World {
     }
 }
 
-/// Wrapper for [`World`] that can be shared between threads.
-/// User who intends to share [`World`] between threads should wrap it in [`WorldShare`].
-#[repr(transparent)]
-pub struct WorldShare {
-    inner: World,
-}
-
-// WorldMain is only Sync, not Send.
-unsafe impl Sync for WorldShare {}
-
-impl Deref for WorldShare {
-    type Target = World;
-
-    fn deref(&self) -> &World {
-        &self.inner
-    }
-}
-
-impl DerefMut for WorldShare {
-    fn deref_mut(&mut self) -> &mut World {
-        &mut self.inner
-    }
-}
-
-impl Debug for WorldShare {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <World as Debug>::fmt(&self.inner, f)
-    }
-}
-
-impl From<WorldShare> for World {
-    #[inline]
-    fn from(world: WorldShare) -> Self {
-        world.inner
-    }
-}
-
-impl From<World> for WorldShare {
-    #[inline]
-    fn from(world: World) -> Self {
-        WorldShare { inner: world }
-    }
-}
-
-impl WorldShare {
-    /// Creates a new shareable [`World`] instance.
-    pub fn new() -> Self {
-        WorldShare {
-            inner: World::new(),
-        }
-    }
-
-    /// Wraps [`World`] into [`WorldShare`].
-    #[inline(always)]
-    pub fn wrap(world: World) -> Self {
-        WorldShare { inner: world }
-    }
-}
-
 /// A reference to [`World`] that is guaranteed to be not shared with other threads.
 /// It can only be created from mutable reference to `World` which is not sendable.
 ///
@@ -497,6 +411,7 @@ impl WorldShare {
 #[repr(transparent)]
 pub struct WorldLocal {
     inner: World,
+    nosync: PhantomData<*mut u8>,
 }
 
 impl From<WorldLocal> for World {
@@ -509,7 +424,10 @@ impl From<WorldLocal> for World {
 impl From<World> for WorldLocal {
     #[inline]
     fn from(world: World) -> Self {
-        WorldLocal { inner: world }
+        WorldLocal {
+            inner: world,
+            nosync: PhantomData,
+        }
     }
 }
 

@@ -147,7 +147,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Option<T::Fetch<'a>> {
-        if self.0.visit_archetype(archetype) && self.0.visit_archetype_late(archetype) {
+        if self.0.visit_archetype(archetype) && unsafe { self.0.visit_archetype_late(archetype) } {
             Some(unsafe { self.0.fetch(arch_idx, archetype, epoch) })
         } else {
             None

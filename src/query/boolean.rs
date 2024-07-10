@@ -37,6 +37,7 @@ impl BooleanFetchOp for AndOp {
 
     #[inline(always)]
     fn mask(mask: u16, count: usize) -> bool {
+        debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask == (1 << count) - 1
     }
 }
@@ -54,7 +55,8 @@ impl BooleanFetchOp for OrOp {
     }
 
     #[inline(always)]
-    fn mask(mask: u16, _count: usize) -> bool {
+    fn mask(mask: u16, count: usize) -> bool {
+        debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask != 0
     }
 }
@@ -72,7 +74,8 @@ impl BooleanFetchOp for XorOp {
     }
 
     #[inline(always)]
-    fn mask(mask: u16, _count: usize) -> bool {
+    fn mask(mask: u16, count: usize) -> bool {
+        debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask.is_power_of_two()
     }
 }
@@ -118,20 +121,6 @@ pub struct BooleanFetch<T, Op> {
     chunk: u16,
     item: u16,
     op: PhantomData<Op>,
-}
-
-macro_rules! boolean_shortcut {
-    ([$archetype:ident $op:ident] $a:ident $($b:ident)*) => {{
-        #[allow(unused_mut)]
-        let mut result = $a.visit_archetype($archetype);
-        $(
-            match $op::op(result, $b.visit_archetype($archetype)) {
-                ControlFlow::Continue(r) => result = r,
-                ControlFlow::Break(r) => return r,
-            }
-        )*
-        result
-    }};
 }
 
 macro_rules! impl_boolean {
@@ -324,7 +313,33 @@ macro_rules! impl_boolean {
             #[inline(always)]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
-                boolean_shortcut!([archetype Op] $($a)+)
+                let mut mi = 1;
+                let mut count = 0;
+                let mut mask = 0;
+                $(
+                    if $a.visit_archetype(archetype) {
+                        mask |= mi;
+                    }
+                    mi <<= 1;
+                    count += 1;
+                )+
+                Op::mask(mask, count)
+            }
+
+            #[inline(always)]
+            unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
+                let ($($a,)+) = &self.tuple;
+                let mut mi = 1;
+                let mut count = 0;
+                let mut mask = 0;
+                $(
+                    if unsafe { $a.visit_archetype_late(archetype) } {
+                        mask |= mi;
+                    }
+                    mi <<= 1;
+                    count += 1;
+                )+
+                Op::mask(mask, count)
             }
 
             #[inline(always)]
@@ -337,7 +352,6 @@ macro_rules! impl_boolean {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;
                 let mut mi = 0;
-                let mut cut = false;
 
                 $(
                     let $a = if $a.visit_archetype(archetype) {

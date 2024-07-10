@@ -20,19 +20,19 @@ use crate::{
 use super::{get_flow_world, Flow, FlowEntity};
 
 /// Type that can be spawned as a flow.
-/// It can be an async function or a closure inside `flow_fn!` macro.
-/// It must accept [`&mut World`](World) as the only argument.
+/// It can be an async function or a closure
+/// that accepts [`FlowWorld`] as the only argument.
 ///
 /// # Example
 ///
 /// ```
-/// # use edict::flow::{self, flow_fn, World};
+/// # use edict::flow::{self, FlowWorld};
 ///
 /// let mut world = edict::world::World::new();
 ///
-/// world.spawn_flow(flow_fn!(|world: &mut World| {
+/// world.spawn_flow(|world: FlowWorld| async move {
 ///   let entity = world.spawn(());
-/// }));
+/// });
 /// ```
 #[diagnostic::on_unimplemented(
     note = "Try `async fn(world: FlowWorld)` or `|world: FlowWorld| async {{ ... }}`"
@@ -96,7 +96,7 @@ impl FlowWorld {
     /// It is easy to accidentally create aliasing references to the world.
     /// Prefer to use safe methods provided on this type to interact with the world.
     ///
-    /// If access to `WorldLocal` is required, consider using [`FlowWorld::poll_world`] first.
+    /// If access to `WorldLocal` is required, consider using [`FlowWorld::poll`] first.
     ///
     /// # Safety
     ///
@@ -112,11 +112,25 @@ impl FlowWorld {
         unsafe { get_flow_world() }
     }
 
+    /// Access world reference with closure.
+    /// Returns closure result.
+    ///
+    /// Unlike [`FlowWorld::get`] this method is safe as it does not allow references to world to escape closure.
+    /// And therefore references won't able to outlive await boundaries.
+    ///
+    /// Use [`FlowWorld::poll`] if you need to call poll closure until certain condition is met.
+    pub fn map<F, R>(self, f: F) -> R
+    where
+        F: FnOnce(&mut WorldLocal) -> R,
+    {
+        f(unsafe { self.get() })
+    }
+
     /// Returns a future that will poll the closure with world reference.
     /// The future will resolve to closure result in [`Poll::Ready`].
     /// The closure may use task context to register wakers.
     #[inline(always)]
-    pub fn poll_world<F, R>(self, f: F) -> PollWorld<F>
+    pub fn poll<F, R>(self, f: F) -> PollWorld<F>
     where
         F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
     {
@@ -436,7 +450,7 @@ impl FlowWorld {
     /// Inserts bundle of components to the specified entity.
     /// Adds only components missing from the entity.
     /// Components that are already present are not replaced,
-    /// if replacing is required use [`World::insert_bundle`].
+    /// if replacing is required use [`FlowWorld::insert_bundle`].
     ///
     /// This function guarantees that no hooks are triggered,
     /// and entity cannot be despawned as a result of this operation.
@@ -469,7 +483,7 @@ impl FlowWorld {
     /// Inserts bundle of components to the specified entity.
     /// Adds only components missing from the entity.
     /// Components that are already present are not replaced,
-    /// if replacing is required use [`World::insert_bundle`].
+    /// if replacing is required use [`FlowWorld::insert_bundle`].
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
     ///
@@ -582,7 +596,7 @@ impl FlowWorld {
         world.drop_bundle::<B>(entity)
     }
 
-    /// Adds relation between two entities to the [`World`].
+    /// Adds relation between two entities to the [`FlowWorld`].
     ///
     /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
     /// When either entity is despawned, relation is removed automatically.
@@ -611,7 +625,7 @@ impl FlowWorld {
         world.add_relation(origin, relation, target)
     }
 
-    /// Removes relation between two entities in the [`World`].
+    /// Removes relation between two entities in the [`FlowWorld`].
     ///
     /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
     /// If relation does not exist, removes `None`.
@@ -633,7 +647,7 @@ impl FlowWorld {
         world.remove_relation(origin, target)
     }
 
-    /// Drops relation between two entities in the [`World`].
+    /// Drops relation between two entities in the [`FlowWorld`].
     ///
     /// If either entity is not alive, fails with `Err(NoSuchEntity)`.
     /// If relation does not exist, does nothing.
@@ -657,10 +671,10 @@ impl FlowWorld {
     /// Inserts resource instance.
     /// Old value is replaced.
     ///
-    /// To access resource, use [`World::get_resource`] and [`World::get_resource_mut`] methods.
+    /// To access resource, use [`FlowWorld::get_resource`] and [`FlowWorld::get_resource_mut`] methods.
     ///
-    /// [`World::get_resource`]: struct.World.html#method.get_resource
-    /// [`World::get_resource_mut`]: struct.World.html#method.get_resource_mut
+    /// [`FlowWorld::get_resource`]: struct.World.html#method.get_resource
+    /// [`FlowWorld::get_resource_mut`]: struct.World.html#method.get_resource_mut
     ///
     /// # Examples
     ///
@@ -796,9 +810,9 @@ impl FlowWorld {
     }
 
     /// Spawns a new entity in this world without components.
-    /// Returns [`EntityRef`] for the newly spawned entity.
-    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
-    /// or despawn command recorded and executed by the [`World`].
+    /// Returns [`FlowEntity`] for the newly spawned entity.
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`FlowWorld`].
     ///
     /// # Panics
     ///
@@ -823,9 +837,9 @@ impl FlowWorld {
     }
 
     /// Spawns a new entity in this world with provided component.
-    /// Returns [`EntityRef`] for the newly spawned entity.
-    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
-    /// or despawn command recorded and executed by the [`World`].
+    /// Returns [`FlowEntity`] for the newly spawned entity.
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`FlowWorld`].
     ///
     /// # Panics
     ///
@@ -855,15 +869,15 @@ impl FlowWorld {
     }
 
     /// Spawns a new entity in this world with provided component.
-    /// Returns [`EntityRef`] for the newly spawned entity.
-    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
-    /// or despawn command recorded and executed by the [`World`].
+    /// Returns [`FlowEntity`] for the newly spawned entity.
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`FlowWorld`].
     ///
     /// Component must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
-    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    /// on first call to [`FlowWorld::spawn`], [`FlowWorld::spawn_one`],  [`FlowWorld::spawn_batch`], [`FlowWorld::insert`] or [`FlowWorld::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`FlowWorld::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`FlowWorld::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -892,9 +906,9 @@ impl FlowWorld {
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`EntityRef`] for the newly spawned entity.
-    /// Entity will be alive until [`World::despawn`] is called with [`EntityId`] of the spawned entity,
-    /// or despawn command recorded and executed by the [`World`].
+    /// Returns [`FlowEntity`] for the newly spawned entity.
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with [`EntityId`] of the spawned entity,
+    /// or despawn command recorded and executed by the [`FlowWorld`].
     ///
     /// # Panics
     ///
@@ -926,7 +940,7 @@ impl FlowWorld {
     /// Spawns a new entity in this world with specific ID and bundle of components.
     /// The `World` must be configured to never allocate this ID.
     /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with the same [`EntityId`].
     ///
     /// # Panics
     ///
@@ -957,7 +971,7 @@ impl FlowWorld {
     /// Spawns a new entity in this world with specific ID and bundle of components.
     /// The `World` must be configured to never allocate this ID.
     /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    /// Entity will be alive until [`FlowWorld::despawn`] is called with the same [`EntityId`].
     ///
     /// # Panics
     ///
@@ -986,15 +1000,15 @@ impl FlowWorld {
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
-    /// Returns [`EntityRef`] handle to the newly spawned entity.
+    /// Returns [`FlowEntity`] handle to the newly spawned entity.
     /// Spawned entity is populated with all components from the bundle.
     /// Entity will be alive until despawned.
     ///
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
-    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    /// on first call to [`FlowWorld::spawn`], [`FlowWorld::spawn_one`],  [`FlowWorld::spawn_batch`], [`FlowWorld::insert`] or [`FlowWorld::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`FlowWorld::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`FlowWorld::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -1030,9 +1044,9 @@ impl FlowWorld {
     ///
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
-    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    /// on first call to [`FlowWorld::spawn`], [`FlowWorld::spawn_one`],  [`FlowWorld::spawn_batch`], [`FlowWorld::insert`] or [`FlowWorld::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`FlowWorld::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`FlowWorld::ensure_external_registered`].
     ///
     /// # Panics
     ///
@@ -1113,9 +1127,9 @@ impl FlowWorld {
     ///
     /// Components must be previously registered.
     /// If component implements [`Component`] it could be registered implicitly
-    /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
-    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
-    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
+    /// on first call to [`FlowWorld::spawn`], [`FlowWorld::spawn_one`],  [`FlowWorld::spawn_batch`], [`FlowWorld::insert`] or [`FlowWorld::insert_bundle`] and their deferred versions.
+    /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`FlowWorld::ensure_component_registered`].
+    /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`FlowWorld::ensure_external_registered`].
     #[inline(always)]
     pub fn spawn_batch_external<B, I>(self, bundles: I) -> SpawnBatch<I::IntoIter>
     where
@@ -1151,6 +1165,67 @@ impl FlowWorld {
         let world = unsafe { self.get() };
 
         world.despawn(entity)
+    }
+
+    /// Explicitly registers component type.
+    ///
+    /// Unlike [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) method, this method does not return reference to component configuration,
+    /// once [`FlowWorld`] is created overriding component behavior is not possible.
+    ///
+    /// Component types are implicitly registered on first use by most methods.
+    /// This method is only needed if you want to use component type using
+    /// [`FlowWorld::insert_external`], [`FlowWorld::insert_external_bundle`] or [`FlowWorld::spawn_external`].
+    pub fn ensure_component_registered<T>(self)
+    where
+        T: Component,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.ensure_component_registered::<T>();
+    }
+
+    /// Explicitly registers external type.
+    ///
+    /// Unlike [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) method, this method does not return reference to component configuration,
+    /// once [`FlowWorld`] is created overriding component behavior is not possible.
+    ///
+    /// External component types are not implicitly registered on first use.
+    /// This method is needed if you want to use component type with
+    /// [`FlowWorld::insert_external`], [`FlowWorld::insert_external_bundle`] or [`FlowWorld::spawn_external`].
+    pub fn ensure_external_registered<T>(&mut self)
+    where
+        T: 'static,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.ensure_external_registered::<T>();
+    }
+
+    /// Explicitly registers bundle of component types.
+    ///
+    /// This method is only needed if you want to use bundle of component types using
+    /// [`FlowWorld::insert_external_bundle`] or [`FlowWorld::spawn_external`].
+    pub fn ensure_bundle_registered<B>(&mut self)
+    where
+        B: ComponentBundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.ensure_bundle_registered::<B>();
+    }
+
+    /// Asserts that all components from the bundle are registered.
+    pub fn assert_bundle_registered<B>(&self)
+    where
+        B: Bundle,
+    {
+        // Safety: world reference does not escape this scope.
+        let world = unsafe { self.get() };
+
+        world.assert_bundle_registered::<B>();
     }
 }
 
@@ -1214,7 +1289,7 @@ where
     }
 }
 
-/// Spawning iterator. Produced by [`World::spawn_batch`].
+/// Spawning iterator. Produced by [`FlowWorld::spawn_batch`].
 pub struct SpawnBatch<I> {
     bundles: I,
     world: FlowWorld,

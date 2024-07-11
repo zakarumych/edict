@@ -90,7 +90,7 @@ where
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Read))
         } else {
-            Err(WriteAlias)
+            Ok(None)
         }
     }
 

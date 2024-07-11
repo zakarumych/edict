@@ -189,7 +189,7 @@ where
 /// });
 /// ```
 #[diagnostic::on_unimplemented(
-    note = "Try `async fn(e: flow::Entity)` or `flow_fn!(|e: flow::Entity| {{ ... }})`"
+    note = "Try `async fn(e: FlowEntity)` or `flow_fn!(|e: FlowEntity| {{ ... }})`"
 )]
 pub trait IntoEntityFlow: 'static {
     /// Flow type that will be polled.

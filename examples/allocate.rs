@@ -1,7 +1,9 @@
 //! This example shows how to use entity reserving mechanism.
 
-use edict::{action::ActionEncoder, entity::EntityLoc, scheduler::Scheduler, world::World};
-use edict_proc::Component;
+use edict::{
+    action::ActionEncoder, component::Component, entity::EntityLoc, scheduler::Scheduler,
+    world::World,
+};
 
 #[derive(Component)]
 pub struct Foo;

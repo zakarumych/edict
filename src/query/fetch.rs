@@ -189,7 +189,7 @@ pub unsafe trait Fetch<'a> {
     ///
     /// # Safety
     ///
-    /// Chunk index must in range `0..=chunk_count`,
+    /// Chunk index must be in range `0..=chunk_count`,
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
     #[inline(always)]
@@ -203,7 +203,7 @@ pub unsafe trait Fetch<'a> {
     ///
     /// # Safety
     ///
-    /// Entity index must in range `0..=entity_count`,
+    /// Entity index must be in range `0..=entity_count`,
     /// where `entity_count` is the number of entities in the archetype
     /// from which query produced this instance.
     #[inline(always)]
@@ -218,7 +218,7 @@ pub unsafe trait Fetch<'a> {
     ///
     /// # Safety
     ///
-    /// Chunk index must in range `0..=chunk_count`,
+    /// Chunk index must be in range `0..=chunk_count`,
     /// where `chunk_count` is the number of chunks in the archetype
     /// from which query produced this instance.
     ///
@@ -233,17 +233,42 @@ pub unsafe trait Fetch<'a> {
     ///
     /// # Safety
     ///
-    /// Entity index must in range `0..=entity_count`,
+    /// Entity index must be in range `0..=entity_count`,
     /// where `entity_count` is the number of entities in the archetype
     /// from which query produced this instance.
     ///
-    /// `skip_item` must have been called just before this method.
-    /// If `skip_item` returned `false`, this method must not be called.
+    /// `visit_item` must have been called just before this method.
+    /// If `visit_item` returned `false`, this method must not be called.
     ///
     /// `visit_chunk` must have been called before this method
     /// with chunk index that corresponds to the entity index.
+    ///
+    /// `touch_chunk` must have been called before this method.
     #[must_use]
     unsafe fn get_item(&mut self, idx: u32) -> Self::Item;
+}
+
+/// Extension trait for `Fetch` that allows to fetch data in batches.
+pub unsafe trait BatchFetch<'a>: Fetch<'a> {
+    /// Batch type is collection of all items from a chunk.
+    type Batch: 'a;
+
+    /// Returns fetched batch at specified chunk index.
+    ///
+    /// # Safety
+    ///
+    /// `end` must be greater than or equal to `start`.
+    /// `end - start` must fit into `usize`.
+    ///
+    /// Entity index range must be sub-range of `0..=entity_count`,
+    /// where `entity_count` is the number of entities in the archetype
+    /// from which query produced this instance.
+    ///
+    /// `visit_chunk` must have been called before this method.
+    /// If `visit_chunk` returned `false`, this method must not be called.
+    ///
+    /// `touch_chunk` must have been called before this method for all chunks entities are fetched from.
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> Self::Batch;
 }
 
 /// Fetch type for `Query` implementations
@@ -304,5 +329,14 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
         let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.get_item(idx)
+    }
+}
+
+unsafe impl<'a> BatchFetch<'a> for UnitFetch {
+    type Batch = ();
+
+    #[inline(always)]
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> () {
+        debug_assert!(end >= start);
     }
 }

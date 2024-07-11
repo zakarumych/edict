@@ -43,8 +43,8 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
         fn drop(&mut self) {
             for archetype in self.archetypes {
                 unsafe {
-                    if self.query.visit_archetype(archetype)
-                        && self.filter.visit_archetype(archetype)
+                    if self.filter.visit_archetype(archetype)
+                        && self.query.visit_archetype(archetype)
                     {
                         self.query.access_archetype(archetype, |id, access| {
                             if self.query_len > 0 {
@@ -75,7 +75,7 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
 
     for archetype in archetypes {
         unsafe {
-            if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
+            if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
                 query.access_archetype(archetype, |id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
                     assert!(success, "Failed to lock '{:?}' from archetype", id);
@@ -98,7 +98,7 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
 pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
     for archetype in archetypes {
         unsafe {
-            if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
+            if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
                 query.access_archetype(archetype, &|id, access| {
                     archetype.component(id).unwrap_unchecked().release(access);
                 });
@@ -162,7 +162,7 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     };
 
     unsafe {
-        if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
+        if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
             query.access_archetype(archetype, |id, access| {
                 let success = archetype.component(id).unwrap_unchecked().borrow(access);
                 assert!(success, "Failed to lock '{:?}' from archetype", id);
@@ -182,7 +182,7 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
 #[inline(always)]
 fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     unsafe {
-        if query.visit_archetype(archetype) && filter.visit_archetype(archetype) {
+        if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
             query.access_archetype(archetype, &|id, access| {
                 archetype.component(id).unwrap_unchecked().release(access);
             });

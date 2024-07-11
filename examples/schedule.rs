@@ -35,6 +35,9 @@ fn main() {
         world.get::<&mut B>(c).unwrap();
 
         schedule.run_threaded(&mut world);
+
+        #[cfg(feature = "rayon")]
+        schedule.run_rayon(&mut world);
     }
 }
 

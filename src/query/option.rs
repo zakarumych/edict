@@ -3,7 +3,8 @@ use core::any::TypeId;
 use crate::{archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg};
 
 use super::{
-    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
 };
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
@@ -52,6 +53,21 @@ where
         match self {
             None => None,
             Some(fetch) => Some(unsafe { fetch.get_item(idx) }),
+        }
+    }
+}
+
+unsafe impl<'a, T> BatchFetch<'a> for Option<T>
+where
+    T: BatchFetch<'a>,
+{
+    type Batch = Option<T::Batch>;
+
+    /// Returns fetched item at specified index.
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> Option<T::Batch> {
+        match self {
+            None => None,
+            Some(fetch) => Some(unsafe { fetch.get_batch(start, end) }),
         }
     }
 }

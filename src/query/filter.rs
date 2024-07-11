@@ -5,8 +5,8 @@ use crate::{
 };
 
 use super::{
-    fetch::UnitFetch, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
-    SendQuery, WriteAlias,
+    fetch::UnitFetch, Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
+    Query, SendQuery, WriteAlias,
 };
 
 /// Combines fetch from query and filter.
@@ -188,6 +188,16 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, _idx: u32) {}
+}
+
+unsafe impl<'a, T> BatchFetch<'a> for NotFetch<T>
+where
+    T: BatchFetch<'a>,
+{
+    type Batch = ();
+
+    #[inline(always)]
+    unsafe fn get_batch(&mut self, _start: u32, _end: u32) {}
 }
 
 impl<T> AsQuery for Not<T>

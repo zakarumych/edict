@@ -106,7 +106,7 @@ where
         match (q, f) {
             (None, one) | (one, None) => one,
             (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-            _ => {
+            (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
                 // This view uses runtime borrow, so conflict can be resolved at runtime.
                 Some(Access::Write)
             }
@@ -201,21 +201,17 @@ where
     #[inline(always)]
     fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
         let Ok(q) = self.query.component_access(comp) else {
-            panic!("Mutable alias in query of `{}`", type_name::<Self>());
+            mutable_alias_in_view(comp.name(), type_name::<Self>());
         };
         let Ok(f) = self.filter.component_access(comp) else {
-            panic!("Mutable alias in filter of `{}`", type_name::<Self>());
+            mutable_alias_in_view(comp.name(), type_name::<Self>());
         };
 
         match (q, f) {
             (None, one) | (one, None) => one,
             (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-            _ => {
-                panic!(
-                    "Conflicting query and filter in `{}`.
-                        A component is aliased mutably.",
-                    core::any::type_name::<Self>()
-                );
+            (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => {
+                mutable_alias_in_view(comp.name(), type_name::<Self>());
             }
         }
     }
@@ -274,4 +270,10 @@ fn test_system() {
     fn foo(_: ViewCell<&u32>) {}
     fn is_system<M, T: super::IntoSystem<M>>(_: T) {}
     is_system(foo);
+}
+
+#[inline(never)]
+#[cold]
+fn mutable_alias_in_view(comp: &str, system: &str) -> ! {
+    panic!("Mutable alias of `{comp}` in a view in system `{system}`");
 }

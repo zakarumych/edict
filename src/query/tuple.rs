@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
-    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
+    fetch::{BatchFetch, Fetch},
+    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 macro_rules! impl_fetch {
@@ -20,6 +20,13 @@ macro_rules! impl_fetch {
 
             #[inline(always)]
             unsafe fn get_item(&mut self, _: u32) {}
+        }
+
+        unsafe impl BatchFetch<'_> for () {
+            type Batch = ();
+
+            #[inline(always)]
+            unsafe fn get_batch(&mut self, _: u32, _: u32) {}
         }
 
         impl AsQuery for () {
@@ -120,6 +127,20 @@ macro_rules! impl_fetch {
             }
         }
 
+        #[allow(unused_parens)]
+        #[allow(non_snake_case)]
+        unsafe impl<'a $(, $a)+> BatchFetch<'a> for ($($a,)+)
+        where $($a: BatchFetch<'a>,)+
+        {
+            type Batch = ($($a::Batch),+);
+
+            #[inline(always)]
+            unsafe fn get_batch(&mut self, start: u32, end: u32) -> ($($a::Batch),+) {
+                let ($($a,)+) = self;
+                unsafe {($( $a.get_batch(start, end) ),+) }
+            }
+        }
+
         #[allow(non_snake_case)]
         impl<$($a),+> AsQuery for ($($a,)+) where $($a: AsQuery,)+ {
             type Query = ($($a::Query,)+);
@@ -181,7 +202,7 @@ macro_rules! impl_fetch {
                     result = match (result, $a.component_access(comp)?) {
                         (None, one) | (one, None) => one,
                         (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-                        _ => return Err(WriteAlias),
+                        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => return Err(WriteAlias),
                     };
                 )*
                 Ok(result)

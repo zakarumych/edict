@@ -9,6 +9,7 @@ use core::{
     alloc::Layout,
     any::TypeId,
     cell::UnsafeCell,
+    hint::unreachable_unchecked,
     intrinsics::copy_nonoverlapping,
     iter::FromIterator,
     mem::{self, size_of, ManuallyDrop, MaybeUninit},
@@ -41,6 +42,9 @@ pub(crate) struct ArchetypeComponent {
     lock: Lock,
     data: UnsafeCell<ComponentData>,
 }
+
+unsafe impl Send for ArchetypeComponent {}
+unsafe impl Sync for ArchetypeComponent {}
 
 impl Deref for ArchetypeComponent {
     type Target = ComponentInfo;
@@ -611,7 +615,7 @@ impl Archetype {
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         unsafe {
-            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
                 unreachable_unchecked()
             });
         }
@@ -680,7 +684,7 @@ impl Archetype {
 
         debug_assert_ne!(dst.entities.len(), dst.entities.capacity());
         unsafe {
-            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| {
+            self.relocate_components(src_entity_idx, dst, dst_entity_idx, |_, _| unsafe {
                 unreachable_unchecked()
             });
         }
@@ -1053,15 +1057,18 @@ pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
     }
 }
 
-#[cfg(debug_assertions)]
 #[inline(always)]
-#[track_caller]
-fn unreachable_unchecked() -> ! {
-    unreachable!()
-}
+pub(crate) fn starts_of_chunks(start: u32, end: u32, mut f: impl FnMut(u32)) {
+    if start % CHUNK_LEN == 0 {
+        f(chunk_idx(start));
+    }
 
-#[cfg(not(debug_assertions))]
-#[inline(always)]
-unsafe fn unreachable_unchecked() -> ! {
-    core::hint::unreachable_unchecked()
+    let begin = start - start % CHUNK_LEN;
+    let finish = end - end % CHUNK_LEN;
+    let mut cur = begin;
+
+    while cur < finish {
+        cur += CHUNK_LEN;
+        f(chunk_idx(cur));
+    }
 }

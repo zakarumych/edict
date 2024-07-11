@@ -2,7 +2,7 @@
 members = ["proc-lib", "proc"]
 
 [workspace.package]
-version = "1.0.0-rc4"
+version = "1.0.0-rc5"
 edition = "2021"
 authors = ["Zakarum <zaq.dev@icloud.com>"]
 license = "MIT OR Apache-2.0"
@@ -43,7 +43,7 @@ default = ["std", "scheduler", "flow"]
 rayon = ["dep:rayon", "std"]
 
 [dependencies]
-edict-proc = { version = "=1.0.0-rc4", path = "proc" }
+edict-proc = { version = "=1.0.0-rc5", path = "proc" }
 amity = { version = "0.2.1", default-features = false, features = ["alloc"] }
 hashbrown = { version = "0.14" }
 smallvec = { version = "1.10", features = ["union"], default-features = false }
@@ -60,10 +60,17 @@ lock_api = { version = "0.4", default-features = false }
 [dev-dependencies]
 alkahest-proc = { version = "0.3.0" }
 
+[[example]]
+name = "alive"
+required-features = []
 
 [[example]]
 name = "allocate"
 required-features = ["scheduler", "std"]
+
+[[example]]
+name = "batch"
+required-features = []
 
 [[example]]
 name = "borrow"

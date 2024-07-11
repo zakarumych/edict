@@ -239,7 +239,6 @@ where
             None => true,
             Some(component) => unsafe {
                 debug_assert_eq!(self.query.visit_archetype(archetype), true);
-
                 debug_assert_eq!(component.id(), type_id::<T>());
                 true
             },

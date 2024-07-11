@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
-    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
+    fetch::{BatchFetch, Fetch},
+    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 /// Binary operator for [`BooleanQuery`].
@@ -205,6 +205,31 @@ macro_rules! impl_boolean {
                     }
                     mi <<= 1;
                 )+
+            }
+        }
+
+        #[allow(non_snake_case)]
+        #[allow(unused_variables, unused_mut, unused_assignments)]
+        unsafe impl<'a, Op $(, $a)+> BatchFetch<'a> for BooleanFetch<($($a,)+), Op>
+        where
+            $($a: BatchFetch<'a>,)+
+            Op: BooleanFetchOp,
+        {
+            type Batch = ($(Option<$a::Batch>,)+);
+
+            #[inline(always)]
+            unsafe fn get_batch(&mut self, start: u32, end: u32) -> ($(Option<$a::Batch>,)+) {
+                let ($($a,)+) = &mut self.tuple;
+                let mut mi = 1;
+                ($({
+                    let elem = if self.archetype & mi != 0 {
+                        Some(unsafe { $a.get_batch(start, end) })
+                    } else {
+                        None
+                    };
+                    mi <<= 1;
+                    elem
+                },)+)
             }
         }
 

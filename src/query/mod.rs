@@ -47,7 +47,7 @@ pub use self::{
     },
     copied::{Cpy, FetchCpy},
     entities::{Entities, EntitiesFetch},
-    fetch::{Fetch, UnitFetch, VerifyFetch},
+    fetch::{BatchFetch, Fetch, UnitFetch, VerifyFetch},
     filter::{FilteredFetch, Not, With, Without},
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
@@ -223,3 +223,40 @@ where
 
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as AsQuery>::Query as Query>::Item<'a>;
+
+#[doc(hidden)]
+pub unsafe trait BatchQueryHack<'a>: Query<Fetch<'a> = Self::BatchFetchHack> {
+    /// Associated batch type.
+    type BatchHack: 'a;
+
+    /// Associated batch fetch type.
+    type BatchFetchHack: BatchFetch<'a, Batch = Self::BatchHack> + 'a;
+}
+
+/// Extension trait for [`Query`] to provide additional methods to views.
+pub unsafe trait BatchQuery:
+    for<'a> BatchQueryHack<'a, BatchHack = Self::Batch<'a>>
+{
+    /// Associated batch type.
+    type Batch<'a>: 'a;
+}
+
+unsafe impl<'a, Q> BatchQueryHack<'a> for Q
+where
+    Q: Query,
+    Q::Fetch<'a>: BatchFetch<'a>,
+{
+    type BatchHack = <Q::Fetch<'a> as BatchFetch<'a>>::Batch;
+    type BatchFetchHack = Q::Fetch<'a>;
+}
+
+unsafe impl<Q> BatchQuery for Q
+where
+    Q: Query,
+    for<'a> Q::Fetch<'a>: BatchFetch<'a>,
+{
+    type Batch<'a> = <Q::Fetch<'a> as BatchFetch<'a>>::Batch;
+}
+
+/// Type alias for items returned by the [`Query`] type.
+pub type QueryBatch<'a, Q> = <<Q as AsQuery>::Query as BatchQuery>::Batch<'a>;

@@ -98,6 +98,10 @@ pub unsafe trait System {
 }
 
 /// Trait for types that can be converted into systems.
+#[diagnostic::on_unimplemented(
+    message = "Type must be convertible into a system",
+    note = "If this is a function ensure that all arguments implement `FnArg`"
+)]
 pub trait IntoSystem<Marker> {
     /// Type of the system a value of this type can be converted into.
     type System: System + Send + 'static;

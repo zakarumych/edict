@@ -8,15 +8,19 @@
 
 use crate::{
     archetype::{chunk_idx, Archetype},
+    component::ComponentInfo,
     entity::{EntitySet, Location},
     epoch::EpochCounter,
     query::{AsQuery, Fetch, Query, QueryItem},
     world::World,
+    Access,
 };
 
 pub use self::{
     borrow::{acquire, release, BorrowState, RuntimeBorrowState, StaticallyBorrowed},
-    iter::{ViewCellIter, ViewIter, ViewValueIter},
+    iter::{
+        ViewBatchIter, ViewCellBatchIter, ViewCellIter, ViewIter, ViewValueBatchIter, ViewValueIter,
+    },
     one::{ViewOne, ViewOneValue},
 };
 
@@ -236,15 +240,11 @@ where
     /// Uses user-provided query and filter.
     #[inline(always)]
     pub fn new_mut(world: &'a mut World, query: Q, filter: F) -> Self {
-        ViewValue {
-            archetypes: world.archetypes(),
-            query,
-            filter,
-            state: StaticallyBorrowed,
-            entity_set: world.entities(),
-            epochs: world.epoch_counter(),
-            extensibility: Extensible,
+        for archetype in world.archetypes() {
+            validate_query_filter(query, filter, archetype);
         }
+
+        unsafe { ViewValue::new_unchecked(world, query, filter, StaticallyBorrowed, Extensible) }
     }
 }
 
@@ -259,14 +259,8 @@ where
     /// Uses user-provided query and filter.
     #[inline(always)]
     pub fn new_ref(world: &'a World, query: Q, filter: F) -> Self {
-        ViewValue {
-            query: query,
-            filter: filter,
-            archetypes: world.archetypes(),
-            state: RuntimeBorrowState::new(),
-            entity_set: world.entities(),
-            epochs: world.epoch_counter(),
-            extensibility: Extensible,
+        unsafe {
+            ViewValue::new_unchecked(world, query, filter, RuntimeBorrowState::new(), Extensible)
         }
     }
 }
@@ -488,11 +482,17 @@ where
     let Location { arch, idx } = loc;
     assert!(idx < archetype.len() as u32, "Wrong location");
 
-    if !query.visit_archetype(archetype) || !unsafe { query.visit_archetype_late(archetype) } {
+    if archetype.is_empty() {
         return None;
     }
 
-    if !filter.visit_archetype(archetype) || !unsafe { filter.visit_archetype_late(archetype) } {
+    if !query.visit_archetype(archetype) || !filter.visit_archetype(archetype) {
+        return None;
+    }
+
+    if !unsafe { query.visit_archetype_late(archetype) }
+        || !unsafe { filter.visit_archetype_late(archetype) }
+    {
         return None;
     }
 
@@ -523,4 +523,45 @@ where
     }
 
     Some(unsafe { Fetch::get_item(&mut query_fetch, idx) })
+}
+
+#[track_caller]
+#[inline(always)]
+fn has_conflict_query_filter<Q, F>(query: Q, filter: F, comp: &ComponentInfo) -> bool
+where
+    Q: Query,
+    F: Query,
+{
+    let Ok(q) = query.component_access(comp) else {
+        return true;
+    };
+    let Ok(f) = filter.component_access(comp) else {
+        return true;
+    };
+
+    match (q, f) {
+        (None, _) | (_, None) => false,
+        (Some(Access::Read), Some(Access::Read)) => false,
+        (Some(Access::Write), Some(_)) | (Some(_), Some(Access::Write)) => true,
+    }
+}
+
+#[track_caller]
+#[inline(always)]
+fn validate_query_filter<Q, F>(query: Q, filter: F, archetype: &Archetype)
+where
+    Q: Query,
+    F: Query,
+{
+    for comp in archetype.infos() {
+        if has_conflict_query_filter(query, filter, comp) {
+            mutable_alias_in_view(comp.name());
+        }
+    }
+}
+
+#[inline(never)]
+#[cold]
+fn mutable_alias_in_view(comp: &str) -> ! {
+    panic!("Mutable alias of `{comp}` in a view");
 }

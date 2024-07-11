@@ -1,7 +1,7 @@
 use core::ops::Index;
 
 use crate::{
-    entity::{AliveEntity, Entity, Location},
+    entity::{AliveEntity, Entity, EntityId, Location},
     query::{ImmutableQuery, Query, QueryItem, Read},
     view::get_at,
     EntityError, NoSuchEntity,
@@ -24,7 +24,7 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx);
+            return self._get_reserved(entity.id(), loc);
         }
 
         // Ensure to borrow view's data.
@@ -43,7 +43,8 @@ where
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return self
+                ._get_reserved(entity.id(), loc)
                 .ok_or(EntityError::Mismatch);
         }
 
@@ -63,11 +64,7 @@ where
         let loc = expect_alive(entity.lookup(self.entity_set));
 
         if loc.arch == u32::MAX {
-            return expect_match(Query::reserved_entity_item(
-                &self.query,
-                entity.id(),
-                loc.idx,
-            ));
+            return expect_match(self._get_reserved(entity.id(), loc));
         }
 
         // Ensure to borrow view's data.
@@ -90,7 +87,7 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx).map(f);
+            return self._get_reserved(entity.id(), loc).map(f);
         }
 
         // Ensure to borrow view's data.
@@ -113,7 +110,8 @@ where
             .ok_or(EntityError::NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return self
+                ._get_reserved(entity.id(), loc)
                 .map(f)
                 .ok_or(EntityError::Mismatch);
         }
@@ -121,6 +119,13 @@ where
         // Ensure to borrow view's data.
         self.with_borrow(loc.arch, || unsafe { self._get(loc) }.map(f))
             .ok_or(EntityError::Mismatch)
+    }
+
+    #[inline(always)]
+    fn _get_reserved(&self, id: EntityId, loc: Location) -> Option<QueryItem<Q>> {
+        debug_assert_eq!(loc.arch, u32::MAX);
+
+        Query::reserved_entity_item(&self.query, id, loc.idx)
     }
 
     #[inline(always)]

@@ -16,7 +16,7 @@ use super::{Access, ActionBufferQueue, IntoSystem, System};
 
 pub use self::{
     action::ActionEncoderState,
-    res::{ResMutLocal, ResMutNoSendState, ResMutState, ResLocal, ResNoSyncState, ResState},
+    res::{ResLocal, ResMutLocal, ResMutNoSendState, ResMutState, ResNoSyncState, ResState},
     state::{State, StateState},
     view::QueryArg,
 };
@@ -165,7 +165,7 @@ macro_rules! impl_func {
                         result = match (result, access) {
                             (None, one) => Some(one),
                             (Some(Access::Read), Access::Read) => Some(Access::Read),
-                            _ => {
+                            (Some(Access::Write), _) | (Some(_), Access::Write) => {
                                 if runtime_borrow {
                                     // All args that access this component use runtime borrow.
                                     // Conflict will be resolved at runtime.
@@ -185,15 +185,17 @@ macro_rules! impl_func {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
                 $(
-                    result = match (result, $a.resource_type_access(ty)) {
-                        (None, one) | (one, None) => one,
-                        (Some(Access::Read), Some(Access::Read)) => Some(Access::Read),
-                        _ => {
-                            panic!("Conflicting args in system `{}`.
-                                A resource is aliased mutably.",
-                                type_name::<$a>());
-                        }
-                    };
+                    if let Some(access) = $a.resource_type_access(ty) {
+                        result = match (result, access) {
+                            (None, one) => Some(one),
+                            (Some(Access::Read), Access::Read) => Some(Access::Read),
+                            (Some(Access::Write), _) | (Some(_), Access::Write) => {
+                                panic!("Conflicting args in system `{}`.
+                                    A resource is aliased mutably.",
+                                    type_name::<$a>());
+                            }
+                        };
+                    }
                 )*
                 result
             }

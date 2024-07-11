@@ -4,7 +4,9 @@ use crate::{
     archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
 };
 
-use super::{Access, AsQuery, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
+use super::{
+    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias,
+};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -14,6 +16,8 @@ pub struct FetchWrite<'a, T> {
     epoch: EpochId,
     marker: PhantomData<&'a mut [T]>,
 }
+
+unsafe impl<T> Send for FetchWrite<'_, T> where T: Send {}
 
 unsafe impl<'a, T> Fetch<'a> for FetchWrite<'a, T>
 where
@@ -44,6 +48,23 @@ where
         entity_epoch.bump(self.epoch);
 
         unsafe { &mut *self.ptr.as_ptr().add(idx as usize) }
+    }
+}
+
+unsafe impl<'a, T> BatchFetch<'a> for FetchWrite<'a, T>
+where
+    T: 'a,
+{
+    type Batch = &'a mut [T];
+
+    #[inline(always)]
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a mut [T] {
+        debug_assert!(end >= start);
+
+        let count = end - start;
+        unsafe {
+            core::slice::from_raw_parts_mut(self.ptr.as_ptr().add(start as usize), count as usize)
+        }
     }
 }
 
@@ -120,7 +141,7 @@ where
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Write))
         } else {
-            Err(WriteAlias)
+            Ok(None)
         }
     }
 

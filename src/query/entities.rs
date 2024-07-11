@@ -8,7 +8,8 @@ use crate::{
 };
 
 use super::{
-    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
 };
 
 /// [`Fetch`] type for the [`Entities`] query.
@@ -32,6 +33,17 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
     unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
         let id = unsafe { *self.entities.get_unchecked(idx as usize) };
         EntityLoc::from_parts(id, Location::new(self.archetype, idx))
+    }
+}
+
+unsafe impl<'a> BatchFetch<'a> for EntitiesFetch<'a> {
+    type Batch = &'a [EntityId];
+
+    #[inline(always)]
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a [EntityId] {
+        debug_assert!(end >= start);
+
+        unsafe { &*self.entities.get_unchecked(start as usize..end as usize) }
     }
 }
 

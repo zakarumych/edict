@@ -6,7 +6,8 @@ use crate::{
 };
 
 use super::{
-    AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias,
 };
 
 /// [`Fetch`] type for the `&T` query.
@@ -15,6 +16,8 @@ pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,
     marker: PhantomData<&'a [T]>,
 }
+
+unsafe impl<T> Send for FetchRead<'_, T> where T: Sync {}
 
 unsafe impl<'a, T> Fetch<'a> for FetchRead<'a, T>
 where
@@ -33,6 +36,23 @@ where
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         unsafe { &*self.ptr.as_ptr().add(idx as usize) }
+    }
+}
+
+unsafe impl<'a, T> BatchFetch<'a> for FetchRead<'a, T>
+where
+    T: 'a,
+{
+    type Batch = &'a [T];
+
+    #[inline(always)]
+    unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a [T] {
+        debug_assert!(end >= start);
+
+        let count = end - start;
+        unsafe {
+            core::slice::from_raw_parts(self.ptr.as_ptr().add(start as usize), count as usize)
+        }
     }
 }
 
@@ -109,7 +129,7 @@ where
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Read))
         } else {
-            Err(WriteAlias)
+            Ok(None)
         }
     }
 

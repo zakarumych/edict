@@ -9,9 +9,9 @@ use core::{
 use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
-    entity::{EntityBound, EntityId, EntityLoc, EntityRef},
+    entity::{Entity, EntityBound, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     query::{DefaultQuery, IntoQuery, Query, QueryItem},
-    world::WorldLocal,
+    world::{World, WorldLocal},
     EntityError, NoSuchEntity,
 };
 
@@ -28,29 +28,29 @@ pub struct FlowEntity {
     marker: PhantomData<fn() -> &'static mut WorldLocal>,
 }
 
-impl crate::entity::Entity for FlowEntity {
+impl Entity for FlowEntity {
     #[inline(always)]
     fn id(&self) -> EntityId {
         self.id
     }
 
     #[inline(always)]
-    fn lookup(&self, entities: &crate::entity::EntitySet) -> Option<crate::entity::Location> {
+    fn lookup(&self, entities: &EntitySet) -> Option<Location> {
         self.id.lookup(entities)
     }
 
     #[inline(always)]
-    fn is_alive(&self, entities: &crate::entity::EntitySet) -> bool {
+    fn is_alive(&self, entities: &EntitySet) -> bool {
         self.id.is_alive(entities)
     }
 
     #[inline(always)]
-    fn entity_loc<'a>(&self, entities: &'a crate::entity::EntitySet) -> Option<EntityLoc<'a>> {
+    fn entity_loc<'a>(&self, entities: &'a EntitySet) -> Option<EntityLoc<'a>> {
         self.id.entity_loc(entities)
     }
 
     #[inline(always)]
-    fn entity_ref<'a>(&self, world: &'a mut crate::world::World) -> Option<EntityRef<'a>> {
+    fn entity_ref<'a>(&self, world: &'a mut World) -> Option<EntityRef<'a>> {
         self.id.entity_ref(world)
     }
 }

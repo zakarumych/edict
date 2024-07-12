@@ -1,6 +1,9 @@
 use core::any::TypeId;
 
-use crate::{archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg};
+use crate::{
+    archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
+    system::QueryArg,
+};
 
 use super::{
     Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
@@ -170,11 +173,7 @@ where
         }
     }
 
-    fn reserved_entity_item<'a>(
-        &self,
-        id: crate::entity::EntityId,
-        idx: u32,
-    ) -> Option<Option<T::Item<'a>>> {
+    fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Option<T::Item<'a>>> {
         Some(self.0.reserved_entity_item(id, idx))
     }
 }

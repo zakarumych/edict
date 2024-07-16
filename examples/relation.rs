@@ -44,7 +44,7 @@ fn main() {
     let a = world.spawn((A,)).id();
     let b = world.spawn(()).id();
 
-    world.add_relation(a, ChildOf, b).unwrap();
+    world.insert_relation(a, ChildOf, b).unwrap();
 
     for (e, ChildOf) in world.view::<Entities>().relates_to::<ChildOf>(b).iter() {
         println!("{} is child of {}", e, b);
@@ -58,8 +58,8 @@ fn main() {
     let b = world.spawn(()).id();
     let c = world.spawn(()).id();
 
-    world.add_relation(a, Likes, b).unwrap();
-    world.add_relation(a, Likes, c).unwrap();
+    world.insert_relation(a, Likes, b).unwrap();
+    world.insert_relation(a, Likes, c).unwrap();
 
     let mut view = world.get::<Relates<&Likes>>(a).unwrap();
     let first = view.next().unwrap();
@@ -75,7 +75,7 @@ fn main() {
 
     let b = world.spawn(()).id();
 
-    world.add_relation(a, Enemy, b).unwrap();
+    world.insert_relation(a, Enemy, b).unwrap();
 
     let q = world.view::<Entities>().relates::<Enemy>();
     for (e, enemies) in q.iter() {
@@ -113,7 +113,7 @@ fn main() {
     let a = world.spawn((A,)).id();
     let b = world.spawn((B,)).id();
 
-    world.add_relation(a, LifeBound, b).unwrap();
+    world.insert_relation(a, LifeBound, b).unwrap();
 
     world.despawn(a).unwrap();
     assert_eq!(world.is_alive(b), false);

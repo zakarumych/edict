@@ -239,12 +239,6 @@ impl EntityBound<'_> {
             world: PhantomData,
         }
     }
-
-    #[inline(always)]
-    pub(crate) fn wrap_slice(ids: &[EntityId]) -> &[Self] {
-        // Safety: `Self` is transparent wrapper over `EntityId`.
-        unsafe { &*(ids as *const [EntityId] as *const [Self]) }
-    }
 }
 
 impl<'a> Entity for EntityBound<'a> {

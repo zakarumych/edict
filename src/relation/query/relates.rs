@@ -3,16 +3,17 @@ use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 use crate::{
     archetype::Archetype,
     component::ComponentInfo,
-    entity::{EntityBound, EntityId},
     epoch::EpochId,
     query::{
-        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write,
-        WriteAlias,
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
+        Write, WriteAlias,
     },
-    relation::{OriginComponent, Relation, RelationTarget},
+    relation::{OriginComponent, Relation},
     system::QueryArg,
     type_id, Access,
 };
+
+use super::{RelationIter, RelationReadIter, RelationWriteIter};
 
 marker_type! {
     /// Query for origins of relation.
@@ -21,103 +22,123 @@ marker_type! {
     pub struct Relates<R>;
 }
 
-/// Iterator over relations of a given type on one entity.
-#[derive(Clone)]
-pub struct RelatesReadIter<'a, R> {
-    iter: core::slice::Iter<'a, RelationTarget<R>>,
+impl<R> AsQuery for Relates<With<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
 }
 
-impl<'a, R> Iterator for RelatesReadIter<'a, R> {
-    type Item = (&'a R, EntityBound<'a>);
-
+impl<R> IntoQuery for Relates<With<R>>
+where
+    R: Relation,
+{
     #[inline(always)]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
-        let origin = self.iter.next()?;
-        Some((&origin.relation, EntityBound::new(origin.target)))
-    }
-
-    #[inline(always)]
-    fn nth(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
-        let origin = self.iter.nth(n)?;
-        Some((&origin.relation, EntityBound::new(origin.target)))
-    }
-
-    #[inline(always)]
-    fn fold<B, F>(self, init: B, mut f: F) -> B
-    where
-        Self: Sized,
-        F: FnMut(B, Self::Item) -> B,
-    {
-        self.iter.fold(init, |acc, origin| {
-            f(acc, (&origin.relation, EntityBound::new(origin.target)))
-        })
+    fn into_query(self) -> Self::Query {
+        self
     }
 }
 
-impl<'a, R> DoubleEndedIterator for RelatesReadIter<'a, R> {
+impl<R> DefaultQuery for Relates<With<R>>
+where
+    R: Relation,
+{
     #[inline(always)]
-    fn next_back(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
-        let origin = self.iter.next_back()?;
-        Some((&origin.relation, EntityBound::new(origin.target)))
-    }
-
-    #[inline(always)]
-    fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
-        let origin = self.iter.nth_back(n)?;
-        Some((&origin.relation, EntityBound::new(origin.target)))
-    }
-
-    #[inline(always)]
-    fn rfold<B, F>(self, init: B, mut f: F) -> B
-    where
-        Self: Sized,
-        F: FnMut(B, Self::Item) -> B,
-    {
-        self.iter.rfold(init, |acc, origin| {
-            f(acc, (&origin.relation, EntityBound::new(origin.target)))
-        })
-    }
-}
-
-impl<'a, R> ExactSizeIterator for RelatesReadIter<'a, R> {
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.iter.len()
+    fn default_query() -> Self {
+        Relates
     }
 }
 
 /// Fetch for the [`Relates<&R>`] query.
-pub struct FetchRelatesRead<'a, R: Relation> {
+pub struct FetchRelatesWith<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
     marker: PhantomData<&'a OriginComponent<R>>,
 }
 
-unsafe impl<'a, R> Fetch<'a> for FetchRelatesRead<'a, R>
+unsafe impl<'a, R> Fetch<'a> for FetchRelatesWith<'a, R>
 where
     R: Relation,
 {
-    type Item = RelatesReadIter<'a, R>;
+    type Item = RelationIter<'a, R>;
 
     #[inline(always)]
     fn dangling() -> Self {
-        FetchRelatesRead {
+        FetchRelatesWith {
             ptr: NonNull::dangling(),
             marker: PhantomData,
         }
     }
 
     #[inline(always)]
-    unsafe fn get_item(&mut self, idx: u32) -> RelatesReadIter<'a, R> {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+    unsafe fn get_item(&mut self, idx: u32) -> RelationIter<'a, R> {
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
 
-        RelatesReadIter {
-            iter: origin_component.relations().iter(),
+        RelationIter::new(component.targets())
+    }
+}
+
+unsafe impl<R> Query for Relates<With<R>>
+where
+    R: Relation,
+{
+    type Item<'a> = RelationIter<'a, R>;
+    type Fetch<'a> = FetchRelatesWith<'a, R>;
+
+    const MUTABLE: bool = false;
+
+    #[inline(always)]
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if comp.id() == type_id::<OriginComponent<R>>() {
+            Ok(Some(Access::Read))
+        } else {
+            Ok(None)
         }
+    }
+
+    #[inline(always)]
+    fn visit_archetype(&self, archetype: &Archetype) -> bool {
+        archetype.has_component(type_id::<OriginComponent<R>>())
+    }
+
+    #[inline(always)]
+    unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
+        f(type_id::<OriginComponent<R>>(), Access::Read)
+    }
+
+    #[inline(always)]
+    unsafe fn fetch<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        _epoch: EpochId,
+    ) -> FetchRelatesWith<'a, R> {
+        let component = unsafe {
+            archetype
+                .component(type_id::<OriginComponent<R>>())
+                .unwrap_unchecked()
+        };
+
+        debug_assert_eq!(component.id(), type_id::<OriginComponent<R>>());
+
+        let data = unsafe { component.data() };
+
+        FetchRelatesWith {
+            ptr: data.ptr.cast(),
+            marker: PhantomData,
+        }
+    }
+}
+
+unsafe impl<R> ImmutableQuery for Relates<With<R>> where R: Relation {}
+unsafe impl<R> SendQuery for Relates<With<R>> where R: Relation {}
+
+impl<R> QueryArg for Relates<With<R>>
+where
+    R: Relation,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Relates
     }
 }
 
@@ -165,13 +186,31 @@ where
     }
 }
 
-impl<R> QueryArg for Relates<Read<R>>
+/// Fetch for the [`Relates<&R>`] query.
+pub struct FetchRelatesRead<'a, R: Relation> {
+    ptr: NonNull<OriginComponent<R>>,
+    marker: PhantomData<&'a OriginComponent<R>>,
+}
+
+unsafe impl<'a, R> Fetch<'a> for FetchRelatesRead<'a, R>
 where
-    R: Sync + Relation,
+    R: Relation,
 {
+    type Item = RelationReadIter<'a, R>;
+
     #[inline(always)]
-    fn new() -> Self {
-        Relates
+    fn dangling() -> Self {
+        FetchRelatesRead {
+            ptr: NonNull::dangling(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> RelationReadIter<'a, R> {
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+
+        RelationReadIter::new(component.targets())
     }
 }
 
@@ -179,7 +218,7 @@ unsafe impl<R> Query for Relates<Read<R>>
 where
     R: Relation,
 {
-    type Item<'a> = RelatesReadIter<'a, R>;
+    type Item<'a> = RelationReadIter<'a, R>;
     type Fetch<'a> = FetchRelatesRead<'a, R>;
 
     const MUTABLE: bool = false;
@@ -230,117 +269,13 @@ where
 unsafe impl<R> ImmutableQuery for Relates<Read<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Relates<Read<R>> where R: Relation + Sync {}
 
-/// Iterator over relations of a given type on one entity.
-pub struct RelatesWriteIter<'a, R> {
-    iter: core::slice::IterMut<'a, RelationTarget<R>>,
-}
-
-impl<'a, R> Iterator for RelatesWriteIter<'a, R> {
-    type Item = (&'a mut R, EntityId);
-
-    #[inline(always)]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<(&'a mut R, EntityId)> {
-        let origin = self.iter.next()?;
-        Some((&mut origin.relation, origin.target))
-    }
-
-    #[inline(always)]
-    fn nth(&mut self, n: usize) -> Option<(&'a mut R, EntityId)> {
-        let origin = self.iter.nth(n)?;
-        Some((&mut origin.relation, origin.target))
-    }
-
-    #[inline(always)]
-    fn fold<B, F>(self, init: B, mut f: F) -> B
-    where
-        Self: Sized,
-        F: FnMut(B, Self::Item) -> B,
-    {
-        self.iter.fold(init, |acc, origin| {
-            f(acc, (&mut origin.relation, origin.target))
-        })
-    }
-}
-
-impl<'a, R> DoubleEndedIterator for RelatesWriteIter<'a, R> {
-    #[inline(always)]
-    fn next_back(&mut self) -> Option<(&'a mut R, EntityId)> {
-        let origin = self.iter.next_back()?;
-        Some((&mut origin.relation, origin.target))
-    }
-
-    #[inline(always)]
-    fn nth_back(&mut self, n: usize) -> Option<(&'a mut R, EntityId)> {
-        let origin = self.iter.nth_back(n)?;
-        Some((&mut origin.relation, origin.target))
-    }
-
-    #[inline(always)]
-    fn rfold<B, F>(self, init: B, mut f: F) -> B
-    where
-        Self: Sized,
-        F: FnMut(B, Self::Item) -> B,
-    {
-        self.iter.rfold(init, |acc, origin| {
-            f(acc, (&mut origin.relation, origin.target))
-        })
-    }
-}
-
-impl<'a, R> ExactSizeIterator for RelatesWriteIter<'a, R> {
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.iter.len()
-    }
-}
-
-/// Fetch for the [`Relates<&mut R>`] query.
-pub struct FetchRelatesWrite<'a, R: Relation> {
-    epoch: EpochId,
-    ptr: NonNull<OriginComponent<R>>,
-    entity_epochs: NonNull<EpochId>,
-    chunk_epochs: NonNull<EpochId>,
-    marker: PhantomData<&'a mut OriginComponent<R>>,
-}
-
-unsafe impl<'a, R> Fetch<'a> for FetchRelatesWrite<'a, R>
+impl<R> QueryArg for Relates<Read<R>>
 where
-    R: Relation,
+    R: Sync + Relation,
 {
-    type Item = RelatesWriteIter<'a, R>;
-
     #[inline(always)]
-    fn dangling() -> Self {
-        FetchRelatesWrite {
-            epoch: EpochId::start(),
-            ptr: NonNull::dangling(),
-            entity_epochs: NonNull::dangling(),
-            chunk_epochs: NonNull::dangling(),
-            marker: PhantomData,
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
-        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
-        chunk_epoch.bump(self.epoch);
-    }
-
-    #[inline(always)]
-    unsafe fn get_item(&mut self, idx: u32) -> RelatesWriteIter<'a, R> {
-        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
-        entity_epoch.bump(self.epoch);
-
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
-
-        RelatesWriteIter {
-            iter: origin_component.relations_mut().iter_mut(),
-        }
+    fn new() -> Self {
+        Relates
     }
 }
 
@@ -388,13 +323,46 @@ where
     }
 }
 
-impl<R> QueryArg for Relates<Write<R>>
+/// Fetch for the [`Relates<&mut R>`] query.
+pub struct FetchRelatesWrite<'a, R: Relation> {
+    ptr: NonNull<OriginComponent<R>>,
+    epoch: EpochId,
+    entity_epochs: NonNull<EpochId>,
+    chunk_epochs: NonNull<EpochId>,
+    marker: PhantomData<&'a mut OriginComponent<R>>,
+}
+
+unsafe impl<'a, R> Fetch<'a> for FetchRelatesWrite<'a, R>
 where
-    R: Send + Relation,
+    R: Relation,
 {
+    type Item = RelationWriteIter<'a, R>;
+
     #[inline(always)]
-    fn new() -> Self {
-        Relates
+    fn dangling() -> Self {
+        FetchRelatesWrite {
+            ptr: NonNull::dangling(),
+            epoch: EpochId::start(),
+            entity_epochs: NonNull::dangling(),
+            chunk_epochs: NonNull::dangling(),
+            marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
+        let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
+        chunk_epoch.bump(self.epoch);
+    }
+
+    #[inline(always)]
+    unsafe fn get_item(&mut self, idx: u32) -> RelationWriteIter<'a, R> {
+        let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
+        entity_epoch.bump(self.epoch);
+
+        let component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
+
+        RelationWriteIter::new(component.targets_mut())
     }
 }
 
@@ -402,7 +370,7 @@ unsafe impl<R> Query for Relates<Write<R>>
 where
     R: Relation,
 {
-    type Item<'a> = RelatesWriteIter<'a, R>;
+    type Item<'a> = RelationWriteIter<'a, R>;
     type Fetch<'a> = FetchRelatesWrite<'a, R>;
 
     const MUTABLE: bool = true;
@@ -444,8 +412,8 @@ where
         data.epoch.bump(epoch);
 
         FetchRelatesWrite {
-            epoch,
             ptr: data.ptr.cast(),
+            epoch,
             entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
             chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
             marker: PhantomData,
@@ -454,3 +422,13 @@ where
 }
 
 unsafe impl<R> SendQuery for Relates<Write<R>> where R: Relation + Send {}
+
+impl<R> QueryArg for Relates<Write<R>>
+where
+    R: Send + Relation,
+{
+    #[inline(always)]
+    fn new() -> Self {
+        Relates
+    }
+}

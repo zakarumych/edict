@@ -235,7 +235,17 @@ where
     /// The view will contain shared reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates<R: Relation + Sync>(
+    pub fn relates<R: Relation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<With<R>>>, F, B, Extensible> {
+        self.extend(Relates::<With<R>>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain shared reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_ref<R: Relation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B, Extensible> {
         self.extend(Relates::<Read<R>>)
@@ -277,7 +287,17 @@ where
     /// The view will contain shared reference of the relation value
     /// and the target entity.
     #[inline(always)]
-    pub fn relates_exclusive<R: ExclusiveRelation + Sync>(
+    pub fn relates_exclusive<R: ExclusiveRelation>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<With<R>>>, F, B, Extensible> {
+        self.extend(RelatesExclusive::<With<R>>)
+    }
+
+    /// Queries for origin entities in relation of type `R`.
+    /// The view will contain shared reference of the relation value
+    /// and the target entity.
+    #[inline(always)]
+    pub fn relates_exclusive_ref<R: ExclusiveRelation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B, Extensible> {
         self.extend(RelatesExclusive::<Read<R>>)
@@ -298,8 +318,26 @@ where
     #[inline(always)]
     pub fn related<R: Relation>(
         self,
-    ) -> ViewValue<'a, TupleQueryAdd<Q, Related<R>>, F, B, Extensible> {
-        self.extend(Related)
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Related<With<R>>>, F, B, Extensible> {
+        self.extend(Related::<With<R>>)
+    }
+
+    /// Queries for target entities in relation of type `R`.
+    /// The view will contain origins of the relation.
+    #[inline(always)]
+    pub fn related_ref<R: Relation + Sync>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Related<Read<R>>>, F, B, Extensible> {
+        self.extend(Related::<Read<R>>)
+    }
+
+    /// Queries for target entities in relation of type `R`.
+    /// The view will contain origins of the relation.
+    #[inline(always)]
+    pub fn related_mut<R: Relation + Send>(
+        self,
+    ) -> ViewValue<'a, TupleQueryAdd<Q, Related<Write<R>>>, F, B, Extensible> {
+        self.extend(Related::<Write<R>>)
     }
 }
 

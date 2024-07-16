@@ -36,9 +36,9 @@ where
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         origin_component
-            .relations()
+            .targets()
             .iter()
-            .any(|origin| origin.target == self.target)
+            .any(|origin| origin.0 == self.target)
     }
 
     #[inline(always)]

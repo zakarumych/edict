@@ -155,26 +155,28 @@ macro_rules! impl_func {
             }
 
             #[inline(always)]
-            fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
+            fn component_access(&self, archetype: &Archetype, comp: &ComponentInfo) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
                 let mut runtime_borrow = true;
                 $(
-                    if let Some(access) = $a.component_access(comp) {
-                        runtime_borrow &= $a.borrows_components_at_runtime();
-                        result = match (result, access) {
-                            (None, one) => Some(one),
-                            (Some(Access::Read), Access::Read) => Some(Access::Read),
-                            (Some(Access::Write), _) | (Some(_), Access::Write) => {
-                                if runtime_borrow {
-                                    // All args that access this component use runtime borrow.
-                                    // Conflict will be resolved at runtime.
-                                    Some(Access::Write)
-                                } else {
-                                    panic!("Conflicting args in system `{}`.\nA component is aliased mutably.\nIf arguments require mutable aliasing, all arguments that access a type must use runtime borrow check.\nFor example `View` type does not use runtime borrow check and should be replaced with `ViewCell`.", type_name::<Func>());
+                    if $a.visit_archetype(archetype) {
+                        if let Some(access) = $a.component_access(comp) {
+                            runtime_borrow &= $a.borrows_components_at_runtime();
+                            result = match (result, access) {
+                                (None, one) => Some(one),
+                                (Some(Access::Read), Access::Read) => Some(Access::Read),
+                                (Some(Access::Write), _) | (Some(_), Access::Write) => {
+                                    if runtime_borrow {
+                                        // All args that access this component use runtime borrow.
+                                        // Conflict will be resolved at runtime.
+                                        Some(Access::Write)
+                                    } else {
+                                        panic!("Conflicting args in system `{}`.\nA component is aliased mutably.\nIf arguments require mutable aliasing, all arguments that access a type must use runtime borrow check.\nFor example `View` type does not use runtime borrow check and should be replaced with `ViewCell`.", type_name::<Func>());
+                                    }
                                 }
-                            }
-                        };
+                            };
+                        }
                     }
                 )*
                 result

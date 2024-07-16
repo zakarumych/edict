@@ -57,11 +57,11 @@ where
 
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
-        let item_idx = origin_component
-            .relations()
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+        let item_idx = component
+            .targets()
             .iter()
-            .position(|origin| origin.target == self.target);
+            .position(|origin| origin.0 == self.target);
 
         match item_idx {
             None => false,
@@ -74,8 +74,8 @@ where
 
     #[inline(always)]
     unsafe fn get_item(&mut self, idx: u32) -> &'a R {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
-        &origin_component.relations()[self.item_idx].relation
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+        &component.targets()[self.item_idx].1
     }
 }
 
@@ -197,11 +197,11 @@ where
 
     #[inline(always)]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
-        let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
-        let item_idx = origin_component
-            .relations()
+        let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
+        let item_idx = component
+            .targets()
             .iter()
-            .position(|origin| origin.target == self.target);
+            .position(|origin| origin.0 == self.target);
 
         match item_idx {
             None => false,
@@ -217,8 +217,8 @@ where
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
 
-        let origin_component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
-        &mut origin_component.relations_mut()[self.item_idx].relation
+        let component = unsafe { &mut *self.ptr.as_ptr().add(idx as usize) };
+        &mut component.targets_mut()[self.item_idx].1
     }
 }
 

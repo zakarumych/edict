@@ -43,9 +43,9 @@ where
                     .add(idx as usize)
             };
             origin_component
-                .relations()
+                .targets()
                 .iter()
-                .any(|rt| rt.target == self.origin)
+                .any(|r| r.0 == self.origin)
         } else {
             let target_component = unsafe {
                 &*self
@@ -54,7 +54,10 @@ where
                     .as_ptr()
                     .add(idx as usize)
             };
-            target_component.origins.contains(&self.origin)
+            target_component
+                .origins()
+                .iter()
+                .any(|r| r.0 == self.origin)
         }
     }
 

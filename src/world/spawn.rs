@@ -556,6 +556,42 @@ impl World {
         Ok(())
     }
 
+    /// Despawns batch of entities with specified ids.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let entity1 = world.spawn((ExampleComponent,)).id();
+    /// let entity2 = world.spawn((ExampleComponent,)).id();
+    ///
+    /// world.despawn_batch([entity1, entity2]);
+    ///
+    /// assert!(world.despawn(entity1).is_err(), "Already despawned");
+    /// assert!(world.despawn(entity2).is_err(), "Already despawned");
+    /// ```
+    #[inline(always)]
+    pub fn despawn_batch(&mut self, entities: impl IntoIterator<Item = EntityId>) {
+        self.maintenance();
+
+        for entity in entities {
+            let Some(loc) = self.entities.despawn(entity) else {
+                continue;
+            };
+            let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+            let opt_id = unsafe {
+                self.archetypes[loc.arch as usize].despawn_unchecked(entity, loc.idx, encoder)
+            };
+
+            if let Some(id) = opt_id {
+                self.entities.set_location(id, loc)
+            }
+        }
+
+        self.execute_local_actions();
+    }
+
     /// Special-case despawn method for [`EntityRef::despawn`].
     /// This method uses branch elimination for non-existent entity case
     /// and prevents data dependencies between removing entity from

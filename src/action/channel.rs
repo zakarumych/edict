@@ -223,12 +223,12 @@ impl ActionSender {
 
     /// Encodes an action to add relation between two entities to the [`World`].
     #[inline(always)]
-    pub fn add_relation<R>(&self, origin: EntityId, relation: R, target: EntityId)
+    pub fn insert_relation<R>(&self, origin: EntityId, relation: R, target: EntityId)
     where
         R: Relation + Send,
     {
         self.push_fn(move |world| {
-            let _ = world.add_relation(origin, relation, target);
+            let _ = world.insert_relation(origin, relation, target);
         });
     }
 

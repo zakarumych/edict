@@ -1,6 +1,7 @@
 use core::{any::TypeId, iter::FusedIterator};
 
 use alloc::collections::VecDeque;
+use smallvec::SmallVec;
 
 use crate::{
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
@@ -123,6 +124,39 @@ impl<'a> ActionEncoder<'a> {
         })
     }
 
+    /// Encodes an action to despawn entities in batch.
+    #[inline(always)]
+    pub fn despawn_batch(&mut self, entities: impl IntoIterator<Item = EntityId>) {
+        let entities = entities.into_iter();
+
+        match entities.size_hint() {
+            (_, Some(upper)) if upper <= 8 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            (_, Some(upper)) if upper <= 16 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            (_, Some(upper)) if upper <= 32 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            _ => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+        }
+    }
+
     /// Encodes an action to insert component to the specified entity.
     #[inline(always)]
     pub fn insert<T>(&mut self, entity: impl Entity, component: T)
@@ -230,6 +264,15 @@ impl<'a> ActionEncoder<'a> {
         self.drop_erased(entity, type_id::<T>())
     }
 
+    /// Encodes an action to drop component from entities in batch.
+    #[inline(always)]
+    pub fn drop_batch<T>(&mut self, entities: impl IntoIterator<Item = EntityId>)
+    where
+        T: 'static,
+    {
+        self.drop_erased_batch(entities, type_id::<T>())
+    }
+
     /// Encodes an action to drop component from specified entity.
     #[inline(always)]
     pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) {
@@ -237,6 +280,39 @@ impl<'a> ActionEncoder<'a> {
         self.push_fn(move |world| {
             let _ = world.drop_erased(id, ty);
         })
+    }
+
+    /// Encodes an action to drop component from entities in batch.
+    #[inline(always)]
+    pub fn drop_erased_batch(&mut self, entities: impl IntoIterator<Item = EntityId>, ty: TypeId) {
+        let entities = entities.into_iter();
+
+        match entities.size_hint() {
+            (_, Some(upper)) if upper <= 8 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            (_, Some(upper)) if upper <= 16 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            (_, Some(upper)) if upper <= 32 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            _ => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+        }
     }
 
     /// Encodes an action to drop bundle of components from specified entity.
@@ -253,14 +329,14 @@ impl<'a> ActionEncoder<'a> {
 
     /// Encodes an action to add relation between two entities to the [`World`].
     #[inline(always)]
-    pub fn add_relation<R>(&mut self, origin: impl Entity, relation: R, target: impl Entity)
+    pub fn insert_relation<R>(&mut self, origin: impl Entity, relation: R, target: impl Entity)
     where
         R: Relation + Send,
     {
         let origin = origin.id();
         let target = target.id();
         self.push_fn(move |world| {
-            let _ = world.add_relation(origin, relation, target);
+            let _ = world.insert_relation(origin, relation, target);
         });
     }
 
@@ -564,6 +640,39 @@ impl<'a> LocalActionEncoder<'a> {
         })
     }
 
+    /// Encodes an action to despawn entities in batch.
+    #[inline(always)]
+    pub fn despawn_batch(&mut self, entities: impl IntoIterator<Item = EntityId>) {
+        let entities = entities.into_iter();
+
+        match entities.size_hint() {
+            (_, Some(upper)) if upper <= 8 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            (_, Some(upper)) if upper <= 16 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            (_, Some(upper)) if upper <= 32 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+            _ => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
+                self.push_fn(move |world| {
+                    let _ = world.despawn_batch(entities);
+                });
+            }
+        }
+    }
+
     /// Encodes an action to insert component to the specified entity.
     #[inline(always)]
     pub fn insert<T>(&mut self, entity: impl Entity, component: T)
@@ -687,6 +796,15 @@ impl<'a> LocalActionEncoder<'a> {
         self.drop_erased(entity, type_id::<T>())
     }
 
+    /// Encodes an action to drop component from entities in batch.
+    #[inline(always)]
+    pub fn drop_batch<T>(&mut self, entities: impl IntoIterator<Item = EntityId>)
+    where
+        T: 'static,
+    {
+        self.drop_erased_batch(entities, type_id::<T>())
+    }
+
     /// Encodes an action to drop component from specified entity.
     #[inline(always)]
     pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) {
@@ -694,6 +812,39 @@ impl<'a> LocalActionEncoder<'a> {
         self.push_fn(move |world| {
             let _ = world.drop_erased(id, ty);
         })
+    }
+
+    /// Encodes an action to drop component from entities in batch.
+    #[inline(always)]
+    pub fn drop_erased_batch(&mut self, entities: impl IntoIterator<Item = EntityId>, ty: TypeId) {
+        let entities = entities.into_iter();
+
+        match entities.size_hint() {
+            (_, Some(upper)) if upper <= 8 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            (_, Some(upper)) if upper <= 16 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            (_, Some(upper)) if upper <= 32 => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+            _ => {
+                let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
+                self.push_fn(move |world| {
+                    let _ = world.drop_erased_batch(entities, ty);
+                });
+            }
+        }
     }
 
     /// Encodes an action to drop bundle of components from specified entity.
@@ -710,14 +861,14 @@ impl<'a> LocalActionEncoder<'a> {
 
     /// Encodes an action to add relation between two entities to the [`World`].
     #[inline(always)]
-    pub fn add_relation<R>(&mut self, origin: impl Entity, relation: R, target: impl Entity)
+    pub fn insert_relation<R>(&mut self, origin: impl Entity, relation: R, target: impl Entity)
     where
         R: Relation,
     {
         let origin = origin.id();
         let target = target.id();
         self.push_fn(move |world| {
-            let _ = world.add_relation(origin, relation, target);
+            let _ = world.insert_relation(origin, relation, target);
         });
     }
 

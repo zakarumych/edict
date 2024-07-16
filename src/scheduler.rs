@@ -549,8 +549,8 @@ impl Scheduler {
 
                     for info in archetype.infos() {
                         if conflicts(
-                            system_a.component_access(info),
-                            system_b.component_access(info),
+                            system_a.component_access(archetype, info),
+                            system_b.component_access(archetype, info),
                         ) {
                             // Conflicts on this archetype.
                             // Add a dependency.

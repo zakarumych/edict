@@ -23,7 +23,7 @@ impl World {
     /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
     /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
     #[inline(always)]
-    pub fn add_relation<R>(
+    pub fn insert_relation<R>(
         &mut self,
         origin: impl Entity,
         relation: R,
@@ -40,45 +40,49 @@ impl World {
         self.epoch.next_mut();
 
         if R::SYMMETRIC {
-            set_relation_component(
+            let set_target = set_relation_component(
                 self,
                 origin.id(),
                 relation,
                 |relation| OriginComponent::new_relation(target.id(), relation),
                 |component, relation, encoder| {
-                    component.add_relation(origin.id(), target.id(), relation, encoder)
+                    component.insert_relation(origin.id(), target.id(), relation, encoder)
                 },
             );
 
-            if target.id() != origin.id() {
+            if target.id() != origin.id() && set_target {
                 set_relation_component(
                     self,
                     target.id(),
                     relation,
                     |relation| OriginComponent::new_relation(origin.id(), relation),
                     |component, relation, encoder| {
-                        component.add_relation(target.id(), origin.id(), relation, encoder)
+                        component.insert_relation(target.id(), origin.id(), relation, encoder)
                     },
                 );
             }
         } else {
-            set_relation_component(
+            let set_target = set_relation_component(
                 self,
                 origin.id(),
                 relation,
                 |relation| OriginComponent::new_relation(target.id(), relation),
                 |comp, relation, encoder| {
-                    comp.add_relation(origin.id(), target.id(), relation, encoder)
+                    comp.insert_relation(origin.id(), target.id(), relation, encoder)
                 },
             );
-
-            set_relation_component(
-                self,
-                target.id(),
-                (),
-                |()| TargetComponent::<R>::new(origin.id()),
-                |comp, (), _| comp.add(origin.id()),
-            );
+            if set_target {
+                set_relation_component(
+                    self,
+                    target.id(),
+                    (),
+                    |()| TargetComponent::<R>::new(origin.id(), relation),
+                    |comp, (), _| {
+                        comp.add(origin.id(), relation);
+                        false
+                    },
+                );
+            }
         }
 
         self.execute_local_actions();
@@ -101,7 +105,7 @@ impl World {
     where
         R: Relation,
     {
-        self._remove_relation(origin, target, |_, _, _, _| {})
+        self._remove_relation(origin, target)
     }
 
     /// Drops relation between two entities in the [`World`].
@@ -119,7 +123,11 @@ impl World {
     where
         R: Relation,
     {
-        self._remove_relation(origin, target, R::on_drop)?;
+        if let Some(relation) = self._remove_relation(origin, target)? {
+            let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+
+            R::on_drop(relation, origin.id(), target.id(), encoder);
+        }
         self.execute_local_actions();
         Ok(())
     }
@@ -129,7 +137,6 @@ impl World {
         &mut self,
         origin: impl Entity,
         target: impl Entity,
-        on_drop: impl FnOnce(&mut R, EntityId, EntityId, LocalActionEncoder<'_>),
     ) -> Result<Option<R>, NoSuchEntity>
     where
         R: Relation,
@@ -147,11 +154,9 @@ impl World {
                 let mut encoder =
                     LocalActionEncoder::new(&mut *self.action_buffer.get(), &self.entities);
 
-                if let Some(mut relation) =
+                if let Some(relation) =
                     comp.remove_relation(origin.id(), target.id(), encoder.reborrow())
                 {
-                    on_drop(&mut relation, origin.id(), target.id(), encoder.reborrow());
-
                     if R::SYMMETRIC {
                         if origin.id() != target.id() {
                             let comp = self
@@ -186,8 +191,9 @@ fn set_relation_component<T, C>(
     id: EntityId,
     value: T,
     into_component: impl FnOnce(T) -> C,
-    set_component: impl FnOnce(&mut C, T, LocalActionEncoder),
-) where
+    set_component: impl FnOnce(&mut C, T, LocalActionEncoder) -> bool,
+) -> bool
+where
     C: Component,
 {
     let src_loc = world.entities.get_location(id).unwrap();
@@ -200,9 +206,7 @@ fn set_relation_component<T, C>(
         };
 
         let encoders = LocalActionEncoder::new(world.action_buffer.get_mut(), &world.entities);
-        set_component(component, value, encoders);
-        world.execute_local_actions();
-        return;
+        return set_component(component, value, encoders);
     }
 
     let component = into_component(value);
@@ -236,4 +240,6 @@ fn set_relation_component<T, C>(
     if let Some(src_id) = opt_src_id {
         world.entities.set_location(src_id, src_loc);
     }
+
+    return true;
 }

@@ -610,7 +610,7 @@ impl FlowWorld {
     /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
     /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
     #[inline(always)]
-    pub fn add_relation<R>(
+    pub fn insert_relation<R>(
         self,
         origin: impl Entity,
         relation: R,
@@ -622,7 +622,7 @@ impl FlowWorld {
         // Safety: world reference does not escape this scope.
         let world = unsafe { self.get() };
 
-        world.add_relation(origin, relation, target)
+        world.insert_relation(origin, relation, target)
     }
 
     /// Removes relation between two entities in the [`FlowWorld`].

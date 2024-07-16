@@ -3,7 +3,7 @@ use core::any::{type_name, TypeId};
 use crate::{
     action::LocalActionEncoder,
     bundle::Bundle,
-    entity::{Entity, EntityRef, Location},
+    entity::{Entity, EntityId, EntityRef, Location},
     type_id, NoSuchEntity,
 };
 
@@ -83,6 +83,17 @@ impl World {
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline(always)]
+    pub fn drop_batch<T>(&mut self, entities: impl IntoIterator<Item = EntityId>)
+    where
+        T: 'static,
+    {
+        self.drop_erased_batch(entities, type_id::<T>())
+    }
+
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
     pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
@@ -122,6 +133,54 @@ impl World {
 
         self.execute_local_actions();
         Ok(())
+    }
+
+    /// Drops component from the specified entity.
+    ///
+    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    #[inline(always)]
+    pub fn drop_erased_batch(&mut self, entities: impl IntoIterator<Item = EntityId>, ty: TypeId) {
+        self.maintenance();
+
+        for entity in entities {
+            let Some(src_loc) = entity.lookup(&self.entities) else {
+                continue;
+            };
+            debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
+
+            if !self.archetypes[src_loc.arch as usize].has_component(ty) {
+                // Safety: entity is not moved
+                // Reference is created with correct location of entity in this world.
+                continue;
+            }
+
+            let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, ty);
+
+            debug_assert_ne!(src_loc.arch, dst_arch);
+
+            let (before, after) = self
+                .archetypes
+                .split_at_mut(src_loc.arch.max(dst_arch) as usize);
+
+            let (src, dst) = match src_loc.arch < dst_arch {
+                true => (&mut before[src_loc.arch as usize], &mut after[0]),
+                false => (&mut after[0], &mut before[dst_arch as usize]),
+            };
+
+            let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
+            let (dst_idx, opt_src_id) =
+                unsafe { src.drop_bundle(entity, dst, src_loc.idx, encoder) };
+
+            let dst_loc = Location::new(dst_arch, dst_idx);
+
+            self.entities.set_location(entity, dst_loc);
+
+            if let Some(src_id) = opt_src_id {
+                self.entities.set_location(src_id, src_loc);
+            }
+        }
+
+        self.execute_local_actions();
     }
 
     /// Drops entity's components that are found in the specified bundle.

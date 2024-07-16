@@ -31,6 +31,7 @@ mod filter_related;
 mod filter_related_by;
 mod filter_relates;
 mod filter_relates_to;
+mod iter;
 mod related;
 mod relates;
 mod relates_exclusive;
@@ -41,8 +42,12 @@ pub use self::{
     filter_related_by::{FetchFilterRelatedBy, FilterRelatedBy},
     filter_relates::FilterRelates,
     filter_relates_to::{FilterFetchRelatesTo, FilterRelatesTo},
-    related::{FetchRelated, Related},
-    relates::{FetchRelatesRead, FetchRelatesWrite, Relates, RelatesReadIter, RelatesWriteIter},
-    relates_exclusive::{FetchRelatesExclusiveRead, FetchRelatesExclusiveWrite, RelatesExclusive},
+    iter::{RelationIter, RelationReadIter, RelationWriteIter},
+    related::{FetchRelatedRead, FetchRelatedWith, FetchRelatedWrite, Related},
+    relates::{FetchRelatesRead, FetchRelatesWith, FetchRelatesWrite, Relates},
+    relates_exclusive::{
+        FetchRelatesExclusiveRead, FetchRelatesExclusiveWith, FetchRelatesExclusiveWrite,
+        RelatesExclusive,
+    },
     relates_to::{FetchRelatesToRead, FetchRelatesToWrite, RelatesTo},
 };

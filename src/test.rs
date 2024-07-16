@@ -259,11 +259,11 @@ fn test_relation() {
     let a = world.spawn(()).id();
     let b = world.spawn(()).id();
 
-    world.add_relation(a, A, a).unwrap();
+    world.insert_relation(a, A, a).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -276,11 +276,11 @@ fn test_relation() {
 
     assert_eq!(a_s[0].1.by_ref().count(), 0);
 
-    world.add_relation(a, A, b).unwrap();
+    world.insert_relation(a, A, b).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -324,11 +324,11 @@ fn test_exclusive_relation() {
     let a = world.spawn(()).id();
     let b = world.spawn(()).id();
 
-    world.add_relation(a, A, a).unwrap();
+    world.insert_relation(a, A, a).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -341,11 +341,11 @@ fn test_exclusive_relation() {
 
     assert_eq!(a_s[0].1.by_ref().count(), 0);
 
-    world.add_relation(a, A, b).unwrap();
+    world.insert_relation(a, A, b).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -363,7 +363,7 @@ fn test_exclusive_relation() {
     assert_eq!(
         world
             .view_mut::<Entities>()
-            .relates::<A>()
+            .relates_ref::<A>()
             .into_iter()
             .count(),
         0
@@ -385,11 +385,11 @@ fn test_symmetric_relation() {
     let a = world.spawn(()).id();
     let b = world.spawn(()).id();
 
-    world.add_relation(a, A, a).unwrap();
+    world.insert_relation(a, A, a).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -402,11 +402,11 @@ fn test_symmetric_relation() {
 
     assert_eq!(a_s[0].1.by_ref().count(), 0);
 
-    world.add_relation(a, A, b).unwrap();
+    world.insert_relation(a, A, b).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -458,11 +458,11 @@ fn test_symmetric_exclusive_relation() {
     let a = world.spawn(()).id();
     let b = world.spawn(()).id();
 
-    world.add_relation(a, A, a).unwrap();
+    world.insert_relation(a, A, a).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -475,11 +475,11 @@ fn test_symmetric_exclusive_relation() {
 
     assert_eq!(a_s[0].1.by_ref().count(), 0);
 
-    world.add_relation(a, A, b).unwrap();
+    world.insert_relation(a, A, b).unwrap();
 
     let mut a_s = world
         .view_mut::<Entities>()
-        .relates::<A>()
+        .relates_ref::<A>()
         .into_iter()
         .collect::<Vec<_>>();
 
@@ -561,7 +561,7 @@ fn with_without() {
 }
 
 #[test]
-fn add_relation() {
+fn insert_relation() {
     let mut world = World::new();
 
     let target = world.allocate().id();
@@ -571,7 +571,7 @@ fn add_relation() {
     struct Foo;
 
     world.insert(origin, Foo).unwrap();
-    world.add_relation(origin, ChildOf, target).unwrap();
+    world.insert_relation(origin, ChildOf, target).unwrap();
 }
 
 #[cfg(feature = "flow")]

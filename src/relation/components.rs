@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::{marker::PhantomData, mem::ManuallyDrop};
 use smallvec::SmallVec;
 

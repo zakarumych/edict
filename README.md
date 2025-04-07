@@ -83,7 +83,7 @@ In multi-server or p2p architecture [`IdRangeAllocator`] would need to communica
 ### Ergonomic entity types
 
 Using ECS may lead to lots of `.unwrap()` calls or excessive error handling.
-There a lot of situations when entity is guaranteed to exist (for example it just returned from a view).
+There are lots of situations when entity is guaranteed to exist (for example it just returned from a view).
 To avoid handling [`NoSuchEntity`] error when it is unreachable, Edict provides [`AliveEntity`] trait that extends [`Entity`] trait.
 Various methods require [`AliveEntity`] handle and skip existence check.
 
@@ -92,15 +92,15 @@ Various methods require [`AliveEntity`] handle and skip existence check.
 [`EntityId`] implements only [`Entity`] as it doesn't provide any guaranties.
 
 [`EntityBound`] is guaranteed to be alive, allowing using it in methods that doesn't handle entity absence.
-It keeps lifetime of [`World`] borrow, making it impossible to despawn any entity from the world.
-Using it with wrong [`World`] may cause panic.
-[`EntityBound`] can be acquire from relation queries.
+It keeps lifetime of a [`World`] borrow, making it impossible to despawn any entity from the world.
+*Using it with wrong [`World`] may cause panic*.
+[`EntityBound`] can be acquired from relation queries.
 
-[`EntityLoc`] not only guarantees entity existence but also contains location of the entity in the archetypes,
-allowing to skip lookup step when accessing its components.
-Similarly to [`EntityBound`], it keeps lifetime of [`World`] borrow, making it impossible to despawn any entity from the world.
-Using it with wrong [`World`] may cause panic.
-[`EntityLoc`] can be acquire from [`Entities`] query.
+[`EntityLoc`] not only guarantees entity existence, but also contains location of the entity in the archetypes,
+allowing functions to skip lookup step when accessing entity's components.
+Similarly to [`EntityBound`], it keeps lifetime of a [`World`] borrow, making it impossible to despawn any entity from the world.
+*Using it with wrong [`World`] may cause panic*.
+[`EntityLoc`] can be acquired from [`Entities`] query.
 
 [`EntityRef`] is special.
 It doesn't implement [`Entity`] or [`AliveEntity`] traits since it should not be used in world methods.
@@ -299,75 +299,79 @@ If "std" feature is not enabled error types will not implement [`std::error::Err
 When "flow" feature is enabled and "std" is not, extern functions are used to implement TLS.
 Application must provide implementation for these functions or linking will fail.
 
-When "scheduler" feature is enabled and "std" is not, external functions are used to implement thread parking.
-Application must provide implementation for these functions or linking will fail.
+"scheduler" feature enables [`Scheduler`] type.
+"threaded-scheduler" feature enables multithreaded execution for [`Scheduler`], using [`Scheduler::run_with`] and [`Scheduler::run_threaded`].
+"rayon-scheduler" feature enables also rayon based execution for [`Scheduler`] using [`Scheduler::run_rayon`].
 
 [`!Send`]: https://doc.rust-lang.org/std/marker/trait.Send.html
 [`!Sized`]: https://doc.rust-lang.org/std/marker/trait.Sized.html
 [`!Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
-[`ActionEncoder`]: https://docs.rs/edict/1.0.0-rc4/edict/action/struct.ActionEncoder.html
-[`AliveEntity`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/trait.AliveEntity.html
-[`BorrowAll`]: https://docs.rs/edict/1.0.0-rc4/edict/query/struct.BorrowAll.html
-[`BorrowAny`]: https://docs.rs/edict/1.0.0-rc4/edict/query/struct.BorrowAny.html
-[`BorrowOne`]: https://docs.rs/edict/1.0.0-rc4/edict/query/struct.BorrowOne.html
-[`Component`]: https://docs.rs/edict/1.0.0-rc4/edict/component/trait.Component.html
-[`Component::on_drop`]: https://docs.rs/edict/1.0.0-rc4/edict/component/trait.Component.html#method.on_drop
-[`Component::on_replace`]: https://docs.rs/edict/1.0.0-rc4/edict/component/trait.Component.html#method.on_replace
+[`ActionEncoder`]: https://docs.rs/edict/1.0.0-rc6/edict/action/struct.ActionEncoder.html
+[`AliveEntity`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/trait.AliveEntity.html
+[`BorrowAll`]: https://docs.rs/edict/1.0.0-rc6/edict/query/struct.BorrowAll.html
+[`BorrowAny`]: https://docs.rs/edict/1.0.0-rc6/edict/query/struct.BorrowAny.html
+[`BorrowOne`]: https://docs.rs/edict/1.0.0-rc6/edict/query/struct.BorrowOne.html
+[`Component`]: https://docs.rs/edict/1.0.0-rc6/edict/component/trait.Component.html
+[`Component::on_drop`]: https://docs.rs/edict/1.0.0-rc6/edict/component/trait.Component.html#method.on_drop
+[`Component::on_replace`]: https://docs.rs/edict/1.0.0-rc6/edict/component/trait.Component.html#method.on_replace
 [`Context`]: https://doc.rust-lang.org/std/task/struct.Context.html
-[`Entities`]: https://docs.rs/edict/1.0.0-rc4/edict/query/struct.Entities.html
-[`Entity`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/trait.Entity.html
-[`EntityBound`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/trait.EntityBound.html
-[`EntityId`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/struct.EntityId.html
-[`EntityLoc`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/struct.EntityLoc.html
-[`EntityRef`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/struct.EntityRef.html
-[`EntityRef::spawn_flow`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/struct.EntityRef.html#method.spawn_flow
-[`flow`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/index.html
-[`FlowEntity`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowEntity.html
-[`FlowEntity::spawn_flow`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowEntity.html#method.spawn_flow
-[`FlowEntity::wait_despawned`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowEntity.html#method.wait_despawned
-[`FlowEntity::wait_has_component`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowEntity.html#method.wait_has_component
-[`Flows`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.Flows.html
-[`Flows::execute`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.Flows.html#method.execute
-[`FlowWorld`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowWorld.html
-[`FlowWorld::spawn_flow`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowWorld.html#method.spawn_flow
-[`FlowWorld::spawn_flow_for`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.FlowWorld.html#method.spawn_flow_for
-[`FnArg`]: https://docs.rs/edict/1.0.0-rc4/edict/system/trait.FnArg.html
-[`IdRange`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/struct.IdRange.html
-[`IdRangeAllocator`]: https://docs.rs/edict/1.0.0-rc4/edict/entity/trait.IdRangeAllocator.html
-[`IntoSystem`]: https://docs.rs/edict/1.0.0-rc4/edict/system/trait.IntoSystem.html
-[`LocalActionEncoder`]: https://docs.rs/edict/1.0.0-rc4/edict/action/struct.LocalActionEncoder.html
-[`Modified`]: https://docs.rs/edict/1.0.0-rc4/edict/query/struct.Modified.html
-[`NoSuchEntity`]: https://docs.rs/edict/1.0.0-rc4/edict/struct.NoSuchEntity.html
-[`Query`]: https://docs.rs/edict/1.0.0-rc4/edict/query/trait.Query.html
-[`Relation`]: https://docs.rs/edict/1.0.0-rc4/edict/relation/trait.Relation.html
-[`Res`]: https://docs.rs/edict/1.0.0-rc4/edict/resources/struct.Res.html
-[`ResMut`]: https://docs.rs/edict/1.0.0-rc4/edict/resources/struct.ResMut.html
-[`ResLocal`]: https://docs.rs/edict/1.0.0-rc4/edict/system/struct.ResLocal.html
-[`ResMutLocal`]: https://docs.rs/edict/1.0.0-rc4/edict/system/struct.ResMutLocal.html
-[`Scheduler`]: https://docs.rs/edict/1.0.0-rc4/edict/scheduler/struct.Scheduler.html
-[`ScopedExecutor`]: https://docs.rs/edict/1.0.0-rc4/edict/executor/trait.ScopedExecutor.html
+[`Entities`]: https://docs.rs/edict/1.0.0-rc6/edict/query/struct.Entities.html
+[`Entity`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/trait.Entity.html
+[`EntityBound`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/trait.EntityBound.html
+[`EntityId`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/struct.EntityId.html
+[`EntityLoc`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/struct.EntityLoc.html
+[`EntityRef`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/struct.EntityRef.html
+[`EntityRef::spawn_flow`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/struct.EntityRef.html#method.spawn_flow
+[`flow`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/index.html
+[`FlowEntity`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowEntity.html
+[`FlowEntity::spawn_flow`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowEntity.html#method.spawn_flow
+[`FlowEntity::wait_despawned`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowEntity.html#method.wait_despawned
+[`FlowEntity::wait_has_component`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowEntity.html#method.wait_has_component
+[`Flows`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.Flows.html
+[`Flows::execute`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.Flows.html#method.execute
+[`FlowWorld`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowWorld.html
+[`FlowWorld::spawn_flow`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowWorld.html#method.spawn_flow
+[`FlowWorld::spawn_flow_for`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.FlowWorld.html#method.spawn_flow_for
+[`FnArg`]: https://docs.rs/edict/1.0.0-rc6/edict/system/trait.FnArg.html
+[`IdRange`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/struct.IdRange.html
+[`IdRangeAllocator`]: https://docs.rs/edict/1.0.0-rc6/edict/entity/trait.IdRangeAllocator.html
+[`IntoSystem`]: https://docs.rs/edict/1.0.0-rc6/edict/system/trait.IntoSystem.html
+[`LocalActionEncoder`]: https://docs.rs/edict/1.0.0-rc6/edict/action/struct.LocalActionEncoder.html
+[`Modified`]: https://docs.rs/edict/1.0.0-rc6/edict/query/struct.Modified.html
+[`NoSuchEntity`]: https://docs.rs/edict/1.0.0-rc6/edict/struct.NoSuchEntity.html
+[`Query`]: https://docs.rs/edict/1.0.0-rc6/edict/query/trait.Query.html
+[`Relation`]: https://docs.rs/edict/1.0.0-rc6/edict/relation/trait.Relation.html
+[`Res`]: https://docs.rs/edict/1.0.0-rc6/edict/resources/struct.Res.html
+[`ResMut`]: https://docs.rs/edict/1.0.0-rc6/edict/resources/struct.ResMut.html
+[`ResLocal`]: https://docs.rs/edict/1.0.0-rc6/edict/system/struct.ResLocal.html
+[`ResMutLocal`]: https://docs.rs/edict/1.0.0-rc6/edict/system/struct.ResMutLocal.html
+[`Scheduler`]: https://docs.rs/edict/1.0.0-rc6/edict/scheduler/struct.Scheduler.html
+[`Scheduler::run_rayon`]: https://docs.rs/edict/1.0.0-rc6/edict/scheduler/struct.Scheduler.html#method.run_rayon
+[`Scheduler::run_threaded`]: https://docs.rs/edict/1.0.0-rc6/edict/scheduler/struct.Scheduler.html#method.run_threaded
+[`Scheduler::run_with`]: https://docs.rs/edict/1.0.0-rc6/edict/scheduler/struct.Scheduler.html#method.run_with
+[`ScopedExecutor`]: https://docs.rs/edict/1.0.0-rc6/edict/scheduler/trait.ScopedExecutor.html
 [`Send`]: https://doc.rust-lang.org/std/marker/trait.Send.html
 [`Sized`]: https://doc.rust-lang.org/std/marker/trait.Sized.html
-[`State`]: https://docs.rs/edict/1.0.0-rc4/edict/system/struct.State.html
+[`State`]: https://docs.rs/edict/1.0.0-rc6/edict/system/struct.State.html
 [`std::error::Error`]: https://doc.rust-lang.org/std/error/trait.Error.html
 [`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
-[`System`]: https://docs.rs/edict/1.0.0-rc4/edict/system/trait.System.html
+[`System`]: https://docs.rs/edict/1.0.0-rc6/edict/system/trait.System.html
 [`TypeId`]: https://doc.rust-lang.org/std/any/struct.TypeId.html
 [`Vec`]: https://doc.rust-lang.org/std/vec/struct.Vec.html
-[`View`]: https://docs.rs/edict/1.0.0-rc4/edict/view/type.View.html
-[`ViewCell`]: https://docs.rs/edict/1.0.0-rc4/edict/view/type.ViewCell.html
-[`ViewMut`]: https://docs.rs/edict/1.0.0-rc4/edict/view/type.ViewMut.html
-[`ViewRef`]: https://docs.rs/edict/1.0.0-rc4/edict/view/type.ViewRef.html
-[`WakeOnDrop`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/struct.WakeOnDrop.html
-[`World`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.World.html
-[`World::drop`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.World.html#method.drop
-[`World::epoch`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.World.html#method.epoch
-[`World::spawn_flow`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.World.html#method.spawn_flow
-[`World::spawn_flow_for`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.World.html#method.spawn_flow_for
-[`WorldBuilder`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.WorldBuilder.html
-[`WorldLocal`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.WorldLocal.html
-[`WorldLocal::defer*`]: https://docs.rs/edict/1.0.0-rc4/edict/world/struct.WorldLocal.html#method.defer
-[`yield_now!`]: https://docs.rs/edict/1.0.0-rc4/edict/flow/macro.yield_now.html
+[`View`]: https://docs.rs/edict/1.0.0-rc6/edict/view/type.View.html
+[`ViewCell`]: https://docs.rs/edict/1.0.0-rc6/edict/view/type.ViewCell.html
+[`ViewMut`]: https://docs.rs/edict/1.0.0-rc6/edict/view/type.ViewMut.html
+[`ViewRef`]: https://docs.rs/edict/1.0.0-rc6/edict/view/type.ViewRef.html
+[`WakeOnDrop`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/struct.WakeOnDrop.html
+[`World`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.World.html
+[`World::drop`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.World.html#method.drop
+[`World::epoch`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.World.html#method.epoch
+[`World::spawn_flow`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.World.html#method.spawn_flow
+[`World::spawn_flow_for`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.World.html#method.spawn_flow_for
+[`WorldBuilder`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.WorldBuilder.html
+[`WorldLocal`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.WorldLocal.html
+[`WorldLocal::defer*`]: https://docs.rs/edict/1.0.0-rc6/edict/world/struct.WorldLocal.html#method.defer
+[`yield_now!`]: https://docs.rs/edict/1.0.0-rc6/edict/flow/macro.yield_now.html
 
 ## License
 

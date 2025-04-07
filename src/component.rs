@@ -373,7 +373,13 @@ pub trait Component: Sized + 'static {
         core::any::type_name::<Self>()
     }
 
-    /// Hook that is executed when entity with component is dropped.
+    /// Hook that is executed when component is dropped.
+    /// Either due to entity being despawned or [`World::drop`], [`World::drop_erased`], [`World::drop_batch`] or [`World::drop_erased_batch`]
+    ///
+    /// [`World::drop`]: edict::world::World::drop
+    /// [`World::drop_erased`]: edict::world::World::drop_erased
+    /// [`World::drop_batch`]: edict::world::World::drop_batch
+    /// [`World::drop_erased_batch`]: edict::world::World::drop_erased_batch
     #[inline(always)]
     fn on_drop(&mut self, id: EntityId, encoder: LocalActionEncoder) {
         let _ = id;

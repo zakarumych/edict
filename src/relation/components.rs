@@ -209,7 +209,7 @@ where
     #[inline(always)]
     fn on_drop(&mut self, origin: EntityId, mut encoder: LocalActionEncoder) {
         if !self.targets().is_empty() {
-            R::on_origin_despawn(origin, self.targets(), encoder.reborrow());
+            R::on_origin_drop(origin, self.targets(), encoder.reborrow());
 
             if R::SYMMETRIC {
                 Self::on_target_drop(
@@ -343,7 +343,7 @@ where
         debug_assert!(!R::SYMMETRIC);
 
         if !self.origins.is_empty() {
-            R::on_target_despawn(&self.origins, target, encoder.reborrow());
+            R::on_target_drop(&self.origins, target, encoder.reborrow());
 
             OriginComponent::<R>::on_target_drop(
                 self.origins.iter().map(|r| r.0),

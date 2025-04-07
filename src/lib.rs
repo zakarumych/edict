@@ -306,8 +306,9 @@
 //! When "flow" feature is enabled and "std" is not, extern functions are used to implement TLS.
 //! Application must provide implementation for these functions or linking will fail.
 //!
-//! When "scheduler" feature is enabled and "std" is not, external functions are used to implement thread parking.
-//! Application must provide implementation for these functions or linking will fail.
+//! "scheduler" feature enables [`Scheduler`] type.
+//! "threaded-scheduler" feature enables multithreaded execution for [`Scheduler`], using [`Scheduler::run_with`] and [`Scheduler::run_threaded`].
+//! "rayon-scheduler" feature enables rayon based execution for [`Scheduler`] using [`Scheduler::run_rayon`].
 //!
 //! [`!Send`]: core::marker::Send
 //! [`!Sized`]: core::marker::Sized
@@ -351,7 +352,10 @@
 //! [`ResLocal`]: crate::system::ResLocal
 //! [`ResMutLocal`]: crate::system::ResMutLocal
 //! [`Scheduler`]: crate::scheduler::Scheduler
-//! [`ScopedExecutor`]: crate::executor::ScopedExecutor
+//! [`Scheduler::run_rayon`]: crate::scheduler::Scheduler::run_rayon
+//! [`Scheduler::run_threaded`]: crate::scheduler::Scheduler::run_threaded
+//! [`Scheduler::run_with`]: crate::scheduler::Scheduler::run_with
+//! [`ScopedExecutor`]: crate::scheduler::ScopedExecutor
 //! [`State`]: crate::system::State
 //! [`System`]: crate::system::System
 //! [`TypeId`]: core::any::TypeId

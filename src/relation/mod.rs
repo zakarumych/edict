@@ -101,7 +101,7 @@ pub trait Relation: Copy + 'static {
     }
 
     /// Hook that is called when relation is dropped
-    /// via [`World::drop_relation`] or similar method
+    /// via [`World::drop_relation`](crate::world::World::drop_relation) or similar method
     /// or is replaced and [`Relation::on_replace`] returns `true`.
     #[inline(always)]
     fn on_drop(self, origin: EntityId, target: EntityId, encoder: LocalActionEncoder) {
@@ -112,11 +112,7 @@ pub trait Relation: Copy + 'static {
 
     /// Hook that is called when origin is despawned.
     #[inline(always)]
-    fn on_origin_despawn(
-        origin: EntityId,
-        targets: &[(EntityId, Self)],
-        encoder: LocalActionEncoder,
-    ) {
+    fn on_origin_drop(origin: EntityId, targets: &[(EntityId, Self)], encoder: LocalActionEncoder) {
         let _ = origin;
         let _ = targets;
         let _ = encoder;
@@ -124,11 +120,7 @@ pub trait Relation: Copy + 'static {
 
     /// Hook that is called when target is despawned.
     #[inline(always)]
-    fn on_target_despawn(
-        origins: &[(EntityId, Self)],
-        target: EntityId,
-        encoder: LocalActionEncoder,
-    ) {
+    fn on_target_drop(origins: &[(EntityId, Self)], target: EntityId, encoder: LocalActionEncoder) {
         let _ = origins;
         let _ = target;
         let _ = encoder;

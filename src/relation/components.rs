@@ -238,7 +238,6 @@ where
     }
 
     #[inline(always)]
-    #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         Vec::new()
     }
@@ -366,7 +365,6 @@ where
     }
 
     #[inline(always)]
-    #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         debug_assert!(!R::SYMMETRIC);
         Vec::new()

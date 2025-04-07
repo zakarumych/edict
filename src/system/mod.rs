@@ -3,7 +3,9 @@
 mod func;
 
 use alloc::vec::Vec;
+use amity::ring_buffer::RingBuffer;
 use core::{any::TypeId, ptr::NonNull};
+use smallvec::SmallVec;
 
 use crate::{
     action::{ActionBuffer, ActionBufferSliceExt},
@@ -25,15 +27,38 @@ pub use edict_proc::system;
 /// Systems must work with any action queue type - the API uses `dyn ActionBufferQueue`.
 pub trait ActionBufferQueue {
     /// Returns action encoder from the queue.
-    fn get<'a>(&self) -> ActionBuffer;
+    fn get<'a>(&mut self) -> ActionBuffer;
 
     /// Flushes action encoder back to the queue.
     fn flush(&mut self, buffer: ActionBuffer);
 }
 
 impl ActionBufferQueue for Vec<ActionBuffer> {
-    fn get(&self) -> ActionBuffer {
-        ActionBuffer::new()
+    fn get(&mut self) -> ActionBuffer {
+        self.pop().unwrap_or_else(ActionBuffer::new)
+    }
+
+    fn flush(&mut self, buffer: ActionBuffer) {
+        self.push(buffer);
+    }
+}
+
+impl ActionBufferQueue for RingBuffer<ActionBuffer> {
+    fn get(&mut self) -> ActionBuffer {
+        self.pop().unwrap_or_else(ActionBuffer::new)
+    }
+
+    fn flush(&mut self, buffer: ActionBuffer) {
+        self.push(buffer);
+    }
+}
+
+impl<const N: usize> ActionBufferQueue for SmallVec<[ActionBuffer; N]>
+where
+    [ActionBuffer; N]: smallvec::Array<Item = ActionBuffer>,
+{
+    fn get(&mut self) -> ActionBuffer {
+        self.pop().unwrap_or_else(ActionBuffer::new)
     }
 
     fn flush(&mut self, buffer: ActionBuffer) {

@@ -4,7 +4,9 @@
     "rust-analyzer.cargo.features": [
         "scheduler",
         "flow",
-        "std"
+        "std",
+        "threaded-scheduler",
+        "rayon-scheduler",
     ],
     "cSpell.words": [
         "despawn",

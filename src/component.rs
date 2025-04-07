@@ -368,6 +368,7 @@ impl ComponentBorrow {
 pub trait Component: Sized + 'static {
     /// Returns name of the component type.
     #[inline(always)]
+    #[must_use]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
     }
@@ -394,6 +395,7 @@ pub trait Component: Sized + 'static {
 
     /// Returns array of component borrows supported by the type.
     #[inline(always)]
+    #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         vec![ComponentBorrow::auto::<Self>()]
     }
@@ -436,6 +438,7 @@ pub struct ComponentInfo {
 impl ComponentInfo {
     /// Returns component information for specified component type.
     #[inline(always)]
+    #[must_use]
     pub fn of<T>() -> Self
     where
         T: Component,
@@ -455,6 +458,7 @@ impl ComponentInfo {
 
     /// Returns component information for specified external type.
     #[inline(always)]
+    #[must_use]
     pub fn external<T>() -> Self
     where
         T: 'static,
@@ -498,12 +502,14 @@ impl ComponentInfo {
 
     /// Returns `true` if specified type can be borrowed from this component.
     #[inline(always)]
+    #[must_use]
     pub fn has_borrow(&self, ty: TypeId) -> bool {
         self.borrows.iter().any(|b| b.target() == ty)
     }
 
     /// Returns `true` if specified type can be mutably borrowed from this component.
     #[inline(always)]
+    #[must_use]
     pub fn has_borrow_mut(&self, ty: TypeId) -> bool {
         self.borrows
             .iter()
@@ -696,6 +702,7 @@ where
 
     /// Finishes component registration.
     /// Returns resulting [`ComponentInfo`]
+    #[must_use]
     pub fn finish(self) -> &'a ComponentInfo {
         let mut me = ManuallyDrop::new(self);
         me.drop_impl();
@@ -931,6 +938,7 @@ unsafe fn final_drop<T>(ptr: NonNull<u8>, count: usize) {
 /// Value component properties and behavior.
 pub trait Value: 'static {
     /// Returns name of the component type.
+    #[must_use]
     fn name(&self) -> &'static str;
 }
 

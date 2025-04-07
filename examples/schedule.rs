@@ -36,7 +36,7 @@ fn main() {
 
         schedule.run_threaded(&mut world);
 
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "rayon-scheduler")]
         schedule.run_rayon(&mut world);
     }
 }

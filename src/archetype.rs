@@ -10,11 +10,10 @@ use core::{
     any::TypeId,
     cell::UnsafeCell,
     hint::unreachable_unchecked,
-    intrinsics::copy_nonoverlapping,
     iter::FromIterator,
     mem::{self, size_of, ManuallyDrop, MaybeUninit},
     ops::Deref,
-    ptr::{self, NonNull},
+    ptr::{self, copy_nonoverlapping, NonNull},
 };
 
 use atomicell::borrow::{

@@ -270,7 +270,7 @@ impl ActionSender {
     #[inline(always)]
     fn push_fn(&self, fun: impl FnOnce(&mut World) + Send + 'static) {
         let action = ActionFn::new(fun);
-        self.shared.queue.push(action);
+        self.shared.queue.push_sync(action);
         self.shared.non_empty.store(true, Ordering::Relaxed);
     }
 

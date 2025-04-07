@@ -118,33 +118,39 @@ pub struct FutureEntityFlow<F> {
     fut: F,
 }
 
+impl<F> FutureEntityFlow<F> {
+    fn pin_project(self: Pin<&mut Self>) -> (Pin<&mut F>, EntityId) {
+        let me = unsafe { self.get_unchecked_mut() };
+        let id = me.id;
+        let fut = unsafe { Pin::new_unchecked(&mut me.fut) };
+        (fut, id)
+    }
+}
+
 impl<F> Flow for FutureEntityFlow<F>
 where
     F: Future<Output = ()> + Send,
 {
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         // Safety: `me` never moves.
-        let me = unsafe { self.get_unchecked_mut() };
+        let (fut, id) = self.pin_project();
 
         {
             // Safety: world reference does not escape this scope.
             let world = unsafe { get_flow_world() };
 
-            if !world.is_alive(me.id) {
+            if !world.is_alive(id) {
                 // Terminate flow if entity is removed.
                 return Poll::Ready(());
             };
         }
-
-        // Safety: Pin projection.
-        let fut = unsafe { Pin::new_unchecked(&mut me.fut) };
 
         let poll = fut.poll(cx);
 
         // Safety: world reference does not escape this scope.
         let world = unsafe { get_flow_world() };
 
-        let mut e = match world.entity(me.id) {
+        let mut e = match world.entity(id) {
             Err(NoSuchEntity) => {
                 // Terminate flow if entity is removed.
                 return Poll::Ready(());

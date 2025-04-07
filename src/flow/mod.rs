@@ -231,7 +231,7 @@ impl Wake for FlowWaker {
         let Some(flip) = self.flip.upgrade() else {
             return;
         };
-        flip.push(self.task_id);
+        flip.push_sync(self.task_id);
     }
 }
 

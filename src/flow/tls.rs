@@ -62,7 +62,7 @@ impl Drop for WorldGuard<'_> {
 ///
 /// `WorldGuard` must exist.
 ///
-/// Returns reference with unboud lifetime.
+/// Returns reference with unbound lifetime.
 /// The caller is responsible to ensure that the reference
 /// is not used after current `Guard` is dropped.
 pub(super) unsafe fn get_world_mut<'a>() -> &'a mut WorldLocal {
@@ -70,7 +70,7 @@ pub(super) unsafe fn get_world_mut<'a>() -> &'a mut WorldLocal {
     let world = WORLD_TLS.with(|cell| cell.get());
 
     #[cfg(not(feature = "std"))]
-    let world = edict_get_flow_world_tls().map(NonNull::cast);
+    let world = unsafe { edict_get_flow_world_tls() }.map(NonNull::cast);
 
     unsafe { world.unwrap().as_mut() }
 }

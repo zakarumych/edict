@@ -39,6 +39,8 @@ mod threaded;
 /// # Example
 ///
 /// ```
+/// # #[cfg(feature = "threaded-scheduler")]
+/// # {
 /// # use edict::{world::World, resources::Res, scheduler::Scheduler, system::IntoSystem};
 ///
 /// let mut world = World::new();
@@ -56,6 +58,7 @@ mod threaded;
 /// });
 ///
 /// scheduler.run_threaded(&mut world);
+/// # }
 /// ```
 pub struct Scheduler {
     systems: Vec<ScheduledSystem>,

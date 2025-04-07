@@ -2,7 +2,7 @@
 members = ["proc-lib", "proc"]
 
 [workspace.package]
-version = "1.0.0-rc6"
+version = "1.0.0-rc7"
 edition = "2021"
 authors = ["Zakarum <zaq.dev@icloud.com>"]
 license = "MIT OR Apache-2.0"

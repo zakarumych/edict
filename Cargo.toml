@@ -44,7 +44,7 @@ threaded-scheduler = ["std", "scheduler"]
 rayon-scheduler = ["dep:rayon", "threaded-scheduler"]
 
 [dependencies]
-edict-proc = { version = "=1.0.0-rc6", path = "proc" }
+edict-proc = { version = "=1.0.0-rc7", path = "proc" }
 amity = { version = "0.6.3", default-features = false, features = ["alloc", "flip-queue"] }
 hashbrown = { version = "0.15", default-features = false, features = [
     "default-hasher",

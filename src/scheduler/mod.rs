@@ -33,6 +33,7 @@ use crate::{
 #[cfg(feature = "threaded-scheduler")]
 mod threaded;
 
+#[cfg(feature = "threaded-scheduler")]
 pub use self::threaded::ScopedExecutor;
 
 /// Scheduler that starts systems in order of their registration.

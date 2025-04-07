@@ -1,4 +1,4 @@
-name: badge
+name: test-main
 
 on:
   push:

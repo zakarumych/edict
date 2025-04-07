@@ -1,9 +1,5 @@
+# Edict - ECS in Rust
 
-[![crates](https://img.shields.io/crates/v/edict.svg?style=for-the-badge&label=edict)](https://crates.io/crates/edict)
-[![docs](https://img.shields.io/badge/docs.rs-edict-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white)](https://docs.rs/edict)
-[![actions](https://img.shields.io/github/actions/workflow/status/zakarumych/edict/badge.yml?branch=main&style=for-the-badge)](https://github.com/zakarumych/edict/actions/workflows/badge.yml)
-[![MIT/Apache](https://img.shields.io/badge/license-MIT%2FApache-blue.svg?style=for-the-badge)](COPYING)
-![loc](https://img.shields.io/endpoint?url=https://ghloc.vercel.app/api/zakarumych/edict/badge?filter=.py$,.scss$,.rs$&style=for-the-badge&logoColor=white&label=Lines%20of%20Code)
 Edict is a fast, powerful and ergonomic ECS crate that expands traditional ECS feature set.
 Written in Rust by your fellow 🦀
 

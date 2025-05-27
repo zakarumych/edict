@@ -66,7 +66,7 @@ pub trait Relation: Copy + 'static {
     /// Returns name of the relation type.
     ///
     /// Can be overridden to provide custom name.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
@@ -81,7 +81,7 @@ pub trait Relation: Copy + 'static {
     /// If returns `true`, `on_drop` will be called.
     ///
     /// Does nothing by default and returns `true`, causing `on_drop` to be called.
-    #[inline(always)]
+    #[inline]
     fn on_replace(
         old_value: &mut Self,
         new_value: &Self,
@@ -103,7 +103,7 @@ pub trait Relation: Copy + 'static {
     /// Hook that is called when relation is dropped
     /// via [`World::drop_relation`](crate::world::World::drop_relation) or similar method
     /// or is replaced and [`Relation::on_replace`] returns `true`.
-    #[inline(always)]
+    #[inline]
     fn on_drop(self, origin: EntityId, target: EntityId, encoder: LocalActionEncoder) {
         let _ = origin;
         let _ = target;
@@ -111,7 +111,7 @@ pub trait Relation: Copy + 'static {
     }
 
     /// Hook that is called when origin is despawned.
-    #[inline(always)]
+    #[inline]
     fn on_origin_drop(origin: EntityId, targets: &[(EntityId, Self)], encoder: LocalActionEncoder) {
         let _ = origin;
         let _ = targets;
@@ -119,7 +119,7 @@ pub trait Relation: Copy + 'static {
     }
 
     /// Hook that is called when target is despawned.
-    #[inline(always)]
+    #[inline]
     fn on_target_drop(origins: &[(EntityId, Self)], target: EntityId, encoder: LocalActionEncoder) {
         let _ = origins;
         let _ = target;

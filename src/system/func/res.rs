@@ -22,7 +22,7 @@ pub struct ResState<T> {
 }
 
 impl<T> Default for ResState<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -43,39 +43,39 @@ where
 {
     type Arg<'a> = Res<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
     /// Returns access type to the specified component type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
         if ty == type_id::<T>() {
             Some(Access::Read)
@@ -84,7 +84,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -105,7 +105,7 @@ pub struct ResMutState<T> {
 }
 
 impl<T> Default for ResMutState<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -126,39 +126,39 @@ where
 {
     type Arg<'a> = ResMut<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
     /// Returns access type to the specified component type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
         if ty == type_id::<T>() {
             Some(Access::Write)
@@ -167,7 +167,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -196,7 +196,7 @@ where
 {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         self.inner.deref()
     }
@@ -207,7 +207,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
-    #[inline(always)]
+    #[inline]
     pub fn inner(self) -> Res<'a, T> {
         self.inner
     }
@@ -219,7 +219,7 @@ pub struct ResNoSyncState<T> {
 }
 
 impl<T> Default for ResNoSyncState<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -240,39 +240,39 @@ where
 {
     type Arg<'a> = ResLocal<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
     /// Returns access type to the specified component type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
         if ty == type_id::<T>() {
             Some(Access::Read)
@@ -281,7 +281,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -312,7 +312,7 @@ where
 {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         self.inner.deref()
     }
@@ -322,7 +322,7 @@ impl<'a, T> DerefMut for ResMutLocal<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.inner.deref_mut()
     }
@@ -333,7 +333,7 @@ where
     T: ?Sized,
 {
     /// Returns inner `Ref` guard.
-    #[inline(always)]
+    #[inline]
     pub fn inner(self) -> ResMut<'a, T> {
         self.inner
     }
@@ -345,7 +345,7 @@ pub struct ResMutNoSendState<T> {
 }
 
 impl<T> Default for ResMutNoSendState<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Self {
             marker: PhantomData,
@@ -366,39 +366,39 @@ where
 {
     type Arg<'a> = ResMutLocal<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
     /// Returns access type to the specified component type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
     /// Returns access type to the specified resource type this argument may perform.
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
         if ty == type_id::<T>() {
             Some(Access::Write)
@@ -407,7 +407,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,

@@ -84,7 +84,7 @@ where
 }
 
 impl FlowWorld {
-    #[inline(always)]
+    #[inline]
     pub(super) fn new() -> Self {
         FlowWorld {
             marker: PhantomData,
@@ -129,7 +129,7 @@ impl FlowWorld {
     /// Returns a future that will poll the closure with world reference.
     /// The future will resolve to closure result in [`Poll::Ready`].
     /// The closure may use task context to register wakers.
-    #[inline(always)]
+    #[inline]
     pub fn poll<F, R>(self, f: F) -> PollWorld<F>
     where
         F: FnMut(&mut WorldLocal, &mut Context) -> Poll<R>,
@@ -231,7 +231,7 @@ impl FlowWorld {
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    #[inline(always)]
+    #[inline]
     pub fn try_get_cloned<T>(self, entity: impl Entity) -> Result<T, EntityError>
     where
         T: Clone + 'static,
@@ -261,7 +261,7 @@ impl FlowWorld {
     /// world.insert(entity, ExampleComponent).unwrap();
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert<T>(self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -292,7 +292,7 @@ impl FlowWorld {
     /// world.insert_external(entity, 42u32).unwrap();
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external<T>(self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -322,7 +322,7 @@ impl FlowWorld {
     /// world.with(entity, || ExampleComponent).unwrap();
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(self, entity: impl Entity, f: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -355,7 +355,7 @@ impl FlowWorld {
     /// world.with_external(entity, || 42u32).unwrap();
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external<T>(
         self,
         entity: impl Entity,
@@ -393,7 +393,7 @@ impl FlowWorld {
     /// world.insert_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
@@ -432,7 +432,7 @@ impl FlowWorld {
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_bundle<B>(
         self,
         entity: impl Entity,
@@ -467,7 +467,7 @@ impl FlowWorld {
     /// world.insert_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
@@ -505,7 +505,7 @@ impl FlowWorld {
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external_bundle<B>(self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
@@ -523,7 +523,7 @@ impl FlowWorld {
     /// Returns `Ok(Some(comp))` if component was removed.
     /// Returns `Ok(None)` if entity does not have component of this type.
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn remove<T>(self, entity: impl Entity) -> Result<Option<T>, NoSuchEntity>
     where
         T: 'static,
@@ -538,7 +538,7 @@ impl FlowWorld {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop<T>(self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -552,7 +552,7 @@ impl FlowWorld {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased(self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { self.get() };
@@ -585,7 +585,7 @@ impl FlowWorld {
     /// world.drop_bundle::<(ExampleComponent, OtherComponent)>(entity).unwrap();
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn drop_bundle<B>(self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
@@ -609,7 +609,7 @@ impl FlowWorld {
     /// If relation is symmetric then it is added in both directions.
     /// If relation is exclusive, then previous relation on origin is replaced, otherwise relation is added.
     /// If relation is exclusive and symmetric, then previous relation on target is replaced, otherwise relation is added.
-    #[inline(always)]
+    #[inline]
     pub fn insert_relation<R>(
         self,
         origin: impl Entity,
@@ -632,7 +632,7 @@ impl FlowWorld {
     ///
     /// When relation is removed, [`Relation::on_drop`] behavior is not executed.
     /// For symmetric relations [`Relation::on_target_drop`] is also not executed.
-    #[inline(always)]
+    #[inline]
     pub fn remove_relation<R>(
         self,
         origin: impl Entity,
@@ -653,7 +653,7 @@ impl FlowWorld {
     /// If relation does not exist, does nothing.
     ///
     /// When relation is dropped, [`Relation::on_drop`] behavior is executed.
-    #[inline(always)]
+    #[inline]
     pub fn drop_relation<R>(
         self,
         origin: impl Entity,
@@ -828,7 +828,7 @@ impl FlowWorld {
     /// let mut entity = world.spawn_empty();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_empty(self) -> FlowEntity {
         // Safety: world reference does not escape this scope.
         let world = unsafe { self.get() };
@@ -857,7 +857,7 @@ impl FlowWorld {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one<T>(self, component: T) -> FlowEntity
     where
         T: Component,
@@ -894,7 +894,7 @@ impl FlowWorld {
     /// let mut entity = world.spawn_one_external(42u32);
     /// assert!(entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one_external<T>(self, component: T) -> FlowEntity
     where
         T: 'static,
@@ -926,7 +926,7 @@ impl FlowWorld {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn<B>(self, bundle: B) -> FlowEntity
     where
         B: DynamicComponentBundle,
@@ -957,7 +957,7 @@ impl FlowWorld {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_at<B>(self, id: EntityId, bundle: B) -> FlowEntity
     where
         B: DynamicComponentBundle,
@@ -988,7 +988,7 @@ impl FlowWorld {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_or_insert<B>(self, id: EntityId, bundle: B) -> FlowEntity
     where
         B: DynamicComponentBundle,
@@ -1026,7 +1026,7 @@ impl FlowWorld {
     /// assert_eq!(entity.remove(), Some(42u32));
     /// assert!(!entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_external<B>(self, bundle: B) -> FlowEntity
     where
         B: DynamicBundle,
@@ -1064,7 +1064,7 @@ impl FlowWorld {
     /// assert_eq!(entity.remove(), Some(42u32));
     /// assert!(!entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_external_at<B>(self, id: EntityId, bundle: B) -> FlowEntity
     where
         B: DynamicBundle,
@@ -1091,7 +1091,7 @@ impl FlowWorld {
     ///
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch<B, I>(self, bundles: I) -> SpawnBatch<I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -1130,7 +1130,7 @@ impl FlowWorld {
     /// on first call to [`FlowWorld::spawn`], [`FlowWorld::spawn_one`],  [`FlowWorld::spawn_batch`], [`FlowWorld::insert`] or [`FlowWorld::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`FlowWorld::ensure_component_registered`].
     /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`FlowWorld::ensure_external_registered`].
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch_external<B, I>(self, bundles: I) -> SpawnBatch<I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -1159,7 +1159,7 @@ impl FlowWorld {
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn despawn(self, entity: impl Entity) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { self.get() };
@@ -1306,7 +1306,7 @@ where
     /// never spawn entities.
     ///
     /// This method won't return IDs of spawned entities.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_all(&mut self) {
         self.for_each(|_| {});
     }
@@ -1319,7 +1319,7 @@ where
 {
     type Item = FlowEntity;
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<FlowEntity> {
         let bundle = self.bundles.next()?;
 
@@ -1329,7 +1329,7 @@ where
         Some(FlowEntity::new(world.spawn_external(bundle).id()))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<FlowEntity> {
         let bundle = self.bundles.nth(n)?;
 
@@ -1339,12 +1339,12 @@ where
         Some(FlowEntity::new(world.spawn_external(bundle).id()))
     }
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.bundles.size_hint()
     }
 
-    #[inline(always)]
+    #[inline]
     fn fold<T, F>(self, init: T, mut f: F) -> T
     where
         F: FnMut(T, FlowEntity) -> T,
@@ -1364,7 +1364,7 @@ where
     I: ExactSizeIterator<Item = B>,
     B: Bundle,
 {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.bundles.len()
     }

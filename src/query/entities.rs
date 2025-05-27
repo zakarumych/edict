@@ -21,7 +21,7 @@ pub struct EntitiesFetch<'a> {
 unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
     type Item = EntityLoc<'a>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         EntitiesFetch {
             archetype: u32::MAX,
@@ -29,7 +29,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> EntityLoc<'a> {
         let id = unsafe { *self.entities.get_unchecked(idx as usize) };
         EntityLoc::from_parts(id, Location::new(self.archetype, idx))
@@ -39,7 +39,7 @@ unsafe impl<'a> Fetch<'a> for EntitiesFetch<'a> {
 unsafe impl<'a> BatchFetch<'a> for EntitiesFetch<'a> {
     type Batch = &'a [EntityId];
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a [EntityId] {
         debug_assert!(end >= start);
 
@@ -57,21 +57,21 @@ impl AsQuery for Entities {
 }
 
 impl IntoQuery for Entities {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
 }
 
 impl DefaultQuery for Entities {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Entities
     }
 }
 
 impl QueryArg for Entities {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Entities
     }
@@ -83,20 +83,20 @@ unsafe impl Query for Entities {
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         arch_idx: u32,
@@ -109,7 +109,7 @@ unsafe impl Query for Entities {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<EntityLoc<'a>>
     where
         EntityId: 'a,

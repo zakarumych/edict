@@ -43,7 +43,7 @@ where
 {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         self.inner.deref()
     }
@@ -71,7 +71,7 @@ impl<'a, T, U> PartialEq<U> for Res<'a, T>
 where
     T: PartialEq<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &U) -> bool {
         <T as PartialEq<U>>::eq(self, other)
     }
@@ -81,7 +81,7 @@ impl<'a, T, U> PartialOrd<U> for Res<'a, T>
 where
     T: PartialOrd<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn partial_cmp(&self, other: &U) -> Option<Ordering> {
         <T as PartialOrd<U>>::partial_cmp(self, other)
     }
@@ -91,7 +91,7 @@ impl<'a, T> Hash for Res<'a, T>
 where
     T: Hash + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -104,7 +104,7 @@ impl<'a, T> Borrow<T> for Res<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn borrow(&self) -> &T {
         self
     }
@@ -114,7 +114,7 @@ impl<'a, T, U> AsRef<U> for Res<'a, T>
 where
     T: AsRef<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &U {
         <T as AsRef<U>>::as_ref(self)
     }
@@ -160,7 +160,7 @@ where
     /// // Immutable borrow panics.
     /// world.get_resource_mut::<i32>();
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn leak(r: Res<'a, T>) -> &'a T {
         Ref::leak(r.inner)
     }
@@ -190,7 +190,7 @@ where
 {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         self.inner.deref()
     }
@@ -200,7 +200,7 @@ impl<'a, T> DerefMut for ResMut<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.inner.deref_mut()
     }
@@ -228,7 +228,7 @@ impl<'a, T, U> PartialEq<U> for ResMut<'a, T>
 where
     T: PartialEq<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &U) -> bool {
         <T as PartialEq<U>>::eq(self, other)
     }
@@ -238,7 +238,7 @@ impl<'a, T, U> PartialOrd<U> for ResMut<'a, T>
 where
     T: PartialOrd<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn partial_cmp(&self, other: &U) -> Option<Ordering> {
         <T as PartialOrd<U>>::partial_cmp(self, other)
     }
@@ -248,7 +248,7 @@ impl<'a, T> Hash for ResMut<'a, T>
 where
     T: Hash + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -261,7 +261,7 @@ impl<'a, T> Borrow<T> for ResMut<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn borrow(&self) -> &T {
         self
     }
@@ -271,7 +271,7 @@ impl<'a, T> BorrowMut<T> for ResMut<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn borrow_mut(&mut self) -> &mut T {
         self
     }
@@ -281,7 +281,7 @@ impl<'a, T, U> AsRef<U> for ResMut<'a, T>
 where
     T: AsRef<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn as_ref(&self) -> &U {
         <T as AsRef<U>>::as_ref(self)
     }
@@ -291,7 +291,7 @@ impl<'a, T, U> AsMut<U> for ResMut<'a, T>
 where
     T: AsMut<U> + ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn as_mut(&mut self) -> &mut U {
         <T as AsMut<U>>::as_mut(self)
     }
@@ -332,7 +332,7 @@ where
     /// // Immutable borrow panics.
     /// world.get_resource::<i32>();
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn leak(r: ResMut<'a, T>) -> &'a mut T {
         RefMut::leak(r.inner)
     }
@@ -372,7 +372,7 @@ impl Debug for Resources {
 
 impl Resources {
     /// Returns a new empty resource container.
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         Resources {
             resources: HashMap::new(),
@@ -434,7 +434,7 @@ impl Resources {
 
     /// Returns some reference to `Sync` resource.
     /// Returns none if resource is not found.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn get<T: Sync + 'static>(&self) -> Option<Res<T>> {
         unsafe {
@@ -447,7 +447,7 @@ impl Resources {
 
     /// Returns some mutable reference to `Send` resource.
     /// Returns none if resource is not found.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn get_mut<T: Send + 'static>(&self) -> Option<ResMut<T>> {
         unsafe {
@@ -468,7 +468,7 @@ impl Resources {
     ///
     /// If `T` is `Sync` then this method is always safe.
     /// In this case prefer to use [`get`] method instead.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub unsafe fn get_local<T: 'static>(&self) -> Option<Res<T>> {
         let id = type_id::<T>();
@@ -503,7 +503,7 @@ impl Resources {
     ///
     /// If `T` is `Send` then this method is always safe.
     /// In this case prefer to use [`get_mut`] method instead.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<ResMut<T>> {
         let id = type_id::<T>();
@@ -537,7 +537,7 @@ impl Resources {
     }
 
     /// Returns iterator over resource types.
-    #[inline(always)]
+    #[inline]
     pub fn resource_types(&self) -> impl Iterator<Item = TypeId> + '_ {
         self.resources.keys().copied()
     }

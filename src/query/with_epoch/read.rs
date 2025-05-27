@@ -27,7 +27,7 @@ where
 {
     type Item = (&'a T, EpochId);
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         WithEpochFetchRead {
             ptr: NonNull::dangling(),
@@ -36,7 +36,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a T, EpochId) {
         let epoch = unsafe { *self.epochs.as_ptr().add(idx as usize) };
         let item = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
@@ -104,24 +104,24 @@ where
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.0.component_access(comp)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.0.visit_archetype(archetype)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         unsafe {
             self.0.access_archetype(archetype, f);
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

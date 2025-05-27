@@ -89,7 +89,7 @@ impl EntitySet {
     /// Spawns entity with new ID in specified archetype.
     /// Calls provided closure to place entity into archetype and acquire index.
     /// Returns entity ID and location.
-    #[inline(always)]
+    #[inline]
     pub fn spawn(&mut self, arch: u32, f: impl FnOnce(EntityId) -> u32) -> (EntityId, Location) {
         let Some(id) = self.id_allocator.next() else {
             panic!("Entity id allocator is exhausted");
@@ -105,7 +105,7 @@ impl EntitySet {
     /// If entity with specified ID already exists, returns `false` and its location.
     /// Otherwise calls provided closure to place entity into archetype and acquire index.
     /// And then returns `true` and entity location.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_at(
         &mut self,
         id: EntityId,
@@ -126,7 +126,7 @@ impl EntitySet {
     /// Entity is place into "reserved" archetype at index `u32::MAX`.
     /// Allocated entities must be spawned with `spawn_allocated`
     /// before any other entity is spawned.
-    #[inline(always)]
+    #[inline]
     pub fn alloc(&self) -> EntityLoc<'_> {
         let idx = self.reserve_counter.fetch_add(1, Ordering::Relaxed);
 
@@ -145,7 +145,7 @@ impl EntitySet {
     }
 
     /// Spawns all allocated entities.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_allocated(&mut self, mut f: impl FnMut(EntityId) -> u32) {
         let reserved = core::mem::replace(self.reserve_counter.get_mut(), 0);
         if reserved == 0 {
@@ -167,19 +167,19 @@ impl EntitySet {
     }
 
     /// Despawns entity with specified ID.
-    #[inline(always)]
+    #[inline]
     pub fn despawn(&mut self, id: EntityId) -> Option<Location> {
         self.map.remove(&id.bits())
     }
 
     /// Set location for entity with specified ID.
-    #[inline(always)]
+    #[inline]
     pub fn set_location(&mut self, id: EntityId, loc: Location) {
         self.map.insert(id.bits(), loc);
     }
 
     /// Returns location for entity with specified ID.
-    #[inline(always)]
+    #[inline]
     pub fn get_location(&self, id: EntityId) -> Option<Location> {
         match self.map.get(&id.bits()) {
             None => {
@@ -197,7 +197,7 @@ impl EntitySet {
     }
 
     /// Returns location for entity with specified ID.
-    #[inline(always)]
+    #[inline]
     pub fn is_alive(&self, id: EntityId) -> bool {
         if self.map.contains_key(&id.bits()) {
             return true;

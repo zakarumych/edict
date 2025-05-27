@@ -33,7 +33,7 @@ impl World {
     /// world.insert(entity, ExampleComponent).unwrap();
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert<T>(&mut self, entity: impl Entity, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -62,7 +62,7 @@ impl World {
     /// world.insert_external(entity, 42u32).unwrap();
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external<T>(
         &mut self,
         entity: impl Entity,
@@ -94,7 +94,7 @@ impl World {
     /// world.with(entity, || ExampleComponent).unwrap();
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(
         &mut self,
         entity: impl Entity,
@@ -126,7 +126,7 @@ impl World {
     /// world.with_external(entity, || 42u32).unwrap();
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external<T>(
         &mut self,
         entity: impl Entity,
@@ -229,7 +229,7 @@ impl World {
     /// world.insert_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_bundle<B>(&mut self, entity: impl Entity, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
@@ -266,7 +266,7 @@ impl World {
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_bundle<B>(
         &mut self,
         entity: impl Entity,
@@ -301,7 +301,7 @@ impl World {
     /// world.insert_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_bundle<B>(
         &mut self,
         entity: impl Entity,
@@ -338,7 +338,7 @@ impl World {
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external_bundle<B>(
         &mut self,
         entity: impl Entity,
@@ -477,7 +477,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_defer<T>(&self, entity: impl Entity, component: T)
     where
         T: Component,
@@ -517,7 +517,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_defer<T>(&self, entity: impl Entity, component: T)
     where
         T: 'static,
@@ -556,7 +556,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_defer<T>(&self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
     where
         T: Component,
@@ -596,7 +596,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external_defer<T>(&self, entity: impl Entity, f: impl FnOnce() -> T + 'static)
     where
         T: 'static,
@@ -654,7 +654,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
     where
         B: DynamicComponentBundle + 'static,
@@ -701,7 +701,7 @@ impl WorldLocal {
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
     where
         B: DynamicBundle + 'static,
@@ -744,7 +744,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
     where
         B: DynamicComponentBundle + 'static,
@@ -788,7 +788,7 @@ impl WorldLocal {
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external_bundle_defer<B>(&self, entity: impl Entity, bundle: B)
     where
         B: DynamicBundle + 'static,

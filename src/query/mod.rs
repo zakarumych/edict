@@ -158,7 +158,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     ///
     /// Most queries do not check visiting again so defaults to `true`.
     #[must_use]
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
         debug_assert!(self.visit_archetype(archetype));
         let _ = archetype;
@@ -181,7 +181,7 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Returns item for reserved entity if reserved entity (no components) satisfies the query.
     /// Otherwise returns `None`.
     #[must_use]
-    #[inline(always)]
+    #[inline]
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
         let _ = id;
         let _ = idx;

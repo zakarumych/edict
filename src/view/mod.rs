@@ -39,7 +39,7 @@ pub struct Extensible;
 pub struct NonExtensible;
 
 impl From<Extensible> for NonExtensible {
-    #[inline(always)]
+    #[inline]
     fn from(_: Extensible) -> Self {
         NonExtensible
     }
@@ -64,7 +64,7 @@ where
     F: Query,
     B: BorrowState,
 {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         self.release_borrow();
     }
@@ -76,17 +76,17 @@ where
     F: Query,
     B: BorrowState,
 {
-    #[inline(always)]
+    #[inline]
     fn acquire_borrow(&self) {
         self.state.acquire(self.query, self.filter, self.archetypes);
     }
 
-    #[inline(always)]
+    #[inline]
     fn release_borrow(&self) {
         self.state.release(self.query, self.filter, self.archetypes);
     }
 
-    #[inline(always)]
+    #[inline]
     fn with_borrow<R>(&self, arch_idx: u32, f: impl FnOnce() -> R) -> R {
         self.state.with(
             self.query,
@@ -97,7 +97,7 @@ where
     }
 
     /// Releases borrow state and extracts it.
-    #[inline(always)]
+    #[inline]
     fn extract(self) -> (B, E) {
         self.state.release(self.query, self.filter, self.archetypes);
 
@@ -123,7 +123,7 @@ where
     /// Helpful to satisfy API that requires [`View`].
     ///
     /// For symmetry this method is available for statically and exclusively borrowed views too.
-    #[inline(always)]
+    #[inline]
     pub fn lock(&mut self) -> View<'_, Q, F> {
         self.acquire_borrow();
         ViewValue {
@@ -146,7 +146,7 @@ where
     ///
     /// This method takes mutable reference to ensure that references
     /// created from this view are not used after it is unlocked.
-    #[inline(always)]
+    #[inline]
     pub fn unlock(&mut self) {
         self.release_borrow()
     }
@@ -208,7 +208,7 @@ where
     /// # Safety
     ///
     /// User is responsible to ensure that view won't create mutable aliasing of entity components.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn new_unchecked(
         world: &'a World,
         query: Q,
@@ -238,7 +238,7 @@ where
     /// In exchange it does not require runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn new_mut(world: &'a mut World, query: Q, filter: F) -> Self {
         for archetype in world.archetypes() {
             validate_query_filter(query, filter, archetype);
@@ -257,7 +257,7 @@ where
     /// Performs runtime borrow checks.
     ///
     /// Uses user-provided query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn new_ref(world: &'a World, query: Q, filter: F) -> Self {
         unsafe {
             ViewValue::new_unchecked(world, query, filter, RuntimeBorrowState::new(), Extensible)
@@ -271,7 +271,7 @@ where
     Q: Query,
     F: Query,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, E>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
@@ -298,7 +298,7 @@ where
     F: Query,
     B: BorrowState,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, Q, F, B, Extensible>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
@@ -325,7 +325,7 @@ where
     Q: Query,
     F: Query,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, Extensible>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
@@ -352,7 +352,7 @@ where
     F: Query,
     B: BorrowState,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, (Q,), F, B, E>) -> Self {
         let (query,) = view.query;
         let archetypes = view.archetypes;
@@ -379,7 +379,7 @@ where
     Q: Query,
     F: Query,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, E>) -> Self {
         let (query,) = view.query;
         let archetypes = view.archetypes;
@@ -407,7 +407,7 @@ where
     F: Query,
     B: BorrowState,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, (Q,), F, B, Extensible>) -> Self {
         let (query,) = view.query;
         let archetypes = view.archetypes;
@@ -434,7 +434,7 @@ where
     Q: Query,
     F: Query,
 {
-    #[inline(always)]
+    #[inline]
     fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible>) -> Self {
         let (query,) = view.query;
         let archetypes = view.archetypes;
@@ -455,19 +455,19 @@ where
     }
 }
 
-#[inline(always)]
+#[inline]
 #[track_caller]
 fn expect_match<T>(value: Option<T>) -> T {
     value.expect("Entity does not match view's query and filter")
 }
 
-#[inline(always)]
+#[inline]
 #[track_caller]
 fn expect_alive<T>(value: Option<T>) -> T {
     value.expect("Entity is not alive")
 }
 
-#[inline(always)]
+#[inline]
 unsafe fn get_at<'a, Q, F>(
     query: Q,
     filter: F,
@@ -526,7 +526,7 @@ where
 }
 
 #[track_caller]
-#[inline(always)]
+#[inline]
 fn has_conflict_query_filter<Q, F>(query: Q, filter: F, comp: &ComponentInfo) -> bool
 where
     Q: Query,
@@ -547,7 +547,7 @@ where
 }
 
 #[track_caller]
-#[inline(always)]
+#[inline]
 fn validate_query_filter<Q, F>(query: Q, filter: F, archetype: &Archetype)
 where
     Q: Query,

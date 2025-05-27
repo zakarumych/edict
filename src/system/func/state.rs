@@ -46,14 +46,14 @@ pub struct StateState<T> {
 impl<T> Deref for State<'_, T> {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         &self.value
     }
 }
 
 impl<T> DerefMut for State<'_, T> {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         &mut self.value
     }
@@ -72,42 +72,42 @@ where
 {
     type Arg<'a> = State<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         _world: NonNull<World>,

@@ -13,14 +13,14 @@ pub struct ActionBuffer {
 
 impl ActionBuffer {
     /// Returns new empty action buffer.
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         Self {
             actions: VecDeque::new(),
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(super) fn actions(&mut self) -> &mut VecDeque<ActionFn<'static>> {
         &mut self.actions
     }
@@ -29,7 +29,7 @@ impl ActionBuffer {
     ///
     /// Actions should be executed on the same [`World`],
     /// otherwise entity ids will not refer to the correct entities.
-    #[inline(always)]
+    #[inline]
     pub fn encoder<'a>(&'a mut self, world: &'a World) -> ActionEncoder<'a> {
         ActionEncoder::new(self, world.entities())
     }
@@ -46,7 +46,7 @@ impl ActionBuffer {
     /// transitively triggers the same hook again.
     ///
     /// Returns `true` if at least one action was executed.
-    #[inline(always)]
+    #[inline]
     pub fn execute(&mut self, world: &mut World) -> bool {
         if self.actions.is_empty() {
             return false;
@@ -69,14 +69,14 @@ pub struct LocalActionBuffer {
 
 impl LocalActionBuffer {
     /// Returns new empty action buffer.
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         Self {
             actions: VecDeque::new(),
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(super) fn actions(&mut self) -> &mut VecDeque<LocalActionFn<'static>> {
         &mut self.actions
     }
@@ -85,7 +85,7 @@ impl LocalActionBuffer {
     ///
     /// Actions should be executed on the same [`World`],
     /// otherwise entity ids will not refer to the correct entities.
-    #[inline(always)]
+    #[inline]
     pub fn encoder<'a>(&'a mut self, world: &'a World) -> LocalActionEncoder<'a> {
         LocalActionEncoder::new(self, world.entities())
     }
@@ -102,7 +102,7 @@ impl LocalActionBuffer {
     /// transitively triggers the same hook again.
     ///
     /// Returns `true` if at least one action was executed.
-    #[inline(always)]
+    #[inline]
     pub fn execute(&mut self, world: &mut World) -> bool {
         if self.actions.is_empty() {
             return false;
@@ -127,13 +127,13 @@ impl LocalActionBuffer {
     /// transitively triggers the same hook again.
     ///
     /// Returns `true` if at least one action was executed.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn pop(&mut self) -> Option<LocalActionFn<'static>> {
         self.actions.pop_front()
     }
 
     // /// Temporary take this buffer.
-    // #[inline(always)]
+    // #[inline]
     // pub(crate) fn take(&mut self) -> Self {
     //     Self {
     //         actions: std::mem::take(&mut self.actions),
@@ -141,7 +141,7 @@ impl LocalActionBuffer {
     // }
 
     // /// Put back temporary taken buffer.
-    // #[inline(always)]
+    // #[inline]
     // pub(crate) fn put(&mut self, tmp: Self) {
     //     debug_assert!(self.actions.is_empty());
     //     self.actions = tmp.actions;
@@ -156,7 +156,7 @@ pub trait ActionBufferSliceExt {
 }
 
 impl ActionBufferSliceExt for [ActionBuffer] {
-    #[inline(always)]
+    #[inline]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut()
             .fold(false, |acc, encoder| acc | encoder.execute(world))
@@ -164,7 +164,7 @@ impl ActionBufferSliceExt for [ActionBuffer] {
 }
 
 impl ActionBufferSliceExt for [LocalActionBuffer] {
-    #[inline(always)]
+    #[inline]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut()
             .fold(false, |acc, encoder| acc | encoder.execute(world.local()))

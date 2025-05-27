@@ -92,7 +92,7 @@ impl Drop for WakeOnDrop {
 }
 
 impl Component for WakeOnDrop {
-    #[inline(always)]
+    #[inline]
     fn name() -> &'static str {
         "WakeOnDrop"
     }

@@ -30,7 +30,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowAnyRead {
             ptr: NonNull::dangling(),
@@ -40,7 +40,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         unsafe {
             (self.borrow_fn)(
@@ -62,7 +62,7 @@ impl<T> DefaultQuery for BorrowAny<&T>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> BorrowAny<Read<T>> {
         BorrowAny(Read)
     }
@@ -79,7 +79,7 @@ impl<T> IntoQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -89,7 +89,7 @@ impl<T> DefaultQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         BorrowAny(Read)
     }
@@ -99,7 +99,7 @@ impl<T> QueryArg for BorrowAny<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         BorrowAny(Read)
     }
@@ -114,7 +114,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow(type_id::<T>()) {
             Ok(Some(Access::Read))
@@ -123,19 +123,19 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         for (id, _) in unsafe { archetype.borrow_indices(type_id::<T>()).unwrap_unchecked() } {
             f(*id, Access::Read);
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -183,7 +183,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowAnyWrite {
             ptr: NonNull::dangling(),
@@ -196,13 +196,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_version = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_version.bump(self.epoch);
@@ -227,7 +227,7 @@ impl<T> DefaultQuery for BorrowAny<&mut T>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> BorrowAny<Write<T>> {
         BorrowAny(Write)
     }
@@ -244,7 +244,7 @@ impl<T> IntoQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -254,7 +254,7 @@ impl<T> DefaultQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         BorrowAny(Write)
     }
@@ -264,7 +264,7 @@ impl<T> QueryArg for BorrowAny<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         BorrowAny(Write)
     }
@@ -279,7 +279,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow_mut(type_id::<T>()) {
             Ok(Some(Access::Write))
@@ -288,12 +288,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow_mut(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let components = unsafe {
             archetype
@@ -305,7 +305,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

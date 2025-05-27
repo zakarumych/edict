@@ -20,7 +20,7 @@ pub struct FetchEpoch<'a> {
 unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
     type Item = EpochId;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchEpoch {
             entity_epochs: NonNull::dangling(),
@@ -28,7 +28,7 @@ unsafe impl<'a> Fetch<'a> for FetchEpoch<'a> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> EpochId {
         unsafe { *self.entity_epochs.as_ptr().add(idx as usize) }
     }
@@ -50,7 +50,7 @@ impl<T> IntoQuery for EpochOf<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -60,7 +60,7 @@ impl<T> DefaultQuery for EpochOf<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         EpochOf
     }
@@ -70,7 +70,7 @@ impl<T> QueryArg for EpochOf<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         EpochOf
     }
@@ -85,7 +85,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Read))
@@ -94,17 +94,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Read);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

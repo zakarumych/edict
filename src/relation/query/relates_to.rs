@@ -45,7 +45,7 @@ where
 {
     type Item = &'a R;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatesToRead {
             target: EntityId::dangling(),
@@ -55,7 +55,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let item_idx = component
@@ -72,7 +72,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a R {
         let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         &component.targets()[self.item_idx].1
@@ -97,7 +97,7 @@ impl<R> IntoQuery for RelatesTo<Read<R>>
 where
     R: Relation + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -113,7 +113,7 @@ where
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<OriginComponent<R>>() {
             Ok(Some(Access::Read))
@@ -126,12 +126,12 @@ where
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -176,7 +176,7 @@ where
 {
     type Item = &'a mut R;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatesToWrite {
             item_idx: 0,
@@ -189,13 +189,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let item_idx = component
@@ -212,7 +212,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut R {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -240,7 +240,7 @@ impl<R> IntoQuery for RelatesTo<Write<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -256,7 +256,7 @@ where
     const MUTABLE: bool = true;
     const FILTERS_ENTITIES: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<OriginComponent<R>>() {
             Ok(Some(Access::Write))
@@ -269,12 +269,12 @@ where
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<OriginComponent<R>>(), Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

@@ -31,14 +31,14 @@ pub struct RefMut<'a, T: ?Sized> {
 impl<T> Deref for RefMut<'_, T> {
     type Target = T;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &T {
         &*self.component
     }
 }
 
 impl<T> DerefMut for RefMut<'_, T> {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.entity_epoch.bump_again(self.epoch);
         EpochId::bump_cell(&self.chunk_epoch, self.epoch);
@@ -63,7 +63,7 @@ where
 {
     type Item = RefMut<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchAlt {
             epoch: EpochId::start(),
@@ -75,13 +75,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         debug_assert!((*chunk_epoch).get().before(self.epoch));
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> RefMut<'a, T> {
         let archetype_epoch = unsafe { &mut *self.archetype_epoch.as_ptr() };
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx(idx) as usize) };
@@ -122,7 +122,7 @@ impl<T> IntoQuery for Alt<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -132,7 +132,7 @@ impl<T> DefaultQuery for Alt<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Alt
     }
@@ -142,7 +142,7 @@ impl<T> QueryArg for Alt<T>
 where
     T: Send + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Alt
     }
@@ -157,7 +157,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Write))
@@ -166,17 +166,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

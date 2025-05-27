@@ -15,7 +15,7 @@ impl World {
     /// Returns `Ok(Some(comp))` if component was removed.
     /// Returns `Ok(None)` if entity does not have component of this type.
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn remove<T>(
         &mut self,
         entity: impl Entity,
@@ -71,7 +71,7 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop<T>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -82,7 +82,7 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop_batch<T>(&mut self, entities: impl IntoIterator<Item = EntityId>)
     where
         T: 'static,
@@ -93,7 +93,7 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
@@ -138,7 +138,7 @@ impl World {
     /// Drops component from the specified entity.
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased_batch(&mut self, entities: impl IntoIterator<Item = EntityId>, ty: TypeId) {
         self.maintenance();
 
@@ -208,7 +208,7 @@ impl World {
     /// world.drop_bundle::<(ExampleComponent, OtherComponent)>(entity).unwrap();
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn drop_bundle<B>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
@@ -295,7 +295,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn drop_defer<T>(&self, entity: impl Entity)
     where
         T: 'static,
@@ -311,7 +311,7 @@ impl WorldLocal {
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued and executed on next call to [`World::run_deferred`]
     /// or when mutable operation is performed on the world.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased_defer(&self, entity: impl Entity, ty: TypeId) {
         let id = entity.id();
         self.defer(move |world| {
@@ -356,7 +356,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn drop_bundle_defer<B>(&self, entity: impl Entity)
     where
         B: Bundle,

@@ -31,7 +31,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         ModifiedFetchWrite {
             after_epoch: EpochId::start(),
@@ -43,25 +43,25 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         let chunk_epoch = unsafe { *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.after(self.after_epoch)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         let epoch = unsafe { *self.entity_epochs.as_ptr().add(idx as usize) };
         epoch.after(self.after_epoch)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -97,7 +97,7 @@ impl<T> QueryArg for Modified<Write<T>>
 where
     T: Send + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Modified {
             after_epoch: EpochId::start(),
@@ -105,7 +105,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn after(&mut self, world: &World) {
         self.after_epoch = world.epoch();
     }
@@ -120,12 +120,12 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.query.component_access(comp)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(type_id::<T>()) {
             None => false,
@@ -137,19 +137,19 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
         let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
         let data = unsafe { component.data() };
         data.epoch.after(self.after_epoch)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -193,7 +193,7 @@ impl<T> IntoQuery for Modified<OptionQuery<Write<T>>>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -208,12 +208,12 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.query.component_access(comp)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         match archetype.component(type_id::<T>()) {
             None => true,
@@ -225,7 +225,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
         match archetype.component(type_id::<T>()) {
             None => true,
@@ -236,14 +236,14 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if archetype.has_component(type_id::<T>()) {
             f(type_id::<T>(), Access::Write)
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

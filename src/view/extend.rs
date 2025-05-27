@@ -34,7 +34,7 @@ macro_rules! impl_extend {
         {
             type Extended<Add: Query> = (Add,);
 
-            #[inline(always)]
+            #[inline]
             fn extend_query<Add: Query>(self, add: Add) -> (Add,) {
                 (add,)
             }
@@ -47,7 +47,7 @@ macro_rules! impl_extend {
         {
             type Extended<Add: Query> = ($($a,)* Add,);
 
-            #[inline(always)]
+            #[inline]
             fn extend_query<Add: Query>(self, add: Add) -> Self::Extended<Add> {
                 #![allow(non_snake_case)]
                 let ($($a,)*) = self;
@@ -95,7 +95,7 @@ where
     B: BorrowState,
 {
     /// Extends query tuple with an additional query element.
-    #[inline(always)]
+    #[inline]
     pub fn extend<E>(self, ext: E) -> ViewValue<'a, TupleQueryAdd<Q, E>, F, B, Extensible>
     where
         E: SendQuery,
@@ -123,7 +123,7 @@ where
 
     /// Extends query tuple with a query element that fetches the component,
     /// filtering entities with the component and it was modified after the `after_epoch`.
-    #[inline(always)]
+    #[inline]
     pub fn modified<T>(
         self,
         after_epoch: EpochId,
@@ -136,7 +136,7 @@ where
 
     /// Extends query tuple with a query element that fetches the component,
     /// filtering entities with the component and it was modified after the `after_epoch`.
-    #[inline(always)]
+    #[inline]
     pub fn modified_mut<T>(
         self,
         after_epoch: EpochId,
@@ -151,7 +151,7 @@ where
     /// from a component of the entity.
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
-    #[inline(always)]
+    #[inline]
     pub fn borrow_any<T>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a T>>, F, B, Extensible>
@@ -165,7 +165,7 @@ where
     /// from a component of the entity.
     /// First component of entity that provide `T` borrowing is used.
     /// If no component provides `T` borrowing, the entity is filtered out.
-    #[inline(always)]
+    #[inline]
     pub fn borrow_any_mut<T>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAny<&'a mut T>>, F, B, Extensible>
@@ -183,7 +183,7 @@ where
     /// # Panicking
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
-    #[inline(always)]
+    #[inline]
     pub fn borrow_one<T>(
         self,
         ty: TypeId,
@@ -202,7 +202,7 @@ where
     /// # Panicking
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
-    #[inline(always)]
+    #[inline]
     pub fn borrow_one_mut<T>(
         self,
         ty: TypeId,
@@ -221,7 +221,7 @@ where
     /// # Panicking
     ///
     /// If component with the `TypeId` does not provide `T` borrowing, it panics.
-    #[inline(always)]
+    #[inline]
     pub fn borrow_all<T>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, BorrowAll<&'a T>>, F, B, Extensible>
@@ -234,7 +234,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates<R: Relation>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<With<R>>>, F, B, Extensible> {
@@ -244,7 +244,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_ref<R: Relation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a R>>, F, B, Extensible> {
@@ -254,7 +254,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_mut<R: Relation + Send>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Relates<&'a mut R>>, F, B, Extensible> {
@@ -264,7 +264,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_to<R: Relation + Sync>(
         self,
         target: impl Entity,
@@ -275,7 +275,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_to_mut<R: Relation + Send>(
         self,
         target: impl Entity,
@@ -286,7 +286,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_exclusive<R: ExclusiveRelation>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<With<R>>>, F, B, Extensible> {
@@ -296,7 +296,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain shared reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_exclusive_ref<R: ExclusiveRelation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a R>>, F, B, Extensible> {
@@ -306,7 +306,7 @@ where
     /// Queries for origin entities in relation of type `R`.
     /// The view will contain mutable reference of the relation value
     /// and the target entity.
-    #[inline(always)]
+    #[inline]
     pub fn relates_exclusive_mut<R: ExclusiveRelation + Send>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, RelatesExclusive<&'a mut R>>, F, B, Extensible> {
@@ -315,7 +315,7 @@ where
 
     /// Queries for target entities in relation of type `R`.
     /// The view will contain origins of the relation.
-    #[inline(always)]
+    #[inline]
     pub fn related<R: Relation>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Related<With<R>>>, F, B, Extensible> {
@@ -324,7 +324,7 @@ where
 
     /// Queries for target entities in relation of type `R`.
     /// The view will contain origins of the relation.
-    #[inline(always)]
+    #[inline]
     pub fn related_ref<R: Relation + Sync>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Related<Read<R>>>, F, B, Extensible> {
@@ -333,7 +333,7 @@ where
 
     /// Queries for target entities in relation of type `R`.
     /// The view will contain origins of the relation.
-    #[inline(always)]
+    #[inline]
     pub fn related_mut<R: Relation + Send>(
         self,
     ) -> ViewValue<'a, TupleQueryAdd<Q, Related<Write<R>>>, F, B, Extensible> {
@@ -348,7 +348,7 @@ where
     B: BorrowState,
 {
     /// Extends filter tuple with an additional filter element.
-    #[inline(always)]
+    #[inline]
     pub fn filter<E>(self, ext: E) -> ViewValue<'a, Q, TupleQueryAdd<F, E>, B, Extensible>
     where
         E: SendQuery,
@@ -373,7 +373,7 @@ where
 
     /// Extends filter tuple with a filter element that
     /// filters entities that have the component.
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, With<T>>, B, Extensible>
     where
         T: 'static,
@@ -383,7 +383,7 @@ where
 
     /// Extends filter tuple with a filter element that\
     /// filters entities that do not have the component.
-    #[inline(always)]
+    #[inline]
     pub fn without<T>(self) -> ViewValue<'a, Q, TupleQueryAdd<F, Without<T>>, B, Extensible>
     where
         T: 'static,
@@ -393,7 +393,7 @@ where
 
     /// Extends filter tuple with a filter element that
     /// filters entities that have the component and it was modified after the `after_epoch`.
-    #[inline(always)]
+    #[inline]
     pub fn filter_modified<T>(
         self,
         after_epoch: EpochId,
@@ -405,7 +405,7 @@ where
     }
 
     /// Filters target entities in relation of type `R`.
-    #[inline(always)]
+    #[inline]
     pub fn filter_related<R: Relation>(
         self,
     ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelated<R>>, B, Extensible> {
@@ -414,7 +414,7 @@ where
 
     /// Filters target entities in relation of type `R`
     /// with specified origin entity.
-    #[inline(always)]
+    #[inline]
     pub fn filter_related_by<R: Relation>(
         self,
         origin: impl Entity,
@@ -423,7 +423,7 @@ where
     }
 
     /// Filters origin entities in relation of type `R`.
-    #[inline(always)]
+    #[inline]
     pub fn filter_relates<R: Relation>(
         self,
     ) -> ViewValue<'a, Q, TupleQueryAdd<F, FilterRelates<R>>, B, Extensible> {
@@ -432,7 +432,7 @@ where
 
     /// Filters origin entities in relation of type `R`
     /// with specified target entity.
-    #[inline(always)]
+    #[inline]
     pub fn filter_relates_to<R: Relation>(
         self,
         target: impl Entity,

@@ -30,7 +30,7 @@ impl<T> Clone for FetchBorrowAllComponent<T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -49,7 +49,7 @@ impl<'a, T> Clone for BorrowAllRead<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         BorrowAllRead {
             idx: self.idx,
@@ -59,7 +59,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn clone_from(&mut self, source: &Self) {
         self.idx = source.idx;
         self.comp_idx = source.comp_idx;
@@ -82,13 +82,13 @@ where
 {
     type Item = &'a T;
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len();
         (len, Some(len))
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<&'a T> {
         let c = &self.components.get(self.comp_idx)?;
         let r = unsafe {
@@ -101,7 +101,7 @@ where
         Some(r)
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<&'a T> {
         if n >= self.components.len() - self.comp_idx {
             self.comp_idx = self.components.len();
@@ -136,7 +136,7 @@ impl<'a, T> ExactSizeIterator for BorrowAllRead<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.components.len() - self.comp_idx
     }
@@ -156,7 +156,7 @@ where
 {
     type Item = BorrowAllRead<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowAllRead {
             components: Rc::new([]),
@@ -164,7 +164,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> BorrowAllRead<'a, T> {
         BorrowAllRead {
             idx,
@@ -186,7 +186,7 @@ impl<T> DefaultQuery for BorrowAll<&T>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> BorrowAll<Read<T>> {
         BorrowAll(Read)
     }
@@ -203,7 +203,7 @@ impl<T> IntoQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -213,7 +213,7 @@ impl<T> DefaultQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         BorrowAll(Read)
     }
@@ -223,7 +223,7 @@ impl<T> QueryArg for BorrowAll<Read<T>>
 where
     T: Sync + ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         BorrowAll(Read)
     }
@@ -238,7 +238,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow(type_id::<T>()) {
             Ok(Some(Access::Read))
@@ -247,12 +247,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let indices = unsafe { archetype.borrow_indices(type_id::<T>()).unwrap_unchecked() };
         for (id, _) in indices {
@@ -260,7 +260,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -358,13 +358,13 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.len();
         (len, Some(len))
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<&'a mut T> {
         let c = &self.components.get(self.comp_idx)?;
         let r = unsafe {
@@ -381,7 +381,7 @@ where
         Some(r)
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<&'a mut T> {
         if n >= self.components.len() - self.comp_idx {
             self.comp_idx = self.components.len();
@@ -421,7 +421,7 @@ impl<'a, T> ExactSizeIterator for BorrowAllWrite<'a, T>
 where
     T: ?Sized,
 {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.components.len() - self.comp_idx
     }
@@ -442,7 +442,7 @@ where
 {
     type Item = BorrowAllWrite<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowAllWrite {
             components: Rc::new([]),
@@ -451,7 +451,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         self.components.iter().for_each(|c| {
             let chunk_epoch = unsafe { &mut *c.chunk_epochs.as_ptr().add(chunk_idx as usize) };
@@ -459,7 +459,7 @@ where
         })
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> BorrowAllWrite<'a, T> {
         BorrowAllWrite {
             idx,
@@ -482,7 +482,7 @@ impl<T> DefaultQuery for BorrowAll<&mut T>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> BorrowAll<Write<T>> {
         BorrowAll(Write)
     }
@@ -499,7 +499,7 @@ impl<T> IntoQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -509,7 +509,7 @@ impl<T> DefaultQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         BorrowAll(Write)
     }
@@ -519,7 +519,7 @@ impl<T> QueryArg for BorrowAll<Write<T>>
 where
     T: Send + ?Sized + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         BorrowAll(Write)
     }
@@ -534,7 +534,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow_mut(type_id::<T>()) {
             Ok(Some(Access::Write))
@@ -543,12 +543,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow_mut(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let indices = unsafe {
             archetype
@@ -560,7 +560,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

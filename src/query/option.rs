@@ -22,7 +22,7 @@ where
     }
 
     /// Checks if chunk with specified index must be visited or skipped.
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         if let Some(fetch) = self {
             unsafe { fetch.visit_chunk(chunk_idx) }
@@ -32,7 +32,7 @@ where
     }
 
     /// Notifies this fetch that it visits a chunk.
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         if let Some(fetch) = self {
             unsafe {
@@ -42,7 +42,7 @@ where
     }
 
     /// Checks if item with specified index must be visited or skipped.
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         if let Some(fetch) = self {
             unsafe { fetch.visit_item(idx) }
@@ -89,7 +89,7 @@ impl<T> DefaultQuery for Option<T>
 where
     T: DefaultQuery,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> OptionQuery<T::Query> {
         OptionQuery(T::default_query())
     }
@@ -115,7 +115,7 @@ impl<T> DefaultQuery for OptionQuery<T>
 where
     T: DefaultQuery,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> OptionQuery<T::Query> {
         OptionQuery(T::default_query())
     }
@@ -125,7 +125,7 @@ impl<T> QueryArg for OptionQuery<T>
 where
     T: QueryArg,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         OptionQuery(T::new())
     }
@@ -140,17 +140,17 @@ where
 
     const MUTABLE: bool = T::MUTABLE;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.0.component_access(comp)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _: &Archetype) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         if self.0.visit_archetype(archetype) {
             unsafe {
@@ -159,7 +159,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         arch_idx: u32,

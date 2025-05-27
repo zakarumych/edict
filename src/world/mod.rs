@@ -184,7 +184,7 @@ impl World {
     /// Returns unique identified of archetype set.
     /// This ID changes each time new archetype is added or removed.
     /// IDs of different worlds are never equal within the same process.
-    #[inline(always)]
+    #[inline]
     pub fn archetype_set_id(&self) -> u64 {
         self.archetypes.id()
     }
@@ -192,7 +192,7 @@ impl World {
     /// Looks up entity location and returns entity with location and bound
     /// to the immutable world borrow, ensuring that entity stays alive
     /// and in the same location.
-    #[inline(always)]
+    #[inline]
     pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc<'_>, NoSuchEntity> {
         entity.entity_loc(&self.entities).ok_or(NoSuchEntity)
     }
@@ -200,7 +200,7 @@ impl World {
     /// Returns entity reference
     /// that can be used to access entity's components,
     /// insert or remove components, despawn entity etc.
-    #[inline(always)]
+    #[inline]
     pub fn entity(&mut self, entity: impl Entity) -> Result<EntityRef<'_>, NoSuchEntity> {
         self.maintenance();
         entity.entity_ref(self).ok_or(NoSuchEntity)
@@ -212,19 +212,19 @@ impl World {
     /// As it increases monotonically, returned value can be safely assumed as a lower bound.
     ///
     /// [`&World`]: World
-    #[inline(always)]
+    #[inline]
     pub fn epoch(&self) -> EpochId {
         self.epoch.current()
     }
 
     /// Returns atomic reference to epoch counter.
-    #[inline(always)]
+    #[inline]
     pub fn epoch_counter(&self) -> &EpochCounter {
         &self.epoch
     }
 
     /// Checks if entity has component of specified type.
-    #[inline(always)]
+    #[inline]
     pub fn has_component<T: 'static>(&self, entity: impl AliveEntity) -> bool {
         let loc = entity.locate(&self.entities);
         if loc.arch == u32::MAX {
@@ -236,7 +236,7 @@ impl World {
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn try_has_component<T: 'static>(&self, entity: impl Entity) -> Result<bool, NoSuchEntity> {
         let loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
         if loc.arch == u32::MAX {
@@ -246,7 +246,7 @@ impl World {
     }
 
     /// Checks if entity is alive.
-    #[inline(always)]
+    #[inline]
     pub fn is_alive(&self, id: EntityId) -> bool {
         self.entities.get_location(id).is_some()
     }
@@ -280,7 +280,7 @@ impl World {
     /// let local = world.local();
     /// assert_eq!(42, local.get_resource::<Cell<i32>>().unwrap().get());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn local(&mut self) -> &mut WorldLocal {
         WorldLocal::wrap_mut(self)
     }
@@ -331,7 +331,7 @@ impl World {
     ///
     /// The only observable effect of manual call to this method
     /// is execution of actions encoded with [`ActionSender`].
-    #[inline(always)]
+    #[inline]
     pub(crate) fn maintenance(&mut self) {
         let archetype = &mut self.archetypes[0];
         self.entities
@@ -359,7 +359,7 @@ impl World {
     ///
     /// The only observable effect of manual call to this method
     /// is execution of actions encoded with [`ActionSender`].
-    #[inline(always)]
+    #[inline]
     fn execute_local_actions(&mut self) {
         while let Some(action) = self.action_buffer.get_mut().pop() {
             action.call(self.local());
@@ -434,14 +434,14 @@ impl From<World> for WorldLocal {
 impl Deref for WorldLocal {
     type Target = World;
 
-    #[inline(always)]
+    #[inline]
     fn deref(&self) -> &World {
         &self.inner
     }
 }
 
 impl DerefMut for WorldLocal {
-    #[inline(always)]
+    #[inline]
     fn deref_mut(&mut self) -> &mut World {
         &mut self.inner
     }
@@ -454,7 +454,7 @@ impl Debug for WorldLocal {
 }
 
 impl WorldLocal {
-    #[inline(always)]
+    #[inline]
     fn wrap_mut(world: &mut World) -> &mut Self {
         // Safety: #[repr(transparent)] allows this cast.
         unsafe { &mut *(world as *mut World as *mut Self) }

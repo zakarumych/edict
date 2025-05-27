@@ -102,7 +102,7 @@ struct Queues<'scope> {
 }
 
 impl ActionBufferQueue for &Queues<'_> {
-    #[inline(always)]
+    #[inline]
     fn get<'a>(&mut self) -> ActionBuffer {
         // Taking last ensures that commands from system won't be executed before commands
         // of its transient dependencies.
@@ -113,7 +113,7 @@ impl ActionBufferQueue for &Queues<'_> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn flush(&mut self, buffer: ActionBuffer) {
         self.actions.push_sync(buffer);
     }

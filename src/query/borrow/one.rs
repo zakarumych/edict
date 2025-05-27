@@ -54,7 +54,7 @@ where
 {
     type Item = &'a T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowOneRead {
             ptr: NonNull::dangling(),
@@ -64,7 +64,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a T {
         unsafe {
             (self.borrow_fn)(
@@ -107,7 +107,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == self.ty {
             assert!(
@@ -121,17 +121,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(self.ty)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(self.ty, Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -177,7 +177,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchBorrowOneWrite {
             ptr: NonNull::dangling(),
@@ -190,13 +190,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_version = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_version.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_version = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_version.bump(self.epoch);
@@ -242,7 +242,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == self.ty {
             assert!(
@@ -256,17 +256,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(self.ty)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(self.ty, Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

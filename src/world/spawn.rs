@@ -40,7 +40,7 @@ impl World {
     /// world.despawn(entity).unwrap();
     /// assert!(!world.is_alive(entity));
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn allocate(&self) -> EntityLoc<'_> {
         self.entities.alloc()
     }
@@ -64,7 +64,7 @@ impl World {
     /// let mut entity = world.spawn_empty();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_empty(&mut self) -> EntityRef<'_> {
         self.maintenance();
 
@@ -96,7 +96,7 @@ impl World {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one<T>(&mut self, component: T) -> EntityRef<'_>
     where
         T: Component,
@@ -145,7 +145,7 @@ impl World {
     /// let mut entity = world.spawn_one_external(42u32);
     /// assert!(entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one_external<T>(&mut self, component: T) -> EntityRef<'_>
     where
         T: 'static,
@@ -189,7 +189,7 @@ impl World {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn<B>(&mut self, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
@@ -218,7 +218,7 @@ impl World {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_at<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
@@ -249,7 +249,7 @@ impl World {
     /// let ExampleComponent = entity.remove().unwrap();
     /// assert!(!entity.has_component::<ExampleComponent>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_or_insert<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicComponentBundle,
@@ -286,7 +286,7 @@ impl World {
     /// assert_eq!(entity.remove(), Some(42u32));
     /// assert!(!entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_external<B>(&mut self, bundle: B) -> EntityRef<'_>
     where
         B: DynamicBundle,
@@ -324,7 +324,7 @@ impl World {
     /// assert_eq!(entity.remove(), Some(42u32));
     /// assert!(!entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_external_at<B>(&mut self, id: EntityId, bundle: B) -> EntityRef<'_>
     where
         B: DynamicBundle,
@@ -422,7 +422,7 @@ impl World {
     ///
     /// When returned iterator is dropped, no more entities will be spawned
     /// even if bundles iterator has items left.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -455,7 +455,7 @@ impl World {
     /// on first call to [`World::spawn`], [`World::spawn_one`],  [`World::spawn_batch`], [`World::insert`] or [`World::insert_bundle`] and their deferred versions.
     /// Otherwise component must be pre-registered explicitly by [`WorldBuilder::register_component`](crate::world::WorldBuilder::register_component) or later by [`World::ensure_component_registered`].
     /// Non [`Component`] type must be pre-registered by [`WorldBuilder::register_external`](crate::world::WorldBuilder::register_external) or later by [`World::ensure_external_registered`].
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch_external<B, I>(&mut self, bundles: I) -> SpawnBatch<'_, I::IntoIter>
     where
         I: IntoIterator<Item = B>,
@@ -537,7 +537,7 @@ impl World {
     /// assert!(world.despawn(entity).is_ok(), "Entity should be despawned by this call");
     /// assert!(world.despawn(entity).is_err(), "Already despawned");
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn despawn(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity> {
         self.maintenance();
 
@@ -571,7 +571,7 @@ impl World {
     /// assert!(world.despawn(entity1).is_err(), "Already despawned");
     /// assert!(world.despawn(entity2).is_err(), "Already despawned");
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn despawn_batch(&mut self, entities: impl IntoIterator<Item = EntityId>) {
         self.maintenance();
 
@@ -596,7 +596,7 @@ impl World {
     /// This method uses branch elimination for non-existent entity case
     /// and prevents data dependencies between removing entity from
     /// `EntitySet` and `Archetype`.
-    #[inline(always)]
+    #[inline]
     pub(crate) unsafe fn despawn_ref(&mut self, id: EntityId, loc: Location) {
         self.maintenance();
 
@@ -636,7 +636,7 @@ where
     /// never spawn entities.
     ///
     /// This method won't return IDs of spawned entities.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_all(&mut self) {
         let additional = iter_reserve_hint(&self.bundles);
         self.entities.reserve(additional);
@@ -660,7 +660,7 @@ where
 {
     type Item = EntityLoc<'a>;
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<EntityLoc<'a>> {
         let bundle = self.bundles.next()?;
 
@@ -670,7 +670,7 @@ where
         Some(EntityLoc::from_parts(id, loc))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<EntityLoc<'a>> {
         // `SpawnBatch` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
@@ -682,12 +682,12 @@ where
         Some(EntityLoc::from_parts(id, loc))
     }
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.bundles.size_hint()
     }
 
-    #[inline(always)]
+    #[inline]
     fn fold<T, F>(mut self, init: T, mut f: F) -> T
     where
         F: FnMut(T, EntityLoc<'a>) -> T,
@@ -707,7 +707,7 @@ where
         })
     }
 
-    #[inline(always)]
+    #[inline]
     fn collect<T>(self) -> T
     where
         T: FromIterator<EntityLoc<'a>>,
@@ -729,7 +729,7 @@ where
     I: ExactSizeIterator<Item = B>,
     B: Bundle,
 {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.bundles.len()
     }
@@ -834,7 +834,7 @@ impl WorldLocal {
     /// assert!(world.is_alive(entity));
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one_defer<T>(&self, component: T) -> EntityId
     where
         T: Component,
@@ -883,7 +883,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_one_external_defer<T>(&self, component: T) -> EntityId
     where
         T: 'static,
@@ -930,7 +930,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_defer<B>(&self, bundle: B) -> EntityId
     where
         B: DynamicComponentBundle,
@@ -977,7 +977,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn spawn_external_defer<B>(&self, bundle: B) -> EntityId
     where
         B: DynamicBundle + 'static,
@@ -1008,7 +1008,7 @@ impl WorldLocal {
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued to be executed when [`World::run_deferred`] is called
     /// or when mutable operation is performed on the world.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch_defer<B, I>(&self, bundles: I)
     where
         I: IntoIterator<Item = B> + 'static,
@@ -1046,7 +1046,7 @@ impl WorldLocal {
     /// It can be used on shared `WorldLocal` reference.
     /// Operation is queued to be executed when [`World::run_deferred`] is called
     /// or when mutable operation is performed on the world.
-    #[inline(always)]
+    #[inline]
     pub fn spawn_batch_external_defer<B, I>(&self, bundles: I)
     where
         I: IntoIterator<Item = B> + 'static,
@@ -1077,7 +1077,7 @@ impl WorldLocal {
     /// world.run_deferred();
     /// assert!(!world.is_alive(entity), "Finally despawned");
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn despawn_defer(&self, entity: impl Entity) {
         let id = entity.id();
         self.defer(move |world| {

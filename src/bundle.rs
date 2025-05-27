@@ -103,30 +103,30 @@ pub unsafe trait ComponentBundle: Bundle + DynamicComponentBundle {
 macro_rules! impl_bundle {
     () => {
         unsafe impl DynamicBundle for () {
-            #[inline(always)]
+            #[inline]
             fn valid(&self) -> bool { true }
 
-            #[inline(always)]
+            #[inline]
             fn key() -> Option<TypeId> {
                 Some(Self::static_key())
             }
 
-            #[inline(always)]
+            #[inline]
             fn contains_id(&self, ty: TypeId) -> bool {
                 Self::static_contains_id(ty)
             }
 
-            #[inline(always)]
+            #[inline]
             fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
                 Self::static_with_ids(f)
             }
 
-            #[inline(always)]
+            #[inline]
             fn put(self, _f: impl FnMut(NonNull<u8>, TypeId, usize)) {}
         }
 
         unsafe impl DynamicComponentBundle for () {
-            #[inline(always)]
+            #[inline]
             fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 Self::static_with_components(f)
             }
@@ -135,24 +135,24 @@ macro_rules! impl_bundle {
         unsafe impl Bundle for () {
             fn static_valid() -> bool { true }
 
-            #[inline(always)]
+            #[inline]
             fn static_key() -> TypeId {
                 type_id::<()>()
             }
 
-            #[inline(always)]
+            #[inline]
             fn static_contains_id(_ty: TypeId) -> bool {
                 false
             }
 
-            #[inline(always)]
+            #[inline]
             fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R {
                 f(&[])
             }
         }
 
         unsafe impl ComponentBundle for () {
-            #[inline(always)]
+            #[inline]
             fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 f(&[])
             }
@@ -163,27 +163,27 @@ macro_rules! impl_bundle {
         unsafe impl<$($a),+> DynamicBundle for ($($a,)+)
         where $($a: 'static,)+
         {
-            #[inline(always)]
+            #[inline]
             fn valid(&self) -> bool {
                 <Self as Bundle>::static_valid()
             }
 
-            #[inline(always)]
+            #[inline]
             fn key() -> Option<TypeId> {
                 Some(<Self as Bundle>::static_key())
             }
 
-            #[inline(always)]
+            #[inline]
             fn contains_id(&self, ty: TypeId) -> bool {
                 <Self as Bundle>::static_contains_id(ty)
             }
 
-            #[inline(always)]
+            #[inline]
             fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
                 <Self as Bundle>::static_with_ids(f)
             }
 
-            #[inline(always)]
+            #[inline]
             fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
                 #![allow(non_snake_case)]
 
@@ -198,7 +198,7 @@ macro_rules! impl_bundle {
         unsafe impl<$($a),+> DynamicComponentBundle for ($($a,)+)
         where $($a: Component,)+
         {
-            #[inline(always)]
+            #[inline]
             fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 <Self as ComponentBundle>::static_with_components(f)
             }
@@ -222,17 +222,17 @@ macro_rules! impl_bundle {
                 true
             }
 
-            #[inline(always)]
+            #[inline]
             fn static_key() -> TypeId {
                 type_id::<Self>()
             }
 
-            #[inline(always)]
+            #[inline]
             fn static_contains_id(ty: TypeId) -> bool {
                 $( type_id::<$a>() == ty )|| *
             }
 
-            #[inline(always)]
+            #[inline]
             fn static_with_ids<R>(f: impl FnOnce(&[TypeId]) -> R) -> R {
                 f(&[$(type_id::<$a>(),)+])
             }
@@ -242,7 +242,7 @@ macro_rules! impl_bundle {
         unsafe impl<$($a),+> ComponentBundle for ($($a,)+)
         where $($a: Component,)+
         {
-            #[inline(always)]
+            #[inline]
             fn static_with_components<R>(f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
                 f(&[$(ComponentInfo::of::<$a>(),)+])
             }
@@ -291,7 +291,7 @@ impl fmt::Debug for EntityBuilder {
 
 impl EntityBuilder {
     /// Creates new empty entity builder.
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         EntityBuilder {
             ptr: NonNull::dangling(),
@@ -305,7 +305,7 @@ impl EntityBuilder {
 
     /// Adds component to the builder.
     /// If builder already had this component, old value is replaced.
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(mut self, value: T) -> Self
     where
         T: Component + Send,
@@ -390,7 +390,7 @@ impl EntityBuilder {
     }
 
     /// Returns reference to component from builder.
-    #[inline(always)]
+    #[inline]
     pub fn get<T>(&self) -> Option<&T>
     where
         T: 'static,
@@ -401,7 +401,7 @@ impl EntityBuilder {
     }
 
     /// Returns mutable reference to component from builder.
-    #[inline(always)]
+    #[inline]
     pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
         T: 'static,
@@ -412,36 +412,36 @@ impl EntityBuilder {
     }
 
     /// Returns iterator over component types in this builder.
-    #[inline(always)]
+    #[inline]
     pub fn component_types(&self) -> impl Iterator<Item = &ComponentInfo> {
         self.infos.iter()
     }
 
     /// Returns true of the builder is empty.
-    #[inline(always)]
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.ids.is_empty()
     }
 }
 
 unsafe impl DynamicBundle for EntityBuilder {
-    #[inline(always)]
+    #[inline]
     fn valid(&self) -> bool {
         // Validity is ensured by construction
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn contains_id(&self, ty: TypeId) -> bool {
         self.ids.iter().any(|id| *id == ty)
     }
 
-    #[inline(always)]
+    #[inline]
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
         f(&self.ids)
     }
 
-    #[inline(always)]
+    #[inline]
     fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
         let me = ManuallyDrop::new(self);
         for (info, &offset) in me.infos.iter().zip(&me.offsets) {
@@ -452,7 +452,7 @@ unsafe impl DynamicBundle for EntityBuilder {
 }
 
 unsafe impl DynamicComponentBundle for EntityBuilder {
-    #[inline(always)]
+    #[inline]
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
         f(&self.infos)
     }
@@ -477,12 +477,12 @@ impl<B> BundleDesc for B
 where
     B: DynamicBundle,
 {
-    #[inline(always)]
+    #[inline]
     fn key() -> Option<TypeId> {
         <B as DynamicBundle>::key()
     }
 
-    #[inline(always)]
+    #[inline]
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
         DynamicBundle::with_ids(self, f)
     }
@@ -492,7 +492,7 @@ impl<B> ComponentBundleDesc for B
 where
     B: DynamicComponentBundle,
 {
-    #[inline(always)]
+    #[inline]
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
         DynamicComponentBundle::with_components(self, f)
     }
@@ -502,12 +502,12 @@ impl<B> BundleDesc for PhantomData<B>
 where
     B: Bundle,
 {
-    #[inline(always)]
+    #[inline]
     fn key() -> Option<TypeId> {
         Some(B::static_key())
     }
 
-    #[inline(always)]
+    #[inline]
     fn with_ids<R>(&self, f: impl FnOnce(&[TypeId]) -> R) -> R {
         B::static_with_ids(f)
     }
@@ -517,7 +517,7 @@ impl<B> ComponentBundleDesc for PhantomData<B>
 where
     B: ComponentBundle,
 {
-    #[inline(always)]
+    #[inline]
     fn with_components<R>(&self, f: impl FnOnce(&[ComponentInfo]) -> R) -> R {
         B::static_with_components(f)
     }

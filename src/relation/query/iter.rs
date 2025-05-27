@@ -8,7 +8,7 @@ pub struct RelationIter<'a, R> {
 
 impl<'a, R> RelationIter<'a, R> {
     /// Creates a new iterator over relations of a given type on one entity.
-    #[inline(always)]
+    #[inline]
     pub fn new(relations: &'a [(EntityId, R)]) -> Self {
         RelationIter {
             iter: relations.iter(),
@@ -19,24 +19,24 @@ impl<'a, R> RelationIter<'a, R> {
 impl<'a, R> Iterator for RelationIter<'a, R> {
     type Item = EntityBound<'a>;
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<EntityBound<'a>> {
         let origin = self.iter.next()?;
         Some(EntityBound::new(origin.0))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<EntityBound<'a>> {
         let origin = self.iter.nth(n)?;
         Some(EntityBound::new(origin.0))
     }
 
-    #[inline(always)]
+    #[inline]
     fn fold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -48,19 +48,19 @@ impl<'a, R> Iterator for RelationIter<'a, R> {
 }
 
 impl<'a, R> DoubleEndedIterator for RelationIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn next_back(&mut self) -> Option<EntityBound<'a>> {
         let origin = self.iter.next_back()?;
         Some(EntityBound::new(origin.0))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth_back(&mut self, n: usize) -> Option<EntityBound<'a>> {
         let origin = self.iter.nth_back(n)?;
         Some(EntityBound::new(origin.0))
     }
 
-    #[inline(always)]
+    #[inline]
     fn rfold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -72,7 +72,7 @@ impl<'a, R> DoubleEndedIterator for RelationIter<'a, R> {
 }
 
 impl<'a, R> ExactSizeIterator for RelationIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.iter.len()
     }
@@ -86,7 +86,7 @@ pub struct RelationReadIter<'a, R> {
 
 impl<'a, R> RelationReadIter<'a, R> {
     /// Creates a new iterator over relations of a given type on one entity.
-    #[inline(always)]
+    #[inline]
     pub fn new(relations: &'a [(EntityId, R)]) -> Self {
         RelationReadIter {
             iter: relations.iter(),
@@ -97,24 +97,24 @@ impl<'a, R> RelationReadIter<'a, R> {
 impl<'a, R> Iterator for RelationReadIter<'a, R> {
     type Item = (&'a R, EntityBound<'a>);
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next()?;
         Some((&origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth(n)?;
         Some((&origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn fold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -127,19 +127,19 @@ impl<'a, R> Iterator for RelationReadIter<'a, R> {
 }
 
 impl<'a, R> DoubleEndedIterator for RelationReadIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn next_back(&mut self) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.next_back()?;
         Some((&origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth_back(&mut self, n: usize) -> Option<(&'a R, EntityBound<'a>)> {
         let origin = self.iter.nth_back(n)?;
         Some((&origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn rfold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -152,7 +152,7 @@ impl<'a, R> DoubleEndedIterator for RelationReadIter<'a, R> {
 }
 
 impl<'a, R> ExactSizeIterator for RelationReadIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.iter.len()
     }
@@ -165,7 +165,7 @@ pub struct RelationWriteIter<'a, R> {
 
 impl<'a, R> RelationWriteIter<'a, R> {
     /// Creates a new iterator over relations of a given type on one entity.
-    #[inline(always)]
+    #[inline]
     pub fn new(relations: &'a mut [(EntityId, R)]) -> Self {
         RelationWriteIter {
             iter: relations.iter_mut(),
@@ -176,24 +176,24 @@ impl<'a, R> RelationWriteIter<'a, R> {
 impl<'a, R> Iterator for RelationWriteIter<'a, R> {
     type Item = (&'a mut R, EntityBound<'a>);
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<(&'a mut R, EntityBound<'a>)> {
         let origin = self.iter.next()?;
         Some((&mut origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<(&'a mut R, EntityBound<'a>)> {
         let origin = self.iter.nth(n)?;
         Some((&mut origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn fold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -206,19 +206,19 @@ impl<'a, R> Iterator for RelationWriteIter<'a, R> {
 }
 
 impl<'a, R> DoubleEndedIterator for RelationWriteIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn next_back(&mut self) -> Option<(&'a mut R, EntityBound<'a>)> {
         let origin = self.iter.next_back()?;
         Some((&mut origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn nth_back(&mut self, n: usize) -> Option<(&'a mut R, EntityBound<'a>)> {
         let origin = self.iter.nth_back(n)?;
         Some((&mut origin.1, EntityBound::new(origin.0)))
     }
 
-    #[inline(always)]
+    #[inline]
     fn rfold<B, F>(self, init: B, mut f: F) -> B
     where
         Self: Sized,
@@ -231,7 +231,7 @@ impl<'a, R> DoubleEndedIterator for RelationWriteIter<'a, R> {
 }
 
 impl<'a, R> ExactSizeIterator for RelationWriteIter<'a, R> {
-    #[inline(always)]
+    #[inline]
     fn len(&self) -> usize {
         self.iter.len()
     }

@@ -26,7 +26,7 @@ pub trait BooleanFetchOp: 'static {
 pub enum AndOp {}
 
 impl BooleanFetchOp for AndOp {
-    #[inline(always)]
+    #[inline]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a && b {
             ControlFlow::Continue(true)
@@ -35,7 +35,7 @@ impl BooleanFetchOp for AndOp {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn mask(mask: u16, count: usize) -> bool {
         debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask == (1 << count) - 1
@@ -45,7 +45,7 @@ impl BooleanFetchOp for AndOp {
 pub enum OrOp {}
 
 impl BooleanFetchOp for OrOp {
-    #[inline(always)]
+    #[inline]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         if a || b {
             ControlFlow::Break(true)
@@ -54,7 +54,7 @@ impl BooleanFetchOp for OrOp {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn mask(mask: u16, count: usize) -> bool {
         debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask != 0
@@ -64,7 +64,7 @@ impl BooleanFetchOp for OrOp {
 pub enum XorOp {}
 
 impl BooleanFetchOp for XorOp {
-    #[inline(always)]
+    #[inline]
     fn op(a: bool, b: bool) -> ControlFlow<bool, bool> {
         match (a, b) {
             (false, false) => ControlFlow::Continue(false),
@@ -73,7 +73,7 @@ impl BooleanFetchOp for XorOp {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn mask(mask: u16, count: usize) -> bool {
         debug_assert_eq!(mask & !((1 << count) - 1), 0);
         mask.is_power_of_two()
@@ -92,7 +92,7 @@ impl<T, Op> Clone for BooleanQuery<T, Op>
 where
     T: Clone,
 {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         BooleanQuery {
             tuple: self.tuple.clone(),
@@ -105,7 +105,7 @@ impl<T, Op> Copy for BooleanQuery<T, Op> where T: Copy {}
 
 impl<T, Op> BooleanQuery<T, Op> {
     /// Creates a new [`BooleanQuery`].
-    #[inline(always)]
+    #[inline]
     pub fn from_tuple(tuple: T) -> Self {
         BooleanQuery {
             tuple,
@@ -135,7 +135,7 @@ macro_rules! impl_boolean {
         {
             type Item = ($(Option<$a::Item>,)+);
 
-            #[inline(always)]
+            #[inline]
             fn dangling() -> Self {
                 BooleanFetch {
                     tuple: ($($a::dangling(),)+),
@@ -146,7 +146,7 @@ macro_rules! impl_boolean {
                 }
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_item(&mut self, idx: u32) -> ($(Option<$a::Item>,)+) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
@@ -161,7 +161,7 @@ macro_rules! impl_boolean {
                 },)+)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
@@ -178,7 +178,7 @@ macro_rules! impl_boolean {
                 Op::mask(self.item, count)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
@@ -195,7 +195,7 @@ macro_rules! impl_boolean {
                 Op::mask(self.chunk, count)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
@@ -217,7 +217,7 @@ macro_rules! impl_boolean {
         {
             type Batch = ($(Option<$a::Batch>,)+);
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_batch(&mut self, start: u32, end: u32) -> ($(Option<$a::Batch>,)+) {
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
@@ -239,7 +239,7 @@ macro_rules! impl_boolean {
             Op: BooleanFetchOp,
         {
             /// Creates a new [`BooleanQuery`].
-            #[inline(always)]
+            #[inline]
             pub fn new($($a: $a),+) -> Self {
                 BooleanQuery {
                     tuple: ($($a,)+),
@@ -263,7 +263,7 @@ macro_rules! impl_boolean {
             $($a: IntoQuery,)+
             Op: BooleanFetchOp,
         {
-            #[inline(always)]
+            #[inline]
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self.tuple;
                 BooleanQuery {
@@ -278,7 +278,7 @@ macro_rules! impl_boolean {
             $($a: DefaultQuery,)+
             Op: BooleanFetchOp,
         {
-            #[inline(always)]
+            #[inline]
             fn default_query() -> Self::Query {
                 BooleanQuery {
                     tuple: ($($a::default_query(),)+),
@@ -292,7 +292,7 @@ macro_rules! impl_boolean {
             $($a: QueryArg,)+
             Op: BooleanFetchOp,
         {
-            #[inline(always)]
+            #[inline]
             fn new() -> Self {
                 BooleanQuery {
                     tuple: ($($a::new(),)+),
@@ -313,7 +313,7 @@ macro_rules! impl_boolean {
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
 
-            #[inline(always)]
+            #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = &self.tuple;
                 let mut result = None;
@@ -327,7 +327,7 @@ macro_rules! impl_boolean {
                 Ok(result)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = &self.tuple;
                 $(if $a.visit_archetype(archetype) {
@@ -335,7 +335,7 @@ macro_rules! impl_boolean {
                 })+
             }
 
-            #[inline(always)]
+            #[inline]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
                 let mut mi = 1;
@@ -351,7 +351,7 @@ macro_rules! impl_boolean {
                 Op::mask(mask, count)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = &self.tuple;
                 let mut mi = 1;
@@ -367,7 +367,7 @@ macro_rules! impl_boolean {
                 Op::mask(mask, count)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn fetch<'a>(
                 &self,
                 arch_idx: u32,
@@ -397,7 +397,7 @@ macro_rules! impl_boolean {
                 }
             }
 
-            #[inline(always)]
+            #[inline]
             fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Self::Item<'a>> {
                 let ($($a,)+) = &self.tuple;
                 let mut mask = 0;

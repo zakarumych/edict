@@ -98,7 +98,7 @@ pub unsafe trait FnArgState: Send + 'static {
 
     /// Flushes the argument state.
     /// This method is called after system execution, when `Arg` is already dropped.
-    #[inline(always)]
+    #[inline]
     unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
         let _ = world;
         let _ = queue;
@@ -126,13 +126,13 @@ macro_rules! impl_func {
             $($a: FnArgState,)*
             Func: for<'a> FnMut($($a::Arg<'a>,)*),
         {
-            #[inline(always)]
+            #[inline]
             fn is_local(&self) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.is_local() )*
             }
 
-            #[inline(always)]
+            #[inline]
             fn world_access(&self) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
@@ -148,13 +148,13 @@ macro_rules! impl_func {
                 result
             }
 
-            #[inline(always)]
+            #[inline]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)*) = &self.args;
                 false $( || $a.visit_archetype(archetype) )*
             }
 
-            #[inline(always)]
+            #[inline]
             fn component_access(&self, archetype: &Archetype, comp: &ComponentInfo) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
@@ -182,7 +182,7 @@ macro_rules! impl_func {
                 result
             }
 
-            #[inline(always)]
+            #[inline]
             fn resource_type_access(&self, ty: TypeId) -> Option<Access> {
                 let ($($a,)*) = &self.args;
                 let mut result = None;
@@ -202,7 +202,7 @@ macro_rules! impl_func {
                 result
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
                 let ($($a,)*) = &mut self.args;
 
@@ -228,7 +228,7 @@ macro_rules! impl_func {
         {
             type System = FunctionSystem<Self, ($($a::State,)*)>;
 
-            #[inline(always)]
+            #[inline]
             fn into_system(self) -> Self::System {
                 FunctionSystem {
                     f: self,
@@ -252,7 +252,7 @@ impl<T> FromWorld for T
 where
     T: Default,
 {
-    #[inline(always)]
+    #[inline]
     fn from_world(_: &World) -> Self {
         T::default()
     }

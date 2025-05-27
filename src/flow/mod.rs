@@ -82,7 +82,7 @@ trait MakeFlow: 'static {
 /// Which means that another reference returned from [`get_flow_world`] must not exist.
 ///
 /// It is recommended to make sure that reference never escape unsafe block where it is fetched.
-#[inline(always)]
+#[inline]
 pub unsafe fn get_flow_world<'a>() -> &'a mut WorldLocal {
     unsafe { tls::get_world_mut() }
 }
@@ -97,7 +97,7 @@ trait AnyMakeFlows {
 }
 
 impl<'a> dyn AnyMakeFlows + 'a {
-    #[inline(always)]
+    #[inline]
     unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedMakeFlows<F> {
         debug_assert_eq!(self.flow_id(), type_id::<F>());
 
@@ -202,7 +202,7 @@ trait AnyFlows {
 }
 
 impl dyn AnyFlows {
-    #[inline(always)]
+    #[inline]
     unsafe fn downcast_mut<F: 'static>(&mut self) -> &mut TypedFlows<F> {
         #[cfg(debug_assertions)]
         assert_eq!(self.flow_id(), type_id::<F>());
@@ -218,12 +218,12 @@ struct FlowWaker {
 }
 
 impl Wake for FlowWaker {
-    #[inline(always)]
+    #[inline]
     fn wake(self: Arc<Self>) {
         self.wake_by_ref();
     }
 
-    #[inline(always)]
+    #[inline]
     fn wake_by_ref(self: &Arc<Self>) {
         let needs_wake = self.needs_wake.fetch_and(false, Ordering::Acquire);
         if !needs_wake {
@@ -251,7 +251,7 @@ impl<F> TypedFlows<F>
 where
     F: Flow + 'static,
 {
-    #[inline(always)]
+    #[inline]
     unsafe fn execute(&mut self, ids: &[usize]) {
         for &id in ids {
             let Some(task) = self.array.get_mut(id) else {

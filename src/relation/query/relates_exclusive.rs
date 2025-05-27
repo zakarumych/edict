@@ -32,7 +32,7 @@ impl<R> IntoQuery for RelatesExclusive<With<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -42,7 +42,7 @@ impl<R> DefaultQuery for RelatesExclusive<With<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         RelatesExclusive
     }
@@ -60,7 +60,7 @@ where
 {
     type Item = EntityBound<'a>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatesExclusiveWith {
             ptr: NonNull::dangling(),
@@ -68,7 +68,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> EntityBound<'a> {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let origin = &origin_component.targets()[0];
@@ -85,7 +85,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<OriginComponent<R>>() {
             Ok(Some(Access::Read))
@@ -98,12 +98,12 @@ where
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -136,7 +136,7 @@ impl<R> QueryArg for RelatesExclusive<With<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         RelatesExclusive
     }
@@ -153,7 +153,7 @@ impl<R> DefaultQuery for RelatesExclusive<&R>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> RelatesExclusive<Read<R>> {
         RelatesExclusive
     }
@@ -170,7 +170,7 @@ impl<R> IntoQuery for RelatesExclusive<Read<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -180,7 +180,7 @@ impl<R> DefaultQuery for RelatesExclusive<Read<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         RelatesExclusive
     }
@@ -198,7 +198,7 @@ where
 {
     type Item = (&'a R, EntityBound<'a>);
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatesExclusiveRead {
             ptr: NonNull::dangling(),
@@ -206,7 +206,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a R, EntityBound<'a>) {
         let origin_component = unsafe { &*self.ptr.as_ptr().add(idx as usize) };
         let origin = &origin_component.targets()[0];
@@ -223,7 +223,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<OriginComponent<R>>() {
             Ok(Some(Access::Read))
@@ -236,12 +236,12 @@ where
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<OriginComponent<R>>(), Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -274,7 +274,7 @@ impl<R> QueryArg for RelatesExclusive<Read<R>>
 where
     R: ExclusiveRelation + Sync,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         RelatesExclusive
     }
@@ -291,7 +291,7 @@ impl<R> DefaultQuery for RelatesExclusive<&mut R>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> RelatesExclusive<Write<R>> {
         RelatesExclusive
     }
@@ -308,7 +308,7 @@ impl<R> IntoQuery for RelatesExclusive<Write<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -318,7 +318,7 @@ impl<R> DefaultQuery for RelatesExclusive<Write<R>>
 where
     R: ExclusiveRelation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         RelatesExclusive
     }
@@ -339,7 +339,7 @@ where
 {
     type Item = (&'a mut R, EntityBound<'a>);
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatesExclusiveWrite {
             epoch: EpochId::start(),
@@ -350,13 +350,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> (&'a mut R, EntityBound<'a>) {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -376,7 +376,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<OriginComponent<R>>() {
             Ok(Some(Access::Write))
@@ -385,17 +385,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<OriginComponent<R>>(), Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -430,7 +430,7 @@ impl<R> QueryArg for RelatesExclusive<Write<R>>
 where
     R: ExclusiveRelation + Send,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         RelatesExclusive
     }

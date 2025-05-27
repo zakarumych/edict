@@ -23,7 +23,7 @@ where
 {
     type Item = ();
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchFilterRelatedBy {
             origin: EntityId::dangling(),
@@ -32,7 +32,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         if R::SYMMETRIC {
             let origin_component = unsafe {
@@ -61,7 +61,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, _: u32) -> () {}
 }
 
@@ -95,7 +95,7 @@ impl<R> IntoQuery for FilterRelatedBy<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self::Query {
         self
     }
@@ -111,7 +111,7 @@ where
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if R::SYMMETRIC {
             if comp.id() == type_id::<OriginComponent<R>>() {
@@ -128,7 +128,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
             archetype.has_component(type_id::<OriginComponent<R>>())
@@ -137,7 +137,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if R::SYMMETRIC {
             f(type_id::<OriginComponent<R>>(), Access::Read)
@@ -146,7 +146,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

@@ -54,7 +54,7 @@ impl Deref for ArchetypeComponent {
 }
 
 impl ArchetypeComponent {
-    #[inline(always)]
+    #[inline]
     pub unsafe fn borrow(&self, access: Access) -> bool {
         match access {
             Access::Read => try_borrow(&self.lock),
@@ -62,7 +62,7 @@ impl ArchetypeComponent {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub unsafe fn release(&self, access: Access) {
         match access {
             Access::Read => release_borrow(&self.lock),
@@ -70,12 +70,12 @@ impl ArchetypeComponent {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub unsafe fn data(&self) -> &ComponentData {
         unsafe { &*self.data.get() }
     }
 
-    #[inline(always)]
+    #[inline]
     pub unsafe fn data_mut(&self) -> &mut ComponentData {
         unsafe { &mut *self.data.get() }
     }
@@ -236,39 +236,39 @@ impl Archetype {
     }
 
     /// Returns `true` if archetype contains component with specified id.
-    #[inline(always)]
+    #[inline]
     pub fn has_component(&self, ty: TypeId) -> bool {
         self.components.contains_key(&ty)
     }
 
     /// Returns `true` if archetype contains component with specified id.
-    #[inline(always)]
+    #[inline]
     pub fn contains_borrow(&self, ty: TypeId) -> bool {
         self.borrows.contains_key(&ty)
     }
 
     /// Returns `true` if archetype contains component with specified id.
-    #[inline(always)]
+    #[inline]
     pub fn contains_borrow_mut(&self, ty: TypeId) -> bool {
         self.borrows_mut.contains_key(&ty)
     }
 
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn borrow_indices(&self, ty: TypeId) -> Option<&[(TypeId, usize)]> {
         self.borrows.get(&ty).map(|v| &v[..])
     }
 
     /// Returns index of the component type with specified id.
     /// This index may be used then to index into lists of ids and infos.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn borrow_mut_indices(&self, ty: TypeId) -> Option<&[(TypeId, usize)]> {
         self.borrows_mut.get(&ty).map(|v| &v[..])
     }
 
     /// Returns `true` if archetype matches components set specified.
-    #[inline(always)]
+    #[inline]
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
         let len = self.components.len();
         match type_ids.size_hint() {
@@ -286,13 +286,13 @@ impl Archetype {
     }
 
     /// Returns iterator over component type ids.
-    #[inline(always)]
+    #[inline]
     pub fn ids(&self) -> impl ExactSizeIterator<Item = TypeId> + Clone + '_ {
         self.components.keys().copied()
     }
 
     /// Returns iterator over component type infos.
-    #[inline(always)]
+    #[inline]
     pub fn infos(&self) -> impl ExactSizeIterator<Item = &'_ ComponentInfo> + Clone + '_ {
         self.components.iter().map(|(_, c)| &c.info)
     }
@@ -363,7 +363,7 @@ impl Archetype {
     /// Despawns specified entity in the archetype.
     ///
     /// Returns id of the entity that took the place of despawned.
-    #[inline(always)]
+    #[inline]
     pub fn despawn(
         &mut self,
         id: EntityId,
@@ -473,7 +473,7 @@ impl Archetype {
     /// # Safety
     ///
     /// Archetype must contain that component type.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn set<T>(
         &mut self,
         id: EntityId,
@@ -499,7 +499,7 @@ impl Archetype {
     /// # Safety
     ///
     /// Archetype must contain that component type.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get<T>(&mut self, entity_idx: u32) -> &T
     where
         T: 'static,
@@ -526,7 +526,7 @@ impl Archetype {
     ///
     /// Archetype must contain that component type.
     /// `epoch` must be advanced before this call.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_mut<T>(&mut self, entity_idx: u32, epoch: EpochId) -> &mut T
     where
         T: 'static,
@@ -556,7 +556,7 @@ impl Archetype {
     /// # Safety
     ///
     /// Archetype must contain that component type.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_mut_nobump<T>(&mut self, entity_idx: u32) -> &mut T
     where
         T: 'static,
@@ -806,28 +806,28 @@ impl Archetype {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn entities(&self) -> &[EntityId] {
         &self.entities
     }
 
     /// Returns archetype component
-    #[inline(always)]
+    #[inline]
     pub(crate) fn component(&self, ty: TypeId) -> Option<&ArchetypeComponent> {
         self.components.get(&ty)
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn len(&self) -> usize {
         self.entities.len()
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.entities.is_empty()
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn reserve(&mut self, additional: u32) {
         debug_assert!(self.entities.len() <= u32::MAX as usize);
 
@@ -853,7 +853,7 @@ impl Archetype {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn write_bundle<B, F>(
         &mut self,
         id: EntityId,
@@ -896,7 +896,7 @@ impl Archetype {
         });
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn write_one<T>(
         &mut self,
         id: EntityId,
@@ -936,7 +936,7 @@ impl Archetype {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn relocate_components<F>(
         &mut self,
         src_entity_idx: u32,
@@ -1037,17 +1037,17 @@ impl Archetype {
 
 pub(crate) const CHUNK_LEN: u32 = 0x100;
 
-#[inline(always)]
+#[inline]
 pub(crate) const fn chunk_idx(idx: u32) -> u32 {
     idx >> 8
 }
 
-#[inline(always)]
+#[inline]
 pub(crate) const fn chunks_count(entities: u32) -> u32 {
     entities + (CHUNK_LEN - 1) / CHUNK_LEN
 }
 
-#[inline(always)]
+#[inline]
 pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
     if idx % CHUNK_LEN == 0 {
         Some(chunk_idx(idx))
@@ -1056,7 +1056,7 @@ pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
     }
 }
 
-#[inline(always)]
+#[inline]
 pub(crate) fn starts_of_chunks(start: u32, end: u32, mut f: impl FnMut(u32)) {
     if start % CHUNK_LEN == 0 {
         f(chunk_idx(start));

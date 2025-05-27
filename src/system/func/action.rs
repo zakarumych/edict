@@ -27,37 +27,37 @@ unsafe impl FnArgState for ActionEncoderState {
         ActionEncoderState { buffer: None }
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -68,7 +68,7 @@ unsafe impl FnArgState for ActionEncoderState {
         ActionEncoder::new(buffer, unsafe { world.as_ref() }.entities())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn flush_unchecked(
         &mut self,
         _world: NonNull<World>,

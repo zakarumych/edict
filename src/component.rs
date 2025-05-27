@@ -367,7 +367,7 @@ impl ComponentBorrow {
 )]
 pub trait Component: Sized + 'static {
     /// Returns name of the component type.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     fn name() -> &'static str {
         core::any::type_name::<Self>()
@@ -380,7 +380,7 @@ pub trait Component: Sized + 'static {
     /// [`World::drop_erased`]: edict::world::World::drop_erased
     /// [`World::drop_batch`]: edict::world::World::drop_batch
     /// [`World::drop_erased_batch`]: edict::world::World::drop_erased_batch
-    #[inline(always)]
+    #[inline]
     fn on_drop(&mut self, id: EntityId, encoder: LocalActionEncoder) {
         let _ = id;
         let _ = encoder;
@@ -388,7 +388,7 @@ pub trait Component: Sized + 'static {
 
     /// Hook that is executed whenever new value is assigned to the component.
     /// If this method returns `true` then `on_remove` is executed for old value before assignment.
-    #[inline(always)]
+    #[inline]
     fn on_replace(&mut self, value: &Self, id: EntityId, encoder: LocalActionEncoder) -> bool
     where
         Self: Sized,
@@ -400,7 +400,7 @@ pub trait Component: Sized + 'static {
     }
 
     /// Returns array of component borrows supported by the type.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     fn borrows() -> Vec<ComponentBorrow> {
         vec![ComponentBorrow::auto::<Self>()]
@@ -443,7 +443,7 @@ pub struct ComponentInfo {
 
 impl ComponentInfo {
     /// Returns component information for specified component type.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn of<T>() -> Self
     where
@@ -463,7 +463,7 @@ impl ComponentInfo {
     }
 
     /// Returns component information for specified external type.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn external<T>() -> Self
     where
@@ -483,38 +483,38 @@ impl ComponentInfo {
     }
 
     /// Returns component's `TypeId`.
-    #[inline(always)]
+    #[inline]
     pub fn id(&self) -> TypeId {
         self.ty
     }
 
     /// Returns component's memory layout.
-    #[inline(always)]
+    #[inline]
     pub fn layout(&self) -> Layout {
         self.layout
     }
 
     /// Returns component's name.
-    #[inline(always)]
+    #[inline]
     pub fn name(&self) -> &'static str {
         self.name
     }
 
     /// Returns list of borrows supported by the component.
-    #[inline(always)]
+    #[inline]
     pub fn borrows(&self) -> &[ComponentBorrow] {
         &self.borrows
     }
 
     /// Returns `true` if specified type can be borrowed from this component.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn has_borrow(&self, ty: TypeId) -> bool {
         self.borrows.iter().any(|b| b.target() == ty)
     }
 
     /// Returns `true` if specified type can be mutably borrowed from this component.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn has_borrow_mut(&self, ty: TypeId) -> bool {
         self.borrows
@@ -523,14 +523,14 @@ impl ComponentInfo {
             .map_or(false, |b| b.has_borrow_mut())
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn drop_one(&self, ptr: NonNull<u8>, id: EntityId, encoder: LocalActionEncoder) {
         unsafe {
             (self.drop_one)(NonNull::from(&*self.on_drop).cast(), ptr, id, encoder);
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn set_one(
         &self,
         dst: NonNull<u8>,
@@ -550,7 +550,7 @@ impl ComponentInfo {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn final_drop(&self, ptr: NonNull<u8>, count: usize) {
         unsafe {
             (self.final_drop)(ptr, count);
@@ -570,7 +570,7 @@ where
     T: ?Sized,
     F: Fn(&mut T, EntityId, LocalActionEncoder) + Send + Sync + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn on_drop(&self, component: &mut T, id: EntityId, encoder: LocalActionEncoder) {
         self(component, id, encoder);
     }
@@ -595,7 +595,7 @@ where
     T: ?Sized,
     F: Fn(&mut T, &T, EntityId, LocalActionEncoder) -> bool + Send + Sync + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn on_replace(
         &self,
         component: &mut T,
@@ -615,7 +615,7 @@ impl<T> DropHook<T> for DefaultDropHook
 where
     T: Component,
 {
-    #[inline(always)]
+    #[inline]
     fn on_drop(&self, component: &mut T, id: EntityId, encoder: LocalActionEncoder) {
         T::on_drop(component, id, encoder);
     }
@@ -629,7 +629,7 @@ impl<T> SetHook<T> for DefaultSetHook
 where
     T: Component,
 {
-    #[inline(always)]
+    #[inline]
     fn on_replace(&self, dst: &mut T, src: &T, id: EntityId, encoder: LocalActionEncoder) -> bool {
         T::on_replace(dst, src, id, encoder)
     }
@@ -640,7 +640,7 @@ where
 pub struct ExternalDropHook;
 
 impl<T> DropHook<T> for ExternalDropHook {
-    #[inline(always)]
+    #[inline]
     fn on_drop(&self, _component: &mut T, _id: EntityId, _encoder: LocalActionEncoder) {}
 }
 
@@ -649,7 +649,7 @@ impl<T> DropHook<T> for ExternalDropHook {
 pub struct ExternalSetHook;
 
 impl<T> SetHook<T> for ExternalSetHook {
-    #[inline(always)]
+    #[inline]
     fn on_replace(
         &self,
         _dst: &mut T,
@@ -682,7 +682,7 @@ where
     D: DropHook<T>,
     S: SetHook<T>,
 {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         self.drop_impl();
     }
@@ -694,7 +694,7 @@ where
     D: DropHook<T>,
     S: SetHook<T>,
 {
-    #[inline(always)]
+    #[inline]
     fn drop_impl(&mut self) {
         let info = self.info.as_mut().unwrap();
         info.drop_one = drop_one::<T, D>;
@@ -952,7 +952,7 @@ impl<T> Value for T
 where
     T: Component,
 {
-    #[inline(always)]
+    #[inline]
     fn name(&self) -> &'static str {
         T::name()
     }

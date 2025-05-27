@@ -437,12 +437,12 @@ macro_rules! impl_copy {
         impl $(< $( $a ),+ >)? Clone for $type $(< $( $a ),+ >)?
         $(where $($b: $b0 $(+$bt)*,)+)?
         {
-            #[inline(always)]
+            #[inline]
             fn clone(&self) -> Self {
                 *self
             }
 
-            #[inline(always)]
+            #[inline]
             fn clone_from(&mut self, source: &Self) {
                 *self = *source
             }
@@ -480,12 +480,12 @@ macro_rules! marker_type_impls {
 
         impl $(< $($a: ?Sized),+ >)? core::marker::Copy for $type $(< $($a),+ >)? {}
         impl $(< $($a: ?Sized),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
-            #[inline(always)]
+            #[inline]
             fn clone(&self) -> Self {
                 $type
             }
 
-            #[inline(always)]
+            #[inline]
             fn clone_from(&mut self, _source: &Self) {}
         }
 
@@ -504,7 +504,7 @@ macro_rules! marker_type_impls {
         }
 
         impl $(< $($a: ?Sized),+ >)? Default for $type $(< $($a),+ >)? {
-            #[inline(always)]
+            #[inline]
             fn default() -> Self {
                 $type
             }
@@ -524,12 +524,12 @@ unsafe impl<T: ?Sized> Sync for TypeParam<T> {}
 
 impl<T: ?Sized> Copy for TypeParam<T> {}
 impl<T: ?Sized> Clone for TypeParam<T> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         TypeParam([])
     }
 
-    #[inline(always)]
+    #[inline]
     fn clone_from(&mut self, _source: &Self) {}
 }
 
@@ -643,7 +643,7 @@ unsafe trait ResultEntityError<T> {
 }
 
 unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
-    #[inline(always)]
+    #[inline]
     unsafe fn assume_entity_exists(self) -> Option<T> {
         match self {
             Ok(value) => Some(value),
@@ -654,14 +654,14 @@ unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
 }
 
 impl From<NoSuchEntity> for EntityError {
-    #[inline(always)]
+    #[inline]
     fn from(_: NoSuchEntity) -> Self {
         EntityError::NoSuchEntity
     }
 }
 
 impl From<Mismatch> for EntityError {
-    #[inline(always)]
+    #[inline]
     fn from(_: Mismatch) -> Self {
         EntityError::Mismatch
     }
@@ -704,10 +704,10 @@ pub mod private {
 
     pub use crate::system::FnArg;
 
-    #[inline(always)]
+    #[inline]
     pub fn is_fn_arg<A: FnArg>() {}
 
-    #[inline(always)]
+    #[inline]
     pub fn is_fn_system<Args, F: IntoSystem<IsFunctionSystem<Args>>>(_: F) {}
 }
 
@@ -717,7 +717,7 @@ pub struct ExampleComponent;
 impl component::Component for ExampleComponent {}
 
 #[cold]
-#[inline(always)]
+#[inline]
 fn cold() {}
 
 /// Shorter version of [`core::any::TypeId::of`].

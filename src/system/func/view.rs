@@ -28,13 +28,13 @@ pub trait QueryArg: SendQuery {
     fn new() -> Self;
 
     /// Hook called before function-system runs to update the state.
-    #[inline(always)]
+    #[inline]
     fn before(&mut self, world: &World) {
         let _ = world;
     }
 
     /// Hook called after function-system runs to update the state.
-    #[inline(always)]
+    #[inline]
     fn after(&mut self, world: &World) {
         let _ = world;
     }
@@ -63,7 +63,7 @@ where
 {
     type Arg<'a> = ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         ViewState {
             query: Q::new(),
@@ -72,27 +72,27 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.query.visit_archetype(archetype) && self.filter.visit_archetype(archetype)
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
         let q = self
             .query
@@ -113,12 +113,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -141,7 +141,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn flush_unchecked(
         &mut self,
         world: NonNull<World>,
@@ -169,7 +169,7 @@ where
 {
     type Arg<'a> = ViewValue<'a, Q, F, StaticallyBorrowed, NonExtensible>;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         ViewState {
             query: Q::new(),
@@ -178,27 +178,27 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.query.visit_archetype(archetype) && self.filter.visit_archetype(archetype)
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
         let Ok(q) = self.query.component_access(comp) else {
             mutable_alias_in_view(comp.name(), type_name::<Self>());
@@ -216,12 +216,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         None
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -248,7 +248,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn flush_unchecked(
         &mut self,
         world: NonNull<World>,

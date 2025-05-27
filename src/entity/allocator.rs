@@ -168,7 +168,7 @@ impl IdAllocator {
     /// Calls provided closure with reserved IDs.
     /// `count` must be larger than all `idx` values passed to `reserve` that
     /// returned `Some`
-    #[inline(always)]
+    #[inline]
     pub unsafe fn flush_reserved(&mut self, count: u64, mut f: impl FnMut(NonZeroU64)) {
         let mut advanced = self.current.advance(count, &mut f);
         if advanced < count {

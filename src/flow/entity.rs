@@ -29,83 +29,83 @@ pub struct FlowEntity {
 }
 
 impl Entity for FlowEntity {
-    #[inline(always)]
+    #[inline]
     fn id(&self) -> EntityId {
         self.id
     }
 
-    #[inline(always)]
+    #[inline]
     fn lookup(&self, entities: &EntitySet) -> Option<Location> {
         self.id.lookup(entities)
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_alive(&self, entities: &EntitySet) -> bool {
         self.id.is_alive(entities)
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'a>(&self, entities: &'a EntitySet) -> Option<EntityLoc<'a>> {
         self.id.entity_loc(entities)
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'a>(&self, world: &'a mut World) -> Option<EntityRef<'a>> {
         self.id.entity_ref(world)
     }
 }
 
 impl PartialEq<EntityId> for FlowEntity {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
 impl PartialEq<FlowEntity> for EntityId {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &FlowEntity) -> bool {
         *self == other.id
     }
 }
 
 impl PartialEq<EntityBound<'_>> for FlowEntity {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         self.id == other.id()
     }
 }
 
 impl PartialEq<FlowEntity> for EntityBound<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &FlowEntity) -> bool {
         self.id() == other.id
     }
 }
 
 impl PartialEq<EntityLoc<'_>> for FlowEntity {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityLoc<'_>) -> bool {
         self.id == other.id()
     }
 }
 
 impl PartialEq<FlowEntity> for EntityLoc<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &FlowEntity) -> bool {
         self.id() == other.id
     }
 }
 
 impl PartialEq<EntityRef<'_>> for FlowEntity {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityRef<'_>) -> bool {
         self.id == other.id()
     }
 }
 
 impl PartialEq<FlowEntity> for EntityRef<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &FlowEntity) -> bool {
         self.id() == other.id
     }
@@ -222,7 +222,7 @@ where
 
 impl FlowEntity {
     #[doc(hidden)]
-    #[inline(always)]
+    #[inline]
     pub fn new(id: EntityId) -> Self {
         FlowEntity {
             id,
@@ -231,7 +231,7 @@ impl FlowEntity {
     }
 
     /// Returns the entity id.
-    #[inline(always)]
+    #[inline]
     pub fn id(self) -> EntityId {
         self.id
     }
@@ -248,7 +248,7 @@ impl FlowEntity {
     ///
     /// If entity is not alive the closure will not be called and the method will panic.
     /// Use [`FlowEntity::try_map`] to handle entity not alive case.
-    #[inline(always)]
+    #[inline]
     pub fn map<F, R>(self, f: F) -> R
     where
         F: FnOnce(EntityRef) -> R,
@@ -264,7 +264,7 @@ impl FlowEntity {
     /// The closure may use task context to register wakers.
     ///
     /// If entity is not alive the future will not poll closure and never resolve.
-    #[inline(always)]
+    #[inline]
     pub fn try_map<F, R>(self, f: F) -> Result<R, NoSuchEntity>
     where
         F: FnOnce(EntityRef) -> R,
@@ -282,7 +282,7 @@ impl FlowEntity {
     ///
     /// If entity is not alive the future will not poll closure and never resolve.
     /// Use [`FlowEntity::try_poll`] to handle entity not alive case.
-    #[inline(always)]
+    #[inline]
     pub fn poll<F, R>(self, f: F) -> PollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
@@ -299,7 +299,7 @@ impl FlowEntity {
     /// The future will resolve to `Err` if entity is despawned.
     ///
     /// The closure may use task context to register wakers.
-    #[inline(always)]
+    #[inline]
     pub fn try_poll<F, R>(self, f: F) -> TryPollEntityRef<F>
     where
         F: FnMut(EntityRef, &mut Context) -> Poll<R>,
@@ -405,7 +405,7 @@ impl FlowEntity {
     /// # Panics
     ///
     /// Panics if entity is not alive.
-    #[inline(always)]
+    #[inline]
     pub fn get_cloned<T>(self) -> Option<T>
     where
         T: Clone + 'static,
@@ -424,7 +424,7 @@ impl FlowEntity {
     /// Otherwise returns error.
     /// If entity is not alive, returns `Err(NoSuchEntity)`.
     /// If entity does not have component of specified type, returns `Err(Mismatch)`.
-    #[inline(always)]
+    #[inline]
     pub fn try_get_cloned<T>(self) -> Result<T, EntityError>
     where
         T: Clone + 'static,
@@ -438,7 +438,7 @@ impl FlowEntity {
     /// Sets new value for the entity component.
     ///
     /// Returns error if entity does not have component of specified type.
-    #[inline(always)]
+    #[inline]
     pub fn set<T>(self, value: T) -> Result<(), T>
     where
         T: 'static,
@@ -453,7 +453,7 @@ impl FlowEntity {
     /// Sets new value for the entity component.
     ///
     /// Returns error if entity does not have component of specified type.
-    #[inline(always)]
+    #[inline]
     pub fn try_set<T>(self, value: T) -> Result<(), (EntityError, T)>
     where
         T: 'static,
@@ -472,7 +472,7 @@ impl FlowEntity {
     }
 
     /// Insert a component to the entity.
-    #[inline(always)]
+    #[inline]
     pub fn insert<T>(self, component: T)
     where
         T: Component,
@@ -484,7 +484,7 @@ impl FlowEntity {
     }
 
     /// Insert a component to the entity.
-    #[inline(always)]
+    #[inline]
     pub fn try_insert<T>(self, component: T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -500,7 +500,7 @@ impl FlowEntity {
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
-    #[inline(always)]
+    #[inline]
     pub fn insert_external<T>(self, component: T)
     where
         T: 'static,
@@ -516,7 +516,7 @@ impl FlowEntity {
     /// If entity already had component of that type,
     /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
-    #[inline(always)]
+    #[inline]
     pub fn try_insert_external<T>(self, component: T) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -528,7 +528,7 @@ impl FlowEntity {
     }
 
     /// Inserts a component to the entity if it does not have one.
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(self, component: impl FnOnce() -> T)
     where
         T: Component,
@@ -540,7 +540,7 @@ impl FlowEntity {
     }
 
     /// Inserts a component to the entity if it does not have one.
-    #[inline(always)]
+    #[inline]
     pub fn try_with<T>(self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
         T: Component,
@@ -553,7 +553,7 @@ impl FlowEntity {
     }
 
     /// Attempts to insert a component to the entity if it does not have one.
-    #[inline(always)]
+    #[inline]
     pub fn with_external<T>(self, component: impl FnOnce() -> T)
     where
         T: 'static,
@@ -565,7 +565,7 @@ impl FlowEntity {
     }
 
     /// Attempts to insert a component to the entity if it does not have one.
-    #[inline(always)]
+    #[inline]
     pub fn try_with_external<T>(self, component: impl FnOnce() -> T) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -587,7 +587,7 @@ impl FlowEntity {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn insert_bundle<B>(self, bundle: B)
     where
         B: DynamicComponentBundle,
@@ -608,7 +608,7 @@ impl FlowEntity {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn try_insert_bundle<B>(self, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicComponentBundle,
@@ -629,7 +629,7 @@ impl FlowEntity {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_bundle<B>(self, bundle: B)
     where
         B: DynamicBundle,
@@ -650,7 +650,7 @@ impl FlowEntity {
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn try_insert_external_bundle<B>(self, bundle: B) -> Result<(), NoSuchEntity>
     where
         B: DynamicBundle,
@@ -663,7 +663,7 @@ impl FlowEntity {
 
     /// Removes a component from the entity.
     /// Returns the component if it was present.
-    #[inline(always)]
+    #[inline]
     pub fn remove<T>(self) -> Option<T>
     where
         T: 'static,
@@ -677,7 +677,7 @@ impl FlowEntity {
 
     /// Removes a component from the entity.
     /// Returns the component if it was present.
-    #[inline(always)]
+    #[inline]
     pub fn try_remove<T>(self) -> Result<T, EntityError>
     where
         T: 'static,
@@ -693,7 +693,7 @@ impl FlowEntity {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn drop<T>(self)
     where
         T: 'static,
@@ -705,7 +705,7 @@ impl FlowEntity {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn try_drop<T>(self) -> Result<(), NoSuchEntity>
     where
         T: 'static,
@@ -717,7 +717,7 @@ impl FlowEntity {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased(self, ty: TypeId) {
         match self.try_drop_erased(ty) {
             Ok(_) => (),
@@ -726,7 +726,7 @@ impl FlowEntity {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn try_drop_erased(self, ty: TypeId) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { get_flow_world() };
@@ -744,7 +744,7 @@ impl FlowEntity {
     /// so no need to drop them.
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
-    #[inline(always)]
+    #[inline]
     pub fn drop_bundle<B>(self)
     where
         B: Bundle,
@@ -765,7 +765,7 @@ impl FlowEntity {
     /// so no need to drop them.
     ///
     /// For this reason there's no separate method that uses `ComponentBundle` trait.
-    #[inline(always)]
+    #[inline]
     pub fn try_drop_bundle<B>(self) -> Result<(), NoSuchEntity>
     where
         B: Bundle,
@@ -777,7 +777,7 @@ impl FlowEntity {
     }
 
     /// Despawns the referenced entity.
-    #[inline(always)]
+    #[inline]
     pub fn despawn(self) {
         match self.try_despawn() {
             Ok(_) => (),
@@ -786,7 +786,7 @@ impl FlowEntity {
     }
 
     /// Despawns the referenced entity.
-    #[inline(always)]
+    #[inline]
     pub fn try_despawn(self) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { get_flow_world() };
@@ -797,7 +797,7 @@ impl FlowEntity {
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn has_component<T: 'static>(self) -> bool {
         match self.try_has_component::<T>() {
             Ok(b) => b,
@@ -808,7 +808,7 @@ impl FlowEntity {
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn try_has_component<T: 'static>(self) -> Result<bool, NoSuchEntity> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { get_flow_world() };

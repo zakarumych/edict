@@ -26,7 +26,7 @@ pub struct ViewOneValue<'a, Q: Query, F: Query> {
 }
 
 impl<'a, Q: Query, F: Query> Drop for ViewOneValue<'a, Q, F> {
-    #[inline(always)]
+    #[inline]
     fn drop(&mut self) {
         self.unlock()
     }
@@ -39,7 +39,7 @@ impl<'a, Q: Query, F: Query> ViewOneValue<'a, Q, F> {
     /// Borrows are automatically unlocked when the view is dropped.
     /// This method is necessary only if caller wants to keep the view
     /// to reuse it later.
-    #[inline(always)]
+    #[inline]
     pub fn unlock(&self) {
         if self.loc.arch == u32::MAX {
             return;
@@ -62,7 +62,7 @@ where
     F: Query,
 {
     /// Creates a new view over a single entity.
-    #[inline(always)]
+    #[inline]
     pub fn new(world: &'a World, entity: impl AliveEntity, query: Q, filter: F) -> Self {
         let loc = entity.locate(world.entities());
         let mut archetype = MaybeUninit::uninit();
@@ -92,7 +92,7 @@ where
     /// from a bound entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn get_mut(&mut self) -> Option<QueryItem<Q>> {
         if self.loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
@@ -114,7 +114,7 @@ where
     /// # Panics
     ///
     /// Panics if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn expect_mut(&mut self) -> QueryItem<Q> {
         expect_match(self.get_mut())
@@ -125,7 +125,7 @@ where
     ///
     /// Calls provided closure with fetched data if entity matches query and filter.
     /// Otherwise, returns `None`.
-    #[inline(always)]
+    #[inline]
     pub fn map_mut<Fun, R>(&mut self, f: Fun) -> Option<R>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,
@@ -161,7 +161,7 @@ where
     /// from a bound entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn get(&self) -> Option<QueryItem<Q>> {
         if self.loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
@@ -181,7 +181,7 @@ where
     /// from a bound entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn expect(&self) -> QueryItem<Q> {
         expect_match(self.get())
@@ -192,7 +192,7 @@ where
     ///
     /// Calls provided closure with fetched data if entity matches query and filter.
     /// Otherwise, returns `None`.
-    #[inline(always)]
+    #[inline]
     pub fn map<Fun, R>(&self, f: Fun) -> Option<R>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,

@@ -24,7 +24,7 @@ pub trait BorrowState {
 }
 
 /// Acquire borrow on archetypes.
-#[inline(always)]
+#[inline]
 #[track_caller]
 pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
@@ -94,7 +94,7 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
 }
 
 /// Release borrow on archetypes.
-#[inline(always)]
+#[inline]
 pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
     for archetype in archetypes {
         unsafe {
@@ -110,7 +110,7 @@ pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
     }
 }
 
-#[inline(always)]
+#[inline]
 #[track_caller]
 fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
@@ -179,7 +179,7 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     core::mem::forget(guard);
 }
 
-#[inline(always)]
+#[inline]
 fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     unsafe {
         if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
@@ -216,7 +216,7 @@ impl RuntimeBorrowState {
 }
 
 impl BorrowState for RuntimeBorrowState {
-    #[inline(always)]
+    #[inline]
     fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
         if !self.borrowed.get() {
             acquire(query, filter, archetypes);
@@ -224,7 +224,7 @@ impl BorrowState for RuntimeBorrowState {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn release<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
         if !self.borrowed.take() {
             return;
@@ -233,7 +233,7 @@ impl BorrowState for RuntimeBorrowState {
         release(query, filter, archetypes);
     }
 
-    #[inline(always)]
+    #[inline]
     fn with<Q: Query, F: Query, R>(
         &self,
         query: Q,
@@ -267,13 +267,13 @@ impl BorrowState for RuntimeBorrowState {
 pub struct StaticallyBorrowed;
 
 impl BorrowState for StaticallyBorrowed {
-    #[inline(always)]
+    #[inline]
     fn acquire<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
 
-    #[inline(always)]
+    #[inline]
     fn release<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
 
-    #[inline(always)]
+    #[inline]
     fn with<Q: Query, F: Query, R>(
         &self,
         _query: Q,
@@ -286,7 +286,7 @@ impl BorrowState for StaticallyBorrowed {
 }
 
 impl From<StaticallyBorrowed> for RuntimeBorrowState {
-    #[inline(always)]
+    #[inline]
     fn from(_: StaticallyBorrowed) -> Self {
         RuntimeBorrowState::new()
     }

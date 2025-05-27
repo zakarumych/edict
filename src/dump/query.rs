@@ -39,7 +39,7 @@ pub(super) struct DumpQuery<T> {
 }
 
 impl<T> Clone for DumpQuery<T> {
-    #[inline(always)]
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -48,7 +48,7 @@ impl<T> Clone for DumpQuery<T> {
 impl<T> Copy for DumpQuery<T> {}
 
 impl<T> DumpQuery<T> {
-    #[inline(always)]
+    #[inline]
     pub fn new(after_epoch: EpochId) -> Self {
         DumpQuery {
             after_epoch,
@@ -70,7 +70,7 @@ where
 {
     type Item = DumpItem<'a, T>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         DumpFetch {
             after_epoch: EpochId::start(),
@@ -80,7 +80,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> DumpItem<'a, T> {
         match self.ptr {
             None => DumpItem::Missing,
@@ -129,7 +129,7 @@ macro_rules! impl_dump_query {
             const MUTABLE: bool = false;
             const FILTERS_ENTITIES: bool = true;
 
-            #[inline(always)]
+            #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 match comp.id() {
                     $(id if id == type_id::<$a>() => Ok(Some(Access::Read)),)*
@@ -137,12 +137,12 @@ macro_rules! impl_dump_query {
                 }
             }
 
-            #[inline(always)]
+            #[inline]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 false $(|| archetype.has_component(type_id::<$a>()))*
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 $(
                     if archetype.has_component(type_id::<$a>()) {
@@ -151,7 +151,7 @@ macro_rules! impl_dump_query {
                 )*
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn fetch<'a>(
                 &self,
                 arch_idx: u32,

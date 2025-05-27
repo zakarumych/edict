@@ -16,42 +16,42 @@ impl FnArg for &World {
 unsafe impl FnArgState for WorldReadState {
     type Arg<'a> = &'a World;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         world: NonNull<World>,
@@ -72,42 +72,42 @@ impl FnArg for &mut World {
 unsafe impl FnArgState for WorldWriteState {
     type Arg<'a> = &'a mut World;
 
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Self::default()
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_local(&self) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn world_access(&self) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, _archetype: &Archetype) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows_components_at_runtime(&self) -> bool {
         false
     }
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     fn resource_type_access(&self, _ty: TypeId) -> Option<Access> {
         Some(Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_unchecked<'a>(
         &'a mut self,
         mut world: NonNull<World>,

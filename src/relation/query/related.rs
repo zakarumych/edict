@@ -34,7 +34,7 @@ impl<R> IntoQuery for Related<With<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -44,7 +44,7 @@ impl<R> DefaultQuery for Related<With<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Related
     }
@@ -62,7 +62,7 @@ where
 {
     type Item = RelationIter<'a, R>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatedWith {
             ptr: NonNull::dangling(),
@@ -70,7 +70,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> RelationIter<'a, R> {
         if R::SYMMETRIC {
             let component = unsafe {
@@ -105,7 +105,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if R::SYMMETRIC {
             if comp.id() == type_id::<OriginComponent<R>>() {
@@ -122,7 +122,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
             archetype.has_component(type_id::<OriginComponent<R>>())
@@ -131,7 +131,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if R::SYMMETRIC {
             f(type_id::<OriginComponent<R>>(), Access::Read)
@@ -140,7 +140,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -186,7 +186,7 @@ impl<R> QueryArg for Related<With<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Related
     }
@@ -203,7 +203,7 @@ impl<R> DefaultQuery for Related<&R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Related<Read<R>> {
         Related
     }
@@ -220,7 +220,7 @@ impl<R> IntoQuery for Related<Read<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -230,7 +230,7 @@ impl<R> DefaultQuery for Related<Read<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Related
     }
@@ -248,7 +248,7 @@ where
 {
     type Item = RelationReadIter<'a, R>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatedRead {
             ptr: NonNull::dangling(),
@@ -256,7 +256,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> RelationReadIter<'a, R> {
         if R::SYMMETRIC {
             let component = unsafe {
@@ -291,7 +291,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<TargetComponent<R>>() {
             Ok(Some(Access::Read))
@@ -300,7 +300,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
             archetype.has_component(type_id::<OriginComponent<R>>())
@@ -309,7 +309,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if R::SYMMETRIC {
             f(type_id::<OriginComponent<R>>(), Access::Read)
@@ -318,7 +318,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -364,7 +364,7 @@ impl<R> QueryArg for Related<Read<R>>
 where
     R: Relation + Sync,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Related
     }
@@ -381,7 +381,7 @@ impl<R> DefaultQuery for Related<&mut R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Related<Write<R>> {
         Related
     }
@@ -398,7 +398,7 @@ impl<R> IntoQuery for Related<Write<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -408,7 +408,7 @@ impl<R> DefaultQuery for Related<Write<R>>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Related
     }
@@ -429,7 +429,7 @@ where
 {
     type Item = RelationWriteIter<'a, R>;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchRelatedWrite {
             ptr: NonNull::dangling(),
@@ -440,13 +440,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> RelationWriteIter<'a, R> {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -484,7 +484,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<TargetComponent<R>>() {
             Ok(Some(Access::Write))
@@ -493,7 +493,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
             archetype.has_component(type_id::<OriginComponent<R>>())
@@ -502,7 +502,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         if R::SYMMETRIC {
             f(type_id::<OriginComponent<R>>(), Access::Write)
@@ -511,7 +511,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,
@@ -565,7 +565,7 @@ impl<R> QueryArg for Related<Write<R>>
 where
     R: Relation + Send,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Related
     }

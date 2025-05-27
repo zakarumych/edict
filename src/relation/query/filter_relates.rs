@@ -28,7 +28,7 @@ impl<R> IntoQuery for FilterRelates<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -38,7 +38,7 @@ impl<R> DefaultQuery for FilterRelates<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         FilterRelates
     }
@@ -48,7 +48,7 @@ impl<R> QueryArg for FilterRelates<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         FilterRelates
     }
@@ -63,20 +63,20 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }

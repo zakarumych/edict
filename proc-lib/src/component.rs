@@ -28,7 +28,7 @@ pub fn derive(
     let fn_name = attributes.name.map(|name| {
         let name = name.literal;
         Some(quote::quote! {
-            #[inline(always)]
+            #[inline]
             fn name() -> &'static str {
                 #name
             }
@@ -39,7 +39,7 @@ pub fn derive(
             let on_drop = &on_drop.function;
             quote::quote! {
                 #[allow(unused_variables)]
-                #[inline(always)]
+                #[inline]
                 fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) {
                     (#on_drop)(self, entity, encoder)
                 }
@@ -50,7 +50,7 @@ pub fn derive(
             let on_replace = &on_replace.function;
             quote::quote! {
                 #[allow(unused_variables)]
-                #[inline(always)]
+                #[inline]
                 fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) -> bool {
                     (#on_replace)(self, value, entity, encoder)
                 }

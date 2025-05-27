@@ -23,7 +23,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get<'a, Q>(&'a mut self, entity: impl Entity) -> Result<QueryItem<'a, Q>, EntityError>
     where
         Q: DefaultQuery,
@@ -41,7 +41,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get_with<'a, Q>(
         &'a mut self,
         entity: impl Entity,
@@ -65,7 +65,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_unchecked<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -88,7 +88,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_with_unchecked<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -146,7 +146,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
     where
         Q: DefaultSendQuery,
@@ -163,7 +163,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn try_view_one<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -184,7 +184,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one_with<'a, Q>(&'a self, entity: impl AliveEntity, query: Q) -> ViewOne<'a, (Q,)>
     where
         Q: IntoSendQuery,
@@ -201,7 +201,7 @@ impl World {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn try_view_one_with<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -219,7 +219,7 @@ impl World {
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    #[inline(always)]
+    #[inline]
     pub fn get_cloned<T>(&mut self, entity: impl AliveEntity) -> Option<T>
     where
         T: Clone + 'static,
@@ -235,7 +235,7 @@ impl World {
     /// Returns item converted to owned value.
     ///
     /// This method locks only archetype to which entity belongs for the duration of the method itself.
-    #[inline(always)]
+    #[inline]
     pub fn try_get_cloned<T>(&mut self, entity: impl Entity) -> Result<T, EntityError>
     where
         T: Clone + 'static,
@@ -257,7 +257,7 @@ impl WorldLocal {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
     where
         Q: DefaultQuery,
@@ -274,7 +274,7 @@ impl WorldLocal {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn try_view_one<'a, Q>(
         &'a self,
         entity: impl Entity,
@@ -295,7 +295,7 @@ impl WorldLocal {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one_with<'a, Q>(&'a self, entity: impl AliveEntity, query: Q) -> ViewOne<'a, (Q,)>
     where
         Q: IntoQuery,
@@ -312,7 +312,7 @@ impl WorldLocal {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn try_view_one_with<'a, Q>(
         &'a self,
         entity: impl Entity,

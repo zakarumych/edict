@@ -42,12 +42,12 @@ macro_rules! one_of {
             unsafe impl Fetch<'a> for OneOfFetch<'a> {
                 type Item = $name<'a>;
 
-                #[inline(always)]
+                #[inline]
                 fn dangling() -> Self {
                     $crate::one_of!(@DANGLING_FETCH $($v,)+)
                 }
 
-                #[inline(always)]
+                #[inline]
                 unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                     match self {
                         $(OneOfFetch::$v($v) => unsafe {
@@ -57,7 +57,7 @@ macro_rules! one_of {
                 }
 
                 /// Checks if item with specified index must be visited or skipped.
-                #[inline(always)]
+                #[inline]
                 unsafe fn visit_item(&mut self, idx: u32) -> bool {
                     match self {
                         $(OneOfFetch::$v($v) => unsafe {
@@ -67,7 +67,7 @@ macro_rules! one_of {
                 }
 
                 /// Notifies this fetch that it visits a chunk.
-                #[inline(always)]
+                #[inline]
                 unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                     match self {
                         $(OneOfFetch::$v($v) => unsafe {
@@ -76,7 +76,7 @@ macro_rules! one_of {
                     }
                 }
 
-                #[inline(always)]
+                #[inline]
                 unsafe fn get_item(&mut self, idx: u32) -> $name<'a> {
                     match self {
                         $(OneOfFetch::$v($v) => unsafe {
@@ -93,14 +93,14 @@ macro_rules! one_of {
             // }
 
             // impl DefaultQuery for $name<'_> {
-            //     #[inline(always)]
+            //     #[inline]
             //     fn default_query() -> OneOf {
             //         OneOf
             //     }
             // }
 
             // impl $crate::query::QueryArg for $name<'_> {
-            //     #[inline(always)]
+            //     #[inline]
             //     fn new() -> OneOf {
             //         OneOf
             //     }
@@ -126,13 +126,13 @@ macro_rules! one_of {
             //         Ok(None)
             //     }
 
-            //     #[inline(always)]
+            //     #[inline]
             //     fn visit_archetype(&self, archetype: &Archetype) -> bool {
             //         $(let $v = $crate::one_of!(@IntoQuery &'a $q);)+
             //         $( $crate::query::Query::visit_archetype(&$v, archetype) )||+
             //     }
 
-            //     #[inline(always)]
+            //     #[inline]
             //     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
             //         $(
             //             let $v = $crate::one_of!(@IntoQuery &'a $q);
@@ -143,7 +143,7 @@ macro_rules! one_of {
             //         )+
             //     }
 
-            //     #[inline(always)]
+            //     #[inline]
             //     unsafe fn fetch<'a>(&self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> OneOfFetch<'a> {
             //         $(let $v = $crate::one_of!(@IntoQuery &'a $q);)+
             //         $(
@@ -156,7 +156,7 @@ macro_rules! one_of {
             //         }
             //     }
 
-            //     #[inline(always)]
+            //     #[inline]
             //     fn reserved_entity_item<'a>(&self, _id: EntityId, _idx: u32) -> Option<$name<'a>> {
             //         None
             //     }

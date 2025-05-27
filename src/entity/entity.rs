@@ -37,7 +37,7 @@ pub trait Entity: Copy {
 #[diagnostic::on_unimplemented(label = "`{Self}` is not an Entity type that proves it is alive")]
 pub trait AliveEntity: Entity {
     /// Returns entity location.
-    #[inline(always)]
+    #[inline]
     fn locate(&self, entities: &EntitySet) -> Location {
         entities
             .get_location(self.id())
@@ -45,13 +45,13 @@ pub trait AliveEntity: Entity {
     }
 
     /// Returns entity with bound location.
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'a>(&self, entities: &'a EntitySet) -> EntityLoc<'a> {
         EntityLoc::from_alive(*self, entities)
     }
 
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'a>(&self, _world: &'a mut World) -> EntityRef<'a> {
         unreachable!()
     }
@@ -87,21 +87,21 @@ impl<'de> serde::de::Deserialize<'de> for EntityId {
 }
 
 impl PartialEq<EntityBound<'_>> for EntityId {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         *self == other.id
     }
 }
 
 impl PartialEq<EntityLoc<'_>> for EntityId {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityLoc<'_>) -> bool {
         *self == other.id
     }
 }
 
 impl PartialEq<EntityRef<'_>> for EntityId {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityRef<'_>) -> bool {
         *self == other.id
     }
@@ -127,25 +127,25 @@ impl EntityId {
         EntityId { id: Self::DANGLING }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(super) const fn new(id: NonZeroU64) -> Self {
         EntityId { id }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(super) const fn non_zero(&self) -> NonZeroU64 {
         self.id
     }
 
     /// Returns the raw bits of the entity ID.
-    #[inline(always)]
+    #[inline]
     pub const fn bits(&self) -> u64 {
         self.id.get()
     }
 
     /// Returns the entity ID from the raw bits.
     /// Returns none if the bits are zero.
-    #[inline(always)]
+    #[inline]
     pub const fn from_bits(bits: u64) -> Option<Self> {
         match NonZeroU64::new(bits) {
             Some(id) => Some(EntityId { id }),
@@ -155,28 +155,28 @@ impl EntityId {
 }
 
 impl Entity for EntityId {
-    #[inline(always)]
+    #[inline]
     fn id(&self) -> EntityId {
         *self
     }
 
-    #[inline(always)]
+    #[inline]
     fn lookup(&self, entities: &EntitySet) -> Option<Location> {
         entities.get_location(*self)
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_alive(&self, entities: &EntitySet) -> bool {
         entities.is_alive(*self)
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'a>(&self, entities: &'a EntitySet) -> Option<EntityLoc<'a>> {
         Some(EntityLoc::from_parts(*self, entities.get_location(*self)?))
     }
 
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'a>(&self, world: &'a mut World) -> Option<EntityRef<'a>> {
         EntityRef::new(*self, world).ok()
     }
@@ -193,21 +193,21 @@ pub struct EntityBound<'a> {
 }
 
 impl PartialEq<EntityId> for EntityBound<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
 impl PartialEq<EntityLoc<'_>> for EntityBound<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityLoc<'_>) -> bool {
         self.id == other.id
     }
 }
 
 impl PartialEq<EntityRef<'_>> for EntityBound<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityRef<'_>) -> bool {
         self.id == other.id
     }
@@ -227,12 +227,12 @@ impl fmt::Display for EntityBound<'_> {
 
 impl EntityBound<'_> {
     /// Returns entity id.
-    #[inline(always)]
+    #[inline]
     pub fn id(&self) -> EntityId {
         self.id
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn new(id: EntityId) -> Self {
         EntityBound {
             id,
@@ -242,28 +242,28 @@ impl EntityBound<'_> {
 }
 
 impl<'a> Entity for EntityBound<'a> {
-    #[inline(always)]
+    #[inline]
     fn id(&self) -> EntityId {
         self.id
     }
 
-    #[inline(always)]
+    #[inline]
     fn lookup(&self, entities: &EntitySet) -> Option<Location> {
         Some(self.locate(entities))
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_alive(&self, _entities: &EntitySet) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'b>(&self, entities: &'b EntitySet) -> Option<EntityLoc<'b>> {
         Some(EntityLoc::from_alive(*self, entities))
     }
 
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'b>(&self, _world: &'b mut World) -> Option<EntityRef<'b>> {
         unreachable!()
     }
@@ -271,7 +271,7 @@ impl<'a> Entity for EntityBound<'a> {
 
 impl<'a> AliveEntity for EntityBound<'a> {
     /// Returns entity location.
-    #[inline(always)]
+    #[inline]
     fn locate(&self, entities: &EntitySet) -> Location {
         // If this panics it is probably a bug in edict
         // or entity belongs to another world.
@@ -291,21 +291,21 @@ pub struct EntityLoc<'a> {
 }
 
 impl PartialEq<EntityId> for EntityLoc<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
 impl PartialEq<EntityBound<'_>> for EntityLoc<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         self.id == other.id
     }
 }
 
 impl PartialEq<EntityRef<'_>> for EntityLoc<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityRef<'_>) -> bool {
         self.id == other.id
     }
@@ -327,7 +327,7 @@ impl fmt::Display for EntityLoc<'_> {
 }
 
 impl EntityLoc<'_> {
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from_parts(id: EntityId, loc: Location) -> Self {
         EntityLoc {
             id,
@@ -336,7 +336,7 @@ impl EntityLoc<'_> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from_alive(entity: impl AliveEntity, entities: &EntitySet) -> Self {
         EntityLoc {
             id: entity.id(),
@@ -346,53 +346,53 @@ impl EntityLoc<'_> {
     }
 
     /// Returns entity id.
-    #[inline(always)]
+    #[inline]
     pub fn id(&self) -> EntityId {
         self.id
     }
 }
 
 impl<'a> Entity for EntityLoc<'a> {
-    #[inline(always)]
+    #[inline]
     fn id(&self) -> EntityId {
         self.id
     }
 
-    #[inline(always)]
+    #[inline]
     fn lookup(&self, _entities: &EntitySet) -> Option<Location> {
         Some(self.loc)
     }
 
-    #[inline(always)]
+    #[inline]
     fn is_alive(&self, _entities: &EntitySet) -> bool {
         true
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'b>(&self, _entities: &'b EntitySet) -> Option<EntityLoc<'b>> {
         Some(EntityLoc::from_parts(self.id, self.loc))
     }
 
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'b>(&self, _world: &'b mut World) -> Option<EntityRef<'b>> {
         unreachable!();
     }
 }
 
 impl<'a> AliveEntity for EntityLoc<'a> {
-    #[inline(always)]
+    #[inline]
     fn locate(&self, _entities: &EntitySet) -> Location {
         self.loc
     }
 
-    #[inline(always)]
+    #[inline]
     fn entity_loc<'b>(&self, _entities: &'b EntitySet) -> EntityLoc<'b> {
         EntityLoc::from_parts(self.id, self.loc)
     }
 
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     fn entity_ref<'b>(&self, _world: &'b mut World) -> EntityRef<'b> {
         unreachable!()
     }
@@ -407,21 +407,21 @@ pub struct EntityRef<'a> {
 }
 
 impl PartialEq<EntityId> for EntityRef<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityId) -> bool {
         self.id == *other
     }
 }
 
 impl PartialEq<EntityBound<'_>> for EntityRef<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityBound<'_>) -> bool {
         self.id == other.id
     }
 }
 
 impl PartialEq<EntityLoc<'_>> for EntityRef<'_> {
-    #[inline(always)]
+    #[inline]
     fn eq(&self, other: &EntityLoc<'_>) -> bool {
         self.id == other.id
     }
@@ -444,7 +444,7 @@ impl fmt::Display for EntityRef<'_> {
 
 impl<'a> EntityRef<'a> {
     /// Returns entity reference if it is alive.
-    #[inline(always)]
+    #[inline]
     pub fn new(id: EntityId, world: &'a mut World) -> Result<Self, NoSuchEntity> {
         world.maintenance();
         let loc = world.entities().get_location(id).ok_or(NoSuchEntity)?;
@@ -455,7 +455,7 @@ impl<'a> EntityRef<'a> {
         })
     }
 
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from_parts(id: EntityId, loc: Location, world: &'a mut World) -> Self {
         debug_assert_eq!(world.entities().get_location(id), Some(loc));
         EntityRef {
@@ -466,7 +466,7 @@ impl<'a> EntityRef<'a> {
     }
 
     /// Returns entity id.
-    #[inline(always)]
+    #[inline]
     pub fn id(&self) -> EntityId {
         self.id
     }
@@ -483,7 +483,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get<'b, Q>(&'b self) -> Option<QueryItem<'b, Q>>
     where
         Q: DefaultQuery,
@@ -504,7 +504,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get_mut<'b, Q>(&'b mut self) -> Option<QueryItem<'b, Q>>
     where
         Q: DefaultQuery,
@@ -522,7 +522,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get_with<'b, Q>(&'b self, query: Q) -> Option<QueryItem<'b, Q::Query>>
     where
         Q: IntoQuery,
@@ -541,7 +541,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn get_with_mut<'b, Q>(&'b mut self, query: Q) -> Option<QueryItem<'b, Q::Query>>
     where
         Q: IntoQuery,
@@ -563,7 +563,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_unchecked<'b, Q>(&'b self) -> Option<QueryItem<'b, Q>>
     where
         Q: DefaultQuery,
@@ -583,7 +583,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_with_unchecked<'b, Q>(&'b self, query: Q) -> Option<QueryItem<'b, Q::Query>>
     where
         Q: IntoQuery,
@@ -609,7 +609,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one<'b, Q>(&'b self) -> ViewOne<'b, Q>
     where
         Q: DefaultQuery,
@@ -631,7 +631,7 @@ impl<'a> EntityRef<'a> {
     /// # Panics
     ///
     /// This method may panic if entity of another world is used.
-    #[inline(always)]
+    #[inline]
     pub fn view_one_with<'b, Q>(&'b self, query: Q) -> ViewOne<'b, (Q,)>
     where
         Q: IntoQuery,
@@ -664,7 +664,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// This may consume entity reference because insertion may execute a hook
     /// that will despawn the entity.
-    #[inline(always)]
+    #[inline]
     pub fn insert<T>(self, component: T) -> Option<Self>
     where
         T: Component,
@@ -711,7 +711,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external<T>(self, component: T) -> Option<Self>
     where
         T: 'static,
@@ -741,7 +741,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// Unlike `insert` this may neber cause hooks to be executed
     /// so reference is guaranteed to be valid.
-    #[inline(always)]
+    #[inline]
     pub fn with<T>(&mut self, f: impl FnOnce() -> T) -> &mut T
     where
         T: Component,
@@ -780,7 +780,7 @@ impl<'a> EntityRef<'a> {
     /// entity.with_external(|| 42u32);
     /// assert!(entity.has_component::<u32>());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external<T>(&mut self, component: impl FnOnce() -> T) -> &mut T
     where
         T: 'static,
@@ -824,7 +824,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_bundle<B>(self, bundle: B) -> Option<Self>
     where
         B: DynamicComponentBundle,
@@ -877,7 +877,7 @@ impl<'a> EntityRef<'a> {
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn insert_external_bundle<B>(self, bundle: B) -> Option<Self>
     where
         B: DynamicBundle,
@@ -926,7 +926,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_bundle<B>(&mut self, bundle: B)
     where
         B: DynamicComponentBundle,
@@ -970,7 +970,7 @@ impl<'a> EntityRef<'a> {
     /// assert!(world.try_has_component::<ExampleComponent>(id).unwrap());
     /// assert!(world.try_has_component::<u32>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn with_external_bundle<B>(&mut self, bundle: B)
     where
         B: DynamicBundle,
@@ -990,7 +990,7 @@ impl<'a> EntityRef<'a> {
 
     /// Removes a component from the entity.
     /// Returns the component if it was present.
-    #[inline(always)]
+    #[inline]
     pub fn remove<T>(&mut self) -> Option<T>
     where
         T: 'static,
@@ -1006,7 +1006,7 @@ impl<'a> EntityRef<'a> {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn drop<T>(self) -> Option<Self>
     where
         T: 'static,
@@ -1030,7 +1030,7 @@ impl<'a> EntityRef<'a> {
     }
 
     /// Drops a component from the entity.
-    #[inline(always)]
+    #[inline]
     pub fn drop_erased(self, ty: TypeId) -> Option<Self> {
         let loc = EntityLoc {
             id: self.id,
@@ -1078,7 +1078,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(id).unwrap());
     /// ```
-    #[inline(always)]
+    #[inline]
     pub fn drop_bundle<B>(self) -> Option<Self>
     where
         B: Bundle,
@@ -1102,7 +1102,7 @@ impl<'a> EntityRef<'a> {
     }
 
     /// Despawns the entity.
-    #[inline(always)]
+    #[inline]
     pub fn despawn(self) {
         unsafe { self.world.despawn_ref(self.id, self.loc) }
     }
@@ -1110,7 +1110,7 @@ impl<'a> EntityRef<'a> {
     /// Checks if entity has component of specified type.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
-    #[inline(always)]
+    #[inline]
     pub fn has_component<T: 'static>(&self) -> bool {
         let loc = EntityLoc {
             id: self.id,
@@ -1121,7 +1121,7 @@ impl<'a> EntityRef<'a> {
     }
 
     /// Returns a reference to world.
-    #[inline(always)]
+    #[inline]
     pub fn world(&mut self) -> &mut World {
         self.world
     }

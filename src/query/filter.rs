@@ -24,7 +24,7 @@ where
 {
     type Item = Q::Item;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FilteredFetch {
             filter: F::dangling(),
@@ -32,12 +32,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         unsafe { self.filter.visit_chunk(chunk_idx) && self.query.visit_chunk(chunk_idx) }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         unsafe {
             self.filter.touch_chunk(chunk_idx);
@@ -47,12 +47,12 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         unsafe { self.filter.visit_item(idx) && self.query.visit_item(idx) }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> Self::Item {
         unsafe { self.query.get_item(idx) }
     }
@@ -73,7 +73,7 @@ where
 // {
 //     type Query = FilteredQuery<F::Query, Q::Query>;
 
-//     #[inline(always)]
+//     #[inline]
 //     fn into_query(self) -> Self::Query {
 //         FilteredQuery {
 //             filter: self.filter.into_query(),
@@ -92,7 +92,7 @@ where
 
 //     const MUTABLE: bool = F::MUTABLE || Q::MUTABLE;
 
-//     #[inline(always)]
+//     #[inline]
 //     fn component_access(&self, comp: &ComponentInfo) -> Option<Access> {
 //         match (
 //             self.filter.component_access(ty),
@@ -110,15 +110,15 @@ where
 //         }
 //     }
 
-//     #[inline(always)]
+//     #[inline]
 //     fn visit_archetype(&self, archetype: &Archetype) -> bool {
 //         self.filter.visit_archetype(archetype) && self.query.visit_archetype(archetype)
 //     }
 
-//     #[inline(always)]
+//     #[inline]
 //     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-//     #[inline(always)]
+//     #[inline]
 //     unsafe fn fetch<'a>(
 //         &self,
 //         arch_idx: u32,
@@ -157,12 +157,12 @@ where
 {
     type Item = ();
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         NotFetch::None
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
         match self {
             NotFetch::Fetch { fetch, visit_chunk } => {
@@ -173,10 +173,10 @@ where
         true
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, _chunk_idx: u32) {}
 
-    #[inline(always)]
+    #[inline]
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         match self {
             NotFetch::Fetch { fetch, visit_chunk } if *visit_chunk => unsafe {
@@ -186,7 +186,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, _idx: u32) {}
 }
 
@@ -196,7 +196,7 @@ where
 {
     type Batch = ();
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_batch(&mut self, _start: u32, _end: u32) {}
 }
 
@@ -211,7 +211,7 @@ impl<T> IntoQuery for Not<T>
 where
     T: IntoQuery,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Not<T::Query> {
         Not(self.0.into_query())
     }
@@ -221,7 +221,7 @@ impl<T> DefaultQuery for Not<T>
 where
     T: DefaultQuery,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Not<T::Query> {
         Not(T::default_query())
     }
@@ -231,7 +231,7 @@ impl<T> QueryArg for Not<T>
 where
     T: QueryArg,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Not<T::Query> {
         Not(T::new())
     }
@@ -242,16 +242,19 @@ where
     T: Query,
 {
     type Item<'a> = ();
-    type Fetch<'a> = NotFetch<T::Fetch<'a>> where T: 'a;
+    type Fetch<'a>
+        = NotFetch<T::Fetch<'a>>
+    where
+        T: 'a;
 
     const MUTABLE: bool = T::MUTABLE;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if T::FILTERS_ENTITIES {
             true
@@ -260,10 +263,10 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         arch_idx: u32,
@@ -300,7 +303,7 @@ impl<T> IntoQuery for With<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -310,7 +313,7 @@ impl<T> DefaultQuery for With<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         With
     }
@@ -320,7 +323,7 @@ impl<T> QueryArg for With<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> With<T> {
         With
     }
@@ -335,20 +338,20 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> UnitFetch {
         UnitFetch::new()
     }

@@ -25,7 +25,7 @@ where
 {
     type Item = &'a mut T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchWrite {
             ptr: NonNull::dangling(),
@@ -36,13 +36,13 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
         let chunk_epoch = unsafe { &mut *self.chunk_epochs.as_ptr().add(chunk_idx as usize) };
         chunk_epoch.bump(self.epoch);
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> &'a mut T {
         let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
         entity_epoch.bump(self.epoch);
@@ -57,7 +57,7 @@ where
 {
     type Batch = &'a mut [T];
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a mut [T] {
         debug_assert!(end >= start);
 
@@ -84,7 +84,7 @@ impl<T> DefaultQuery for &mut T
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Write<T> {
         Write
     }
@@ -101,7 +101,7 @@ impl<T> IntoQuery for Write<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Write<T> {
         Write
     }
@@ -111,7 +111,7 @@ impl<T> DefaultQuery for Write<T>
 where
     T: 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Write<T> {
         Write
     }
@@ -121,7 +121,7 @@ impl<T> QueryArg for Write<T>
 where
     T: Send + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Write<T> {
         Write
     }
@@ -136,7 +136,7 @@ where
 
     const MUTABLE: bool = true;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Write))
@@ -145,17 +145,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Write)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

@@ -15,17 +15,17 @@ macro_rules! impl_fetch {
         unsafe impl Fetch<'_> for () {
             type Item = ();
 
-            #[inline(always)]
+            #[inline]
             fn dangling() {}
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_item(&mut self, _: u32) {}
         }
 
         unsafe impl BatchFetch<'_> for () {
             type Batch = ();
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_batch(&mut self, _: u32, _: u32) {}
         }
 
@@ -40,14 +40,14 @@ macro_rules! impl_fetch {
         }
 
         impl DefaultQuery for () {
-            #[inline(always)]
+            #[inline]
             fn default_query() -> () {
                 ()
             }
         }
 
         impl QueryArg for () {
-            #[inline(always)]
+            #[inline]
             fn new() -> () {
                 ()
             }
@@ -59,25 +59,25 @@ macro_rules! impl_fetch {
 
             const MUTABLE: bool = false;
 
-            #[inline(always)]
+            #[inline]
             fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 Ok(None)
             }
 
-            #[inline(always)]
+            #[inline]
             fn visit_archetype(&self, _: &Archetype) -> bool {
                 true
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn access_archetype(&self, _: &Archetype, _: impl FnMut(TypeId, Access)) {}
 
-            #[inline(always)]
+            #[inline]
             unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> () {
                 ()
             }
 
-            #[inline(always)]
+            #[inline]
             fn reserved_entity_item<'a>(&self, _: EntityId, _: u32) -> Option<()> where (): 'a {
                 Some(())
             }
@@ -95,32 +95,32 @@ macro_rules! impl_fetch {
         {
             type Item = ($($a::Item),+);
 
-            #[inline(always)]
+            #[inline]
             fn dangling() -> Self {
                 ($($a::dangling(),)+)
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
                 let ($($a,)+) = self;
                 unsafe { $($a.visit_chunk(chunk_idx) &&)+ true }
             }
 
             /// Checks if item with specified index must be visited or skipped.
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_item(&mut self, idx: u32) -> bool {
                 let ($($a,)+) = self;
                 unsafe { $($a.visit_item(idx) &&)+ true }
             }
 
             /// Notifies this fetch that it visits a chunk.
-            #[inline(always)]
+            #[inline]
             unsafe fn touch_chunk(&mut self, chunk_idx: u32) {
                 let ($($a,)+) = self;
                 $(unsafe { $a.touch_chunk(chunk_idx); })+
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_item(&mut self, idx: u32) -> ($($a::Item),+) {
                 let ($($a,)+) = self;
                 unsafe {($( $a.get_item(idx) ),+) }
@@ -134,7 +134,7 @@ macro_rules! impl_fetch {
         {
             type Batch = ($($a::Batch),+);
 
-            #[inline(always)]
+            #[inline]
             unsafe fn get_batch(&mut self, start: u32, end: u32) -> ($($a::Batch),+) {
                 let ($($a,)+) = self;
                 unsafe {($( $a.get_batch(start, end) ),+) }
@@ -148,7 +148,7 @@ macro_rules! impl_fetch {
 
         #[allow(non_snake_case)]
         impl<$($a),+> IntoQuery for ($($a,)+) where $($a: IntoQuery,)+ {
-            #[inline(always)]
+            #[inline]
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self;
                 ($( $a.into_query(), )+)
@@ -158,7 +158,7 @@ macro_rules! impl_fetch {
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
-            #[inline(always)]
+            #[inline]
             fn default_query() -> ($($a::Query,)+) {
                 ($($a::default_query(),)+)
             }
@@ -167,18 +167,18 @@ macro_rules! impl_fetch {
         #[allow(non_snake_case)]
         #[allow(unused_parens)]
         impl<$($a),+> QueryArg for ($($a,)+) where $($a: QueryArg,)+ {
-            #[inline(always)]
+            #[inline]
             fn new() -> ($($a::Query,)+) {
                 ($($a::new(),)+)
             }
 
-            #[inline(always)]
+            #[inline]
             fn before(&mut self, world: &World) {
                 let ($($a,)*) = self;
                 $($a.before(world);)*
             }
 
-            #[inline(always)]
+            #[inline]
             fn after(&mut self, world: &World) {
                 let ($($a,)*) = self;
                 $($a.after(world);)*
@@ -194,7 +194,7 @@ macro_rules! impl_fetch {
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
 
-            #[inline(always)]
+            #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 let ($($a,)+) = self;
                 let mut result = None;
@@ -208,31 +208,31 @@ macro_rules! impl_fetch {
                 Ok(result)
             }
 
-            #[inline(always)]
+            #[inline]
             fn visit_archetype(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
                 true $( && <$a as Query>::visit_archetype($a, archetype) )+
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
                 let ($($a,)+) = self;
                 $( unsafe { <$a as Query>::access_archetype($a, archetype, &mut f); } )+
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
                 let ($($a,)+) = self;
                 true $( && unsafe { <$a as Query>::visit_archetype_late($a, archetype) } )+
             }
 
-            #[inline(always)]
+            #[inline]
             unsafe fn fetch<'a>(&self, arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> ($($a::Fetch<'a>),+) {
                 let ($($a,)+) = self;
                 unsafe { ($( <$a as Query>::fetch($a, arch_idx, archetype, epoch) ),+) }
             }
 
-            #[inline(always)]
+            #[inline]
             fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<($($a::Item<'a>),+)> {
                 let ($($a,)+) = self;
                 $( let $a = $a.reserved_entity_item(id, idx)?; )+

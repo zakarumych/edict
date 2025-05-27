@@ -21,7 +21,7 @@ where
 {
     type Item = T;
 
-    #[inline(always)]
+    #[inline]
     fn dangling() -> Self {
         FetchCpy {
             ptr: NonNull::dangling(),
@@ -29,7 +29,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn get_item(&mut self, idx: u32) -> T {
         unsafe { *self.ptr.as_ptr().add(idx as usize) }
     }
@@ -55,7 +55,7 @@ impl<T> IntoQuery for Cpy<T>
 where
     T: Copy + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -65,7 +65,7 @@ impl<T> DefaultQuery for Cpy<T>
 where
     T: Copy + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self {
         Cpy
     }
@@ -75,7 +75,7 @@ impl<T> QueryArg for Cpy<T>
 where
     T: Copy + Sync + 'static,
 {
-    #[inline(always)]
+    #[inline]
     fn new() -> Self {
         Cpy
     }
@@ -90,7 +90,7 @@ where
 
     const MUTABLE: bool = false;
 
-    #[inline(always)]
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Read))
@@ -99,17 +99,17 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Read)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn fetch<'a>(
         &self,
         _arch_idx: u32,

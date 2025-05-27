@@ -19,7 +19,7 @@ where
     /// from a single alive entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn get_mut(&mut self, entity: impl AliveEntity) -> Option<QueryItem<Q>> {
         let loc = entity.locate(self.entity_set);
 
@@ -38,7 +38,7 @@ where
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     /// Returns `Ok(None)` if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn try_get_mut(&mut self, entity: impl Entity) -> Result<QueryItem<Q>, EntityError> {
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
@@ -58,7 +58,7 @@ where
     /// from a single alive entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn expect_mut(&mut self, entity: impl Entity) -> QueryItem<Q> {
         let loc = expect_alive(entity.lookup(self.entity_set));
@@ -79,7 +79,7 @@ where
     /// Calls provided closure with fetched data if entity matches query and filter.
     /// Returns result of the closure or `None` if entity does not match
     /// query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn map_mut<Fun, R>(&mut self, entity: impl AliveEntity, f: Fun) -> Option<R>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,
@@ -100,7 +100,7 @@ where
     /// Calls provided closure with fetched data if entity is alive and matches query and filter.
     /// Returns result of the closure or `Err(NoSuchEntity)` if entity is not alive
     /// or `Ok(None)` if entity is alive but does not match query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn try_map_mut<Fun, R>(&mut self, entity: impl Entity, f: Fun) -> Result<R, EntityError>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,
@@ -121,14 +121,14 @@ where
             .ok_or(EntityError::Mismatch)
     }
 
-    #[inline(always)]
+    #[inline]
     fn _get_reserved(&self, id: EntityId, loc: Location) -> Option<QueryItem<Q>> {
         debug_assert_eq!(loc.arch, u32::MAX);
 
         Query::reserved_entity_item(&self.query, id, loc.idx)
     }
 
-    #[inline(always)]
+    #[inline]
     unsafe fn _get(&self, loc: Location) -> Option<QueryItem<Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
@@ -154,7 +154,7 @@ where
     /// from a single alive entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn get(&self, entity: impl AliveEntity) -> Option<QueryItem<Q>> {
         let loc = entity.locate(self.entity_set);
 
@@ -173,7 +173,7 @@ where
     ///
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     /// Returns `Ok(None)` if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn try_get(&self, entity: impl Entity) -> Result<QueryItem<Q>, EntityError> {
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
@@ -192,7 +192,7 @@ where
     /// from a single alive entity.
     ///
     /// Returns none if entity does not match the view's query and filter.
-    #[inline(always)]
+    #[inline]
     #[track_caller]
     pub fn expect(&self, entity: impl Entity) -> QueryItem<Q> {
         let loc = expect_alive(entity.lookup(self.entity_set));
@@ -217,7 +217,7 @@ where
     /// Calls provided closure with fetched data if entity matches query and filter.
     /// Returns result of the closure or `None` if entity does not match
     /// query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn map<Fun, R>(&self, entity: impl AliveEntity, f: Fun) -> Option<R>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,
@@ -238,7 +238,7 @@ where
     /// Calls provided closure with fetched data if entity is alive and matches query and filter.
     /// Returns result of the closure or `Err(NoSuchEntity)` if entity is not alive
     /// or `Ok(None)` if entity is alive but does not match query and filter.
-    #[inline(always)]
+    #[inline]
     pub fn try_map<Fun, R>(&self, entity: impl Entity, f: Fun) -> Result<R, EntityError>
     where
         Fun: FnOnce(QueryItem<Q>) -> R,
@@ -268,7 +268,7 @@ where
 {
     type Output = T;
 
-    #[inline(always)]
+    #[inline]
     fn index(&self, entity: E) -> &T {
         let entity = entity
             .entity_loc(self.entity_set)
@@ -287,7 +287,7 @@ where
 // {
 //     type Output = T;
 
-//     #[inline(always)]
+//     #[inline]
 //     fn index(&self, entity: E) -> &T {
 //         let entity = entity
 //             .entity_loc(self.entity_set)
@@ -304,7 +304,7 @@ where
 //     F: ImmutableQuery,
 //     B: BorrowState,
 // {
-//     #[inline(always)]
+//     #[inline]
 //     fn index_mut(&mut self, entity: E) -> &mut T {
 //         let entity = entity
 //             .entity_loc(self.entity_set)

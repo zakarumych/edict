@@ -206,7 +206,7 @@ impl<R> Component for OriginComponent<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn on_drop(&mut self, origin: EntityId, mut encoder: LocalActionEncoder) {
         if !self.targets().is_empty() {
             R::on_origin_drop(origin, self.targets(), encoder.reborrow());
@@ -227,7 +227,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn on_replace(
         &mut self,
         _value: &Self,
@@ -237,7 +237,7 @@ where
         unimplemented!("This method is not intended to be called");
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows() -> Vec<ComponentBorrow> {
         Vec::new()
     }
@@ -338,7 +338,7 @@ impl<R> Component for TargetComponent<R>
 where
     R: Relation,
 {
-    #[inline(always)]
+    #[inline]
     fn on_drop(&mut self, target: EntityId, mut encoder: LocalActionEncoder) {
         debug_assert!(!R::SYMMETRIC);
 
@@ -353,7 +353,7 @@ where
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn on_replace(
         &mut self,
         _value: &Self,
@@ -364,7 +364,7 @@ where
         unimplemented!("This method is not intended to be called");
     }
 
-    #[inline(always)]
+    #[inline]
     fn borrows() -> Vec<ComponentBorrow> {
         debug_assert!(!R::SYMMETRIC);
         Vec::new()

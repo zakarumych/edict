@@ -46,7 +46,7 @@ where
     ///
     /// Unlike `iter`, this version works for views with mutable queries
     /// since mutable borrow won't allow to iterate the view multiple times simultaneously.
-    #[inline(always)]
+    #[inline]
     pub fn iter_mut(&mut self) -> ViewIter<'_, Q, F> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -77,7 +77,7 @@ where
     /// Unlike `iter_mut`, this version only works for views with immutable queries.
     /// Immutable query are guaranteed to not conflict with any other immutable query,
     /// allowing for iterating a view multiple times simultaneously.
-    #[inline(always)]
+    #[inline]
     pub fn iter(&self) -> ViewIter<'_, Q, F> {
         debug_assert!(!Q::MUTABLE && !F::MUTABLE);
         let epoch = self.epochs.current();
@@ -107,7 +107,7 @@ where
     type Item = QueryItem<'a, Q>;
     type IntoIter = ViewValueIter<'a, Q, F, B>;
 
-    #[inline(always)]
+    #[inline]
     fn into_iter(self) -> ViewValueIter<'a, Q, F, B> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -193,7 +193,7 @@ where
 {
     type Item = QueryItem<'a, Q>;
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let upper = self.archetypes[self.next_archetype..].iter().fold(
             self.indices.len(),
@@ -215,7 +215,7 @@ where
         (0, Some(upper))
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<QueryItem<'a, Q>> {
         loop {
             match self.indices.next() {
@@ -391,7 +391,7 @@ where
     ///
     /// Unlike `iter`, this version works for views with mutable queries
     /// since mutable borrow won't allow to iterate the view multiple times simultaneously.
-    #[inline(always)]
+    #[inline]
     pub fn iter_batched_mut(&mut self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -423,7 +423,7 @@ where
     /// Unlike `iter_mut`, this version only works for views with immutable queries.
     /// Immutable query are guaranteed to not conflict with any other immutable query,
     /// allowing for iterating a view multiple times simultaneously.
-    #[inline(always)]
+    #[inline]
     pub fn iter_batched(&self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
         debug_assert!(!Q::MUTABLE && !F::MUTABLE);
         let epoch = self.epochs.current();
@@ -452,7 +452,7 @@ where
     B: BorrowState,
 {
     /// Returns an iterator over entities with a query `Q` and filter `F`.
-    #[inline(always)]
+    #[inline]
     pub fn into_iter_batched(self, batch_size: u32) -> ViewValueBatchIter<'a, Q, F, B> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -539,7 +539,7 @@ where
 {
     type Item = QueryBatch<'a, Q>;
 
-    #[inline(always)]
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let upper = self.archetypes[self.next_archetype..].iter().fold(
             self.indices.len(),
@@ -561,7 +561,7 @@ where
         (0, Some(upper))
     }
 
-    #[inline(always)]
+    #[inline]
     fn next(&mut self) -> Option<QueryBatch<'a, Q>> {
         loop {
             match self.indices.is_empty() {

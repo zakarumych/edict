@@ -12,7 +12,7 @@ impl NoOpHasher {
 }
 
 impl Hasher for NoOpHasher {
-    #[inline(always)]
+    #[inline]
     fn write(&mut self, bytes: &[u8]) {
         let mut b = [0; 8];
         let c = 8.min(bytes.len());
@@ -20,22 +20,22 @@ impl Hasher for NoOpHasher {
         self.value = u64::from_ne_bytes(b);
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_u64(&mut self, i: u64) {
         self.value = i;
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_u128(&mut self, i: u128) {
         self.value = i as u64;
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_usize(&mut self, i: usize) {
         self.value = i as u64;
     }
 
-    #[inline(always)]
+    #[inline]
     fn finish(&self) -> u64 {
         self.value
     }
@@ -47,7 +47,7 @@ pub struct NoOpHasherBuilder;
 impl BuildHasher for NoOpHasherBuilder {
     type Hasher = NoOpHasher;
 
-    #[inline(always)]
+    #[inline]
     fn build_hasher(&self) -> NoOpHasher {
         NoOpHasher::new()
     }
@@ -60,14 +60,14 @@ pub struct MulHasher {
 }
 
 impl MulHasher {
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         MulHasher { value: 0 }
     }
 }
 
 impl Hasher for MulHasher {
-    #[inline(always)]
+    #[inline]
     fn write(&mut self, bytes: &[u8]) {
         for chunk in bytes.chunks(8) {
             let mut b = [0; 8];
@@ -76,23 +76,23 @@ impl Hasher for MulHasher {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_u64(&mut self, i: u64) {
         self.value = self.value.wrapping_mul(MUL_HASH_CONST_64).wrapping_add(i);
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_u128(&mut self, i: u128) {
         self.write_u64(i as u64);
         self.write_u64((i >> 64) as u64);
     }
 
-    #[inline(always)]
+    #[inline]
     fn write_usize(&mut self, i: usize) {
         self.write_u64(i as u64);
     }
 
-    #[inline(always)]
+    #[inline]
     fn finish(&self) -> u64 {
         // Most significant bits are better than leas significant ones.
         self.value.wrapping_mul(MUL_HASH_CONST_64).swap_bytes()

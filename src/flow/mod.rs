@@ -225,7 +225,8 @@ impl Wake for FlowWaker {
 
     #[inline(always)]
     fn wake_by_ref(self: &Arc<Self>) {
-        if self.needs_wake.fetch_and(false, Ordering::Acquire) {
+        let needs_wake = self.needs_wake.fetch_and(false, Ordering::Acquire);
+        if !needs_wake {
             return;
         }
         let Some(flip) = self.flip.upgrade() else {

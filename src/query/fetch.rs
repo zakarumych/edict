@@ -249,8 +249,11 @@ pub unsafe trait Fetch<'a> {
 }
 
 /// Extension trait for `Fetch` that allows to fetch data in batches.
+///
+/// It may not filter chunks or items.
 pub unsafe trait BatchFetch<'a>: Fetch<'a> {
     /// Batch type is collection of all items from a chunk.
+    /// It is typically a slice.
     type Batch: 'a;
 
     /// Returns fetched batch at specified chunk index.

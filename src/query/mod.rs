@@ -122,10 +122,13 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Contains data from one archetype.
     type Fetch<'a>: Fetch<'a, Item = Self::Item<'a>> + 'a;
 
-    /// Set to `true` if query fetches at least one mutable component.
+    /// Set to `true` if query may return mutable references to components.
     const MUTABLE: bool;
 
     /// Set to `true` if query filters individual entities.
+    ///
+    /// If set `false` - `Fetch` must unconditionally return `true` for all valid calls to
+    /// `Fetch::visit_chunk` and `Fetch::visit_item`.
     const FILTERS_ENTITIES: bool = false;
 
     /// Returns what kind of access the query performs on the component type.
@@ -224,6 +227,7 @@ where
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as AsQuery>::Query as Query>::Item<'a>;
 
+/// Hack around inability to say `: Query<for<'a> Fetch<'a> = Self::BatchFetch<'a>>`
 #[doc(hidden)]
 pub unsafe trait BatchQueryHack<'a>: Query<Fetch<'a> = Self::BatchFetchHack> {
     /// Associated batch type.

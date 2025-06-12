@@ -195,7 +195,7 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let upper = self.archetypes[self.next_archetype..].iter().fold(
+        let len = self.archetypes[self.next_archetype..].iter().fold(
             self.indices.len(),
             |acc, archetype| {
                 if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
@@ -212,7 +212,11 @@ where
             },
         );
 
-        (0, Some(upper))
+        if Q::FILTERS_ENTITIES || F::FILTERS_ENTITIES {
+            (0, Some(len))
+        } else {
+            (len, Some(len))
+        }
     }
 
     #[inline]
@@ -541,24 +545,8 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let upper = self.archetypes[self.next_archetype..].iter().fold(
-            self.indices.len(),
-            |acc, archetype| {
-                if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
-                {
-                    return acc;
-                }
-
-                if !unsafe { self.filter.visit_archetype_late(archetype) }
-                    || !unsafe { self.query.visit_archetype_late(archetype) }
-                {
-                    return acc;
-                }
-                acc + archetype.len()
-            },
-        );
-
-        (0, Some(upper))
+        let len = self.len();
+        (len, Some(len))
     }
 
     #[inline]
@@ -681,5 +669,31 @@ where
             }
         }
         acc
+    }
+}
+
+impl<'a, Q, F, B> ExactSizeIterator for ViewValueBatchIter<'a, Q, F, B>
+where
+    Q: BatchQuery,
+    F: BatchQuery,
+    B: BorrowState,
+{
+    fn len(&self) -> usize {
+        self.archetypes[self.next_archetype..].iter().fold(
+            self.indices.len().div_ceil(self.batch_size.into()),
+            |acc, archetype| {
+                if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
+                {
+                    return acc;
+                }
+
+                if !unsafe { self.filter.visit_archetype_late(archetype) }
+                    || !unsafe { self.query.visit_archetype_late(archetype) }
+                {
+                    return acc;
+                }
+                acc + archetype.len().div_ceil(self.batch_size.into())
+            },
+        )
     }
 }

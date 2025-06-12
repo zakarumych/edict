@@ -22,12 +22,10 @@ use atomicell::borrow::{
 use hashbrown::HashMap;
 
 use crate::{
-    action::LocalActionEncoder, bundle::DynamicBundle, component::ComponentInfo, entity::EntityId,
-    epoch::EpochId, hash::NoOpHasherBuilder, type_id, Access,
+    action::LocalActionEncoder, bundle::DynamicBundle, clamp_usize_to_u32,
+    component::ComponentInfo, entity::EntityId, epoch::EpochId, hash::NoOpHasherBuilder, type_id,
+    Access, MAX_U32_USIZE,
 };
-
-/// Maximum index of the entity in the archetype.
-pub const MAX_IDX_USIZE: usize = u32::MAX as usize;
 
 pub(crate) struct ComponentData {
     pub ptr: NonNull<u8>,
@@ -302,7 +300,7 @@ impl Archetype {
     /// Returns index of the newly created entity in the archetype.
     pub fn spawn_empty(&mut self, id: EntityId) -> u32 {
         debug_assert!(self.matches(core::iter::empty()));
-        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+        debug_assert!(self.entities.len() < MAX_U32_USIZE);
 
         let entity_idx = self.entities.len() as u32;
 
@@ -323,7 +321,7 @@ impl Archetype {
         T: 'static,
     {
         debug_assert!(self.matches(core::iter::once(type_id::<T>())));
-        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+        debug_assert!(self.entities.len() < MAX_U32_USIZE);
 
         let entity_idx = self.entities.len() as u32;
 
@@ -345,7 +343,7 @@ impl Archetype {
         B: DynamicBundle,
     {
         debug_assert!(bundle.with_ids(|ids| self.matches(ids.iter().copied())));
-        debug_assert!(self.entities.len() < MAX_IDX_USIZE);
+        debug_assert!(self.entities.len() < MAX_U32_USIZE);
 
         let entity_idx = self.entities.len() as u32;
 
@@ -606,7 +604,7 @@ impl Archetype {
         let src_entity_idx = src_idx;
 
         debug_assert!(src_entity_idx < self.entities.len() as u32);
-        debug_assert!(dst.entities.len() < MAX_IDX_USIZE);
+        debug_assert!(dst.entities.len() < MAX_U32_USIZE);
 
         let dst_entity_idx = dst.entities.len() as u32;
 
@@ -818,8 +816,9 @@ impl Archetype {
     }
 
     #[inline]
-    pub(crate) fn len(&self) -> usize {
-        self.entities.len()
+    pub(crate) fn len(&self) -> u32 {
+        debug_assert!(u32::try_from(self.entities.len()).is_ok());
+        self.entities.len() as u32
     }
 
     #[inline]
@@ -827,12 +826,14 @@ impl Archetype {
         self.entities.is_empty()
     }
 
+    /// Does not guarantees reservation.
+    /// Capacity is capped at `u32::MAX`.
     #[inline]
     pub(crate) fn reserve(&mut self, additional: u32) {
-        debug_assert!(self.entities.len() <= u32::MAX as usize);
+        debug_assert!(u32::try_from(self.entities.len()).is_ok());
 
         // Pretend that `Vec` can't hold more than `u32::MAX` elements.
-        let old_cap = self.entities.capacity().min(u32::MAX as usize) as u32;
+        let old_cap = clamp_usize_to_u32(self.entities.capacity());
         let len = self.entities.len() as u32;
 
         if additional <= old_cap - len {
@@ -844,7 +845,7 @@ impl Archetype {
         // Needs to grow.
         // Saturate at `u32::MAX` elements.
         self.entities.reserve((req_cap - len) as usize);
-        let new_cap = self.entities.capacity().min(u32::MAX as usize) as u32;
+        let new_cap = clamp_usize_to_u32(self.entities.capacity());
 
         for component in self.components.values_mut() {
             unsafe {

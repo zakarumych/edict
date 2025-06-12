@@ -112,7 +112,7 @@ impl World {
 
         let archetype = &self.archetypes[loc.arch as usize];
 
-        debug_assert!(archetype.len() >= loc.idx as usize, "Entity index is valid");
+        debug_assert!(archetype.len() >= loc.idx, "Entity index is valid");
 
         if !query.visit_archetype(archetype) {
             return Err(EntityError::Mismatch);

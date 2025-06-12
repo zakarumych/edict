@@ -724,3 +724,39 @@ fn cold() {}
 fn type_id<T: 'static + ?Sized>() -> TypeId {
     TypeId::of::<T>()
 }
+
+pub(crate) const fn clamp_usize_to_u32(value: usize) -> u32 {
+    if u32::BITS >= usize::BITS {
+        value as u32
+    } else {
+        if value <= u32::MAX as usize {
+            value as u32
+        } else {
+            u32::MAX
+        }
+    }
+}
+
+// pub(crate) const fn clamp_u32_to_usize(value: u32) -> usize {
+//     if u32::BITS <= usize::BITS {
+//         value as usize
+//     } else {
+//         if value <= usize::MAX as u32 {
+//             value as usize
+//         } else {
+//             usize::MAX
+//         }
+//     }
+// }
+
+const MAX_U32_USIZE: usize = if u32::BITS >= usize::BITS {
+    usize::MAX
+} else {
+    u32::MAX as usize
+};
+
+// const MAX_USIZE_U32: u32 = if u32::BITS <= usize::BITS {
+//     u32::MAX
+// } else {
+//     usize::MAX as u32
+// };

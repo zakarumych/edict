@@ -4,6 +4,7 @@ use crate::{
     action::LocalActionEncoder,
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
+    clamp_usize_to_u32,
     component::{Component, ComponentRegistry},
     entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
@@ -789,12 +790,10 @@ where
 pub(crate) fn iter_reserve_hint(iter: &impl Iterator) -> u32 {
     let (lower, upper) = iter.size_hint();
     match (lower, upper) {
-        (lower, None) => lower.min(u32::MAX as usize) as u32,
+        (lower, None) => clamp_usize_to_u32(lower),
         (lower, Some(upper)) => {
             // Iterator is consumed in full, so reserve at least `lower`.
-            lower
-                .max(upper.min(MAX_SPAWN_RESERVE))
-                .min(u32::MAX as usize) as u32
+            clamp_usize_to_u32(lower.max(upper.min(MAX_SPAWN_RESERVE)))
         }
     }
 }

@@ -196,7 +196,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.archetypes[self.next_archetype..].iter().fold(
-            self.indices.len(),
+            self.indices.len() as u32,
             |acc, archetype| {
                 if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
                 {
@@ -211,6 +211,8 @@ where
                 acc + archetype.len()
             },
         );
+
+        let len = len as usize;
 
         if Q::FILTERS_ENTITIES || F::FILTERS_ENTITIES {
             (0, Some(len))
@@ -589,7 +591,7 @@ where
                 }
                 false => {
                     let start = self.indices.start;
-                    let end = self.indices.end.min(start + self.batch_size);
+                    let end = self.indices.end.min(start.saturating_add(self.batch_size));
 
                     starts_of_chunks(start, end, |chunk_idx| {
                         unsafe { self.filter_fetch.touch_chunk(chunk_idx) }
@@ -613,9 +615,9 @@ where
     {
         let mut acc = init;
 
-        while self.indices.end < self.indices.start {
+        while self.indices.end > self.indices.start {
             let start = self.indices.start;
-            let end = self.indices.end.min(start + self.batch_size);
+            let end = self.indices.end.min(start.saturating_add(self.batch_size));
 
             starts_of_chunks(start, end, |chunk_idx| {
                 unsafe { self.filter_fetch.touch_chunk(chunk_idx) }
@@ -652,9 +654,9 @@ where
 
             let mut indices = 0..archetype.len() as u32;
 
-            while indices.end < indices.start {
+            while indices.end > indices.start {
                 let start = indices.start;
-                let end = indices.end.min(start + self.batch_size);
+                let end = indices.end.min(start.saturating_add(self.batch_size));
 
                 starts_of_chunks(start, end, |chunk_idx| {
                     unsafe { filter_fetch.touch_chunk(chunk_idx) }
@@ -679,8 +681,8 @@ where
     B: BorrowState,
 {
     fn len(&self) -> usize {
-        self.archetypes[self.next_archetype..].iter().fold(
-            self.indices.len().div_ceil(self.batch_size.into()),
+        let len = self.archetypes[self.next_archetype..].iter().fold(
+            (self.indices.len() as u32).div_ceil(self.batch_size),
             |acc, archetype| {
                 if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
                 {
@@ -692,8 +694,10 @@ where
                 {
                     return acc;
                 }
-                acc + archetype.len().div_ceil(self.batch_size.into())
+                acc + archetype.len().div_ceil(self.batch_size)
             },
-        )
+        );
+
+        len as usize
     }
 }

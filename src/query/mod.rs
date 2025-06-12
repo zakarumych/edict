@@ -35,7 +35,7 @@ use crate::{
 };
 
 pub use self::{
-    alt::{Alt, FetchAlt},
+    alt::{Alt, FetchAlt, RefMut},
     // any_of::AnyOf,
     boolean::{
         And, And2, And3, And4, And5, And6, And7, And8, BooleanFetch, BooleanFetchOp, BooleanQuery,

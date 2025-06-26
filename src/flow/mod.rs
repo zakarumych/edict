@@ -258,8 +258,6 @@ where
                 continue;
             };
 
-            task.needs_wake.store(true, Ordering::Relaxed);
-
             let mut cx = Context::from_waker(&task.waker);
 
             // Safety: This is the only code that can access `task.flow`.
@@ -267,10 +265,15 @@ where
 
             let pinned = task.flow.as_mut();
 
+            // Set this flag directly before polling the flow,
+            // making any wake calls to re-enqueue the task.
+            task.needs_wake.store(true, Ordering::Release);
+
             // This is the only safe place to poll the flow.
             let poll = unsafe { F::poll(pinned, &mut cx) };
 
             if let Poll::Ready(()) = poll {
+                // Task is finished, remove it from the array.
                 self.array.remove(id);
             }
         }

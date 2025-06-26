@@ -541,10 +541,11 @@ impl Archetype {
         let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx as usize) };
         let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx as usize) };
 
-        // `epoch` must be advanced in `World` before this call.
-        data.epoch.bump(epoch);
-        chunk_epoch.bump(epoch);
-        entity_epoch.bump(epoch);
+        // Safety: `epoch` must be advanced before first call to this function.
+        // Some World methods may call this function multiple times.
+        data.epoch.bump_again(epoch);
+        chunk_epoch.bump_again(epoch);
+        entity_epoch.bump_again(epoch);
 
         unsafe { &mut *ptr }
     }

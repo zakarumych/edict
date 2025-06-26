@@ -23,10 +23,6 @@ impl<T> Clone for BorrowOne<T> {
     fn clone(&self) -> Self {
         *self
     }
-
-    fn clone_from(&mut self, source: &Self) {
-        self.ty = source.ty;
-    }
 }
 
 impl<T> BorrowOne<T> {

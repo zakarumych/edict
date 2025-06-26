@@ -72,8 +72,8 @@ where
         }
 
         ViewOneValue {
-            query: query,
-            filter: filter,
+            query,
+            filter,
             archetype,
             id: entity.id(),
             loc,
@@ -93,7 +93,7 @@ where
     ///
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
-    pub fn get_mut(&mut self) -> Option<QueryItem<Q>> {
+    pub fn get_mut(&mut self) -> Option<QueryItem<'_, Q>> {
         if self.loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
         }
@@ -116,7 +116,7 @@ where
     /// Panics if entity does not match the view's query and filter.
     #[inline]
     #[track_caller]
-    pub fn expect_mut(&mut self) -> QueryItem<Q> {
+    pub fn expect_mut(&mut self) -> QueryItem<'_, Q> {
         expect_match(self.get_mut())
     }
 
@@ -132,10 +132,7 @@ where
     {
         if self.loc.arch == u32::MAX {
             let item = Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
-            return match item {
-                Some(item) => Some(f(item)),
-                None => None,
-            };
+            return item.map(f);
         }
 
         // Safety: archetype is init if loc.arch != u32::MAX
@@ -144,10 +141,7 @@ where
         // Ensure to borrow view's data.
         self.borrow.with(self.query, self.filter, archetype, || {
             let item = unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) };
-            match item {
-                Some(item) => Some(f(item)),
-                None => None,
-            }
+            item.map(f)
         })
     }
 }
@@ -162,7 +156,7 @@ where
     ///
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
-    pub fn get(&self) -> Option<QueryItem<Q>> {
+    pub fn get(&self) -> Option<QueryItem<'_, Q>> {
         if self.loc.arch == u32::MAX {
             return Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
         }
@@ -183,7 +177,7 @@ where
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
     #[track_caller]
-    pub fn expect(&self) -> QueryItem<Q> {
+    pub fn expect(&self) -> QueryItem<'_, Q> {
         expect_match(self.get())
     }
 
@@ -199,10 +193,7 @@ where
     {
         if self.loc.arch == u32::MAX {
             let item = Query::reserved_entity_item(&self.query, self.id, self.loc.idx);
-            return match item {
-                Some(item) => Some(f(item)),
-                None => None,
-            };
+            return item.map(f);
         }
 
         // Safety: archetype is init if loc.arch != u32::MAX
@@ -211,10 +202,7 @@ where
         // Ensure to borrow view's data.
         self.borrow.with(self.query, self.filter, archetype, || {
             let item = unsafe { get_at(self.query, self.filter, self.epochs, archetype, self.loc) };
-            match item {
-                Some(item) => Some(f(item)),
-                None => None,
-            }
+            item.map(f)
         })
     }
 }

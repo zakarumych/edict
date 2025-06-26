@@ -74,7 +74,7 @@ where
                     }
                 }
                 relations.push((target, relation));
-                return true;
+                true
             }
             true => {
                 let r = unsafe { &mut *self.exclusive };
@@ -98,9 +98,9 @@ where
                         );
                     }
                     r.0 = target;
-                    return true;
+                    true
                 } else {
-                    return false;
+                    false
                 }
             }
         }
@@ -188,7 +188,7 @@ where
     #[must_use]
     pub fn targets(&self) -> &[(EntityId, R)] {
         match R::EXCLUSIVE {
-            false => unsafe { &*self.non_exclusive },
+            false => unsafe { &self.non_exclusive },
             true => core::slice::from_ref(unsafe { &*self.exclusive }),
         }
     }
@@ -196,7 +196,7 @@ where
     #[must_use]
     pub fn targets_mut(&mut self) -> &mut [(EntityId, R)] {
         match R::EXCLUSIVE {
-            false => unsafe { &mut *self.non_exclusive },
+            false => unsafe { &mut self.non_exclusive },
             true => core::slice::from_mut(unsafe { &mut *self.exclusive }),
         }
     }

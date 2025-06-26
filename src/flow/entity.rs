@@ -925,7 +925,7 @@ where
             Err(EntityError::Mismatch) => {
                 // TODO: Should archetype change be detected to wake up the task?
                 cx.waker().wake_by_ref();
-                return Poll::Pending;
+                Poll::Pending
             }
             Ok(item) => (me.f)(item, cx),
         }

@@ -27,7 +27,7 @@ pub use edict_proc::system;
 /// Systems must work with any action queue type - the API uses `dyn ActionBufferQueue`.
 pub trait ActionBufferQueue {
     /// Returns action encoder from the queue.
-    fn get<'a>(&mut self) -> ActionBuffer;
+    fn get(&mut self) -> ActionBuffer;
 
     /// Flushes action encoder back to the queue.
     fn flush(&mut self, buffer: ActionBuffer);
@@ -35,7 +35,7 @@ pub trait ActionBufferQueue {
 
 impl ActionBufferQueue for Vec<ActionBuffer> {
     fn get(&mut self) -> ActionBuffer {
-        self.pop().unwrap_or_else(ActionBuffer::new)
+        self.pop().unwrap_or_default()
     }
 
     fn flush(&mut self, buffer: ActionBuffer) {
@@ -45,7 +45,7 @@ impl ActionBufferQueue for Vec<ActionBuffer> {
 
 impl ActionBufferQueue for RingBuffer<ActionBuffer> {
     fn get(&mut self) -> ActionBuffer {
-        self.pop().unwrap_or_else(ActionBuffer::new)
+        self.pop().unwrap_or_default()
     }
 
     fn flush(&mut self, buffer: ActionBuffer) {
@@ -58,7 +58,7 @@ where
     [ActionBuffer; N]: smallvec::Array<Item = ActionBuffer>,
 {
     fn get(&mut self) -> ActionBuffer {
-        self.pop().unwrap_or_else(ActionBuffer::new)
+        self.pop().unwrap_or_default()
     }
 
     fn flush(&mut self, buffer: ActionBuffer) {
@@ -106,6 +106,9 @@ pub unsafe trait System {
 
     /// Runs the system with given context instance.
     ///
+    /// # Safety
+    ///
+    /// World pointer must be valid and safe to dereference.
     /// If `is_local()` returns `true` then running it outside local thread is unsound.
     unsafe fn run_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue);
 

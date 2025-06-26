@@ -113,12 +113,10 @@ where
             } else {
                 Ok(None)
             }
+        } else if comp.id() == type_id::<TargetComponent<R>>() {
+            Ok(Some(Access::Read))
         } else {
-            if comp.id() == type_id::<TargetComponent<R>>() {
-                Ok(Some(Access::Read))
-            } else {
-                Ok(None)
-            }
+            Ok(None)
         }
     }
 

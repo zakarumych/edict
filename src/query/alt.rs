@@ -41,8 +41,8 @@ impl<T> DerefMut for RefMut<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         self.entity_epoch.bump_again(self.epoch);
-        EpochId::bump_cell(&self.chunk_epoch, self.epoch);
-        EpochId::bump_cell(&self.archetype_epoch, self.epoch);
+        EpochId::bump_cell(self.chunk_epoch, self.epoch);
+        EpochId::bump_cell(self.archetype_epoch, self.epoch);
         self.component
     }
 }

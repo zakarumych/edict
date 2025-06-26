@@ -74,7 +74,6 @@ pub unsafe trait DynamicComponentBundle: DynamicBundle + 'static {
 /// [`Bundle::static_key`] must return unique value for a set of components.
 /// [`Bundle::static_contains_id`] must return true if component type with specified id is contained in bundle.
 /// [`Bundle::static_with_ids`] must call provided function with a list of type ids of all contained components.
-
 pub unsafe trait Bundle: DynamicBundle {
     /// Returns `true` if given bundle is valid.
     fn static_valid() -> bool;
@@ -289,6 +288,12 @@ impl fmt::Debug for EntityBuilder {
     }
 }
 
+impl Default for EntityBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EntityBuilder {
     /// Creates new empty entity builder.
     #[inline]
@@ -433,7 +438,7 @@ unsafe impl DynamicBundle for EntityBuilder {
 
     #[inline]
     fn contains_id(&self, ty: TypeId) -> bool {
-        self.ids.iter().any(|id| *id == ty)
+        self.ids.contains(&ty)
     }
 
     #[inline]

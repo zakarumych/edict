@@ -62,7 +62,7 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, _: u32) -> () {}
+    unsafe fn get_item(&mut self, _: u32) {}
 }
 
 /// Filters targets of relation with specified origin.
@@ -119,12 +119,10 @@ where
             } else {
                 Ok(None)
             }
+        } else if comp.id() == type_id::<TargetComponent<R>>() {
+            Ok(Some(Access::Read))
         } else {
-            if comp.id() == type_id::<TargetComponent<R>>() {
-                Ok(Some(Access::Read))
-            } else {
-                Ok(None)
-            }
+            Ok(None)
         }
     }
 

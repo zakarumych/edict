@@ -241,5 +241,5 @@ where
         world.entities.set_location(src_id, src_loc);
     }
 
-    return true;
+    true
 }

@@ -64,6 +64,12 @@ impl fmt::Debug for EntitySet {
     }
 }
 
+impl Default for EntitySet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EntitySet {
     /// Creates a new entity set.
     pub fn new() -> Self {
@@ -184,9 +190,7 @@ impl EntitySet {
         match self.map.get(&id.bits()) {
             None => {
                 let reserved = self.reserve_counter.load(Ordering::Acquire);
-                let Some(idx) = self.id_allocator.reserved(id.non_zero()) else {
-                    return None;
-                };
+                let idx = self.id_allocator.reserved(id.non_zero())?;
                 if idx >= reserved {
                     return None;
                 }

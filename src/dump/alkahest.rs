@@ -29,6 +29,7 @@ impl<F> BareFormula for DumpFormula<F> where F: Formula {}
 /// Formula for serializing world with set of components.
 pub type WorldFormula<F> = [([u64; 3], DumpFormula<F>)];
 
+#[allow(clippy::type_complexity)]
 struct LoaderAlkahest<'de, F> {
     iter: DeIter<'de, ([u64; 3], DumpFormula<F>), ([u64; 3], Lazy<'de, DumpFormula<F>>)>,
     next: Option<Lazy<'de, DumpFormula<F>>>,

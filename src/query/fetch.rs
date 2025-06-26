@@ -19,6 +19,12 @@ pub struct VerifyFetch {
     visit_item: Option<(u32, bool)>,
 }
 
+impl Default for VerifyFetch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VerifyFetch {
     /// Returns new `VerifyFetch` instance flagged as dangling.
     /// Any method call will panic. Dangling fetches must not be used.
@@ -76,10 +82,10 @@ impl VerifyFetch {
             }
             Some((visit_chunk_idx, visiting)) => {
                 if chunk_idx != visit_chunk_idx {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but last call to `visit_chunk` was with chunk_idx {}", chunk_idx, visit_chunk_idx);
+                    panic!("FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but last call to `visit_chunk` was with chunk_idx {visit_chunk_idx}");
                 }
                 if !visiting {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {}, but `visit_chunk` returned true for this chunk index", chunk_idx);
+                    panic!("FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but `visit_chunk` returned true for this chunk index");
                 }
                 self.touch_chunk = Some(visit_chunk_idx);
             }
@@ -106,7 +112,7 @@ impl VerifyFetch {
                     panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `touch_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
                 }
                 if !visiting_chunk {
-                    panic!("FetchVerify: visit_item called with idx {}, but `visit_chunk` returned false for this idx", idx);
+                    panic!("FetchVerify: visit_item called with idx {idx}, but `visit_chunk` returned false for this idx");
                 }
                 self.visit_item = Some((idx, visiting));
             }
@@ -130,10 +136,10 @@ impl VerifyFetch {
             }
             Some((valid_idx, visiting)) => {
                 if idx != valid_idx {
-                    panic!("FetchVerify: get_item called with idx {}, but last call to `visit_item` was with idx {}", idx, valid_idx);
+                    panic!("FetchVerify: get_item called with idx {idx}, but last call to `visit_item` was with idx {valid_idx}");
                 }
                 if !visiting {
-                    panic!("FetchVerify: get_item called with idx {}, but `visit_item` returned true for this idx", idx);
+                    panic!("FetchVerify: get_item called with idx {idx}, but `visit_item` returned true for this idx");
                 }
                 self.visit_item = None;
             }
@@ -251,6 +257,10 @@ pub unsafe trait Fetch<'a> {
 /// Extension trait for `Fetch` that allows to fetch data in batches.
 ///
 /// It may not filter chunks or items.
+///
+/// # Safety
+///
+/// Implementation of unsafe methods must follow safety rules.
 pub unsafe trait BatchFetch<'a>: Fetch<'a> {
     /// Batch type is collection of all items from a chunk.
     /// It is typically a slice.
@@ -281,6 +291,12 @@ pub unsafe trait BatchFetch<'a>: Fetch<'a> {
 pub struct UnitFetch {
     #[cfg(debug_assertions)]
     verify: VerifyFetch,
+}
+
+impl Default for UnitFetch {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UnitFetch {
@@ -328,7 +344,7 @@ unsafe impl<'a> Fetch<'a> for UnitFetch {
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, idx: u32) -> () {
+    unsafe fn get_item(&mut self, idx: u32) {
         let _ = idx;
         #[cfg(debug_assertions)]
         self.verify.get_item(idx)
@@ -339,7 +355,7 @@ unsafe impl<'a> BatchFetch<'a> for UnitFetch {
     type Batch = ();
 
     #[inline]
-    unsafe fn get_batch(&mut self, start: u32, end: u32) -> () {
+    unsafe fn get_batch(&mut self, start: u32, end: u32) {
         debug_assert!(end >= start);
     }
 }

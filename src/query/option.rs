@@ -53,10 +53,7 @@ where
 
     /// Returns fetched item at specified index.
     unsafe fn get_item(&mut self, idx: u32) -> Option<T::Item> {
-        match self {
-            None => None,
-            Some(fetch) => Some(unsafe { fetch.get_item(idx) }),
-        }
+        self.as_mut().map(|fetch| unsafe { fetch.get_item(idx) })
     }
 }
 
@@ -68,10 +65,7 @@ where
 
     /// Returns fetched item at specified index.
     unsafe fn get_batch(&mut self, start: u32, end: u32) -> Option<T::Batch> {
-        match self {
-            None => None,
-            Some(fetch) => Some(unsafe { fetch.get_batch(start, end) }),
-        }
+        self.as_mut().map(|fetch| unsafe { fetch.get_batch(start, end) })
     }
 }
 

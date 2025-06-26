@@ -255,7 +255,7 @@ where
                             unsafe { self.filter.fetch(arch_idx as u32, archetype, self.epoch) };
                         self.query_fetch =
                             unsafe { self.query.fetch(arch_idx as u32, archetype, self.epoch) };
-                        self.indices = 0..archetype.len() as u32;
+                        self.indices = 0..archetype.len();
                         break;
                     }
                 }
@@ -351,9 +351,7 @@ where
             let mut query_fetch =
                 unsafe { self.query.fetch(arch_idx as u32, archetype, self.epoch) };
 
-            let mut indices = 0..archetype.len() as u32;
-
-            while let Some(entity_idx) = indices.next() {
+            for entity_idx in 0..archetype.len() {
                 if let Some(chunk_idx) = first_of_chunk(entity_idx) {
                     if !unsafe { query_fetch.visit_chunk(chunk_idx) } {
                         self.indices.nth(CHUNK_LEN as usize - 1);
@@ -585,7 +583,7 @@ where
                             unsafe { self.filter.fetch(arch_idx as u32, archetype, self.epoch) };
                         self.query_fetch =
                             unsafe { self.query.fetch(arch_idx as u32, archetype, self.epoch) };
-                        self.indices = 0..archetype.len() as u32;
+                        self.indices = 0..archetype.len();
                         break;
                     }
                 }
@@ -652,7 +650,7 @@ where
             let mut query_fetch =
                 unsafe { self.query.fetch(arch_idx as u32, archetype, self.epoch) };
 
-            let mut indices = 0..archetype.len() as u32;
+            let mut indices = 0..archetype.len();
 
             while indices.end > indices.start {
                 let start = indices.start;

@@ -26,6 +26,12 @@ pub struct WorldBuilder {
     range_alloc: Option<Box<dyn IdRangeAllocator>>,
 }
 
+impl Default for WorldBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorldBuilder {
     /// Returns new [`WorldBuilder`] value.
     #[must_use]

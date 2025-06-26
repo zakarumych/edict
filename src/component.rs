@@ -87,6 +87,12 @@ pub mod private {
         }
     }
 
+    impl<T, U> Default for DispatchBorrowMut<T, U> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<T, U> DispatchBorrowMut<T, U> {
         pub fn new() -> Self {
             DispatchBorrowMut(DispatchBorrow(core::marker::PhantomData::<(T, U)>))
@@ -292,8 +298,9 @@ impl ComponentBorrow {
     ) -> Self {
         ComponentBorrow {
             ty: type_id::<T>(),
-            borrow: unsafe { transmute(borrow) },
-            borrow_mut: borrow_mut.map(|f| unsafe { transmute(f) }),
+            borrow: unsafe { transmute::<BorrowFn<T>, BorrowFn<()>>(borrow) },
+            borrow_mut: borrow_mut
+                .map(|f| unsafe { transmute::<BorrowFnMut<T>, BorrowFnMut<()>>(f) }),
         }
     }
 
@@ -335,18 +342,21 @@ impl ComponentBorrow {
         self.ty
     }
 
-    pub(crate) fn borrow<'a, T: ?Sized + 'static>(&self) -> BorrowFn<T> {
+    pub(crate) fn borrow<T: ?Sized + 'static>(&self) -> BorrowFn<T> {
         debug_assert!(self.ty == type_id::<T>());
-        unsafe { transmute(self.borrow) }
+        unsafe { transmute::<BorrowFn<()>, BorrowFn<T>>(self.borrow) }
     }
 
     pub(crate) fn has_borrow_mut(&self) -> bool {
         self.borrow_mut.is_some()
     }
 
-    pub(crate) fn borrow_mut<'a, T: ?Sized + 'static>(&self) -> Option<BorrowFnMut<T>> {
+    pub(crate) fn borrow_mut<T: ?Sized + 'static>(&self) -> Option<BorrowFnMut<T>> {
         debug_assert!(self.ty == type_id::<T>());
-        unsafe { self.borrow_mut.map(|f| transmute(f)) }
+        unsafe {
+            self.borrow_mut
+                .map(|f| transmute::<BorrowFnMut<()>, BorrowFnMut<T>>(f))
+        }
     }
 }
 
@@ -520,7 +530,7 @@ impl ComponentInfo {
         self.borrows
             .iter()
             .find(|b| b.target() == ty)
-            .map_or(false, |b| b.has_borrow_mut())
+            .is_some_and(|b| b.has_borrow_mut())
     }
 
     #[inline]

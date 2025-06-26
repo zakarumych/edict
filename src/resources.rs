@@ -436,7 +436,7 @@ impl Resources {
     /// Returns none if resource is not found.
     #[inline]
     #[track_caller]
-    pub fn get<T: Sync + 'static>(&self) -> Option<Res<T>> {
+    pub fn get<T: Sync + 'static>(&self) -> Option<Res<'_, T>> {
         unsafe {
             // # Safety
             //
@@ -449,7 +449,7 @@ impl Resources {
     /// Returns none if resource is not found.
     #[inline]
     #[track_caller]
-    pub fn get_mut<T: Send + 'static>(&self) -> Option<ResMut<T>> {
+    pub fn get_mut<T: Send + 'static>(&self) -> Option<ResMut<'_, T>> {
         unsafe {
             // # Safety
             //
@@ -470,7 +470,7 @@ impl Resources {
     /// In this case prefer to use [`get`] method instead.
     #[inline]
     #[track_caller]
-    pub unsafe fn get_local<T: 'static>(&self) -> Option<Res<T>> {
+    pub unsafe fn get_local<T: 'static>(&self) -> Option<Res<'_, T>> {
         let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;
@@ -505,7 +505,7 @@ impl Resources {
     /// In this case prefer to use [`get_mut`] method instead.
     #[inline]
     #[track_caller]
-    pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<ResMut<T>> {
+    pub unsafe fn get_local_mut<T: 'static>(&self) -> Option<ResMut<'_, T>> {
         let id = type_id::<T>();
 
         let resource = self.resources.get(&id)?;

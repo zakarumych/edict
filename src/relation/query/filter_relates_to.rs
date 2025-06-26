@@ -42,7 +42,7 @@ where
     }
 
     #[inline]
-    unsafe fn get_item(&mut self, _: u32) -> () {}
+    unsafe fn get_item(&mut self, _: u32) {}
 }
 
 /// Filters origins of relation with specified target.

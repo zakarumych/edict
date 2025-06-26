@@ -91,8 +91,8 @@ pub trait IntoQuery: AsQuery {
 }
 
 /// Types convertible into query type.
-pub unsafe trait IntoSendQuery: IntoQuery + AsSendQuery {}
-unsafe impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
+pub trait IntoSendQuery: IntoQuery + AsSendQuery {}
+impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
 
 /// Types associated with default-constructible query type.
 #[diagnostic::on_unimplemented(label = "`{Self}` is not a stateless query type")]
@@ -102,8 +102,8 @@ pub trait DefaultQuery: AsQuery {
 }
 
 /// Types associated with default-constructible query type.
-pub unsafe trait DefaultSendQuery: DefaultQuery + AsSendQuery {}
-unsafe impl<Q> DefaultSendQuery for Q where Q: DefaultQuery + AsSendQuery {}
+pub trait DefaultSendQuery: DefaultQuery + AsSendQuery {}
+impl<Q> DefaultSendQuery for Q where Q: DefaultQuery + AsSendQuery {}
 
 /// Detected write aliasing.
 /// Should be either resolved at runtime or reported with panic.
@@ -114,6 +114,10 @@ pub struct WriteAlias;
 /// references to the components and optionally [`EntityId`] to address same components later.
 ///
 /// [`EntityId`]: edict::entity::EntityId
+///
+/// # Safety
+///
+/// Implementations must adhere to unsafe contract of unsafe methods.
 pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Item type this query type yields.
     type Item<'a>: 'a;
@@ -134,7 +138,6 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Returns what kind of access the query performs on the component type.
     /// This method may return stronger access type if it is impossible to know
     /// exact access with only type-id.
-    #[must_use]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias>;
 
     /// Checks if archetype must be visited or skipped.
@@ -160,6 +163,11 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// required access was granted.
     ///
     /// Most queries do not check visiting again so defaults to `true`.
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if `visit_archetype` returned `false`.
+    /// access_archetype must have been called before this method.
     #[must_use]
     #[inline]
     unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
@@ -208,13 +216,23 @@ pub unsafe trait ImmutableQuery: Query {
 }
 
 /// Query that can be used from non-main thread.
+///
+/// # Safety
+///
+/// Query type must be safely usable from non-main thread.
+/// This includes ensuring that any queried components
+/// are `Sync` if queried immutably and `Send` if queried mutably.
 pub unsafe trait SendQuery: Query {}
 
 /// Query that does not mutate any components and can be used from non-main thread.
-pub unsafe trait SendImmutableQuery: SendQuery + ImmutableQuery {}
-unsafe impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
+pub trait SendImmutableQuery: SendQuery + ImmutableQuery {}
+impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
 
 /// Query that can be used from non-main thread.
+///
+/// # Safety
+///
+/// Associated query type must implement [`SendQuery`].
 pub unsafe trait AsSendQuery: AsQuery {}
 
 unsafe impl<Q> AsSendQuery for Q
@@ -229,7 +247,7 @@ pub type QueryItem<'a, Q> = <<Q as AsQuery>::Query as Query>::Item<'a>;
 
 /// Hack around inability to say `: Query<for<'a> Fetch<'a> = Self::BatchFetch<'a>>`
 #[doc(hidden)]
-pub unsafe trait BatchQueryHack<'a>: Query<Fetch<'a> = Self::BatchFetchHack> {
+pub trait BatchQueryHack<'a>: Query<Fetch<'a> = Self::BatchFetchHack> {
     /// Associated batch type.
     type BatchHack: 'a;
 
@@ -238,14 +256,12 @@ pub unsafe trait BatchQueryHack<'a>: Query<Fetch<'a> = Self::BatchFetchHack> {
 }
 
 /// Extension trait for [`Query`] to provide additional methods to views.
-pub unsafe trait BatchQuery:
-    for<'a> BatchQueryHack<'a, BatchHack = Self::Batch<'a>>
-{
+pub trait BatchQuery: for<'a> BatchQueryHack<'a, BatchHack = Self::Batch<'a>> {
     /// Associated batch type.
     type Batch<'a>: 'a;
 }
 
-unsafe impl<'a, Q> BatchQueryHack<'a> for Q
+impl<'a, Q> BatchQueryHack<'a> for Q
 where
     Q: Query,
     Q::Fetch<'a>: BatchFetch<'a>,
@@ -254,7 +270,7 @@ where
     type BatchFetchHack = Q::Fetch<'a>;
 }
 
-unsafe impl<Q> BatchQuery for Q
+impl<Q> BatchQuery for Q
 where
     Q: Query,
     for<'a> Q::Fetch<'a>: BatchFetch<'a>,

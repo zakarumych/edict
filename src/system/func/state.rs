@@ -48,14 +48,14 @@ impl<T> Deref for State<'_, T> {
 
     #[inline]
     fn deref(&self) -> &T {
-        &self.value
+        self.value
     }
 }
 
 impl<T> DerefMut for State<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        &mut self.value
+        self.value
     }
 }
 

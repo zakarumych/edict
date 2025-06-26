@@ -33,19 +33,6 @@ pub trait ScopedExecutor<'scope> {
         F: FnOnce(&Self) + Send + 'scope;
 }
 
-/// Mock executor that runs tasks on the current thread.
-#[derive(Clone, Copy, Debug)]
-pub struct MockExecutor;
-
-impl<'scope> ScopedExecutor<'scope> for MockExecutor {
-    fn spawn<F>(&self, f: F)
-    where
-        F: FnOnce(&Self) + Send + 'scope,
-    {
-        f(self)
-    }
-}
-
 #[cfg(feature = "rayon-scheduler")]
 mod rayon_scope {
     use super::ScopedExecutor;
@@ -164,8 +151,8 @@ impl<'scope> Task<'scope> {
                     } else {
                         let task = Task {
                             system_idx: dependent_idx,
-                            systems: systems,
-                            world: world,
+                            systems,
+                            world,
                             queues: queues.clone(),
                         };
                         if is_local {
@@ -196,7 +183,6 @@ impl Scheduler {
     /// Provided closure should spawn system execution task.
     ///
     /// Running systems on the current thread instead can be viable for debugging purposes.
-    #[must_use]
     pub fn run_with<'scope>(
         &'scope mut self,
         world: &'scope mut World,

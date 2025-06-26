@@ -16,6 +16,12 @@ pub struct YieldNow {
     yielded: bool,
 }
 
+impl Default for YieldNow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YieldNow {
     /// Create a new instance of [`YieldNow`] future.
     pub const fn new() -> Self {
@@ -51,6 +57,12 @@ macro_rules! yield_now {
 /// Component to wake all wakers bound to this entity when it's dropped.
 pub struct WakeOnDrop {
     wakers: SmallVec<[Waker; 4]>,
+}
+
+impl Default for WakeOnDrop {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WakeOnDrop {
@@ -107,9 +119,8 @@ impl FlowEntity {
             })
             .await;
 
-        match r {
-            Ok(never) => match never {},
-            Err(_) => return,
+        if let Ok(never) = r {
+            match never {}
         }
     }
 

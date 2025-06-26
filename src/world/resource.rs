@@ -112,7 +112,7 @@ impl World {
     /// assert_eq!(42, *local.get_resource::<i32>().unwrap());
     /// ```
     #[track_caller]
-    pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Res<T>> {
+    pub unsafe fn get_local_resource<T: 'static>(&self) -> Option<Res<'_, T>> {
         unsafe { self.resources.get_local::<T>() }
     }
 
@@ -151,7 +151,7 @@ impl World {
     /// *local.get_resource_mut::<i32>().unwrap() = 11;
     /// ```
     #[track_caller]
-    pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<ResMut<T>> {
+    pub unsafe fn get_local_resource_mut<T: 'static>(&self) -> Option<ResMut<'_, T>> {
         unsafe { self.resources.get_local_mut::<T>() }
     }
 
@@ -173,7 +173,7 @@ impl World {
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
     /// ```
     #[track_caller]
-    pub fn get_resource<T: Sync + 'static>(&self) -> Option<Res<T>> {
+    pub fn get_resource<T: Sync + 'static>(&self) -> Option<Res<'_, T>> {
         self.resources.get::<T>()
     }
 
@@ -198,7 +198,7 @@ impl World {
     /// assert_eq!(*world.expect_resource::<i32>(), 42);
     /// ```
     #[track_caller]
-    pub fn expect_resource<T: Sync + 'static>(&self) -> Res<T> {
+    pub fn expect_resource<T: Sync + 'static>(&self) -> Res<'_, T> {
         match self.resources.get::<T>() {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),
@@ -280,7 +280,7 @@ impl World {
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
     /// ```
     #[track_caller]
-    pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<ResMut<T>> {
+    pub fn get_resource_mut<T: Send + 'static>(&self) -> Option<ResMut<'_, T>> {
         self.resources.get_mut::<T>()
     }
 
@@ -306,7 +306,7 @@ impl World {
     /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
     /// ```
     #[track_caller]
-    pub fn expect_resource_mut<T: Send + 'static>(&self) -> ResMut<T> {
+    pub fn expect_resource_mut<T: Send + 'static>(&self) -> ResMut<'_, T> {
         match self.resources.get_mut::<T>() {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),
@@ -418,7 +418,7 @@ impl WorldLocal {
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 42);
     /// ```
     #[track_caller]
-    pub fn get_resource<T: 'static>(&self) -> Option<Res<T>> {
+    pub fn get_resource<T: 'static>(&self) -> Option<Res<'_, T>> {
         unsafe { self.inner.resources.get_local::<T>() }
     }
 
@@ -443,7 +443,7 @@ impl WorldLocal {
     /// assert_eq!(*world.expect_resource::<i32>(), 42);
     /// ```
     #[track_caller]
-    pub fn expect_resource<T: 'static>(&self) -> Res<T> {
+    pub fn expect_resource<T: 'static>(&self) -> Res<'_, T> {
         match unsafe { self.inner.resources.get_local::<T>() } {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),
@@ -525,7 +525,7 @@ impl WorldLocal {
     /// assert_eq!(*world.get_resource::<i32>().unwrap(), 11);
     /// ```
     #[track_caller]
-    pub fn get_resource_mut<T: 'static>(&self) -> Option<ResMut<T>> {
+    pub fn get_resource_mut<T: 'static>(&self) -> Option<ResMut<'_, T>> {
         unsafe { self.inner.resources.get_local_mut::<T>() }
     }
 
@@ -551,7 +551,7 @@ impl WorldLocal {
     /// assert_eq!(*world.expect_resource_mut::<i32>(), 11);
     /// ```
     #[track_caller]
-    pub fn expect_resource_mut<T: 'static>(&self) -> ResMut<T> {
+    pub fn expect_resource_mut<T: 'static>(&self) -> ResMut<'_, T> {
         match unsafe { self.inner.resources.get_local_mut::<T>() } {
             Some(res) => res,
             None => panic!("Resource {} not found", type_name::<T>()),

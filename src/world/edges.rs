@@ -1,8 +1,5 @@
 use alloc::vec::Vec;
-use core::{
-    any::TypeId,
-    hash::{BuildHasher, Hash, Hasher},
-};
+use core::{any::TypeId, hash::BuildHasher};
 
 use hashbrown::hash_map::{Entry, HashMap, RawEntryMut};
 
@@ -123,7 +120,7 @@ impl Edges {
                                     .filter(|aid| ids.iter().all(|id| *id != *aid))
                                     .chain(ids.iter().copied())
                                     .map(|id| match registry.get_info(id) {
-                                        None => panic!("Component {:?} is not registered", id),
+                                        None => panic!("Component {id:?} is not registered"),
                                         Some(info) => info,
                                     }),
                             )
@@ -138,9 +135,7 @@ impl Edges {
         let slow = || {
             cold();
             let raw_entry = bundle.with_ids(move |ids| {
-                let mut hasher = add_ids.hasher().build_hasher();
-                (src, ids).hash(&mut hasher);
-                let hash = hasher.finish();
+                let hash = add_ids.hasher().hash_one((src, ids));
 
                 add_ids
                     .raw_entry_mut()
@@ -234,9 +229,7 @@ impl Edges {
         let slow = || {
             cold();
             let raw_entry = B::static_with_ids(move |ids| {
-                let mut hasher = sub_ids.hasher().build_hasher();
-                (src, ids).hash(&mut hasher);
-                let hash = hasher.finish();
+                let hash = sub_ids.hasher().hash_one((src, ids));
 
                 sub_ids
                     .raw_entry_mut()

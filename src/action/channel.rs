@@ -112,7 +112,7 @@ impl ActionSender {
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_batch<I>(&self, bundles: I) -> SpawnBatchSender<I>
+    pub fn spawn_batch<I>(&self, bundles: I) -> SpawnBatchSender<'_, I>
     where
         I: IntoIterator,
         I::Item: ComponentBundle + Send + 'static,
@@ -130,7 +130,7 @@ impl ActionSender {
     /// Returns an iterator which encodes action to spawn entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_external_batch<I>(&self, bundles: I) -> SpawnBatchSender<I>
+    pub fn spawn_external_batch<I>(&self, bundles: I) -> SpawnBatchSender<'_, I>
     where
         I: IntoIterator,
         I::Item: Bundle + Send + 'static,
@@ -309,14 +309,16 @@ where
     #[inline]
     fn next(&mut self) -> Option<()> {
         let bundle = self.bundles.next()?;
-        Some(self.sender.spawn_external(bundle))
+        self.sender.spawn_external(bundle);
+        Some(())
     }
 
     #[inline]
     fn nth(&mut self, n: usize) -> Option<()> {
         // `SpawnBatchSender` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth(n)?;
-        Some(self.sender.spawn_external(bundle))
+        self.sender.spawn_external(bundle);
+        Some(())
     }
 
     #[inline]
@@ -335,7 +337,8 @@ where
         });
 
         self.bundles.fold(init, |acc, bundle| {
-            f(acc, self.sender.spawn_external(bundle))
+            self.sender.spawn_external(bundle);
+            f(acc, ())
         })
     }
 
@@ -377,14 +380,16 @@ where
     #[inline]
     fn next_back(&mut self) -> Option<()> {
         let bundle = self.bundles.next_back()?;
-        Some(self.sender.spawn_external(bundle))
+        self.sender.spawn_external(bundle);
+        Some(())
     }
 
     #[inline]
     fn nth_back(&mut self, n: usize) -> Option<()> {
         // `SpawnBatchSender` explicitly does NOT spawn entities that are skipped.
         let bundle = self.bundles.nth_back(n)?;
-        Some(self.sender.spawn_external(bundle))
+        self.sender.spawn_external(bundle);
+        Some(())
     }
 
     #[inline]
@@ -399,7 +404,8 @@ where
         });
 
         self.bundles.rfold(init, |acc, bundle| {
-            f(acc, self.sender.spawn_external(bundle))
+            self.sender.spawn_external(bundle);
+            f(acc, ())
         })
     }
 }

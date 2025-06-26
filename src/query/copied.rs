@@ -9,7 +9,6 @@ use super::{
 };
 
 /// [`Fetch`] type for the `&T` query.
-
 pub struct FetchCpy<'a, T> {
     ptr: NonNull<T>,
     marker: PhantomData<&'a [T]>,

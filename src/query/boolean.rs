@@ -240,6 +240,7 @@ macro_rules! impl_boolean {
         {
             /// Creates a new [`BooleanQuery`].
             #[inline]
+            #[allow(clippy::too_many_arguments)]
             pub fn new($($a: $a),+) -> Self {
                 BooleanQuery {
                     tuple: ($($a,)+),

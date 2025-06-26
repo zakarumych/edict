@@ -98,6 +98,13 @@ pub unsafe trait FnArgState: Send + 'static {
 
     /// Flushes the argument state.
     /// This method is called after system execution, when `Arg` is already dropped.
+    ///
+    /// # Safety
+    ///
+    /// `world` may be dereferenced mutably only if [`FnArgState::world_access`] returns [`Access::Write`]
+    /// and [`FnArgState::is_local`] returns `true`.
+    /// Otherwise `world` may be dereferenced immutably only if [`FnArgState::world_access`] returns [`Access::Read`].
+    /// Otherwise `world` must not be dereferenced.
     #[inline]
     unsafe fn flush_unchecked(&mut self, world: NonNull<World>, queue: &mut dyn ActionBufferQueue) {
         let _ = world;

@@ -20,7 +20,7 @@ where
     ///
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
-    pub fn get_mut(&mut self, entity: impl AliveEntity) -> Option<QueryItem<Q>> {
+    pub fn get_mut(&mut self, entity: impl AliveEntity) -> Option<QueryItem<'_, Q>> {
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
@@ -39,7 +39,7 @@ where
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     /// Returns `Ok(None)` if entity does not match the view's query and filter.
     #[inline]
-    pub fn try_get_mut(&mut self, entity: impl Entity) -> Result<QueryItem<Q>, EntityError> {
+    pub fn try_get_mut(&mut self, entity: impl Entity) -> Result<QueryItem<'_, Q>, EntityError> {
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
@@ -60,7 +60,7 @@ where
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
     #[track_caller]
-    pub fn expect_mut(&mut self, entity: impl Entity) -> QueryItem<Q> {
+    pub fn expect_mut(&mut self, entity: impl Entity) -> QueryItem<'_, Q> {
         let loc = expect_alive(entity.lookup(self.entity_set));
 
         if loc.arch == u32::MAX {
@@ -122,14 +122,14 @@ where
     }
 
     #[inline]
-    fn _get_reserved(&self, id: EntityId, loc: Location) -> Option<QueryItem<Q>> {
+    fn _get_reserved(&self, id: EntityId, loc: Location) -> Option<QueryItem<'_, Q>> {
         debug_assert_eq!(loc.arch, u32::MAX);
 
         Query::reserved_entity_item(&self.query, id, loc.idx)
     }
 
     #[inline]
-    unsafe fn _get(&self, loc: Location) -> Option<QueryItem<Q>> {
+    unsafe fn _get(&self, loc: Location) -> Option<QueryItem<'_, Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
         unsafe {
@@ -155,7 +155,7 @@ where
     ///
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
-    pub fn get(&self, entity: impl AliveEntity) -> Option<QueryItem<Q>> {
+    pub fn get(&self, entity: impl AliveEntity) -> Option<QueryItem<'_, Q>> {
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
@@ -174,7 +174,7 @@ where
     /// Returns `Err(NoSuchEntity)` if entity is not alive.
     /// Returns `Ok(None)` if entity does not match the view's query and filter.
     #[inline]
-    pub fn try_get(&self, entity: impl Entity) -> Result<QueryItem<Q>, EntityError> {
+    pub fn try_get(&self, entity: impl Entity) -> Result<QueryItem<'_, Q>, EntityError> {
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
@@ -194,7 +194,7 @@ where
     /// Returns none if entity does not match the view's query and filter.
     #[inline]
     #[track_caller]
-    pub fn expect(&self, entity: impl Entity) -> QueryItem<Q> {
+    pub fn expect(&self, entity: impl Entity) -> QueryItem<'_, Q> {
         let loc = expect_alive(entity.lookup(self.entity_set));
 
         if loc.arch == u32::MAX {

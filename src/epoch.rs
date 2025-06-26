@@ -16,6 +16,12 @@ pub struct EpochCounter {
     value: AtomicU64,
 }
 
+impl Default for EpochCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EpochCounter {
     /// Returns new epoch counter.
     pub const fn new() -> Self {

@@ -86,7 +86,7 @@ impl<'a> ActionEncoder<'a> {
     /// Returns an iterator which encodes action to spawn and yield entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_batch<I>(&mut self, bundles: I) -> SpawnBatch<I>
+    pub fn spawn_batch<I>(&mut self, bundles: I) -> SpawnBatch<'_, I>
     where
         I: IntoIterator,
         I::Item: ComponentBundle + Send + 'static,
@@ -104,7 +104,7 @@ impl<'a> ActionEncoder<'a> {
     /// Returns an iterator which encodes action to spawn and yield entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_external_batch<I>(&mut self, bundles: I) -> SpawnBatch<I>
+    pub fn spawn_external_batch<I>(&mut self, bundles: I) -> SpawnBatch<'_, I>
     where
         I: IntoIterator,
         I::Item: Bundle + Send + 'static,
@@ -133,25 +133,25 @@ impl<'a> ActionEncoder<'a> {
             (_, Some(upper)) if upper <= 8 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             (_, Some(upper)) if upper <= 16 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             (_, Some(upper)) if upper <= 32 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             _ => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
         }
@@ -291,25 +291,25 @@ impl<'a> ActionEncoder<'a> {
             (_, Some(upper)) if upper <= 8 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             (_, Some(upper)) if upper <= 16 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             (_, Some(upper)) if upper <= 32 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             _ => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
         }
@@ -386,7 +386,7 @@ impl<'a> ActionEncoder<'a> {
     /// Creates new [`ActionEncoder`] that records actions into the same [`ActionBuffer`]
     /// as this one.
     #[inline]
-    pub fn reborrow(&mut self) -> ActionEncoder {
+    pub fn reborrow(&mut self) -> ActionEncoder<'_> {
         ActionEncoder {
             actions: self.actions,
             entities: self.entities,
@@ -602,7 +602,7 @@ impl<'a> LocalActionEncoder<'a> {
     /// Returns an iterator which encodes action to spawn and yield entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_batch<I>(&mut self, bundles: I) -> LocalSpawnBatch<I>
+    pub fn spawn_batch<I>(&mut self, bundles: I) -> LocalSpawnBatch<'_, I>
     where
         I: IntoIterator,
         I::Item: ComponentBundle + 'static,
@@ -620,7 +620,7 @@ impl<'a> LocalActionEncoder<'a> {
     /// Returns an iterator which encodes action to spawn and yield entities
     /// using bundles yielded from provided bundles iterator.
     #[inline]
-    pub fn spawn_external_batch<I>(&mut self, bundles: I) -> LocalSpawnBatch<I>
+    pub fn spawn_external_batch<I>(&mut self, bundles: I) -> LocalSpawnBatch<'_, I>
     where
         I: IntoIterator,
         I::Item: Bundle + 'static,
@@ -649,25 +649,25 @@ impl<'a> LocalActionEncoder<'a> {
             (_, Some(upper)) if upper <= 8 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             (_, Some(upper)) if upper <= 16 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             (_, Some(upper)) if upper <= 32 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
             _ => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
                 self.push_fn(move |world| {
-                    let _ = world.despawn_batch(entities);
+                    world.despawn_batch(entities);
                 });
             }
         }
@@ -823,25 +823,25 @@ impl<'a> LocalActionEncoder<'a> {
             (_, Some(upper)) if upper <= 8 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 8]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             (_, Some(upper)) if upper <= 16 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 16]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             (_, Some(upper)) if upper <= 32 => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 32]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
             _ => {
                 let entities = entities.into_iter().collect::<SmallVec<[_; 64]>>();
                 self.push_fn(move |world| {
-                    let _ = world.drop_erased_batch(entities, ty);
+                    world.drop_erased_batch(entities, ty);
                 });
             }
         }
@@ -918,7 +918,7 @@ impl<'a> LocalActionEncoder<'a> {
     /// Creates new [`LocalActionEncoder`] that records actions into the same [`ActionBuffer`]
     /// as this one.
     #[inline]
-    pub fn reborrow(&mut self) -> LocalActionEncoder {
+    pub fn reborrow(&mut self) -> LocalActionEncoder<'_> {
         LocalActionEncoder {
             actions: self.actions,
             entities: self.entities,

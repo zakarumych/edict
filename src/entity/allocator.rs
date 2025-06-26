@@ -15,11 +15,11 @@ pub struct IdRange {
 }
 
 /// Start of the valid ID range.
-pub const START: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(1) };
+pub const START: NonZeroU64 = NonZeroU64::new(1).unwrap();
 
 /// End of the valid ID range.
 /// This value is never allocated as valid ID.
-pub const END: NonZeroU64 = unsafe { NonZeroU64::new_unchecked(u64::MAX) };
+pub const END: NonZeroU64 = NonZeroU64::new(u64::MAX).unwrap();
 
 impl IdRange {
     /// Returns number of IDs in the range.
@@ -196,11 +196,15 @@ impl IdAllocator {
 /// The actual size of range required to reserve entities between two flushes
 /// is application specific, but `u32::MAX` is a safe upper bound
 /// because edict does not support more than `u32::MAX` entities alive in the world.
+///
+/// # Safety
+///
+/// Implementation must allocate unique ID ranges.
 pub unsafe trait IdRangeAllocator: Send + Sync + 'static {
     /// Allocate range of unique entity IDs.
     /// IDs generated must be unique for the given allocator.
     /// Special allocator types may enforce uniqueness
-    /// multiple across allocator instances.\
+    /// across multiple allocator instances.\
     ///
     /// If allocator is exhausted, returns empty range.
     fn allocate_range(&mut self) -> IdRange;

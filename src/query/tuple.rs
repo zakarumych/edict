@@ -35,21 +35,21 @@ macro_rules! impl_fetch {
 
         impl IntoQuery for () {
             fn into_query(self) -> () {
-                ()
+                
             }
         }
 
         impl DefaultQuery for () {
             #[inline]
             fn default_query() -> () {
-                ()
+                
             }
         }
 
         impl QueryArg for () {
             #[inline]
             fn new() -> () {
-                ()
+                
             }
         }
 
@@ -74,7 +74,7 @@ macro_rules! impl_fetch {
 
             #[inline]
             unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> () {
-                ()
+                
             }
 
             #[inline]

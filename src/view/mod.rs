@@ -480,7 +480,7 @@ where
     F: Query,
 {
     let Location { arch, idx } = loc;
-    assert!(idx < archetype.len() as u32, "Wrong location");
+    assert!(idx < archetype.len(), "Wrong location");
 
     if archetype.is_empty() {
         return None;

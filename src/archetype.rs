@@ -74,6 +74,7 @@ impl ArchetypeComponent {
     }
 
     #[inline]
+    #[allow(clippy::mut_from_ref)] // Caller locked it externally.
     pub unsafe fn data_mut(&self) -> &mut ComponentData {
         unsafe { &mut *self.data.get() }
     }
@@ -270,7 +271,7 @@ impl Archetype {
     pub fn matches(&self, mut type_ids: impl Iterator<Item = TypeId>) -> bool {
         let len = self.components.len();
         match type_ids.size_hint() {
-            (l, u) if l <= len && u.map_or(true, |u| u >= len) => {
+            (l, u) if l <= len && u.is_none_or(|u| u >= len) => {
                 type_ids.try_fold(0usize, |count, type_id| {
                     if self.components.contains_key(&type_id) {
                         Some(count + 1)
@@ -310,7 +311,7 @@ impl Archetype {
         }
 
         self.entities.push(id);
-        entity_idx as u32
+        entity_idx
     }
 
     /// Spawns new entity in the archetype.
@@ -332,7 +333,7 @@ impl Archetype {
         }
 
         self.entities.push(id);
-        entity_idx as u32
+        entity_idx
     }
 
     /// Spawns new entity in the archetype.
@@ -355,7 +356,7 @@ impl Archetype {
         }
 
         self.entities.push(id);
-        entity_idx as u32
+        entity_idx
     }
 
     /// Despawns specified entity in the archetype.
@@ -577,6 +578,8 @@ impl Archetype {
     /// `src_idx` must be in bounds of this archetype.
     /// This archetype must not contain at least one component type from the bundle.
     /// `dst` archetype must contain all component types from this archetype and the bundle.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn insert_bundle<B>(
         &mut self,
         id: EntityId,
@@ -626,13 +629,7 @@ impl Archetype {
                 epoch,
                 Some(encoder),
                 replace,
-                |id| {
-                    if self.components.contains_key(&id) {
-                        true
-                    } else {
-                        false
-                    }
-                },
+                |id| self.components.contains_key(&id),
             );
         }
 
@@ -640,12 +637,9 @@ impl Archetype {
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() as u32 {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx as usize]),
-            )
+            (dst_entity_idx, Some(self.entities[src_entity_idx as usize]))
         } else {
-            (dst_entity_idx as u32, None)
+            (dst_entity_idx, None)
         }
     }
 
@@ -695,12 +689,9 @@ impl Archetype {
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() as u32 {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx as usize]),
-            )
+            (dst_entity_idx, Some(self.entities[src_entity_idx as usize]))
         } else {
-            (dst_entity_idx as u32, None)
+            (dst_entity_idx, None)
         }
     }
 
@@ -751,12 +742,12 @@ impl Archetype {
 
         if src_entity_idx != self.entities.len() as u32 {
             (
-                dst_entity_idx as u32,
+                dst_entity_idx,
                 Some(self.entities[src_entity_idx as usize]),
                 unsafe { value.assume_init() },
             )
         } else {
-            (dst_entity_idx as u32, None, unsafe { value.assume_init() })
+            (dst_entity_idx, None, unsafe { value.assume_init() })
         }
     }
 
@@ -796,12 +787,9 @@ impl Archetype {
         dst.entities.push(entity);
 
         if src_entity_idx != self.entities.len() as u32 {
-            (
-                dst_entity_idx as u32,
-                Some(self.entities[src_entity_idx as usize]),
-            )
+            (dst_entity_idx, Some(self.entities[src_entity_idx as usize]))
         } else {
-            (dst_entity_idx as u32, None)
+            (dst_entity_idx, None)
         }
     }
 
@@ -856,6 +844,7 @@ impl Archetype {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     unsafe fn write_bundle<B, F>(
         &mut self,
         id: EntityId,

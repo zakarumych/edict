@@ -106,6 +106,12 @@ struct ScheduledSystem {
     threaded: self::threaded::ThreadedSystem,
 }
 
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scheduler {
     /// Creates new empty scheduler.
     pub fn new() -> Self {

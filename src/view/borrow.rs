@@ -78,12 +78,12 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
             if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
                 query.access_archetype(archetype, |id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                    assert!(success, "Failed to lock '{:?}' from archetype", id);
+                    assert!(success, "Failed to lock '{id:?}' from archetype");
                     guard.query_len += 1;
                 });
                 filter.access_archetype(archetype, |id, access| {
                     let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                    assert!(success, "Failed to lock '{:?}' from archetype", id);
+                    assert!(success, "Failed to lock '{id:?}' from archetype");
                     guard.filter_len += 1;
                 });
             }
@@ -165,12 +165,12 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
         if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
             query.access_archetype(archetype, |id, access| {
                 let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                assert!(success, "Failed to lock '{:?}' from archetype", id);
+                assert!(success, "Failed to lock '{id:?}' from archetype");
                 guard.query_len += 1;
             });
             filter.access_archetype(archetype, |id, access| {
                 let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                assert!(success, "Failed to lock '{:?}' from archetype", id);
+                assert!(success, "Failed to lock '{id:?}' from archetype");
                 guard.filter_len += 1;
             });
         }
@@ -204,6 +204,12 @@ fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
 /// [`System`](crate::system::System)s may use this type of borrow state when aliasing views are required.
 pub struct RuntimeBorrowState {
     borrowed: Cell<bool>,
+}
+
+impl Default for RuntimeBorrowState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RuntimeBorrowState {

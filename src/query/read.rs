@@ -11,7 +11,6 @@ use super::{
 };
 
 /// [`Fetch`] type for the `&T` query.
-
 pub struct FetchRead<'a, T> {
     ptr: NonNull<T>,
     marker: PhantomData<&'a [T]>,

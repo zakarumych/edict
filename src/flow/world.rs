@@ -66,8 +66,8 @@ where
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = unsafe { self.get_unchecked_mut() };
         let fut = unsafe { Pin::new_unchecked(&mut this.fut) };
-        let poll = fut.poll(cx);
-        poll
+        
+        fut.poll(cx)
     }
 }
 

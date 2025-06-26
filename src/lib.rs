@@ -380,6 +380,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(unused_must_use)]
 #![allow(unused_unsafe)]
+#![deny(mismatched_lifetime_syntaxes)]
 
 extern crate alloc;
 extern crate self as edict;
@@ -441,11 +442,6 @@ macro_rules! impl_copy {
             fn clone(&self) -> Self {
                 *self
             }
-
-            #[inline]
-            fn clone_from(&mut self, source: &Self) {
-                *self = *source
-            }
         }
     };
 }
@@ -482,11 +478,8 @@ macro_rules! marker_type_impls {
         impl $(< $($a: ?Sized),+ >)? core::clone::Clone for $type $(< $($a),+ >)? {
             #[inline]
             fn clone(&self) -> Self {
-                $type
+                *self
             }
-
-            #[inline]
-            fn clone_from(&mut self, _source: &Self) {}
         }
 
         impl $(< $($a: ?Sized),+ >)? core::fmt::Debug for $type $(< $($a),+ >)?
@@ -526,11 +519,8 @@ impl<T: ?Sized> Copy for TypeParam<T> {}
 impl<T: ?Sized> Clone for TypeParam<T> {
     #[inline]
     fn clone(&self) -> Self {
-        TypeParam([])
+        *self
     }
-
-    #[inline]
-    fn clone_from(&mut self, _source: &Self) {}
 }
 
 macro_rules! marker_type {
@@ -638,11 +628,16 @@ pub enum EntityError {
     Mismatch,
 }
 
-unsafe trait ResultEntityError<T> {
+trait ResultEntityError<T> {
+    /// Assumes that entity exists and returns value if it does.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure that entity exists.
     unsafe fn assume_entity_exists(self) -> Option<T>;
 }
 
-unsafe impl<T> ResultEntityError<T> for Result<T, EntityError> {
+impl<T> ResultEntityError<T> for Result<T, EntityError> {
     #[inline]
     unsafe fn assume_entity_exists(self) -> Option<T> {
         match self {
@@ -726,14 +721,10 @@ fn type_id<T: 'static + ?Sized>() -> TypeId {
 }
 
 pub(crate) const fn clamp_usize_to_u32(value: usize) -> u32 {
-    if u32::BITS >= usize::BITS {
+    if u32::BITS >= usize::BITS || value <= u32::MAX as usize {
         value as u32
     } else {
-        if value <= u32::MAX as usize {
-            value as u32
-        } else {
-            u32::MAX
-        }
+        u32::MAX
     }
 }
 

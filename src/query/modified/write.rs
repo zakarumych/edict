@@ -130,7 +130,7 @@ where
         match archetype.component(type_id::<T>()) {
             None => false,
             Some(component) => unsafe {
-                debug_assert_eq!(self.query.visit_archetype(archetype), true);
+                debug_assert!(self.query.visit_archetype(archetype));
                 debug_assert_eq!(component.id(), type_id::<T>());
                 true
             },
@@ -218,7 +218,7 @@ where
         match archetype.component(type_id::<T>()) {
             None => true,
             Some(component) => unsafe {
-                debug_assert_eq!(self.query.visit_archetype(archetype), true);
+                debug_assert!(self.query.visit_archetype(archetype));
                 debug_assert_eq!(component.id(), type_id::<T>());
                 true
             },

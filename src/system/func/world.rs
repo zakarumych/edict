@@ -18,7 +18,7 @@ unsafe impl FnArgState for WorldReadState {
 
     #[inline]
     fn new() -> Self {
-        Self::default()
+        Self
     }
 
     #[inline]
@@ -74,7 +74,7 @@ unsafe impl FnArgState for WorldWriteState {
 
     #[inline]
     fn new() -> Self {
-        Self::default()
+        Self
     }
 
     #[inline]

@@ -54,7 +54,7 @@ pub use self::{
         ModifiedFetchWrite,
     },
     read::{FetchRead, Read},
-    with_epoch::{EpochOf, FetchEpoch},
+    with_epoch::{EpochOf, FetchEpoch, WithEpoch},
     write::{FetchWrite, Write},
 };
 

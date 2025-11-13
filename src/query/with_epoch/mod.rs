@@ -126,6 +126,7 @@ where
 unsafe impl<T> ImmutableQuery for EpochOf<T> where T: 'static {}
 unsafe impl<T> SendQuery for EpochOf<T> where T: 'static {}
 
+/// Query for fetching component with added epochs.
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(transparent)]
 pub struct WithEpoch<T>(pub T);

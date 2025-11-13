@@ -107,7 +107,7 @@ required-features = []
 
 [[example]]
 name = "schedule"
-required-features = ["scheduler", "std"]
+required-features = ["threaded-scheduler"]
 
 [package.metadata.docs.rs]
 all-features = true

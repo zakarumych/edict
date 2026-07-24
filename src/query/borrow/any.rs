@@ -5,8 +5,8 @@ use crate::{
     component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
-        read::Read, write::Write, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
-        SendQuery, WriteAlias,
+        Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
+        WriteAlias, read::Read, write::Write,
     },
     system::DefaultQueryArg,
     type_id,
@@ -72,6 +72,15 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> DefaultQuery for BorrowAny<Read<T>>
+where
+    T: Sync + ?Sized + 'static,
+{
+    fn default_query() -> Self {
+        BorrowAny(Read)
     }
 }
 
@@ -209,6 +218,15 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> DefaultQuery for BorrowAny<Write<T>>
+where
+    T: Send + ?Sized + 'static,
+{
+    fn default_query() -> Self {
+        BorrowAny(Write)
     }
 }
 

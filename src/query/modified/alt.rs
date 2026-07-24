@@ -1,13 +1,13 @@
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::{chunk_idx, Archetype},
+    archetype::{Archetype, chunk_idx},
     component::ComponentInfo,
     epoch::EpochId,
     query::{
+        Access, AsQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias,
         alt::{Alt, RefMut},
         option::OptionQuery,
-        Access, AsQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias,
     },
     system::QueryArg,
     type_id,

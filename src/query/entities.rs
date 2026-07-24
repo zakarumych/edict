@@ -4,7 +4,8 @@ use crate::{
     archetype::Archetype,
     component::ComponentInfo,
     entity::{EntityId, EntityLoc, Location},
-    system::QueryArg,
+    query::DefaultQuery,
+    system::DefaultQueryArg,
 };
 
 use super::{
@@ -62,12 +63,14 @@ impl IntoQuery for Entities {
     }
 }
 
-impl QueryArg for Entities {
+impl DefaultQuery for Entities {
     #[inline]
-    fn new() -> Self {
+    fn default_query() -> Self {
         Entities
     }
 }
+
+impl DefaultQueryArg for Entities {}
 
 unsafe impl Query for Entities {
     type Fetch<'a> = EntitiesFetch<'a>;

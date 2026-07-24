@@ -5,8 +5,8 @@ use crate::{
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        filter::With, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
-        WriteAlias,
+        Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+        filter::With,
     },
     system::QueryArg,
     type_id,
@@ -66,6 +66,7 @@ impl<T> IntoQuery for Modified<With<T>>
 where
     T: 'static,
 {
+    #[inline]
     fn into_query(self) -> Self {
         self
     }

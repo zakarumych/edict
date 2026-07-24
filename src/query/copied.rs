@@ -1,7 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
+    system::DefaultQueryArg, type_id,
 };
 
 use super::{Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias};
@@ -58,15 +59,17 @@ where
     }
 }
 
-impl<T> QueryArg for Cpy<T>
+impl<T> DefaultQuery for Cpy<T>
 where
-    T: Copy + Sync + 'static,
+    T: Copy + 'static,
 {
     #[inline]
-    fn new() -> Self {
+    fn default_query() -> Self {
         Cpy
     }
 }
+
+impl<T> DefaultQueryArg for Cpy<T> where T: Copy + Sync + 'static {}
 
 unsafe impl<T> Query for Cpy<T>
 where

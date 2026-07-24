@@ -1,8 +1,8 @@
 use core::any::TypeId;
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::DefaultQueryArg,
-    type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
+    system::DefaultQueryArg, type_id,
 };
 
 use super::{
@@ -218,6 +218,16 @@ where
     }
 }
 
+impl<T> DefaultQuery for Not<T>
+where
+    T: DefaultQuery,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Not(T::default_query())
+    }
+}
+
 impl<T> DefaultQueryArg for Not<T> where T: DefaultQueryArg {}
 
 unsafe impl<T> Query for Not<T>
@@ -289,6 +299,16 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> DefaultQuery for With<T>
+where
+    T: 'static,
+{
+    #[inline]
+    fn default_query() -> Self {
+        With
     }
 }
 

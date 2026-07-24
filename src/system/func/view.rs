@@ -8,7 +8,7 @@ use crate::{
     Access,
     archetype::Archetype,
     component::ComponentInfo,
-    query::SendQuery,
+    query::{DefaultQuery, SendQuery},
     system::ActionBufferQueue,
     view::{NonExtensible, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
@@ -28,27 +28,28 @@ pub trait QueryArg: SendQuery {
     fn new() -> Self;
 
     /// Hook called before function-system runs to update the state.
-    #[inline(always)]
+    #[inline]
     fn before(&mut self, world: &World) {
         let _ = world;
     }
 
     /// Hook called after function-system runs to update the state.
-    #[inline(always)]
+    #[inline]
     fn after(&mut self, world: &World) {
         let _ = world;
     }
 }
 
 /// Query suitable for [`View`] args for function-systems that is default-constructible.
-pub trait DefaultQueryArg: QueryArg + Default {}
+pub trait DefaultQueryArg: QueryArg + DefaultQuery {}
 
 impl<Q> QueryArg for Q
 where
     Q: DefaultQueryArg,
 {
+    #[inline]
     fn new() -> Self {
-        Default::default()
+        DefaultQuery::default_query()
     }
 }
 

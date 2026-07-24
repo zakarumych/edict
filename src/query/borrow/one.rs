@@ -5,8 +5,8 @@ use crate::{
     component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
-        read::Read, write::Write, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
-        SendQuery, WriteAlias,
+        Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+        read::Read, write::Write,
     },
     type_id,
 };
@@ -85,11 +85,20 @@ where
     type Query = Self;
 }
 
+impl<T> IntoQuery for BorrowOne<&T>
+where
+    T: ?Sized + 'static,
+{
+    fn into_query(self) -> BorrowOne<Read<T>> {
+        BorrowOne::new(self.ty)
+    }
+}
+
 impl<T> IntoQuery for BorrowOne<Read<T>>
 where
     T: ?Sized + 'static,
 {
-    fn into_query(self) -> Self::Query {
+    fn into_query(self) -> Self {
         self
     }
 }

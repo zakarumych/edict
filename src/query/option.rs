@@ -2,7 +2,7 @@ use core::any::TypeId;
 
 use crate::{
     archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
-    system::QueryArg, world::World,
+    query::DefaultQuery, system::QueryArg, world::World,
 };
 
 use super::{
@@ -92,6 +92,16 @@ where
 {
     fn into_query(self) -> OptionQuery<T::Query> {
         OptionQuery(self.0.into_query())
+    }
+}
+
+impl<T> DefaultQuery for OptionQuery<T>
+where
+    T: DefaultQuery,
+{
+    #[inline]
+    fn default_query() -> Self {
+        OptionQuery(T::default_query())
     }
 }
 

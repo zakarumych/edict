@@ -5,8 +5,8 @@ use crate::{
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        option::OptionQuery, read::Read, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
-        SendQuery, WriteAlias,
+        Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+        option::OptionQuery, read::Read,
     },
     system::QueryArg,
     type_id,

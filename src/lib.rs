@@ -497,7 +497,7 @@ macro_rules! marker_type_impls {
         }
 
         impl $(< $($a: ?Sized),+ >)? Default for $type $(< $($a),+ >)? {
-            #[inline(always)]
+            #[inline]
             fn default() -> Self {
                 $type
             }

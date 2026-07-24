@@ -7,10 +7,11 @@ use crate::{
     entity::EntityId,
     epoch::EpochId,
     query::{
-        AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With, Write, WriteAlias,
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
+        Write, WriteAlias,
     },
     relation::{OriginComponent, Relation, TargetComponent},
-    system::QueryArg,
+    system::DefaultQueryArg,
     type_id,
 };
 
@@ -21,23 +22,6 @@ marker_type! {
     ///
     /// Yields slices of origin ids for each target.
     pub struct Related<R>;
-}
-
-impl<R> AsQuery for Related<With<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Related<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self {
-        self
-    }
 }
 
 /// Fetch type for [`Related<With<R>>`]
@@ -85,6 +69,35 @@ where
         }
     }
 }
+
+impl<R> AsQuery for Related<With<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Related<With<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Related<With<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Related
+    }
+}
+
+impl<R> DefaultQueryArg for Related<With<R>> where R: Relation {}
 
 unsafe impl<R> Query for Related<With<R>>
 where
@@ -170,40 +183,6 @@ where
 unsafe impl<R> ImmutableQuery for Related<With<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Related<With<R>> where R: Relation {}
 
-impl<R> QueryArg for Related<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn new() -> Self {
-        Related
-    }
-}
-
-impl<R> AsQuery for Related<&R>
-where
-    R: Relation,
-{
-    type Query = Related<Read<R>>;
-}
-
-impl<R> AsQuery for Related<Read<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Related<Read<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self {
-        self
-    }
-}
-
 /// Fetch type for [`Related<R>`]
 pub struct FetchRelatedRead<'a, R> {
     ptr: NonNull<u8>,
@@ -249,6 +228,42 @@ where
         }
     }
 }
+
+impl<R> AsQuery for Related<&R>
+where
+    R: Relation,
+{
+    type Query = Related<Read<R>>;
+}
+
+impl<R> AsQuery for Related<Read<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Related<Read<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Related<Read<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Related
+    }
+}
+
+impl<R> DefaultQueryArg for Related<Read<R>> where R: Relation + Sync {}
 
 unsafe impl<R> Query for Related<Read<R>>
 where
@@ -328,40 +343,6 @@ where
 unsafe impl<R> ImmutableQuery for Related<Read<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Related<Read<R>> where R: Relation + Sync {}
 
-impl<R> QueryArg for Related<Read<R>>
-where
-    R: Relation + Sync,
-{
-    #[inline]
-    fn new() -> Self {
-        Related
-    }
-}
-
-impl<R> AsQuery for Related<&mut R>
-where
-    R: Relation,
-{
-    type Query = Related<Write<R>>;
-}
-
-impl<R> AsQuery for Related<Write<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Related<Write<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self {
-        self
-    }
-}
-
 /// Fetch type for [`Related<R>`]
 pub struct FetchRelatedWrite<'a, R> {
     ptr: NonNull<u8>,
@@ -422,6 +403,42 @@ where
         }
     }
 }
+
+impl<R> AsQuery for Related<&mut R>
+where
+    R: Relation,
+{
+    type Query = Related<Write<R>>;
+}
+
+impl<R> AsQuery for Related<Write<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Related<Write<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Related<Write<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Related
+    }
+}
+
+impl<R> DefaultQueryArg for Related<Write<R>> where R: Relation + Send {}
 
 unsafe impl<R> Query for Related<Write<R>>
 where
@@ -508,13 +525,3 @@ where
 
 unsafe impl<R> ImmutableQuery for Related<Write<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Related<Write<R>> where R: Relation + Send {}
-
-impl<R> QueryArg for Related<Write<R>>
-where
-    R: Relation + Send,
-{
-    #[inline]
-    fn new() -> Self {
-        Related
-    }
-}

@@ -1,15 +1,17 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With, Write, WriteAlias,
+        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
+        Write, WriteAlias,
     },
     relation::{OriginComponent, Relation},
-    system::QueryArg,
-    type_id, Access,
+    system::DefaultQueryArg,
+    type_id,
 };
 
 use super::{RelationIter, RelationReadIter, RelationWriteIter};
@@ -19,23 +21,6 @@ marker_type! {
     ///
     /// Yields iterator of pairs - relation instance and target.
     pub struct Relates<R>;
-}
-
-impl<R> AsQuery for Relates<With<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Relates<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        self
-    }
 }
 
 /// Fetch for the [`Relates<&R>`] query.
@@ -65,6 +50,35 @@ where
         RelationIter::new(component.targets())
     }
 }
+
+impl<R> AsQuery for Relates<With<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Relates<With<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Relates<With<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Relates
+    }
+}
+
+impl<R> DefaultQueryArg for Relates<With<R>> where R: Relation {}
 
 unsafe impl<R> Query for Relates<With<R>>
 where
@@ -121,40 +135,6 @@ where
 unsafe impl<R> ImmutableQuery for Relates<With<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Relates<With<R>> where R: Relation {}
 
-impl<R> QueryArg for Relates<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn new() -> Self {
-        Relates
-    }
-}
-
-impl<R> AsQuery for Relates<&R>
-where
-    R: Relation,
-{
-    type Query = Relates<Read<R>>;
-}
-
-impl<R> AsQuery for Relates<Read<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Relates<Read<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self::Query {
-        self
-    }
-}
-
 /// Fetch for the [`Relates<&R>`] query.
 pub struct FetchRelatesRead<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
@@ -182,6 +162,42 @@ where
         RelationReadIter::new(component.targets())
     }
 }
+
+impl<R> AsQuery for Relates<&R>
+where
+    R: Relation,
+{
+    type Query = Relates<Read<R>>;
+}
+
+impl<R> AsQuery for Relates<Read<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Relates<Read<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Relates<Read<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Relates
+    }
+}
+
+impl<R> DefaultQueryArg for Relates<Read<R>> where R: Relation + Sync {}
 
 unsafe impl<R> Query for Relates<Read<R>>
 where
@@ -238,40 +254,6 @@ where
 unsafe impl<R> ImmutableQuery for Relates<Read<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Relates<Read<R>> where R: Relation + Sync {}
 
-impl<R> QueryArg for Relates<Read<R>>
-where
-    R: Sync + Relation,
-{
-    #[inline]
-    fn new() -> Self {
-        Relates
-    }
-}
-
-impl<R> AsQuery for Relates<&mut R>
-where
-    R: Relation,
-{
-    type Query = Relates<Write<R>>;
-}
-
-impl<R> AsQuery for Relates<Write<R>>
-where
-    R: Relation,
-{
-    type Query = Self;
-}
-
-impl<R> IntoQuery for Relates<Write<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn into_query(self) -> Self {
-        self
-    }
-}
-
 /// Fetch for the [`Relates<&mut R>`] query.
 pub struct FetchRelatesWrite<'a, R: Relation> {
     ptr: NonNull<OriginComponent<R>>,
@@ -314,6 +296,42 @@ where
         RelationWriteIter::new(component.targets_mut())
     }
 }
+
+impl<R> AsQuery for Relates<&mut R>
+where
+    R: Relation,
+{
+    type Query = Relates<Write<R>>;
+}
+
+impl<R> AsQuery for Relates<Write<R>>
+where
+    R: Relation,
+{
+    type Query = Self;
+}
+
+impl<R> IntoQuery for Relates<Write<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn into_query(self) -> Self {
+        self
+    }
+}
+
+impl<R> DefaultQuery for Relates<Write<R>>
+where
+    R: Relation,
+{
+    #[inline]
+    fn default_query() -> Self {
+        Relates
+    }
+}
+
+impl<R> DefaultQueryArg for Relates<Write<R>> where R: Relation + Send {}
 
 unsafe impl<R> Query for Relates<Write<R>>
 where
@@ -371,13 +389,3 @@ where
 }
 
 unsafe impl<R> SendQuery for Relates<Write<R>> where R: Relation + Send {}
-
-impl<R> QueryArg for Relates<Write<R>>
-where
-    R: Send + Relation,
-{
-    #[inline]
-    fn new() -> Self {
-        Relates
-    }
-}

@@ -1,7 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
+    system::DefaultQueryArg, type_id,
 };
 
 use super::{Access, AsQuery, BatchFetch, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
@@ -95,15 +96,17 @@ where
     }
 }
 
-impl<T> QueryArg for Write<T>
+impl<T> DefaultQuery for Write<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     #[inline]
-    fn new() -> Write<T> {
+    fn default_query() -> Self {
         Write
     }
 }
+
+impl<T> DefaultQueryArg for Write<T> where T: Send + 'static {}
 
 unsafe impl<T> Query for Write<T>
 where

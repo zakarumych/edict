@@ -10,7 +10,8 @@ use crate::{
     archetype::{Archetype, chunk_idx},
     component::ComponentInfo,
     epoch::EpochId,
-    system::QueryArg,
+    query::DefaultQuery,
+    system::DefaultQueryArg,
     type_id,
 };
 
@@ -128,15 +129,17 @@ where
     }
 }
 
-impl<T> QueryArg for Alt<T>
+impl<T> DefaultQuery for Alt<T>
 where
-    T: Send + 'static,
+    T: 'static,
 {
     #[inline]
-    fn new() -> Self {
+    fn default_query() -> Self {
         Alt
     }
 }
+
+impl<T> DefaultQueryArg for Alt<T> where T: Send + 'static {}
 
 unsafe impl<T> Query for Alt<T>
 where

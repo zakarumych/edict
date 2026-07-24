@@ -5,9 +5,11 @@ use crate::{
     archetype::Archetype,
     component::ComponentInfo,
     epoch::EpochId,
-    query::{AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias},
+    query::{
+        AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias,
+    },
     relation::{OriginComponent, Relation},
-    system::QueryArg,
+    system::DefaultQueryArg,
     type_id,
 };
 
@@ -33,15 +35,17 @@ where
     }
 }
 
-impl<R> QueryArg for FilterRelates<R>
+impl<R> DefaultQuery for FilterRelates<R>
 where
     R: Relation,
 {
     #[inline]
-    fn new() -> Self {
+    fn default_query() -> Self {
         FilterRelates
     }
 }
+
+impl<R> DefaultQueryArg for FilterRelates<R> where R: Relation {}
 
 unsafe impl<R> Query for FilterRelates<R>
 where

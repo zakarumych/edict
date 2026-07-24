@@ -5,8 +5,8 @@ use crate::{
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        option::OptionQuery, write::Write, Access, AsQuery, Fetch, IntoQuery, Query, SendQuery,
-        WriteAlias,
+        Access, AsQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias, option::OptionQuery,
+        write::Write,
     },
     system::QueryArg,
     type_id,
@@ -88,6 +88,7 @@ impl<T> IntoQuery for Modified<Write<T>>
 where
     T: 'static,
 {
+    #[inline]
     fn into_query(self) -> Self {
         self
     }
@@ -196,6 +197,24 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> QueryArg for Modified<OptionQuery<Write<T>>>
+where
+    T: Send + 'static,
+{
+    #[inline]
+    fn new() -> Self {
+        Modified {
+            after_epoch: EpochId::start(),
+            query: OptionQuery(Write),
+        }
+    }
+
+    #[inline]
+    fn after(&mut self, world: &World) {
+        self.after_epoch = world.epoch();
     }
 }
 

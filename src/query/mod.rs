@@ -232,16 +232,6 @@ pub trait DefaultQuery: Query {
     fn default_query() -> Self;
 }
 
-impl<Q> DefaultQuery for Q
-where
-    Q: Query + Default,
-{
-    #[inline(always)]
-    fn default_query() -> Self {
-        Default::default()
-    }
-}
-
 /// Types associated with default-constructible query type.
 #[diagnostic::on_unimplemented(label = "`{Self}` is not a default-constructible query type")]
 pub trait AsDefaultQuery: AsQuery<Query = Self::DefaultQuery> {
@@ -249,7 +239,7 @@ pub trait AsDefaultQuery: AsQuery<Query = Self::DefaultQuery> {
     type DefaultQuery: DefaultQuery;
 
     /// Returns default query.
-    #[inline(always)]
+    #[inline]
     fn default_query() -> Self::DefaultQuery {
         DefaultQuery::default_query()
     }

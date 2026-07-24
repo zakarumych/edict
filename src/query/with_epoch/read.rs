@@ -5,7 +5,8 @@ use crate::{
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, WriteAlias,
+        Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery,
+        WriteAlias,
     },
     system::DefaultQueryArg,
     type_id,
@@ -61,8 +62,19 @@ impl<T> IntoQuery for WithEpoch<Read<T>>
 where
     T: 'static,
 {
+    #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> DefaultQuery for WithEpoch<Read<T>>
+where
+    T: 'static,
+{
+    #[inline]
+    fn default_query() -> Self {
+        WithEpoch(Read)
     }
 }
 

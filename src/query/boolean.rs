@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
+    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
     fetch::{BatchFetch, Fetch},
-    Access, AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 /// Binary operator for [`BooleanQuery`].
@@ -287,6 +287,21 @@ macro_rules! impl_boolean {
             }
         }
 
+        #[allow(non_snake_case)]
+        impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>
+        where
+            $($a: DefaultQuery,)+
+            Op: BooleanFetchOp,
+        {
+            #[inline]
+            fn default_query() -> Self::Query {
+                BooleanQuery {
+                    tuple: ($(<$a as DefaultQuery>::default_query(),)+),
+                    op: PhantomData,
+                }
+            }
+        }
+
         impl<Op $(, $a)+> QueryArg for BooleanQuery<($($a,)+), Op>
         where
             $($a: QueryArg,)+
@@ -295,7 +310,7 @@ macro_rules! impl_boolean {
             #[inline]
             fn new() -> Self {
                 BooleanQuery {
-                    tuple: ($($a::new(),)+),
+                    tuple: ($(<$a as QueryArg>::new(),)+),
                     op: PhantomData,
                 }
             }

@@ -1,8 +1,8 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::DefaultQueryArg,
-    type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
+    system::DefaultQueryArg, type_id,
 };
 
 use super::{
@@ -53,6 +53,16 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
+    }
+}
+
+impl<T> DefaultQuery for EpochOf<T>
+where
+    T: 'static,
+{
+    #[inline]
+    fn default_query() -> Self {
+        EpochOf
     }
 }
 

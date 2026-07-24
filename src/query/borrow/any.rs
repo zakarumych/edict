@@ -5,10 +5,10 @@ use crate::{
     component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
-        read::Read, write::Write, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
-        Query, SendQuery, WriteAlias,
+        read::Read, write::Write, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query,
+        SendQuery, WriteAlias,
     },
-    system::QueryArg,
+    system::DefaultQueryArg,
     type_id,
 };
 
@@ -58,16 +58,6 @@ where
     type Query = BorrowAny<Read<T>>;
 }
 
-impl<T> DefaultQuery for BorrowAny<&T>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> BorrowAny<Read<T>> {
-        BorrowAny(Read)
-    }
-}
-
 impl<T> AsQuery for BorrowAny<Read<T>>
 where
     T: ?Sized + 'static,
@@ -85,25 +75,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for BorrowAny<Read<T>>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        BorrowAny(Read)
-    }
-}
-
-impl<T> QueryArg for BorrowAny<Read<T>>
-where
-    T: Sync + ?Sized + 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        BorrowAny(Read)
-    }
-}
+impl<T> DefaultQueryArg for BorrowAny<Read<T>> where T: Sync + ?Sized + 'static {}
 
 unsafe impl<T> Query for BorrowAny<Read<T>>
 where
@@ -223,16 +195,6 @@ where
     type Query = BorrowAny<Write<T>>;
 }
 
-impl<T> DefaultQuery for BorrowAny<&mut T>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> BorrowAny<Write<T>> {
-        BorrowAny(Write)
-    }
-}
-
 impl<T> AsQuery for BorrowAny<Write<T>>
 where
     T: ?Sized + 'static,
@@ -250,25 +212,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for BorrowAny<Write<T>>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        BorrowAny(Write)
-    }
-}
-
-impl<T> QueryArg for BorrowAny<Write<T>>
-where
-    T: Send + ?Sized + 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        BorrowAny(Write)
-    }
-}
+impl<T> DefaultQueryArg for BorrowAny<Write<T>> where T: Send + ?Sized + 'static {}
 
 unsafe impl<T> Query for BorrowAny<Write<T>>
 where

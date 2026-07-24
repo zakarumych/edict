@@ -7,14 +7,14 @@ use core::{
 };
 
 use crate::{
-    archetype::{chunk_idx, Archetype},
+    archetype::{Archetype, chunk_idx},
     component::ComponentInfo,
     epoch::EpochId,
     system::QueryArg,
     type_id,
 };
 
-use super::{Access, AsQuery, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
+use super::{Access, AsQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// Item type that [`Alt`] yields.
 /// Wraps `&mut T` and implements [`DerefMut`] to `T`.
@@ -125,16 +125,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<T> DefaultQuery for Alt<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Alt
     }
 }
 

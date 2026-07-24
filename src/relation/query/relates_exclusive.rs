@@ -1,17 +1,17 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     entity::EntityBound,
     epoch::EpochId,
     query::{
-        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
-        Write, WriteAlias,
+        AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With, Write, WriteAlias,
     },
     relation::{ExclusiveRelation, OriginComponent},
     system::QueryArg,
-    type_id, Access,
+    type_id,
 };
 
 marker_type! {
@@ -35,16 +35,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for RelatesExclusive<With<R>>
-where
-    R: ExclusiveRelation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        RelatesExclusive
     }
 }
 
@@ -149,16 +139,6 @@ where
     type Query = RelatesExclusive<Read<R>>;
 }
 
-impl<R> DefaultQuery for RelatesExclusive<&R>
-where
-    R: ExclusiveRelation,
-{
-    #[inline]
-    fn default_query() -> RelatesExclusive<Read<R>> {
-        RelatesExclusive
-    }
-}
-
 impl<R> AsQuery for RelatesExclusive<Read<R>>
 where
     R: ExclusiveRelation,
@@ -173,16 +153,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for RelatesExclusive<Read<R>>
-where
-    R: ExclusiveRelation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        RelatesExclusive
     }
 }
 
@@ -287,16 +257,6 @@ where
     type Query = RelatesExclusive<Write<R>>;
 }
 
-impl<R> DefaultQuery for RelatesExclusive<&mut R>
-where
-    R: ExclusiveRelation,
-{
-    #[inline]
-    fn default_query() -> RelatesExclusive<Write<R>> {
-        RelatesExclusive
-    }
-}
-
 impl<R> AsQuery for RelatesExclusive<Write<R>>
 where
     R: ExclusiveRelation,
@@ -311,16 +271,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for RelatesExclusive<Write<R>>
-where
-    R: ExclusiveRelation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        RelatesExclusive
     }
 }
 

@@ -1,14 +1,11 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
-    Access,
+    Access, archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg,
+    type_id,
 };
 
-use super::{
-    AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
-};
+use super::{AsQuery, BatchFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// [`Fetch`] type for the `&T` query.
 pub struct FetchRead<'a, T> {
@@ -67,16 +64,6 @@ where
     type Query = Read<T>;
 }
 
-impl<T> DefaultQuery for &T
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Read<T> {
-        Read
-    }
-}
-
 impl<T> AsQuery for Read<T>
 where
     T: 'static,
@@ -91,16 +78,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<T> DefaultQuery for Read<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Read<T> {
-        Read
     }
 }
 

@@ -43,20 +43,13 @@ pub fn derive(
                 }).collect::<Vec<_>>();
 
                 Ok(quote::quote! {
+                    #[derive(Default)]
                     struct #query_ident {
                         #(#field_vis #query_fields,)*
                     }
-                    
+
                     impl #edict_path::query::AsQuery for #ident {
                         type Query = #query_ident;
-                    }
-
-                    impl #edict_path::query::DefaultQuery for #ident {
-                        fn default_query() -> #query_ident {
-                            #query_ident{#(
-                                #field_names: <#field_types as #edict_path::query::DefaultQuery>::default_query(),
-                            )*}
-                        }
                     }
 
                     impl #edict_path::query::AsQuery for #query_ident {
@@ -66,14 +59,6 @@ pub fn derive(
                     impl #edict_path::query::IntoQuery for #query_ident {
                         fn into_query(self) -> Self {
                             self
-                        }
-                    }
-
-                    impl #edict_path::query::DefaultQuery for #query_ident {
-                        fn default_query() -> #query_ident {
-                            #query_ident(#(
-                                <#field_types as #edict_path::query::DefaultQuery>::default_query(),
-                            )*)
                         }
                     }
 
@@ -101,20 +86,13 @@ pub fn derive(
                 }).collect::<Vec<_>>();
 
                 Ok(quote::quote! {
+                    #[derive(Default)]
                     #vis struct #query_ident(
                         #(#field_vis #query_fields,)*
                     )
 
                     impl #edict_path::query::AsQuery for #ident {
                         type Query = #query_ident;
-                    }
-
-                    impl #edict_path::query::DefaultQuery for #ident {
-                        fn default_query() -> #query_ident {
-                            #query_ident(#(
-                                <#field_types as #edict_path::query::DefaultQuery>::default_query(),
-                            )*)
-                        }
                     }
 
                     impl #edict_path::query::AsQuery for #query_ident {
@@ -124,14 +102,6 @@ pub fn derive(
                     impl #edict_path::query::IntoQuery for #query_ident {
                         fn into_query(self) -> Self {
                             self
-                        }
-                    }
-
-                    impl #edict_path::query::DefaultQuery for #query_ident {
-                        fn default_query() -> #query_ident {
-                            #query_ident(#(
-                                <#field_types as #edict_path::query::DefaultQuery>::default_query(),
-                            )*)
                         }
                     }
                 })

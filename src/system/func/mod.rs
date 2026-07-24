@@ -18,7 +18,7 @@ pub use self::{
     action::ActionEncoderState,
     res::{ResLocal, ResMutLocal, ResMutNoSendState, ResMutState, ResNoSyncState, ResState},
     state::{State, StateState},
-    view::QueryArg,
+    view::{DefaultQueryArg, QueryArg},
 };
 
 /// Marker for [`IntoSystem`] for functions.

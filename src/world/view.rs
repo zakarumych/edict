@@ -1,5 +1,5 @@
 use crate::{
-    query::{DefaultQuery, DefaultSendQuery, IntoQuery, IntoSendQuery},
+    query::{AsDefaultQuery, AsDefaultSendQuery, IntoQuery, IntoSendQuery},
     view::{Extensible, StaticallyBorrowed, ViewMut, ViewRef, ViewValue},
 };
 
@@ -52,7 +52,7 @@ impl World {
     #[inline]
     pub fn view<'a, Q>(&'a self) -> ViewRef<'a, (Q,)>
     where
-        Q: DefaultSendQuery,
+        Q: AsDefaultSendQuery,
     {
         ViewValue::new_ref(self, (Q::default_query(),), ())
     }
@@ -65,8 +65,8 @@ impl World {
     #[inline]
     pub fn view_filter<'a, Q, F>(&'a self) -> ViewRef<'a, (Q,), F>
     where
-        Q: DefaultSendQuery,
-        F: DefaultSendQuery,
+        Q: AsDefaultSendQuery,
+        F: AsDefaultSendQuery,
     {
         ViewValue::new_ref(self, (Q::default_query(),), F::default_query())
     }
@@ -81,7 +81,7 @@ impl World {
     #[inline]
     pub fn view_mut<'a, Q>(&'a mut self) -> ViewMut<'a, (Q,)>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         ViewValue::new_mut(self, (Q::default_query(),), ())
     }
@@ -96,8 +96,8 @@ impl World {
     #[inline]
     pub fn view_filter_mut<'a, Q, F>(&'a mut self) -> ViewMut<'a, (Q,), F>
     where
-        Q: DefaultQuery,
-        F: DefaultQuery,
+        Q: AsDefaultQuery,
+        F: AsDefaultQuery,
     {
         ViewValue::new_mut(self, (Q::default_query(),), F::default_query())
     }
@@ -117,7 +117,7 @@ impl World {
     #[inline]
     pub unsafe fn view_unchecked<'a, Q>(&'a self) -> ViewMut<'a, (Q,)>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         unsafe {
             ViewValue::new_unchecked(
@@ -145,8 +145,8 @@ impl World {
     #[inline]
     pub unsafe fn view_filter_unchecked<'a, Q, F>(&'a self) -> ViewMut<'a, (Q,), F>
     where
-        Q: DefaultQuery,
-        F: DefaultQuery,
+        Q: AsDefaultQuery,
+        F: AsDefaultQuery,
     {
         unsafe {
             ViewValue::new_unchecked(
@@ -292,7 +292,7 @@ impl WorldLocal {
     #[inline]
     pub fn view<'a, Q>(&'a self) -> ViewRef<'a, (Q,)>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         ViewValue::new_ref(self, (Q::default_query(),), ())
     }
@@ -305,8 +305,8 @@ impl WorldLocal {
     #[inline]
     pub fn view_filter<'a, Q, F>(&'a self) -> ViewRef<'a, (Q,), F>
     where
-        Q: DefaultQuery,
-        F: DefaultQuery,
+        Q: AsDefaultQuery,
+        F: AsDefaultQuery,
     {
         ViewValue::new_ref(self, (Q::default_query(),), F::default_query())
     }

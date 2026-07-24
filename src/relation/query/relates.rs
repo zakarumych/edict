@@ -5,8 +5,7 @@ use crate::{
     component::ComponentInfo,
     epoch::EpochId,
     query::{
-        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
-        Write, WriteAlias,
+        AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With, Write, WriteAlias,
     },
     relation::{OriginComponent, Relation},
     system::QueryArg,
@@ -36,16 +35,6 @@ where
     #[inline]
     fn into_query(self) -> Self::Query {
         self
-    }
-}
-
-impl<R> DefaultQuery for Relates<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Relates
     }
 }
 
@@ -149,16 +138,6 @@ where
     type Query = Relates<Read<R>>;
 }
 
-impl<R> DefaultQuery for Relates<&R>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Relates<Read<R>> {
-        Relates
-    }
-}
-
 impl<R> AsQuery for Relates<Read<R>>
 where
     R: Relation,
@@ -173,16 +152,6 @@ where
     #[inline]
     fn into_query(self) -> Self::Query {
         self
-    }
-}
-
-impl<R> DefaultQuery for Relates<Read<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Relates
     }
 }
 
@@ -286,16 +255,6 @@ where
     type Query = Relates<Write<R>>;
 }
 
-impl<R> DefaultQuery for Relates<&mut R>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Relates<Write<R>> {
-        Relates
-    }
-}
-
 impl<R> AsQuery for Relates<Write<R>>
 where
     R: Relation,
@@ -310,16 +269,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for Relates<Write<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Relates
     }
 }
 

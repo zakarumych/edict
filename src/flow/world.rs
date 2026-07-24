@@ -10,7 +10,7 @@ use crate::{
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{Entity, EntityId},
-    query::{DefaultQuery, IntoQuery, Query},
+    query::{AsDefaultQuery, IntoQuery, Query},
     relation::Relation,
     view::View,
     world::WorldLocal,
@@ -143,7 +143,7 @@ impl FlowWorld {
     /// The closure may use task context to register wakers.
     pub fn poll_view<Q, F, R>(self, f: F) -> PollView<Q::Query, (), F>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
         F: FnMut(View<Q>, &mut Context) -> Poll<R>,
     {
         PollView {
@@ -160,8 +160,8 @@ impl FlowWorld {
     /// The closure may use task context to register wakers.
     pub fn poll_view_filter<Q, F, Fun, R>(self, f: Fun) -> PollView<Q::Query, F::Query, Fun>
     where
-        Q: DefaultQuery,
-        F: DefaultQuery,
+        Q: AsDefaultQuery,
+        F: AsDefaultQuery,
         F: FnMut(View<Q, F>, &mut Context) -> Poll<R>,
     {
         PollView {

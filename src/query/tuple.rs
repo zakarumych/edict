@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
+    Access, AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
     fetch::{BatchFetch, Fetch},
-    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 macro_rules! impl_fetch {
@@ -35,21 +35,14 @@ macro_rules! impl_fetch {
 
         impl IntoQuery for () {
             fn into_query(self) -> () {
-                
-            }
-        }
 
-        impl DefaultQuery for () {
-            #[inline]
-            fn default_query() -> () {
-                
             }
         }
 
         impl QueryArg for () {
             #[inline]
             fn new() -> () {
-                
+
             }
         }
 
@@ -74,7 +67,7 @@ macro_rules! impl_fetch {
 
             #[inline]
             unsafe fn fetch(&self, _: u32, _: &Archetype, _: EpochId) -> () {
-                
+
             }
 
             #[inline]
@@ -152,15 +145,6 @@ macro_rules! impl_fetch {
             fn into_query(self) -> Self::Query {
                 let ($($a,)+) = self;
                 ($( $a.into_query(), )+)
-            }
-        }
-
-        #[allow(non_snake_case)]
-        #[allow(unused_parens)]
-        impl<$($a),+> DefaultQuery for ($($a,)+) where $($a: DefaultQuery,)+ {
-            #[inline]
-            fn default_query() -> ($($a::Query,)+) {
-                ($($a::default_query(),)+)
             }
         }
 

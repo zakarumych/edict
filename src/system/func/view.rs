@@ -1,17 +1,17 @@
 use core::{
-    any::{type_name, TypeId},
+    any::{TypeId, type_name},
     marker::PhantomData,
     ptr::NonNull,
 };
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     query::SendQuery,
     system::ActionBufferQueue,
     view::{NonExtensible, RuntimeBorrowState, StaticallyBorrowed, View, ViewCell, ViewValue},
     world::World,
-    Access,
 };
 
 #[cfg(debug_assertions)]
@@ -28,15 +28,27 @@ pub trait QueryArg: SendQuery {
     fn new() -> Self;
 
     /// Hook called before function-system runs to update the state.
-    #[inline]
+    #[inline(always)]
     fn before(&mut self, world: &World) {
         let _ = world;
     }
 
     /// Hook called after function-system runs to update the state.
-    #[inline]
+    #[inline(always)]
     fn after(&mut self, world: &World) {
         let _ = world;
+    }
+}
+
+/// Query suitable for [`View`] args for function-systems that is default-constructible.
+pub trait DefaultQueryArg: QueryArg + Default {}
+
+impl<Q> QueryArg for Q
+where
+    Q: DefaultQueryArg,
+{
+    fn new() -> Self {
+        Default::default()
     }
 }
 

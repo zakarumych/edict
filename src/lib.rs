@@ -400,7 +400,7 @@ macro_rules! indexed_tuple {
 
 macro_rules! for_tuple {
     ($macro:ident) => {
-        for_tuple!($macro for A B C D E F G H I J K L M N O P);
+        for_tuple!($macro for A B C D E F G H I J K L);
     };
     ($macro:ident for ) => {
         $macro!();
@@ -415,8 +415,8 @@ macro_rules! for_tuple {
 macro_rules! for_tuple_2 {
     ($macro:ident) => {
         for_tuple_2!($macro for
-            AA AB AC AD AE AF AG AH AI AJ AK AL AM AN AO AP,
-            BA BB BC BD BE BF BG BH BI BJ BK BL BM BN BO BP
+            AA AB AC AD AE AF AG AH AI AJ AK AL,
+            BA BB BC BD BE BF BG BH BI BJ BK BL
         );
     };
     ($macro:ident for ,) => {
@@ -497,7 +497,7 @@ macro_rules! marker_type_impls {
         }
 
         impl $(< $($a: ?Sized),+ >)? Default for $type $(< $($a),+ >)? {
-            #[inline]
+            #[inline(always)]
             fn default() -> Self {
                 $type
             }
@@ -568,7 +568,6 @@ pub mod component;
 pub mod dump;
 pub mod entity;
 pub mod epoch;
-
 pub mod query;
 pub mod relation;
 pub mod resources;

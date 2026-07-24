@@ -4,9 +4,7 @@ use crate::{
     archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
 };
 
-use super::{
-    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, IntoQuery, Query, SendQuery, WriteAlias,
-};
+use super::{Access, AsQuery, BatchFetch, Fetch, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// [`Fetch`] type for the `&mut T` query.
 pub struct FetchWrite<'a, T> {
@@ -80,16 +78,6 @@ where
     type Query = Write<T>;
 }
 
-impl<T> DefaultQuery for &mut T
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Write<T> {
-        Write
-    }
-}
-
 impl<T> AsQuery for Write<T>
 where
     T: 'static,
@@ -103,16 +91,6 @@ where
 {
     #[inline]
     fn into_query(self) -> Write<T> {
-        Write
-    }
-}
-
-impl<T> DefaultQuery for Write<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Write<T> {
         Write
     }
 }

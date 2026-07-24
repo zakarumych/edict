@@ -1,15 +1,14 @@
 use core::any::TypeId;
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     epoch::EpochId,
-    query::{
-        AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias,
-    },
+    query::{AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, UnitFetch, WriteAlias},
     relation::{OriginComponent, Relation, TargetComponent},
     system::QueryArg,
-    type_id, Access,
+    type_id,
 };
 
 marker_type! {
@@ -31,16 +30,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for FilterRelated<R>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        FilterRelated
     }
 }
 

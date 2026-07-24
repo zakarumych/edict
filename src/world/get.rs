@@ -1,11 +1,13 @@
 //! Methods for fetching components from specific entities.
 
 use crate::{
+    EntityError, NoSuchEntity,
     archetype::chunk_idx,
     entity::{AliveEntity, Entity},
-    query::{DefaultQuery, DefaultSendQuery, Fetch, IntoQuery, IntoSendQuery, Query, QueryItem},
+    query::{
+        AsDefaultQuery, AsDefaultSendQuery, Fetch, IntoQuery, IntoSendQuery, Query, QueryItem,
+    },
     view::{ViewOne, ViewOneValue},
-    EntityError, NoSuchEntity,
 };
 
 use super::{World, WorldLocal};
@@ -26,7 +28,7 @@ impl World {
     #[inline]
     pub fn get<'a, Q>(&'a mut self, entity: impl Entity) -> Result<QueryItem<'a, Q>, EntityError>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         self.get_with(entity, Q::default_query())
     }
@@ -71,7 +73,7 @@ impl World {
         entity: impl Entity,
     ) -> Result<QueryItem<'a, Q::Query>, EntityError>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         unsafe { self.get_with_unchecked(entity, Q::default_query()) }
     }
@@ -149,7 +151,7 @@ impl World {
     #[inline]
     pub fn view_one<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
     where
-        Q: DefaultSendQuery,
+        Q: AsDefaultSendQuery,
     {
         ViewOneValue::new(self, entity, Q::default_query(), ())
     }
@@ -169,7 +171,7 @@ impl World {
         entity: impl Entity,
     ) -> Result<ViewOne<'a, Q>, NoSuchEntity>
     where
-        Q: DefaultSendQuery,
+        Q: AsDefaultSendQuery,
     {
         let entity = self.lookup(entity)?;
         Ok(self.view_one::<Q>(entity))
@@ -260,7 +262,7 @@ impl WorldLocal {
     #[inline]
     pub fn view_one<'a, Q>(&'a self, entity: impl AliveEntity) -> ViewOne<'a, Q>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         ViewOneValue::new(self, entity, Q::default_query(), ())
     }
@@ -280,7 +282,7 @@ impl WorldLocal {
         entity: impl Entity,
     ) -> Result<ViewOne<'a, Q>, NoSuchEntity>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         let entity = self.lookup(entity)?;
         Ok(self.view_one::<Q>(entity))

@@ -1,17 +1,17 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
     query::{
-        AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With,
-        Write, WriteAlias,
+        AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, With, Write, WriteAlias,
     },
     relation::{OriginComponent, Relation, TargetComponent},
     system::QueryArg,
-    type_id, Access,
+    type_id,
 };
 
 use super::{RelationIter, RelationReadIter, RelationWriteIter};
@@ -37,16 +37,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for Related<With<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Related
     }
 }
 
@@ -197,16 +187,6 @@ where
     type Query = Related<Read<R>>;
 }
 
-impl<R> DefaultQuery for Related<&R>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Related<Read<R>> {
-        Related
-    }
-}
-
 impl<R> AsQuery for Related<Read<R>>
 where
     R: Relation,
@@ -221,16 +201,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for Related<Read<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Related
     }
 }
 
@@ -375,16 +345,6 @@ where
     type Query = Related<Write<R>>;
 }
 
-impl<R> DefaultQuery for Related<&mut R>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Related<Write<R>> {
-        Related
-    }
-}
-
 impl<R> AsQuery for Related<Write<R>>
 where
     R: Relation,
@@ -399,16 +359,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<R> DefaultQuery for Related<Write<R>>
-where
-    R: Relation,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Related
     }
 }
 

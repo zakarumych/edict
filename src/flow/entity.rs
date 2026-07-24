@@ -10,7 +10,7 @@ use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{Entity, EntityBound, EntityId, EntityLoc, EntityRef, EntitySet, Location},
-    query::{DefaultQuery, IntoQuery, Query, QueryItem},
+    query::{AsDefaultQuery, IntoQuery, Query, QueryItem},
     world::{World, WorldLocal},
     EntityError, NoSuchEntity,
 };
@@ -322,7 +322,7 @@ impl FlowEntity {
     /// Future will not poll closure and resolve until query is satisfied.
     pub fn poll_view<Q, F, R>(self, f: F) -> PollEntityView<Q::Query, F>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
         PollEntityView {
@@ -340,7 +340,7 @@ impl FlowEntity {
     /// The closure may use task context to register wakers.
     pub fn try_poll_view<Q, F, R>(self, f: F) -> TryPollEntityView<Q::Query, F>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
         F: FnMut(QueryItem<Q>, &mut Context) -> Poll<R>,
     {
         TryPollEntityView {

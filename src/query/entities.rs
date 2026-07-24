@@ -8,8 +8,7 @@ use crate::{
 };
 
 use super::{
-    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
+    Access, AsQuery, BatchFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 /// [`Fetch`] type for the [`Entities`] query.
@@ -60,13 +59,6 @@ impl IntoQuery for Entities {
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl DefaultQuery for Entities {
-    #[inline]
-    fn default_query() -> Self {
-        Entities
     }
 }
 

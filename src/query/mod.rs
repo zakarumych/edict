@@ -31,7 +31,7 @@
 use core::any::TypeId;
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId, Access,
+    Access, archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
 };
 
 pub use self::{
@@ -84,27 +84,6 @@ pub trait AsQuery {
     type Query: Query;
 }
 
-/// Types convertible into query type.
-pub trait IntoQuery: AsQuery {
-    /// Converts into query.
-    fn into_query(self) -> Self::Query;
-}
-
-/// Types convertible into query type.
-pub trait IntoSendQuery: IntoQuery + AsSendQuery {}
-impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
-
-/// Types associated with default-constructible query type.
-#[diagnostic::on_unimplemented(label = "`{Self}` is not a stateless query type")]
-pub trait DefaultQuery: AsQuery {
-    /// Returns default query instance.
-    fn default_query() -> Self::Query;
-}
-
-/// Types associated with default-constructible query type.
-pub trait DefaultSendQuery: DefaultQuery + AsSendQuery {}
-impl<Q> DefaultSendQuery for Q where Q: DefaultQuery + AsSendQuery {}
-
 /// Detected write aliasing.
 /// Should be either resolved at runtime or reported with panic.
 pub struct WriteAlias;
@@ -118,6 +97,7 @@ pub struct WriteAlias;
 /// # Safety
 ///
 /// Implementations must adhere to unsafe contract of unsafe methods.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not a query type")]
 pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Item type this query type yields.
     type Item<'a>: 'a;
@@ -200,48 +180,6 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     }
 }
 
-/// Query that does not mutate any components.
-///
-/// # Safety
-///
-/// [`Query`] must not borrow components mutably.
-/// [`Query`] must not modify entities versions.
-pub unsafe trait ImmutableQuery: Query {
-    /// Checks that query is valid in compile time.
-    const CHECK_VALID: () = {
-        if Self::MUTABLE {
-            panic!("Immutable query cannot fetch mutable components");
-        }
-    };
-}
-
-/// Query that can be used from non-main thread.
-///
-/// # Safety
-///
-/// Query type must be safely usable from non-main thread.
-/// This includes ensuring that any queried components
-/// are `Sync` if queried immutably and `Send` if queried mutably.
-pub unsafe trait SendQuery: Query {}
-
-/// Query that does not mutate any components and can be used from non-main thread.
-pub trait SendImmutableQuery: SendQuery + ImmutableQuery {}
-impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
-
-/// Query that can be used from non-main thread.
-///
-/// # Safety
-///
-/// Associated query type must implement [`SendQuery`].
-pub unsafe trait AsSendQuery: AsQuery {}
-
-unsafe impl<Q> AsSendQuery for Q
-where
-    Q: AsQuery,
-    Q::Query: SendQuery,
-{
-}
-
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryItem<'a, Q> = <<Q as AsQuery>::Query as Query>::Item<'a>;
 
@@ -280,3 +218,225 @@ where
 
 /// Type alias for items returned by the [`Query`] type.
 pub type QueryBatch<'a, Q> = <<Q as AsQuery>::Query as BatchQuery>::Batch<'a>;
+
+/// Types convertible into query type.
+pub trait IntoQuery: AsQuery {
+    /// Converts into query.
+    fn into_query(self) -> Self::Query;
+}
+
+/// Default-constructible query type.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not a default-constructible query type")]
+pub trait DefaultQuery: Query {
+    /// Returns default query.
+    fn default_query() -> Self;
+}
+
+impl<Q> DefaultQuery for Q
+where
+    Q: Query + Default,
+{
+    #[inline(always)]
+    fn default_query() -> Self {
+        Default::default()
+    }
+}
+
+/// Types associated with default-constructible query type.
+#[diagnostic::on_unimplemented(label = "`{Self}` is not a default-constructible query type")]
+pub trait AsDefaultQuery: AsQuery<Query = Self::DefaultQuery> {
+    /// Associated query type that is default-constructible.
+    type DefaultQuery: DefaultQuery;
+
+    /// Returns default query.
+    #[inline(always)]
+    fn default_query() -> Self::DefaultQuery {
+        DefaultQuery::default_query()
+    }
+}
+
+impl<Q> AsDefaultQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: DefaultQuery,
+{
+    type DefaultQuery = Q::Query;
+}
+
+/// Query that can be used from non-main thread.
+///
+/// # Safety
+///
+/// Query type must be safely usable from non-main thread.
+/// This includes ensuring that any queried components
+/// are `Sync` if queried immutably and `Send` if queried mutably.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a query type that can be used from non-main thread"
+)]
+pub unsafe trait SendQuery: Query {}
+
+/// Query that can be used from non-main thread.
+///
+/// # Safety
+///
+/// Associated query type must implement [`SendQuery`].
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a query type that can be used from non-main thread"
+)]
+pub unsafe trait AsSendQuery: AsQuery<Query = Self::SendQuery> {
+    /// Associated query type that can be used from non-main thread.
+    type SendQuery: SendQuery;
+}
+
+unsafe impl<Q> AsSendQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: SendQuery,
+{
+    type SendQuery = Q::Query;
+}
+
+/// Types convertible into query type that can be used from non-main thread.
+pub trait IntoSendQuery: IntoQuery + AsSendQuery {}
+impl<Q> IntoSendQuery for Q where Q: IntoQuery + AsSendQuery {}
+
+/// Query that does not mutate any components.
+///
+/// # Safety
+///
+/// [`Query`] must not borrow components mutably.
+/// [`Query`] must not modify entities versions.
+#[diagnostic::on_unimplemented(label = "`{Self}` mutates components")]
+pub unsafe trait ImmutableQuery: Query {
+    /// Checks that query is valid in compile time.
+    const CHECK_VALID: () = {
+        if Self::MUTABLE {
+            panic!("Immutable query cannot fetch mutable components");
+        }
+    };
+}
+
+/// Type associated with a query type that does not mutate any components.
+#[diagnostic::on_unimplemented(label = "`{Self}` mutates components")]
+pub trait AsImmutableQuery: AsQuery<Query = Self::ImmutableQuery> {
+    /// Associated query type that does not mutate any components.
+    type ImmutableQuery: ImmutableQuery;
+}
+
+impl<Q> AsImmutableQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: ImmutableQuery,
+{
+    type ImmutableQuery = Q::Query;
+}
+
+/// Types convertible into query type that can be used from non-main thread.
+pub trait IntoImmutableQuery: IntoQuery + AsImmutableQuery {}
+impl<Q> IntoImmutableQuery for Q where Q: IntoQuery + AsImmutableQuery {}
+
+/// Default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or cannot be used from non-main thread"
+)]
+pub trait DefaultSendQuery: DefaultQuery + SendQuery {}
+
+impl<Q> DefaultSendQuery for Q where Q: DefaultQuery + SendQuery {}
+
+/// Types associated with default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or cannot be used from non-main thread"
+)]
+pub trait AsDefaultSendQuery: AsQuery<Query = Self::DefaultSendQuery> {
+    /// Associated query type that is default-constructible and can be used from non-main thread.
+    type DefaultSendQuery: DefaultSendQuery;
+}
+
+impl<Q> AsDefaultSendQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: DefaultQuery + SendQuery,
+{
+    type DefaultSendQuery = Q::Query;
+}
+
+/// Default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or mutates components"
+)]
+pub trait DefaultImmutableQuery: DefaultQuery + ImmutableQuery {}
+
+impl<Q> DefaultImmutableQuery for Q where Q: DefaultQuery + ImmutableQuery {}
+
+/// Types associated with default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or mutates components"
+)]
+pub trait AsDefaultImmutableQuery: AsQuery<Query = Self::DefaultImmutableQuery> {
+    /// Associated query type that is default-constructible and does not mutate any components.
+    type DefaultImmutableQuery: DefaultImmutableQuery;
+}
+
+impl<Q> AsDefaultImmutableQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: DefaultQuery + ImmutableQuery,
+{
+    type DefaultImmutableQuery = Q::Query;
+}
+
+/// Query that does not mutate any components and can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` mutates components or cannot be used from non-main thread"
+)]
+pub trait SendImmutableQuery: SendQuery + ImmutableQuery {}
+impl<Q> SendImmutableQuery for Q where Q: SendQuery + ImmutableQuery {}
+
+/// Type associated with a query type that does not mutate any components and can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` mutates components or cannot be used from non-main thread"
+)]
+pub trait AsSendImmutableQuery: AsQuery<Query = Self::SendImmutableQuery> {
+    /// Associated query type that does not mutate any components and can be used from non-main thread.
+    type SendImmutableQuery: SendImmutableQuery;
+}
+
+impl<Q> AsSendImmutableQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: SendImmutableQuery,
+{
+    type SendImmutableQuery = Q::Query;
+}
+
+/// Types convertible into query type that can be used from non-main thread and does not mutate any components.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` mutates components or cannot be used from non-main thread"
+)]
+pub trait IntoSendImmutableQuery: IntoQuery + AsSendImmutableQuery {}
+impl<Q> IntoSendImmutableQuery for Q where Q: IntoQuery + AsSendImmutableQuery {}
+
+/// Default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or cannot be used from non-main thread"
+)]
+pub trait DefaultSendImmutableQuery: DefaultQuery + SendQuery + ImmutableQuery {}
+
+impl<Q> DefaultSendImmutableQuery for Q where Q: DefaultQuery + SendQuery + ImmutableQuery {}
+
+/// Types associated with default-constructible query type that can be used from non-main thread.
+#[diagnostic::on_unimplemented(
+    label = "`{Self}` is not a default-constructible query type or cannot be used from non-main thread"
+)]
+pub trait AsDefaultSendImmutableQuery: AsQuery<Query = Self::DefaultSendImmutableQuery> {
+    /// Associated query type that is default-constructible and does not mutate any components and can be used from non-main thread.
+    type DefaultSendImmutableQuery: DefaultSendImmutableQuery;
+}
+
+impl<Q> AsDefaultSendImmutableQuery for Q
+where
+    Q: AsQuery,
+    Q::Query: DefaultQuery + SendQuery + ImmutableQuery,
+{
+    type DefaultSendImmutableQuery = Q::Query;
+}

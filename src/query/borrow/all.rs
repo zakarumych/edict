@@ -6,10 +6,10 @@ use crate::{
     component::{BorrowFn, BorrowFnMut, ComponentInfo},
     epoch::EpochId,
     query::{
-        read::Read, Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query,
-        SendQuery, Write, WriteAlias,
+        read::Read, Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, Write,
+        WriteAlias,
     },
-    system::QueryArg,
+    system::DefaultQueryArg,
     type_id,
 };
 
@@ -182,16 +182,6 @@ where
     type Query = BorrowAll<Read<T>>;
 }
 
-impl<T> DefaultQuery for BorrowAll<&T>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> BorrowAll<Read<T>> {
-        BorrowAll(Read)
-    }
-}
-
 impl<T> AsQuery for BorrowAll<Read<T>>
 where
     T: ?Sized + 'static,
@@ -209,25 +199,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for BorrowAll<Read<T>>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        BorrowAll(Read)
-    }
-}
-
-impl<T> QueryArg for BorrowAll<Read<T>>
-where
-    T: Sync + ?Sized + 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        BorrowAll(Read)
-    }
-}
+impl<T> DefaultQueryArg for BorrowAll<Read<T>> where T: Sync + ?Sized + 'static {}
 
 unsafe impl<T> Query for BorrowAll<Read<T>>
 where
@@ -478,16 +450,6 @@ where
     type Query = BorrowAll<Write<T>>;
 }
 
-impl<T> DefaultQuery for BorrowAll<&mut T>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> BorrowAll<Write<T>> {
-        BorrowAll(Write)
-    }
-}
-
 impl<T> AsQuery for BorrowAll<Write<T>>
 where
     T: ?Sized + 'static,
@@ -505,25 +467,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for BorrowAll<Write<T>>
-where
-    T: ?Sized + 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        BorrowAll(Write)
-    }
-}
-
-impl<T> QueryArg for BorrowAll<Write<T>>
-where
-    T: Send + ?Sized + 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        BorrowAll(Write)
-    }
-}
+impl<T> DefaultQueryArg for BorrowAll<Write<T>> where T: Send + ?Sized + 'static {}
 
 unsafe impl<T> Query for BorrowAll<Write<T>>
 where

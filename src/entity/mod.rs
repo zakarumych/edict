@@ -15,7 +15,7 @@ use crate::{
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     // flow::FlowEntityFn,
-    query::{DefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
+    query::{AsDefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
     view::ViewOne,
     world::{World, WorldLocal},
     NoSuchEntity,
@@ -495,7 +495,7 @@ impl<'a> EntityRef<'a> {
     #[inline]
     pub fn get<'b, Q>(&'b self) -> Option<QueryItem<'b, Q>>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
         Q::Query: ImmutableQuery,
     {
         self.get_with(Q::default_query())
@@ -516,7 +516,7 @@ impl<'a> EntityRef<'a> {
     #[inline]
     pub fn get_mut<'b, Q>(&'b mut self) -> Option<QueryItem<'b, Q>>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         self.get_with_mut(Q::default_query())
     }
@@ -575,7 +575,7 @@ impl<'a> EntityRef<'a> {
     #[inline]
     pub unsafe fn get_unchecked<'b, Q>(&'b self) -> Option<QueryItem<'b, Q>>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         unsafe { self.get_with_unchecked(Q::default_query()) }
     }
@@ -621,7 +621,7 @@ impl<'a> EntityRef<'a> {
     #[inline]
     pub fn view_one<'b, Q>(&'b self) -> ViewOne<'b, Q>
     where
-        Q: DefaultQuery,
+        Q: AsDefaultQuery,
     {
         let loc = EntityLoc {
             id: self.id,

@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     fetch::{BatchFetch, Fetch},
-    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    Access, AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 /// Binary operator for [`BooleanQuery`].
@@ -86,6 +86,19 @@ impl BooleanFetchOp for XorOp {
 pub struct BooleanQuery<T, Op> {
     tuple: T,
     op: PhantomData<fn() -> Op>,
+}
+
+impl<T, Op> Default for BooleanQuery<T, Op>
+where
+    T: Default,
+{
+    #[inline]
+    fn default() -> Self {
+        BooleanQuery {
+            tuple: Default::default(),
+            op: PhantomData,
+        }
+    }
 }
 
 impl<T, Op> Clone for BooleanQuery<T, Op>
@@ -269,20 +282,6 @@ macro_rules! impl_boolean {
                 let ($($a,)+) = self.tuple;
                 BooleanQuery {
                     tuple: ($($a.into_query(),)+),
-                    op: PhantomData,
-                }
-            }
-        }
-
-        impl<Op $(, $a)+> DefaultQuery for BooleanQuery<($($a,)+), Op>
-        where
-            $($a: DefaultQuery,)+
-            Op: BooleanFetchOp,
-        {
-            #[inline]
-            fn default_query() -> Self::Query {
-                BooleanQuery {
-                    tuple: ($($a::default_query(),)+),
                     op: PhantomData,
                 }
             }

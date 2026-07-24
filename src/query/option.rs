@@ -2,12 +2,11 @@ use core::any::TypeId;
 
 use crate::{
     archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
-    system::QueryArg,
+    system::QueryArg, world::World,
 };
 
 use super::{
-    Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
+    Access, AsQuery, BatchFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
 };
 
 unsafe impl<'a, T> Fetch<'a> for Option<T>
@@ -65,11 +64,12 @@ where
 
     /// Returns fetched item at specified index.
     unsafe fn get_batch(&mut self, start: u32, end: u32) -> Option<T::Batch> {
-        self.as_mut().map(|fetch| unsafe { fetch.get_batch(start, end) })
+        self.as_mut()
+            .map(|fetch| unsafe { fetch.get_batch(start, end) })
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct OptionQuery<T>(pub T);
 
 impl<T> AsQuery for Option<T>
@@ -77,16 +77,6 @@ where
     T: AsQuery,
 {
     type Query = OptionQuery<T::Query>;
-}
-
-impl<T> DefaultQuery for Option<T>
-where
-    T: DefaultQuery,
-{
-    #[inline]
-    fn default_query() -> OptionQuery<T::Query> {
-        OptionQuery(T::default_query())
-    }
 }
 
 impl<T> AsQuery for OptionQuery<T>
@@ -105,16 +95,6 @@ where
     }
 }
 
-impl<T> DefaultQuery for OptionQuery<T>
-where
-    T: DefaultQuery,
-{
-    #[inline]
-    fn default_query() -> OptionQuery<T::Query> {
-        OptionQuery(T::default_query())
-    }
-}
-
 impl<T> QueryArg for OptionQuery<T>
 where
     T: QueryArg,
@@ -122,6 +102,16 @@ where
     #[inline]
     fn new() -> Self {
         OptionQuery(T::new())
+    }
+
+    #[inline]
+    fn before(&mut self, world: &World) {
+        self.0.before(world);
+    }
+
+    #[inline]
+    fn after(&mut self, world: &World) {
+        self.0.after(world);
     }
 }
 

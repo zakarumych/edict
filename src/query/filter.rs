@@ -1,12 +1,13 @@
 use core::any::TypeId;
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::DefaultQueryArg,
+    type_id,
 };
 
 use super::{
-    fetch::UnitFetch, Access, AsQuery, BatchFetch, DefaultQuery, Fetch, ImmutableQuery, IntoQuery,
-    Query, SendQuery, WriteAlias,
+    Access, AsQuery, BatchFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    fetch::UnitFetch,
 };
 
 /// Combines fetch from query and filter.
@@ -143,7 +144,7 @@ where
 /// Entities that match the filter are skipped.
 ///
 /// The `Not` filter will NOT cause side effects of the inner filter.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Not<T>(pub T);
 
 pub enum NotFetch<T> {
@@ -217,25 +218,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for Not<T>
-where
-    T: DefaultQuery,
-{
-    #[inline]
-    fn default_query() -> Not<T::Query> {
-        Not(T::default_query())
-    }
-}
-
-impl<T> QueryArg for Not<T>
-where
-    T: QueryArg,
-{
-    #[inline]
-    fn new() -> Not<T::Query> {
-        Not(T::new())
-    }
-}
+impl<T> DefaultQueryArg for Not<T> where T: DefaultQueryArg {}
 
 unsafe impl<T> Query for Not<T>
 where
@@ -309,25 +292,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for With<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        With
-    }
-}
-
-impl<T> QueryArg for With<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn new() -> With<T> {
-        With
-    }
-}
+impl<T> DefaultQueryArg for With<T> where T: 'static {}
 
 unsafe impl<T> Query for With<T>
 where

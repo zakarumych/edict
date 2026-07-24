@@ -33,8 +33,8 @@ mod query;
 use core::marker::PhantomData;
 
 use crate::{
-    action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
-    query::SendImmutableQuery, world::World, EntityError,
+    EntityError, action::ActionEncoder, component::Component, entity::EntityId, epoch::EpochId,
+    query::SendImmutableQuery, world::World,
 };
 
 pub use self::query::DumpItem;

@@ -1,12 +1,12 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
+    archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::DefaultQueryArg,
+    type_id,
 };
 
 use super::{
-    fetch::Fetch, Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias,
+    Access, AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias, fetch::Fetch,
 };
 
 mod read;
@@ -56,25 +56,7 @@ where
     }
 }
 
-impl<T> DefaultQuery for EpochOf<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        EpochOf
-    }
-}
-
-impl<T> QueryArg for EpochOf<T>
-where
-    T: 'static,
-{
-    #[inline]
-    fn new() -> Self {
-        EpochOf
-    }
-}
+impl<T> DefaultQueryArg for EpochOf<T> where T: 'static {}
 
 unsafe impl<T> Query for EpochOf<T>
 where

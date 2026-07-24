@@ -4,9 +4,7 @@ use crate::{
     archetype::Archetype, component::ComponentInfo, epoch::EpochId, system::QueryArg, type_id,
 };
 
-use super::{
-    Access, AsQuery, DefaultQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
-};
+use super::{Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias};
 
 /// [`Fetch`] type for the `&T` query.
 pub struct FetchCpy<'a, T> {
@@ -57,16 +55,6 @@ where
     #[inline]
     fn into_query(self) -> Self {
         self
-    }
-}
-
-impl<T> DefaultQuery for Cpy<T>
-where
-    T: Copy + 'static,
-{
-    #[inline]
-    fn default_query() -> Self {
-        Cpy
     }
 }
 

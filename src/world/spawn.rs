@@ -1,6 +1,7 @@
 use core::{any::type_name, marker::PhantomData};
 
 use crate::{
+    NoSuchEntity,
     action::LocalActionEncoder,
     archetype::Archetype,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
@@ -8,12 +9,12 @@ use crate::{
     component::{Component, ComponentRegistry},
     entity::{Entity, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     epoch::EpochId,
-    type_id, NoSuchEntity,
+    type_id,
 };
 
 use super::{
-    assert_bundle_registered, assert_registered, ensure_bundle_registered, register_component,
-    World, WorldLocal,
+    World, WorldLocal, assert_bundle_registered, assert_registered, ensure_bundle_registered,
+    register_component,
 };
 
 /// Limits on reserving of space for entities and components
@@ -553,7 +554,7 @@ impl World {
             self.entities.set_location(id, loc)
         }
 
-        self.execute_local_actions();
+        self.maintenance();
         Ok(())
     }
 
@@ -590,7 +591,7 @@ impl World {
             }
         }
 
-        self.execute_local_actions();
+        self.maintenance();
     }
 
     /// Special-case despawn method for [`EntityRef::despawn`].
@@ -613,7 +614,7 @@ impl World {
             self.entities.set_location(id, loc)
         }
 
-        self.execute_local_actions();
+        self.maintenance();
     }
 }
 

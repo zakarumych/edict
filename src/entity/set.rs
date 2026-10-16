@@ -4,13 +4,13 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use hashbrown::{hash_map::Entry, HashMap};
+use hashbrown::{HashMap, hash_map::Entry};
 
 use crate::cold;
 
 use super::{
-    allocator::{IdAllocator, IdRangeAllocator},
     EntityId, EntityLoc,
+    allocator::{IdAllocator, IdRangeAllocator},
 };
 
 /// Entity location in archetypes.
@@ -54,6 +54,13 @@ pub struct EntitySet {
     map: HashMap<u64, Location>,
     id_allocator: IdAllocator,
     reserve_counter: AtomicU64,
+}
+
+impl Drop for EntitySet {
+    fn drop(&mut self) {
+        self.id_allocator
+            .discard_reserved(*self.reserve_counter.get_mut());
+    }
 }
 
 impl fmt::Debug for EntitySet {
@@ -217,5 +224,149 @@ impl EntitySet {
     /// entities to be inserted.
     pub fn reserve(&mut self, additional: u32) {
         self.map.reserve(additional as usize);
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    use alloc::{boxed::Box, sync::Arc, vec::Vec};
+    use core::num::NonZeroU64;
+    use parking_lot::Mutex;
+
+    use crate::entity::{IdRange, IdRangeAllocator};
+
+    use super::EntitySet;
+
+    struct TrackingAllocator {
+        ranges: core::array::IntoIter<IdRange, 2>,
+        returned: Arc<Mutex<Vec<IdRange>>>,
+    }
+
+    // Safety: tests provide disjoint ranges and each is allocated once.
+    unsafe impl IdRangeAllocator for TrackingAllocator {
+        fn allocate_range(&mut self) -> IdRange {
+            self.ranges.next().expect("No replacement ranges available")
+        }
+
+        unsafe fn deallocate_range(&mut self, range: IdRange) {
+            self.returned.lock().push(range);
+        }
+    }
+
+    fn range(start: u64, end: u64) -> IdRange {
+        IdRange {
+            start: NonZeroU64::new(start).expect("Test ranges start above zero"),
+            end: NonZeroU64::new(end).expect("Test ranges end above zero"),
+        }
+    }
+
+    fn tracking_set(ranges: [IdRange; 2]) -> (EntitySet, Arc<Mutex<Vec<IdRange>>>) {
+        let returned = Arc::new(Mutex::new(Vec::new()));
+        let entities = EntitySet::with_allocator(Box::new(TrackingAllocator {
+            ranges: ranges.into_iter(),
+            returned: returned.clone(),
+        }));
+        (entities, returned)
+    }
+
+    #[test]
+    fn drop_returns_only_unreserved_suffixes() {
+        for (reserved, expected) in [
+            (0, alloc::vec![range(1, 5), range(11, 16)]),
+            (1, alloc::vec![range(2, 5), range(11, 16)]),
+            (4, alloc::vec![range(11, 16)]),
+            (6, alloc::vec![range(13, 16)]),
+            (9, alloc::vec![]),
+        ] {
+            let (entities, returned) = tracking_set([range(1, 5), range(11, 16)]);
+            for _ in 0..reserved {
+                entities.alloc();
+            }
+            drop(entities);
+            assert_eq!(*returned.lock(), expected);
+        }
+    }
+
+    #[test]
+    fn drop_never_returns_spawned_or_reserved_ids() {
+        let (mut entities, returned) = tracking_set([range(1, 5), range(11, 16)]);
+        assert_eq!(entities.alloc().id().bits(), 1);
+        assert_eq!(entities.alloc().id().bits(), 2);
+        entities.spawn_allocated(|_| 0);
+        let (spawned, _) = entities.spawn(0, |_| 0);
+        assert_eq!(spawned.bits(), 3);
+        assert!(entities.despawn(spawned).is_some());
+        assert_eq!(entities.alloc().id().bits(), 4);
+        assert_eq!(entities.alloc().id().bits(), 11);
+
+        drop(entities);
+        assert_eq!(*returned.lock(), [range(12, 16)]);
+    }
+
+    #[test]
+    fn drop_handles_exhausted_ranges() {
+        let (entities, returned) = tracking_set([range(1, 3), range(10, 10)]);
+        entities.alloc();
+        entities.alloc();
+        drop(entities);
+        assert!(returned.lock().is_empty());
+    }
+
+    #[test]
+    fn drop_consumes_large_reservation_count_without_materializing() {
+        let current_count = 1 << 31;
+        let next_start = 1 << 40;
+        let next_end = next_start + (1 << 32);
+        let (mut entities, returned) =
+            tracking_set([range(1, current_count + 1), range(next_start, next_end)]);
+        *entities.reserve_counter.get_mut() = u32::MAX as u64;
+        drop(entities);
+
+        assert_eq!(
+            *returned.lock(),
+            [range(
+                next_start + u32::MAX as u64 - current_count,
+                next_end
+            )]
+        );
+    }
+
+    #[test]
+    fn next_prefetch_panic_does_not_return_a_lease_twice() {
+        let (mut entities, returned) = tracking_set([range(1, 1), range(11, 16)]);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            entities.spawn(0, |_| 0);
+        }));
+        assert!(result.is_err());
+        drop(entities);
+        assert_eq!(*returned.lock(), [range(11, 16)]);
+    }
+
+    #[test]
+    fn flush_prefetch_panic_does_not_return_a_lease_twice() {
+        let (mut entities, returned) = tracking_set([range(1, 3), range(11, 16)]);
+        for _ in 0..3 {
+            entities.alloc();
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            entities.spawn_allocated(|_| 0);
+        }));
+        assert!(result.is_err());
+        drop(entities);
+        assert_eq!(*returned.lock(), [range(12, 16)]);
+    }
+
+    #[test]
+    fn flush_callback_panic_does_not_return_pending_reservations() {
+        let (mut entities, returned) = tracking_set([range(1, 5), range(11, 16)]);
+        for _ in 0..6 {
+            entities.alloc();
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            entities.spawn_allocated(|_| panic!("Cannot materialize entity"));
+        }));
+        assert!(result.is_err());
+        drop(entities);
+        assert_eq!(*returned.lock(), [range(13, 16)]);
     }
 }

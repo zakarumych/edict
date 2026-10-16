@@ -1,9 +1,10 @@
 use crate::{
+    NoSuchEntity,
     action::LocalActionEncoder,
     component::Component,
     entity::{Entity, EntityId, Location},
     relation::{OriginComponent, Relation, TargetComponent},
-    type_id, NoSuchEntity,
+    type_id,
 };
 
 use super::World;
@@ -85,7 +86,7 @@ impl World {
             }
         }
 
-        self.execute_local_actions();
+        self.maintenance();
         Ok(())
     }
 
@@ -128,7 +129,7 @@ impl World {
 
             R::on_drop(relation, origin.id(), target.id(), encoder);
         }
-        self.execute_local_actions();
+        self.maintenance();
         Ok(())
     }
 
@@ -176,7 +177,7 @@ impl World {
                     removed = Some(relation);
                 }
 
-                self.execute_local_actions();
+                self.maintenance();
             }
         }
 

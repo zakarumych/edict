@@ -16,9 +16,9 @@ pub fn system(mut item: syn::ItemFn, edict_path: &syn::Path) -> syn::Result<Toke
         ));
     }
 
-    if item.sig.unsafety.is_some() {
+    if matches!(item.sig.safety, syn::Safety::Unsafe(_)) {
         return Err(syn::Error::new_spanned(
-            item.sig.unsafety,
+            item.sig.safety,
             "unsafe functions may not be used with `#[system]` attribute",
         ));
     }

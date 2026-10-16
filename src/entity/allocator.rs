@@ -130,7 +130,7 @@ impl IdAllocator {
     /// If allocator is exhausted, returns `None`.
     pub fn next(&mut self) -> Option<NonZeroU64> {
         if self.current.is_empty() {
-            self.current = self.next;
+            core::mem::swap(&mut self.current, &mut self.next);
             self.next = proper_range(self.range_alloc.allocate_range());
         }
 
@@ -165,18 +165,51 @@ impl IdAllocator {
         None
     }
 
+    /// Consumes reserved IDs without materializing them or allocating more ranges.
+    pub fn discard_reserved(&mut self, count: u64) {
+        let current = count.min(self.current.count());
+        let next = (count - current).min(self.next.count());
+
+        // Safety: each increment is bounded by the corresponding range's count.
+        unsafe {
+            self.current.start = NonZeroU64::new_unchecked(self.current.start.get() + current);
+            self.next.start = NonZeroU64::new_unchecked(self.next.start.get() + next);
+        }
+
+        debug_assert_eq!(current + next, count);
+    }
+
     /// Calls provided closure with reserved IDs.
     /// `count` must be larger than all `idx` values passed to `reserve` that
     /// returned `Some`
     #[inline]
     pub unsafe fn flush_reserved(&mut self, count: u64, mut f: impl FnMut(NonZeroU64)) {
-        let mut advanced = self.current.advance(count, &mut f);
+        let mut current = self.current;
+        let mut next = self.next;
+        self.discard_reserved(count);
+
+        let mut advanced = current.advance(count, &mut f);
         if advanced < count {
-            advanced += self.next.advance(count - advanced, &mut f);
-            self.current = self.next;
+            advanced += next.advance(count - advanced, &mut f);
+            core::mem::swap(&mut self.current, &mut self.next);
             self.next = proper_range(self.range_alloc.allocate_range());
         }
         debug_assert_eq!(advanced, count);
+    }
+}
+
+impl Drop for IdAllocator {
+    fn drop(&mut self) {
+        // Safety: consumed IDs have been removed from both ranges, including
+        // pending reservations discarded by EntitySet before its fields drop.
+        unsafe {
+            if !self.current.is_empty() {
+                self.range_alloc.deallocate_range(self.current);
+            }
+            if !self.next.is_empty() {
+                self.range_alloc.deallocate_range(self.next);
+            }
+        }
     }
 }
 
@@ -199,15 +232,30 @@ impl IdAllocator {
 ///
 /// # Safety
 ///
-/// Implementation must allocate unique ID ranges.
+/// Allocated ID ranges must not overlap unless the overlapping IDs have been
+/// returned through [`IdRangeAllocator::deallocate_range`]. IDs that have been
+/// issued to entities must never be allocated again.
 pub unsafe trait IdRangeAllocator: Send + Sync + 'static {
     /// Allocate range of unique entity IDs.
-    /// IDs generated must be unique for the given allocator.
+    /// IDs must be unique for the given allocator, except for never-issued IDs
+    /// returned through [`IdRangeAllocator::deallocate_range`].
     /// Special allocator types may enforce uniqueness
     /// across multiple allocator instances.\
     ///
     /// If allocator is exhausted, returns empty range.
     fn allocate_range(&mut self) -> IdRange;
+
+    /// Returns an unused subrange for possible allocation again.
+    ///
+    /// The default implementation discards the range.
+    ///
+    /// # Safety
+    ///
+    /// `range` must be a never-issued subrange of a range previously provided by
+    /// this allocator. It must not overlap any pending entity reservations.
+    /// Each ID may be returned only once for each lease of its range, and the
+    /// caller must not use any returned IDs without allocating them again.
+    unsafe fn deallocate_range(&mut self, _range: IdRange) {}
 }
 
 struct DummyAllocator;

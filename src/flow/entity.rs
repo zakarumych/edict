@@ -7,15 +7,15 @@ use core::{
 };
 
 use crate::{
+    EntityError, Mismatch, NoSuchEntity,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{Entity, EntityBound, EntityId, EntityLoc, EntityRef, EntitySet, Location},
     query::{AsDefaultQuery, IntoQuery, Query, QueryItem},
     world::{World, WorldLocal},
-    EntityError, NoSuchEntity,
 };
 
-use super::{get_flow_world, Flow, FlowWorld, WakeOnDrop};
+use super::{Flow, FlowWorld, WakeOnDrop, get_flow_world};
 
 /// Entity reference usable in flows.
 ///
@@ -694,19 +694,20 @@ impl FlowEntity {
 
     /// Drops a component from the entity.
     #[inline]
-    pub fn drop<T>(self)
+    pub fn drop<T>(self) -> Result<(), Mismatch>
     where
         T: 'static,
     {
         match self.try_drop::<T>() {
-            Ok(_) => (),
-            Err(NoSuchEntity) => entity_not_alive(),
+            Ok(_) => Ok(()),
+            Err(EntityError::NoSuchEntity) => entity_not_alive(),
+            Err(EntityError::Mismatch) => Err(Mismatch),
         }
     }
 
     /// Drops a component from the entity.
     #[inline]
-    pub fn try_drop<T>(self) -> Result<(), NoSuchEntity>
+    pub fn try_drop<T>(self) -> Result<(), EntityError>
     where
         T: 'static,
     {
@@ -718,16 +719,17 @@ impl FlowEntity {
 
     /// Drops a component from the entity.
     #[inline]
-    pub fn drop_erased(self, ty: TypeId) {
+    pub fn drop_erased(self, ty: TypeId) -> Result<(), Mismatch> {
         match self.try_drop_erased(ty) {
-            Ok(_) => (),
-            Err(NoSuchEntity) => entity_not_alive(),
+            Ok(_) => Ok(()),
+            Err(EntityError::NoSuchEntity) => entity_not_alive(),
+            Err(EntityError::Mismatch) => Err(Mismatch),
         }
     }
 
     /// Drops a component from the entity.
     #[inline]
-    pub fn try_drop_erased(self, ty: TypeId) -> Result<(), NoSuchEntity> {
+    pub fn try_drop_erased(self, ty: TypeId) -> Result<(), EntityError> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { get_flow_world() };
 

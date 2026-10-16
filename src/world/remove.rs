@@ -1,10 +1,11 @@
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 
 use crate::{
+    EntityError, NoSuchEntity,
     action::LocalActionEncoder,
     bundle::Bundle,
     entity::{Entity, EntityId, EntityRef, Location},
-    type_id, NoSuchEntity,
+    type_id,
 };
 
 use super::{World, WorldLocal};
@@ -23,16 +24,21 @@ impl World {
     where
         T: 'static,
     {
+        #[cfg(debug_assertions)]
+        let prev_loc = entity.lookup(&self.entities);
+
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        let entity = entity.id();
+
+        #[cfg(debug_assertions)]
+        assert_eq!(prev_loc, Some(src_loc));
+
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         if !self.archetypes[src_loc.arch as usize].has_component(type_id::<T>()) {
-            // Safety: entity is not moved
-            // Reference is created with correct location of entity in this world.
-            let e = unsafe { EntityRef::from_parts(entity.id(), src_loc, self.local()) };
-            return Ok((None, e));
+            return Ok((None, EntityRef::from_parts(entity, src_loc, self)));
         }
 
         let dst_arch = self
@@ -61,18 +67,18 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        // Safety: entity is moved
-        // Reference is created with correct location of entity in this world.
-        let e = unsafe { EntityRef::from_parts(entity.id(), dst_loc, self.local()) };
-
-        Ok((Some(component), e))
+        Ok((
+            Some(component),
+            EntityRef::from_parts(entity, dst_loc, self),
+        ))
     }
 
     /// Drops component from the specified entity.
     ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::Mismatch)` if entity does not have component of this type.
     #[inline]
-    pub fn drop<T>(&mut self, entity: impl Entity) -> Result<(), NoSuchEntity>
+    pub fn drop<T>(&mut self, entity: impl Entity) -> Result<(), EntityError>
     where
         T: 'static,
     {
@@ -80,8 +86,6 @@ impl World {
     }
 
     /// Drops component from the specified entity.
-    ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline]
     pub fn drop_batch<T>(&mut self, entities: impl IntoIterator<Item = EntityId>)
     where
@@ -92,18 +96,17 @@ impl World {
 
     /// Drops component from the specified entity.
     ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::Mismatch)` if entity does not have component of this type.
     #[inline]
-    pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
+    pub fn drop_erased(&mut self, entity: impl Entity, ty: TypeId) -> Result<(), EntityError> {
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         if !self.archetypes[src_loc.arch as usize].has_component(ty) {
-            // Safety: entity is not moved
-            // Reference is created with correct location of entity in this world.
-            return Ok(());
+            return Err(EntityError::Mismatch);
         }
 
         let dst_arch = self.edges.remove(&mut self.archetypes, src_loc.arch, ty);
@@ -131,13 +134,11 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        self.execute_local_actions();
+        self.maintenance();
         Ok(())
     }
 
     /// Drops component from the specified entity.
-    ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
     #[inline]
     pub fn drop_erased_batch(&mut self, entities: impl IntoIterator<Item = EntityId>, ty: TypeId) {
         self.maintenance();
@@ -180,7 +181,7 @@ impl World {
             }
         }
 
-        self.execute_local_actions();
+        self.maintenance();
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -261,7 +262,7 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        self.execute_local_actions();
+        self.maintenance();
         Ok(())
     }
 }

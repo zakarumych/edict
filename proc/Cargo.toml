@@ -16,5 +16,5 @@ categories.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = "2.0"
+syn = "3.0.5"
 edict-proc-lib = { version = "=1.0.0-rc10", path = "../proc-lib" }

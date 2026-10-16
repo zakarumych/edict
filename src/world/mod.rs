@@ -25,6 +25,7 @@ use core::{
 };
 
 use crate::{
+    NoSuchEntity,
     action::{ActionChannel, ActionSender, LocalActionBuffer, LocalActionEncoder},
     archetype::Archetype,
     bundle::{BundleDesc, ComponentBundleDesc},
@@ -32,7 +33,7 @@ use crate::{
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
     resources::Resources,
-    type_id, NoSuchEntity,
+    type_id,
 };
 
 use self::edges::Edges;
@@ -327,16 +328,15 @@ impl World {
     ///
     /// Users do not call this method,
     /// it is automatically called in every method that borrows world mutably.
-    /// It is one `if zero_check { return }` if no entities were allocated since last call.
-    ///
-    /// The only observable effect of manual call to this method
-    /// is execution of actions encoded with [`ActionSender`].
     #[inline]
     pub(crate) fn maintenance(&mut self) {
         let archetype = &mut self.archetypes[0];
         self.entities
             .spawn_allocated(|id| archetype.spawn_empty(id));
-        self.execute_local_actions();
+
+        while let Some(action) = self.action_buffer.get_mut().pop() {
+            action.call(self);
+        }
     }
 
     /// Executes actions received from [`ActionSender`] instances
@@ -351,24 +351,9 @@ impl World {
         }
     }
 
-    /// Runs world maintenance.
-    ///
-    /// Users do not call this method,
-    /// it is automatically called in every method that borrows world mutably.
-    /// It is one `if zero_check { return }` if no entities were allocated since last call.
-    ///
-    /// The only observable effect of manual call to this method
-    /// is execution of actions encoded with [`ActionSender`].
-    #[inline]
-    fn execute_local_actions(&mut self) {
-        while let Some(action) = self.action_buffer.get_mut().pop() {
-            action.call(self.local());
-        }
-    }
-
     /// Executes deferred actions.
     pub fn run_deferred(&mut self) {
-        self.execute_local_actions();
+        self.maintenance();
     }
 }
 

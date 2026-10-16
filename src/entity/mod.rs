@@ -12,14 +12,14 @@ pub use self::{
 use core::{any::TypeId, fmt, marker::PhantomData, num::NonZeroU64};
 
 use crate::{
+    NoSuchEntity,
+    ResultEntityError,
     bundle::{Bundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     // flow::FlowEntityFn,
     query::{AsDefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
     view::ViewOne,
     world::{World, WorldLocal},
-    NoSuchEntity,
-    ResultEntityError,
 };
 
 /// General entity reference.
@@ -748,7 +748,7 @@ impl<'a> EntityRef<'a> {
     /// Inserts component if it is missing.
     /// Returns a mutable reference to the component.
     ///
-    /// Unlike `insert` this may neber cause hooks to be executed
+    /// Unlike `insert` this may never cause hooks to be executed
     /// so reference is guaranteed to be valid.
     #[inline]
     pub fn with<T>(&mut self, f: impl FnOnce() -> T) -> &mut T
@@ -760,7 +760,11 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        self.loc = unsafe { self.world.with(loc, f).unwrap_unchecked() }.loc;
+
+        unsafe {
+            self.world.with(loc, f).unwrap_unchecked();
+            self.loc = self.id.lookup(self.world.entities()).unwrap_unchecked();
+        }
 
         unsafe {
             self.world

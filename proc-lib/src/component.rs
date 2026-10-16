@@ -1,7 +1,7 @@
 use proc_easy::EasyAttributes;
 use syn::spanned::Spanned;
 
-use crate::{merge_where_clauses, Borrow, Name, OnDrop, OnReplace, WhereClause};
+use crate::{Borrow, Name, OnDrop, OnReplace, WhereClause, merge_where_clauses};
 
 proc_easy::easy_attributes! {
     @(edict)
@@ -73,14 +73,15 @@ pub fn derive(
                             ));
                         }
 
-                        let bound =
-                            match &trait_object.bounds[0] {
-                                syn::TypeParamBound::Trait(bound) => bound,
-                                _ => return Err(syn::Error::new(
+                        let bound = match &trait_object.bounds[0] {
+                            syn::TypeParamBound::Trait(bound) => bound,
+                            _ => {
+                                return Err(syn::Error::new(
                                     target.span(),
                                     "Only dyn traits without markers and lifetimes are supported",
-                                )),
-                            };
+                                ));
+                            }
+                        };
 
                         insert_borrows.extend(quote::quote! {
                             #edict_path::trait_borrow!(#ident as #bound => output);
@@ -108,7 +109,7 @@ pub fn derive(
             #on_replace
 
             fn borrows() -> #edict_path::private::Vec<#edict_path::component::ComponentBorrow> {
-                let mut output = Vec::new();
+                let mut output = #edict_path::private::Vec::new();
                 output.push(#edict_path::component::ComponentBorrow::auto::<Self>());
                 #edict_path::trait_borrow!(Self as #edict_path::component::Value => output);
                 #edict_path::trait_borrow!(Self as #edict_path::private::Any => output);

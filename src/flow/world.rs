@@ -7,6 +7,7 @@ use core::{
 };
 
 use crate::{
+    EntityError, NoSuchEntity,
     bundle::{Bundle, ComponentBundle, DynamicBundle, DynamicComponentBundle},
     component::Component,
     entity::{Entity, EntityId},
@@ -14,10 +15,9 @@ use crate::{
     relation::Relation,
     view::View,
     world::WorldLocal,
-    EntityError, NoSuchEntity,
 };
 
-use super::{get_flow_world, Flow, FlowEntity};
+use super::{Flow, FlowEntity, get_flow_world};
 
 /// Type that can be spawned as a flow.
 /// It can be an async function or a closure
@@ -66,7 +66,7 @@ where
     unsafe fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = unsafe { self.get_unchecked_mut() };
         let fut = unsafe { Pin::new_unchecked(&mut this.fut) };
-        
+
         fut.poll(cx)
     }
 }
@@ -162,7 +162,7 @@ impl FlowWorld {
     where
         Q: AsDefaultQuery,
         F: AsDefaultQuery,
-        F: FnMut(View<Q, F>, &mut Context) -> Poll<R>,
+        Fun: FnMut(View<Q, F>, &mut Context) -> Poll<R>,
     {
         PollView {
             f,
@@ -537,9 +537,10 @@ impl FlowWorld {
 
     /// Drops component from the specified entity.
     ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::Mismatch)` if entity does not have component of this type.
     #[inline]
-    pub fn drop<T>(self, entity: impl Entity) -> Result<(), NoSuchEntity>
+    pub fn drop<T>(self, entity: impl Entity) -> Result<(), EntityError>
     where
         T: 'static,
     {
@@ -551,9 +552,10 @@ impl FlowWorld {
 
     /// Drops component from the specified entity.
     ///
-    /// Returns `Err(NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::NoSuchEntity)` if entity is not alive.
+    /// Returns `Err(EntityError::Mismatch)` if entity does not have component of this type.
     #[inline]
-    pub fn drop_erased(self, entity: impl Entity, ty: TypeId) -> Result<(), NoSuchEntity> {
+    pub fn drop_erased(self, entity: impl Entity, ty: TypeId) -> Result<(), EntityError> {
         // Safety: world reference does not escape this scope.
         let world = unsafe { self.get() };
 

@@ -1,16 +1,17 @@
 use core::any::type_name;
 
 use crate::{
+    NoSuchEntity,
     action::LocalActionEncoder,
     bundle::{DynamicBundle, DynamicComponentBundle},
     component::{Component, ComponentInfo, ComponentRegistry},
-    entity::{Entity, EntityLoc, Location},
-    type_id, NoSuchEntity,
+    entity::{Entity, EntityLoc, EntityRef, Location},
+    type_id,
 };
 
 use super::{
-    assert_bundle_registered, assert_registered, ensure_bundle_registered, register_component,
-    World, WorldLocal,
+    World, WorldLocal, assert_bundle_registered, assert_registered, ensure_bundle_registered,
+    register_component,
 };
 
 impl World {
@@ -39,13 +40,14 @@ impl World {
         T: Component,
     {
         self._with(entity, || component, true, register_component::<T>)?;
+        self.maintenance();
         Ok(())
     }
 
     /// Attempts to inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
-    /// old component value is preserved.
+    /// old component value is replaced with new one.
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
@@ -72,6 +74,7 @@ impl World {
         T: 'static,
     {
         self._with(entity, || component, true, assert_registered::<T>)?;
+        self.maintenance();
         Ok(())
     }
 
@@ -99,17 +102,18 @@ impl World {
         &mut self,
         entity: impl Entity,
         f: impl FnOnce() -> T,
-    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         T: Component,
     {
-        self._with(entity, f, false, register_component::<T>)
+        let loc = self._with(entity, f, false, register_component::<T>)?;
+        Ok(EntityRef::from_parts(entity.id(), loc, self))
     }
 
     /// Attempts to inserts component to the specified entity.
     ///
     /// If entity already had component of that type,
-    /// old component value is replaced with new one.
+    /// old component value is preserved.
     /// Otherwise new component is added to the entity.
     ///
     /// If entity is not alive, fails with `Err(NoSuchEntity)`.
@@ -131,11 +135,12 @@ impl World {
         &mut self,
         entity: impl Entity,
         f: impl FnOnce() -> T,
-    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         T: 'static,
     {
-        self._with(entity, f, false, assert_registered::<T>)
+        let loc = self._with(entity, f, false, assert_registered::<T>)?;
+        Ok(EntityRef::from_parts(entity.id(), loc, self))
     }
 
     pub(crate) fn _with<T, F>(
@@ -144,14 +149,22 @@ impl World {
         f: impl FnOnce() -> T,
         replace: bool,
         get_or_register: F,
-    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    ) -> Result<Location, NoSuchEntity>
     where
         T: 'static,
         F: FnOnce(&mut ComponentRegistry) -> &ComponentInfo,
     {
+        #[cfg(debug_assertions)]
+        let prev_loc = entity.lookup(&self.entities);
+
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        let entity = entity.id();
+
+        #[cfg(debug_assertions)]
+        assert_eq!(prev_loc, Some(src_loc));
+
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         let epoch = self.epoch.next_mut();
@@ -161,17 +174,17 @@ impl World {
                 let encoder = LocalActionEncoder::new(self.action_buffer.get_mut(), &self.entities);
                 unsafe {
                     self.archetypes[src_loc.arch as usize].set(
-                        entity.id(),
+                        entity,
                         src_loc.idx,
                         f(),
                         epoch,
                         encoder,
                     );
                 }
-                self.execute_local_actions();
+                self.maintenance();
             }
 
-            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
+            return Ok(src_loc);
         }
 
         let dst_arch = self.edges.insert(
@@ -193,19 +206,18 @@ impl World {
             false => (&mut after[0], &mut before[dst_arch as usize]),
         };
 
-        let (dst_idx, opt_src_id) =
-            unsafe { src.insert(entity.id(), dst, src_loc.idx, f(), epoch) };
+        let (dst_idx, opt_src_id) = unsafe { src.insert(entity, dst, src_loc.idx, f(), epoch) };
 
         let dst_loc = Location::new(dst_arch, dst_idx);
 
-        self.entities.set_location(entity.id(), dst_loc);
+        self.entities.set_location(entity, dst_loc);
 
         if let Some(src_id) = opt_src_id {
             self.entities.set_location(src_id, src_loc);
         }
 
-        self.execute_local_actions();
-        Ok(EntityLoc::from_parts(entity.id(), dst_loc))
+        self.maintenance();
+        Ok(dst_loc)
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -235,6 +247,7 @@ impl World {
         B: DynamicComponentBundle,
     {
         self._with_bundle(entity, bundle, true, ensure_bundle_registered::<B>)?;
+        self.maintenance();
         Ok(())
     }
 
@@ -278,6 +291,7 @@ impl World {
         self._with_bundle(entity, bundle, true, |registry, bundle| {
             assert_bundle_registered(registry, bundle)
         })?;
+        self.maintenance();
         Ok(())
     }
 
@@ -298,7 +312,7 @@ impl World {
     /// let mut world = World::new();
     /// let entity = world.spawn(()).id();
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(false));
-    /// world.insert_bundle(entity, (ExampleComponent,));
+    /// world.with_bundle(entity, (ExampleComponent,));
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// ```
     #[inline]
@@ -306,11 +320,12 @@ impl World {
         &mut self,
         entity: impl Entity,
         bundle: B,
-    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    ) -> Result<EntityRef<'_>, NoSuchEntity>
     where
         B: DynamicComponentBundle,
     {
-        self._with_bundle(entity, bundle, false, ensure_bundle_registered::<B>)
+        let loc = self._with_bundle(entity, bundle, false, ensure_bundle_registered::<B>)?;
+        Ok(EntityRef::from_parts(entity.id(), loc, self))
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -333,7 +348,7 @@ impl World {
     /// world.ensure_component_registered::<ExampleComponent>();
     /// world.ensure_external_registered::<u32>();
     ///
-    /// world.insert_external_bundle(entity, (ExampleComponent, 42u32));
+    /// world.with_external_bundle(entity, (ExampleComponent, 42u32));
     ///
     /// assert_eq!(world.try_has_component::<ExampleComponent>(entity), Ok(true));
     /// assert_eq!(world.try_has_component::<u32>(entity), Ok(true));
@@ -347,9 +362,10 @@ impl World {
     where
         B: DynamicBundle,
     {
-        self._with_bundle(entity, bundle, false, |registry, bundle| {
+        let loc = self._with_bundle(entity, bundle, false, |registry, bundle| {
             assert_bundle_registered(registry, bundle)
-        })
+        })?;
+        Ok(EntityLoc::from_parts(entity.id(), loc))
     }
 
     fn _with_bundle<B, F>(
@@ -358,7 +374,7 @@ impl World {
         bundle: B,
         replace: bool,
         register_bundle: F,
-    ) -> Result<EntityLoc<'_>, NoSuchEntity>
+    ) -> Result<Location, NoSuchEntity>
     where
         B: DynamicBundle,
         F: FnOnce(&mut ComponentRegistry, &B),
@@ -370,15 +386,21 @@ impl World {
             );
         }
 
+        #[cfg(debug_assertions)]
+        let prev_loc = entity.lookup(&self.entities);
+
         self.maintenance();
 
         let src_loc = entity.lookup(&self.entities).ok_or(NoSuchEntity)?;
+        let entity = entity.id();
+
+        #[cfg(debug_assertions)]
+        assert_eq!(prev_loc, Some(src_loc));
+
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
         if bundle.with_ids(|ids| ids.is_empty()) {
-            // Safety: bundle is empty, so entity is not moved
-            // Reference is created with correct location of entity in this world.
-            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
+            return Ok(src_loc);
         }
 
         let epoch = self.epoch.next_mut();
@@ -403,11 +425,8 @@ impl World {
                         encoder,
                     )
                 }
-
-                self.execute_local_actions();
             }
-
-            return Ok(EntityLoc::from_parts(entity.id(), src_loc));
+            return Ok(src_loc);
         }
 
         let (before, after) = self
@@ -440,8 +459,7 @@ impl World {
             self.entities.set_location(src_id, src_loc);
         }
 
-        self.execute_local_actions();
-        Ok(EntityLoc::from_parts(entity.id(), dst_loc))
+        Ok(dst_loc)
     }
 }
 

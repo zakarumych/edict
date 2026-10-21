@@ -1,9 +1,9 @@
 //! World serialization with [`alkahest`].
 
 use alkahest::{
-    advanced::{slice_writer, write_field, BareFormula, Buffer, Deserializer, Sizes, SliceWriter},
-    deserialize_with_size, serialize_to_vec, DeIter, Deserialize, DeserializeError, Formula, Lazy,
-    Serialize,
+    DeIter, Deserialize, DeserializeError, Formula, Lazy, Serialize,
+    advanced::{BareFormula, Buffer, Deserializer, Sizes, SliceWriter, slice_writer, write_field},
+    deserialize_with_size, serialize_to_vec,
 };
 
 use crate::{action::ActionEncoder, component::Component, query::SendImmutableQuery};
@@ -240,7 +240,7 @@ fn test_dump() {
     type Set = (Foo, Bar, Baz);
 
     let mut data = Vec::new();
-    let (size, root) = WorldDump::<Set, _>::new(&mut world, (), EpochId::start())
+    let (size, root) = WorldDump::<Set, _>::new(&world, (), EpochId::start())
         .dump_alkahest::<Foo, Bar, Baz>(&mut data);
 
     let mut world2 = World::new();

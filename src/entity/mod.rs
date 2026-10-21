@@ -74,6 +74,14 @@ pub struct EntityId {
     id: NonZeroU64,
 }
 
+impl Default for EntityId {
+    fn default() -> Self {
+        EntityId {
+            id: const { NonZeroU64::new(u64::MAX).unwrap() },
+        }
+    }
+}
+
 #[cfg(feature = "serde")]
 impl serde::ser::Serialize for EntityId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

@@ -43,7 +43,7 @@ unsafe impl<'a> BatchFetch<'a> for EntitiesFetch<'a> {
     unsafe fn get_batch(&mut self, start: u32, end: u32) -> &'a [EntityId] {
         debug_assert!(end >= start);
 
-        unsafe { &*self.entities.get_unchecked(start as usize..end as usize) }
+        unsafe { self.entities.get_unchecked(start as usize..end as usize) }
     }
 }
 

@@ -117,8 +117,8 @@ pub fn derive_component(
 ) -> TokenStream {
     match syn::parse2(item).and_then(|input| component::derive(input, edict_path, edict_namespace))
     {
-        Ok(output) => output.into(),
-        Err(err) => err.to_compile_error().into(),
+        Ok(output) => output,
+        Err(err) => err.to_compile_error(),
     }
 }
 
@@ -128,8 +128,8 @@ pub fn derive_relation(
     edict_namespace: &syn::Ident,
 ) -> TokenStream {
     match syn::parse2(item).and_then(|input| relation::derive(input, edict_path, edict_namespace)) {
-        Ok(output) => output.into(),
-        Err(err) => err.to_compile_error().into(),
+        Ok(output) => output,
+        Err(err) => err.to_compile_error(),
     }
 }
 
@@ -139,8 +139,8 @@ pub fn derive_relation(
 //     edict_namespace: &syn::Ident,
 // ) -> TokenStream {
 //     match syn::parse2(item).and_then(|input| query::derive(input, edict_path, edict_namespace)) {
-//         Ok(output) => output.into(),
-//         Err(err) => err.to_compile_error().into(),
+//         Ok(output) => output
+//         Err(err) => err.to_compile_error()
 //     }
 // }
 

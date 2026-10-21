@@ -447,11 +447,17 @@ where
     type Item<'a> = RelationWriteIter<'a, R>;
     type Fetch<'a> = FetchRelatedWrite<'a, R>;
 
-    const MUTABLE: bool = false;
+    const MUTABLE: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
-        if comp.id() == type_id::<TargetComponent<R>>() {
+        if comp.id()
+            == if R::SYMMETRIC {
+                type_id::<OriginComponent<R>>()
+            } else {
+                type_id::<TargetComponent<R>>()
+            }
+        {
             Ok(Some(Access::Write))
         } else {
             Ok(None)
@@ -486,24 +492,6 @@ where
         if R::SYMMETRIC {
             let component = unsafe {
                 archetype
-                    .component(type_id::<TargetComponent<R>>())
-                    .unwrap_unchecked()
-            };
-            debug_assert_eq!(component.id(), type_id::<TargetComponent<R>>());
-
-            let data = unsafe { component.data_mut() };
-            data.epoch.bump(epoch);
-
-            FetchRelatedWrite {
-                ptr: data.ptr.cast(),
-                epoch,
-                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-                chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
-                marker: PhantomData,
-            }
-        } else {
-            let component = unsafe {
-                archetype
                     .component(type_id::<OriginComponent<R>>())
                     .unwrap_unchecked()
             };
@@ -519,9 +507,26 @@ where
                 chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
                 marker: PhantomData,
             }
+        } else {
+            let component = unsafe {
+                archetype
+                    .component(type_id::<TargetComponent<R>>())
+                    .unwrap_unchecked()
+            };
+            debug_assert_eq!(component.id(), type_id::<TargetComponent<R>>());
+
+            let data = unsafe { component.data_mut() };
+            data.epoch.bump(epoch);
+
+            FetchRelatedWrite {
+                ptr: data.ptr.cast(),
+                epoch,
+                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
+                chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+                marker: PhantomData,
+            }
         }
     }
 }
 
-unsafe impl<R> ImmutableQuery for Related<Write<R>> where R: Relation {}
 unsafe impl<R> SendQuery for Related<Write<R>> where R: Relation + Send {}

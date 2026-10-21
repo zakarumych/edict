@@ -36,27 +36,26 @@ pub fn derive(
     });
 
     let on_drop = attributes.on_drop.map(|on_drop| {
-            let on_drop = &on_drop.function;
-            quote::quote! {
-                #[allow(unused_variables)]
-                #[inline]
-                fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) {
-                    (#on_drop)(self, entity, encoder)
-                }
-            }
-        });
-
-    let on_replace = attributes.on_replace.map(|on_replace|{
-            let on_replace = &on_replace.function;
-            quote::quote! {
-                #[allow(unused_variables)]
-                #[inline]
-                fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) -> bool {
-                    (#on_replace)(self, value, entity, encoder)
-                }
+        let on_drop = &on_drop.function;
+        quote::quote! {
+            #[allow(unused_variables)]
+            #[inline]
+            fn on_drop(&mut self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) {
+                (#on_drop)(self, entity, encoder)
             }
         }
-    );
+    });
+
+    let on_replace = attributes.on_replace.map(|on_replace| {
+        let on_replace = &on_replace.function;
+        quote::quote! {
+            #[allow(unused_variables)]
+            #[inline]
+            fn on_replace(&mut self, value: &Self, entity: #edict_path::entity::EntityId, encoder: #edict_path::action::LocalActionEncoder<'_>) -> bool {
+                (#on_replace)(self, value, entity, encoder)
+            }
+        }
+    });
 
     let insert_borrows = match attributes.borrow {
         None => None,
@@ -111,7 +110,6 @@ pub fn derive(
             fn borrows() -> #edict_path::private::Vec<#edict_path::component::ComponentBorrow> {
                 let mut output = #edict_path::private::Vec::new();
                 output.push(#edict_path::component::ComponentBorrow::auto::<Self>());
-                #edict_path::trait_borrow!(Self as #edict_path::component::Value => output);
                 #edict_path::trait_borrow!(Self as #edict_path::private::Any => output);
                 #insert_borrows
                 output

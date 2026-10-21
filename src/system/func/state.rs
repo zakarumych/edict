@@ -126,7 +126,7 @@ fn test_state_system() {
     use super::{IntoSystem, System};
 
     fn bar(mut state: State<u32>) {
-        *state = *state + 1;
+        *state += 1;
         #[cfg(feature = "std")]
         println!("{}", *state);
     }

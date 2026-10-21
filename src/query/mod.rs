@@ -51,7 +51,7 @@ pub use self::{
     filter::{FilteredFetch, Not, With, Without},
     modified::{
         Modified, ModifiedFetchAlt, ModifiedFetchCopied, ModifiedFetchRead, ModifiedFetchWith,
-        ModifiedFetchWrite,
+        ModifiedFetchWrite, ModifiedRelationFetch,
     },
     read::{FetchRead, Read},
     with_epoch::{EpochOf, FetchEpoch, WithEpoch},

@@ -153,7 +153,7 @@ fn test_dump() {
 
     type Set = (Foo, Bar, Baz);
 
-    let data = WorldDump::<Set, _>::new(&mut world, (), EpochId::start()).serialize_bin();
+    let data = WorldDump::<Set, _>::new(&world, (), EpochId::start()).serialize_bin();
 
     let mut world2 = World::new();
 

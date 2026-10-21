@@ -143,7 +143,7 @@ pub trait DumpSet {
     ) -> Result<(), E>
     where
         F: SendImmutableQuery,
-        D: for<'a> Dumper<Self, Error = E>;
+        D: Dumper<Self, Error = E>;
 }
 
 /// Tuple of components that can be loaded.
@@ -159,7 +159,7 @@ pub trait LoadSet {
         loader: &mut L,
     ) -> Result<(), E>
     where
-        L: for<'a> Loader<Self, Error = E>,
+        L: Loader<Self, Error = E>,
         M: Mark;
 }
 

@@ -11,20 +11,19 @@ use core::{
     cell::UnsafeCell,
     hint::unreachable_unchecked,
     iter::FromIterator,
-    mem::{self, size_of, ManuallyDrop, MaybeUninit},
+    mem::{self, ManuallyDrop, MaybeUninit, size_of},
     ops::Deref,
-    ptr::{self, copy_nonoverlapping, NonNull},
+    ptr::{self, NonNull, copy_nonoverlapping},
 };
 
 use atomicell::borrow::{
-    new_lock, release_borrow, release_borrow_mut, try_borrow, try_borrow_mut, Lock,
+    Lock, new_lock, release_borrow, release_borrow_mut, try_borrow, try_borrow_mut,
 };
 use hashbrown::HashMap;
 
 use crate::{
-    action::LocalActionEncoder, bundle::DynamicBundle, clamp_usize_to_u32,
+    Access, MAX_U32_USIZE, action::LocalActionEncoder, bundle::DynamicBundle, clamp_usize_to_u32,
     component::ComponentInfo, entity::EntityId, epoch::EpochId, hash::NoOpHasherBuilder, type_id,
-    Access, MAX_U32_USIZE,
 };
 
 pub(crate) struct ComponentData {
@@ -594,7 +593,9 @@ impl Archetype {
         B: DynamicBundle,
     {
         debug_assert!(self.ids().all(|id| dst.components.contains_key(&id)));
-        debug_assert!(bundle.with_ids(|ids| ids.iter().all(|&id| dst.components.contains_key(&id))));
+        debug_assert!(
+            bundle.with_ids(|ids| ids.iter().all(|&id| dst.components.contains_key(&id)))
+        );
 
         debug_assert_eq!(
             bundle.with_ids(|ids| {
@@ -1040,7 +1041,7 @@ pub(crate) const fn chunks_count(entities: u32) -> u32 {
 
 #[inline]
 pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
-    if idx % CHUNK_LEN == 0 {
+    if idx.is_multiple_of(CHUNK_LEN) {
         Some(chunk_idx(idx))
     } else {
         None
@@ -1049,7 +1050,7 @@ pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
 
 #[inline]
 pub(crate) fn starts_of_chunks(start: u32, end: u32, mut f: impl FnMut(u32)) {
-    if start % CHUNK_LEN == 0 {
+    if start.is_multiple_of(CHUNK_LEN) {
         f(chunk_idx(start));
     }
 

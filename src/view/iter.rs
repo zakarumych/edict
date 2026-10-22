@@ -1,7 +1,7 @@
 use core::ops::Range;
 
 use crate::{
-    archetype::{chunk_idx, first_of_chunk, starts_of_chunks, Archetype, CHUNK_LEN},
+    archetype::{Archetype, CHUNK_LEN, chunk_idx, first_of_chunk, starts_of_chunks},
     epoch::EpochId,
     query::{AsQuery, BatchFetch, BatchQuery, Fetch, ImmutableQuery, Query, QueryBatch, QueryItem},
 };
@@ -395,8 +395,13 @@ where
     ///
     /// Unlike `iter`, this version works for views with mutable queries
     /// since mutable borrow won't allow to iterate the view multiple times simultaneously.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `batch_size` is zero.
     #[inline]
     pub fn iter_batched_mut(&mut self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
+        assert!(batch_size > 0, "batch_size must be greater than zero");
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
         self.acquire_borrow();
@@ -427,8 +432,13 @@ where
     /// Unlike `iter_mut`, this version only works for views with immutable queries.
     /// Immutable query are guaranteed to not conflict with any other immutable query,
     /// allowing for iterating a view multiple times simultaneously.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `batch_size` is zero.
     #[inline]
     pub fn iter_batched(&self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
+        assert!(batch_size > 0, "batch_size must be greater than zero");
         debug_assert!(!Q::MUTABLE && !F::MUTABLE);
         let epoch = self.epochs.current();
 
@@ -456,8 +466,13 @@ where
     B: BorrowState,
 {
     /// Returns an iterator over entities with a query `Q` and filter `F`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `batch_size` is zero.
     #[inline]
     pub fn into_iter_batched(self, batch_size: u32) -> ViewValueBatchIter<'a, Q, F, B> {
+        assert!(batch_size > 0, "batch_size must be greater than zero");
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
         let query = self.query;
@@ -469,6 +484,30 @@ where
         // Borrow state is given to the iter where it will be released on drop.
         unsafe { ViewValueBatchIter::new(epoch, query, filter, archetypes, state, batch_size) }
     }
+}
+
+#[inline]
+unsafe fn prepare_batch_chunks<'a>(
+    start: u32,
+    end: u32,
+    filter: &mut impl BatchFetch<'a>,
+    query: &mut impl BatchFetch<'a>,
+) {
+    starts_of_chunks(start, end, |chunk_idx| {
+        // BatchFetch forbids chunk filtering, so exact batch lengths remain valid.
+        assert!(
+            unsafe { filter.visit_chunk(chunk_idx) },
+            "BatchFetch must not reject chunks"
+        );
+        assert!(
+            unsafe { query.visit_chunk(chunk_idx) },
+            "BatchFetch must not reject chunks"
+        );
+        unsafe {
+            filter.touch_chunk(chunk_idx);
+            query.touch_chunk(chunk_idx);
+        }
+    });
 }
 
 /// Iterator over entities with a query `Q`.
@@ -591,10 +630,14 @@ where
                     let start = self.indices.start;
                     let end = self.indices.end.min(start.saturating_add(self.batch_size));
 
-                    starts_of_chunks(start, end, |chunk_idx| {
-                        unsafe { self.filter_fetch.touch_chunk(chunk_idx) }
-                        unsafe { self.query_fetch.touch_chunk(chunk_idx) }
-                    });
+                    unsafe {
+                        prepare_batch_chunks(
+                            start,
+                            end,
+                            &mut self.filter_fetch,
+                            &mut self.query_fetch,
+                        )
+                    };
 
                     self.indices.start = end;
 
@@ -617,10 +660,9 @@ where
             let start = self.indices.start;
             let end = self.indices.end.min(start.saturating_add(self.batch_size));
 
-            starts_of_chunks(start, end, |chunk_idx| {
-                unsafe { self.filter_fetch.touch_chunk(chunk_idx) }
-                unsafe { self.query_fetch.touch_chunk(chunk_idx) }
-            });
+            unsafe {
+                prepare_batch_chunks(start, end, &mut self.filter_fetch, &mut self.query_fetch)
+            };
 
             self.indices.start = end;
 
@@ -656,10 +698,7 @@ where
                 let start = indices.start;
                 let end = indices.end.min(start.saturating_add(self.batch_size));
 
-                starts_of_chunks(start, end, |chunk_idx| {
-                    unsafe { filter_fetch.touch_chunk(chunk_idx) }
-                    unsafe { query_fetch.touch_chunk(chunk_idx) }
-                });
+                unsafe { prepare_batch_chunks(start, end, &mut filter_fetch, &mut query_fetch) };
 
                 indices.start = end;
 

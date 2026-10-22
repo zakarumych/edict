@@ -98,6 +98,7 @@ where
     type Fetch<'a> = ModifiedFetchWith<'a, T>;
 
     const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

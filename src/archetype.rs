@@ -1036,7 +1036,7 @@ pub(crate) const fn chunk_idx(idx: u32) -> u32 {
 
 #[inline]
 pub(crate) const fn chunks_count(entities: u32) -> u32 {
-    entities + (CHUNK_LEN - 1) / CHUNK_LEN
+    entities.div_ceil(CHUNK_LEN)
 }
 
 #[inline]
@@ -1050,16 +1050,50 @@ pub(crate) const fn first_of_chunk(idx: u32) -> Option<u32> {
 
 #[inline]
 pub(crate) fn starts_of_chunks(start: u32, end: u32, mut f: impl FnMut(u32)) {
-    if start.is_multiple_of(CHUNK_LEN) {
-        f(chunk_idx(start));
+    let mut chunk = start.div_ceil(CHUNK_LEN);
+    let finish = end.div_ceil(CHUNK_LEN);
+    while chunk < finish {
+        f(chunk);
+        chunk += 1;
+    }
+}
+
+#[cfg(test)]
+mod chunk_tests {
+    use super::{chunks_count, starts_of_chunks};
+
+    #[test]
+    fn chunk_counts_cover_boundaries_without_overflow() {
+        for (entities, expected) in [
+            (0, 0),
+            (1, 1),
+            (255, 1),
+            (256, 1),
+            (257, 2),
+            (512, 2),
+            (513, 3),
+            (u32::MAX, 16_777_216),
+        ] {
+            assert_eq!(chunks_count(entities), expected);
+        }
     }
 
-    let begin = start - start % CHUNK_LEN;
-    let finish = end - end % CHUNK_LEN;
-    let mut cur = begin;
-
-    while cur < finish {
-        cur += CHUNK_LEN;
-        f(chunk_idx(cur));
+    #[test]
+    fn chunk_starts_respect_exclusive_range_end() {
+        for (start, end, expected) in [
+            (0, 0, &[][..]),
+            (0, 256, &[0][..]),
+            (0, 257, &[0, 1][..]),
+            (17, 256, &[][..]),
+            (17, 257, &[1][..]),
+            (256, 512, &[1][..]),
+            (257, 512, &[][..]),
+            (257, 513, &[2][..]),
+            (512, 512, &[][..]),
+        ] {
+            let mut actual = alloc::vec::Vec::new();
+            starts_of_chunks(start, end, |chunk| actual.push(chunk));
+            assert_eq!(actual, expected, "range {start}..{end}");
+        }
     }
 }

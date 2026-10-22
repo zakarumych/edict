@@ -37,7 +37,7 @@ fn main() {
     assert_eq!(
         world
             .new_view_mut()
-            .borrow_any::<&(dyn Debug + Sync)>()
+            .borrow_any::<dyn Debug + Sync>()
             .into_iter()
             .count(),
         1
@@ -46,7 +46,7 @@ fn main() {
     assert_eq!(
         world
             .new_view_mut()
-            .borrow_any::<&(dyn Debug + Send + Sync)>()
+            .borrow_any::<dyn Debug + Send + Sync>()
             .into_iter()
             .count(),
         1

@@ -181,7 +181,7 @@ where
     unsafe fn visit_item(&mut self, idx: u32) -> bool {
         match self {
             NotFetch::Fetch { fetch, visit_chunk } if *visit_chunk => unsafe {
-                fetch.visit_item(idx)
+                !fetch.visit_item(idx)
             },
             _ => true,
         }
@@ -241,10 +241,15 @@ where
         T: 'a;
 
     const MUTABLE: bool = T::MUTABLE;
+    const FILTERS_ENTITIES: bool = T::FILTERS_ENTITIES;
 
     #[inline]
-    fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
-        Ok(None)
+    fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
+        if T::FILTERS_ENTITIES {
+            self.0.component_access(comp)
+        } else {
+            Ok(None)
+        }
     }
 
     #[inline]
@@ -257,7 +262,11 @@ where
     }
 
     #[inline]
-    unsafe fn access_archetype(&self, _archetype: &Archetype, _f: impl FnMut(TypeId, Access)) {}
+    unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
+        if T::FILTERS_ENTITIES && self.0.visit_archetype(archetype) {
+            unsafe { self.0.access_archetype(archetype, f) }
+        }
+    }
 
     #[inline]
     unsafe fn fetch<'a>(
@@ -266,7 +275,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> NotFetch<T::Fetch<'a>> {
-        if self.0.visit_archetype(archetype) {
+        if self.0.visit_archetype(archetype) && unsafe { self.0.visit_archetype_late(archetype) } {
             NotFetch::Fetch {
                 fetch: unsafe { self.0.fetch(arch_idx, archetype, epoch) },
                 visit_chunk: false,

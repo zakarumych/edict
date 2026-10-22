@@ -4,8 +4,8 @@ use crate::{
     entity::Entity,
     epoch::EpochId,
     query::{
-        AsQuery, BorrowAll, BorrowAny, BorrowOne, Modified, Not, Query, Read, SendQuery, With,
-        Without, Write,
+        AsQuery, BorrowAll, BorrowAny, BorrowOne, DefaultQuery, DefaultSendQuery, Modified, Not,
+        Query, Read, SendQuery, With, Without, Write,
     },
     relation::{
         ExclusiveRelation, FilterRelated, FilterRelatedBy, FilterRelates, FilterRelatesTo, Related,
@@ -119,6 +119,16 @@ where
             state,
             extensibility: Extensible,
         }
+    }
+
+    /// Extends query tupole with an additional query element.
+    #[inline]
+    pub fn extend_default<E>(self) -> ViewValue<'a, TupleQueryAdd<Q, E::Query>, F, B, Extensible>
+    where
+        E: AsQuery,
+        E::Query: DefaultSendQuery,
+    {
+        self.extend(E::Query::default_query())
     }
 
     /// Extends query tuple with a query element that fetches the component,

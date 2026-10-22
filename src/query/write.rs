@@ -61,6 +61,10 @@ where
         debug_assert!(end >= start);
 
         let count = end - start;
+        for idx in start..end {
+            let entity_epoch = unsafe { &mut *self.entity_epochs.as_ptr().add(idx as usize) };
+            entity_epoch.bump(self.epoch);
+        }
         unsafe {
             core::slice::from_raw_parts_mut(self.ptr.as_ptr().add(start as usize), count as usize)
         }

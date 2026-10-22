@@ -47,9 +47,9 @@
 //! // Run systems without parallelism.
 //! scheduler.run_sequential(&mut world);
 //!
-//! # #[cfg(feature = "std")]
+//! # #[cfg(feature = "threaded-scheduler")]
 //! # {
-//! // Run systems using threads. Requires "std" feature.
+//! // Run systems using threads. Requires "threaded-scheduler" feature.
 //! scheduler.run_threaded(&mut world);
 //! # }
 //!

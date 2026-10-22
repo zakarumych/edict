@@ -41,10 +41,17 @@ impl<T> Deref for RefMut<'_, T> {
 impl<T> DerefMut for RefMut<'_, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        self.entity_epoch.bump_again(self.epoch);
-        EpochId::bump_cell(self.chunk_epoch, self.epoch);
-        EpochId::bump_cell(self.archetype_epoch, self.epoch);
+        Self::bump(self);
         self.component
+    }
+}
+
+impl<T> RefMut<'_, T> {
+    /// Force-bump epoch of the referenced entity.
+    pub fn bump(this: &mut Self) {
+        this.entity_epoch.bump_again(this.epoch);
+        EpochId::bump_cell(this.chunk_epoch, this.epoch);
+        EpochId::bump_cell(this.archetype_epoch, this.epoch);
     }
 }
 
@@ -149,6 +156,7 @@ where
     type Fetch<'a> = FetchAlt<'a, T>;
 
     const MUTABLE: bool = true;
+    const FILTERS_ENTITIES: bool = false;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

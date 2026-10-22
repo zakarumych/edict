@@ -231,14 +231,14 @@ impl World {
         entity
     }
 
-    /// Spawns a new entity in this world with specific ID and bundle of components.
+    /// Spawns an entity with the specified ID, or inserts components into an existing entity.
     /// The `World` must be configured to never allocate this ID.
-    /// Spawned entity is populated with all components from the bundle.
-    /// Entity will be alive until [`World::despawn`] is called with the same [`EntityId`].
+    /// Components in the bundle replace existing components of the same types.
+    /// Other components of an existing entity are preserved.
     ///
     /// # Panics
     ///
-    /// Panics if the id is already used by the world.
+    /// Panics if a component replacement hook despawns the entity.
     ///
     /// # Example
     ///
@@ -257,6 +257,13 @@ impl World {
         B: DynamicComponentBundle,
     {
         self.maintenance();
+        if self.is_alive(id) {
+            self.insert_bundle(id, bundle)
+                .expect("Entity exists before component insertion");
+            return self
+                .entity(id)
+                .expect("Component replacement hook despawned entity");
+        }
         let (_spawned, entity) = self._spawn_at(id, bundle, ensure_bundle_registered::<B>);
         entity
     }

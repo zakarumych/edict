@@ -3,6 +3,20 @@
 Edict is a fast, powerful and ergonomic ECS crate that expands traditional ECS feature set.
 Written in Rust by your fellow 🦀
 
+# Runnable showcases
+
+The [example guide](examples/README.md) covers six complete, deterministic
+scenarios. Each prints its simulation state and checks its final invariants.
+
+| Example | What it demonstrates | Run |
+| --- | --- | --- |
+| Scene graph | Inherited transforms, reparenting, and owned subtree cleanup | `cargo run --example scene_graph` |
+| Particle fountain | Batch emission, gravity, lifetime cleanup, and ASCII animation frames | `cargo run --example particle_fountain` |
+| Colony | Scheduled production, shared resources, deferred construction, and lifecycle hooks | `cargo run --example colony` |
+| Async factory | Flow-driven orders, scheduled processing, wakeups, and cancellation | `cargo run --example async_factory` |
+| Checkpoint replay | Binary full/delta snapshots and deterministic simulation recovery | `cargo run --example checkpoint_replay --features nanoserde` |
+| Live workshop | Commands from another thread, dynamic components, and change-driven inspection | `cargo run --example live_workshop` |
+
 # Basic usage 🌱
 
 ```rust

@@ -101,6 +101,7 @@ where
     type Fetch<'a> = ModifiedFetchCopied<'a, T>;
 
     const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -210,6 +211,7 @@ where
     type Fetch<'a> = Option<ModifiedFetchCopied<'a, T>>;
 
     const MUTABLE: bool = false;
+    const FILTERS_ENTITIES: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

@@ -115,5 +115,29 @@ required-features = []
 name = "schedule"
 required-features = ["threaded-scheduler"]
 
+[[example]]
+name = "scene_graph"
+required-features = []
+
+[[example]]
+name = "particle_fountain"
+required-features = []
+
+[[example]]
+name = "colony"
+required-features = ["scheduler", "std"]
+
+[[example]]
+name = "async_factory"
+required-features = ["scheduler", "flow", "std"]
+
+[[example]]
+name = "checkpoint_replay"
+required-features = ["nanoserde", "std"]
+
+[[example]]
+name = "live_workshop"
+required-features = []
+
 [package.metadata.docs.rs]
 all-features = true

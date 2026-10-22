@@ -163,7 +163,9 @@ impl World {
         let entity = entity.id();
 
         #[cfg(debug_assertions)]
-        assert_eq!(prev_loc, Some(src_loc));
+        if prev_loc.map(|loc| loc.arch) != Some(u32::MAX) {
+            assert_eq!(prev_loc, Some(src_loc));
+        }
 
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 
@@ -395,7 +397,9 @@ impl World {
         let entity = entity.id();
 
         #[cfg(debug_assertions)]
-        assert_eq!(prev_loc, Some(src_loc));
+        if prev_loc.map(|loc| loc.arch) != Some(u32::MAX) {
+            assert_eq!(prev_loc, Some(src_loc));
+        }
 
         debug_assert!(src_loc.arch < u32::MAX, "Allocated entities were spawned");
 

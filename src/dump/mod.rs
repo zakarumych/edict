@@ -325,7 +325,7 @@ macro_rules! set {
                         marker.mark(world, id);
                         indexed_tuple!(idx => $(match $a {
                             Some(comp) => { let _ = world.insert(id, comp); }
-                            None => if present & (1 << idx) != 0 {
+                            None => if present & (1 << idx) == 0 {
                                 let _ = world.drop::<$a>(id);
                             }
                         }),+);

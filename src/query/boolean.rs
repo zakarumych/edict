@@ -133,7 +133,14 @@ pub struct BooleanFetch<T, Op> {
     archetype: u16,
     chunk: u16,
     item: u16,
+    filters_entities: bool,
     op: PhantomData<Op>,
+}
+
+#[inline]
+fn may_match<Op: BooleanFetchOp>(mask: u16, count: usize, filters_entities: bool) -> bool {
+    // Per-entity filtering can reduce the set of matching arms.
+    Op::mask(mask, count) || (filters_entities && mask != 0)
 }
 
 macro_rules! impl_boolean {
@@ -155,6 +162,7 @@ macro_rules! impl_boolean {
                     archetype: 0,
                     chunk: 0,
                     item: 0,
+                    filters_entities: false,
                     op: PhantomData,
                 }
             }
@@ -176,6 +184,7 @@ macro_rules! impl_boolean {
 
             #[inline]
             unsafe fn visit_item(&mut self, idx: u32) -> bool {
+                self.item = 0;
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
                 let mut count = 0;
@@ -193,6 +202,7 @@ macro_rules! impl_boolean {
 
             #[inline]
             unsafe fn visit_chunk(&mut self, chunk_idx: u32) -> bool {
+                self.chunk = 0;
                 let ($($a,)+) = &mut self.tuple;
                 let mut mi = 1;
                 let mut count = 0;
@@ -205,7 +215,7 @@ macro_rules! impl_boolean {
                     mi <<= 1;
                     count += 1;
                 )+
-                Op::mask(self.chunk, count)
+                may_match::<Op>(self.chunk, count, self.filters_entities)
             }
 
             #[inline]
@@ -327,6 +337,7 @@ macro_rules! impl_boolean {
             type Fetch<'a> = BooleanFetch<($($a::Fetch<'a>,)+), Op> where $($a: 'a,)+;
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
+            const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
 
             #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -363,7 +374,7 @@ macro_rules! impl_boolean {
                     mi <<= 1;
                     count += 1;
                 )+
-                Op::mask(mask, count)
+                may_match::<Op>(mask, count, Self::FILTERS_ENTITIES)
             }
 
             #[inline]
@@ -373,13 +384,15 @@ macro_rules! impl_boolean {
                 let mut count = 0;
                 let mut mask = 0;
                 $(
-                    if unsafe { $a.visit_archetype_late(archetype) } {
+                    if $a.visit_archetype(archetype)
+                        && unsafe { $a.visit_archetype_late(archetype) }
+                    {
                         mask |= mi;
                     }
                     mi <<= 1;
                     count += 1;
                 )+
-                Op::mask(mask, count)
+                may_match::<Op>(mask, count, Self::FILTERS_ENTITIES)
             }
 
             #[inline]
@@ -394,7 +407,9 @@ macro_rules! impl_boolean {
                 let mut mi = 0;
 
                 $(
-                    let $a = if $a.visit_archetype(archetype) {
+                    let $a = if $a.visit_archetype(archetype)
+                        && unsafe { $a.visit_archetype_late(archetype) }
+                    {
                         mask |= (1 << mi);
                         unsafe { $a.fetch(arch_idx, archetype, epoch) }
                     } else {
@@ -408,6 +423,7 @@ macro_rules! impl_boolean {
                     archetype: mask,
                     chunk: 0,
                     item: 0,
+                    filters_entities: Self::FILTERS_ENTITIES,
                     op: PhantomData,
                 }
             }

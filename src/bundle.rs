@@ -11,7 +11,7 @@ use core::{
     any::TypeId,
     fmt,
     marker::PhantomData,
-    mem::{align_of, replace, size_of, ManuallyDrop},
+    mem::{ManuallyDrop, align_of, replace, size_of},
     ptr::{self, NonNull},
 };
 
@@ -275,6 +275,9 @@ impl Drop for EntityBuilder {
             let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
             info.final_drop(ptr, 1);
         }
+        if self.layout.size() != 0 {
+            unsafe { alloc::alloc::dealloc(self.ptr.as_ptr(), self.layout) };
+        }
     }
 }
 
@@ -362,19 +365,23 @@ impl EntityBuilder {
                 self.layout.size()
             };
 
+            let cap = cap.max(MIN_LAYOUT_SIZE);
             let align = new_value_layout.align().max(MIN_LAYOUT_ALIGN);
             let new_layout = Layout::from_size_align(cap, align).unwrap_or(new_value_layout);
 
             unsafe {
                 let new_ptr = alloc::alloc::alloc(new_layout);
-                let new_ptr = NonNull::new(new_ptr).unwrap();
+                let new_ptr = NonNull::new(new_ptr)
+                    .unwrap_or_else(|| alloc::alloc::handle_alloc_error(new_layout));
 
                 ptr::copy_nonoverlapping(self.ptr.as_ptr(), new_ptr.as_ptr(), self.len);
 
                 let old_ptr = replace(&mut self.ptr, new_ptr);
                 let old_layout = replace(&mut self.layout, new_layout);
 
-                alloc::alloc::dealloc(old_ptr.as_ptr(), old_layout);
+                if old_layout.size() != 0 {
+                    alloc::alloc::dealloc(old_ptr.as_ptr(), old_layout);
+                }
             }
         }
 
@@ -447,10 +454,10 @@ unsafe impl DynamicBundle for EntityBuilder {
     }
 
     #[inline]
-    fn put(self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
-        let me = ManuallyDrop::new(self);
-        for (info, &offset) in me.infos.iter().zip(&me.offsets) {
-            let ptr = unsafe { NonNull::new_unchecked(me.ptr.as_ptr().add(offset)) };
+    fn put(mut self, mut f: impl FnMut(NonNull<u8>, TypeId, usize)) {
+        while let Some(info) = self.infos.pop() {
+            let offset = self.offsets.pop().unwrap();
+            let ptr = unsafe { NonNull::new_unchecked(self.ptr.as_ptr().add(offset)) };
             f(ptr, info.id(), info.layout().size());
         }
     }

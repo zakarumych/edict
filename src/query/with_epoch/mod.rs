@@ -9,7 +9,9 @@ use super::{
     Access, AsQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias, fetch::Fetch,
 };
 
+mod alt;
 mod read;
+mod write;
 
 /// Fetch for [`EpochOf`] epochs.
 pub struct FetchEpoch<'a> {

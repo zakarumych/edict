@@ -118,6 +118,7 @@ where
     type Fetch<'a> = ModifiedFetchAlt<'a, T>;
 
     const MUTABLE: bool = true;
+    const FILTERS_ENTITIES: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -227,6 +228,7 @@ where
     type Fetch<'a> = Option<ModifiedFetchAlt<'a, T>>;
 
     const MUTABLE: bool = true;
+    const FILTERS_ENTITIES: bool = true;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

@@ -1,13 +1,16 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
-    query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias},
+    query::{
+        ArchetypesCaching, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    },
     relation::{OriginComponent, Relation, TargetComponent},
-    type_id, Access,
+    type_id,
 };
 
 /// Fetch for the `FilterRelatedBy<R>` query.
@@ -110,6 +113,7 @@ where
 
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
+    const ARCHETYPES_CACHING: ArchetypesCaching = ArchetypesCaching::Skips;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

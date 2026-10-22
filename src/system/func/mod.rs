@@ -5,7 +5,7 @@ mod view;
 mod world;
 
 use core::{
-    any::{type_name, TypeId},
+    any::{TypeId, type_name},
     marker::PhantomData,
     ptr::NonNull,
 };

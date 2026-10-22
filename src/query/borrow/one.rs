@@ -112,6 +112,11 @@ where
 
     const MUTABLE: bool = false;
 
+    #[inline(always)]
+    fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
+        None
+    }
+
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == self.ty {
@@ -246,6 +251,11 @@ where
     type Fetch<'a> = FetchBorrowOneWrite<'a, T>;
 
     const MUTABLE: bool = true;
+
+    #[inline(always)]
+    fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
+        None
+    }
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

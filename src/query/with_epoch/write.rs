@@ -102,6 +102,11 @@ where
     const FILTERS_ENTITIES: bool = false;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        <Write<T> as Query>::cache_visit_archetype(archetype)
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.0.component_access(comp)
     }

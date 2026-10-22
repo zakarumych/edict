@@ -28,10 +28,18 @@
 //! [`Entity`]: crate::entity::Entity
 //!
 
-use core::any::TypeId;
+use core::{any::TypeId, marker::PhantomData};
+
+use hashbrown::HashMap;
+use smallvec::SmallVec;
 
 use crate::{
-    Access, archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
+    Access,
+    archetype::{self, Archetype},
+    component::ComponentInfo,
+    entity::EntityId,
+    epoch::EpochId,
+    hash::NoOpHasherBuilder,
 };
 
 pub use self::{
@@ -115,6 +123,14 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// `Fetch::visit_chunk` and `Fetch::visit_item`.
     const FILTERS_ENTITIES: bool = false;
 
+    /// Caching archetype visit flag.
+    ///
+    /// Returns `None` if checking is required on each pass.
+    ///
+    /// If it returns `Some(v)` then `v` is assumed to always be the result of call to [`visit_archetype`]
+    #[must_use]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool>;
+
     /// Returns what kind of access the query performs on the component type.
     /// This method may return stronger access type if it is impossible to know
     /// exact access with only type-id.
@@ -149,13 +165,12 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// Must not be called if `visit_archetype` returned `false`.
     /// access_archetype must have been called before this method.
     #[must_use]
-    #[inline]
+    #[inline(always)]
     unsafe fn visit_archetype_late(&self, archetype: &Archetype) -> bool {
         debug_assert!(self.visit_archetype(archetype));
         let _ = archetype;
         true
     }
-
     /// Fetches data from one archetype.
     ///
     /// # Safety
@@ -401,4 +416,74 @@ where
     Q: AsQuery,
     Q::Query: DefaultQuery + SendQuery + ImmutableQuery,
 {
+}
+
+struct OneQueryCache {
+    /// 2-bit per archetype visiting cache.
+    /// 0 - unknown
+    /// 1 - check
+    /// 2 - skip
+    /// 3 - visit
+    bits: Vec<u64>,
+}
+
+pub struct QueryCache {
+    queries: HashMap<TypeId, OneQueryCache, NoOpHasherBuilder>,
+}
+
+pub struct QueryCacheRef<'a, Q> {
+    bits: &'a mut [u64],
+    marker: PhantomData<fn() -> Q>,
+}
+
+impl<Q> QueryCacheRef<'_, Q>
+where
+    Q: Query,
+{
+    fn visit_archetype(&mut self, query: &Q, archetype: &Archetype, archetype_idx: usize) -> bool {
+        let ci = archetype_idx / 32;
+        let bi = archetype_idx % 32;
+
+        match Q::ARCHETYPES_CACHING {
+            ArchetypesCaching::Nothing => query.visit_archetype(archetype),
+            ArchetypesCaching::Skips => {
+                let cbits = self.bits[ci];
+                let mut bits = 3 & (cbits >> (bi * 2));
+
+                if bits == 0 {
+                    if Q::cache_visit_archetype(archetype) {
+                        bits = 1;
+                    } else {
+                        bits = 2;
+                    }
+                    self.bits[ci] |= bits << (bi * 2);
+                }
+
+                match bits {
+                    1 => query.visit_archetype(archetype),
+                    2 => false,
+                    _ => false, // unreachable, but false is safe to return.
+                }
+            }
+            ArchetypesCaching::Full => {
+                let cbits = self.bits[ci];
+                let mut bits = 3 & (cbits >> (bi * 2));
+
+                if bits == 0 {
+                    if Q::cache_visit_archetype(archetype) {
+                        bits = 3;
+                    } else {
+                        bits = 2;
+                    }
+                    self.bits[ci] |= bits << (bi * 2);
+                }
+
+                match bits {
+                    2 => false,
+                    3 => true,
+                    _ => false, // unreachable, but false is safe to return.
+                }
+            }
+        }
+    }
 }

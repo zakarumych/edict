@@ -101,20 +101,22 @@ where
     const FILTERS_ENTITIES: bool = true;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        if archetype.has_component(type_id::<T>()) {
+            None
+        } else {
+            Some(false)
+        }
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.query.component_access(comp)
     }
 
     #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
-        match archetype.component(type_id::<T>()) {
-            None => false,
-            Some(component) => unsafe {
-                debug_assert!(self.query.visit_archetype(archetype));
-                debug_assert_eq!(component.id(), type_id::<T>());
-                true
-            },
-        }
+        archetype.has_component(type_id::<T>())
     }
 
     #[inline]

@@ -1,0 +1,5 @@
+**/target/
+**/*.exe
+**/*.pdb
+.uv-cache/
+!**/Cargo.lock

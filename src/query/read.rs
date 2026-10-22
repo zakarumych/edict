@@ -103,6 +103,11 @@ where
     const MUTABLE: bool = false;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<T>()))
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Read))

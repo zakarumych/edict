@@ -159,6 +159,11 @@ where
     const FILTERS_ENTITIES: bool = false;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<T>()))
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.id() == type_id::<T>() {
             Ok(Some(Access::Write))
@@ -171,7 +176,6 @@ where
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<T>())
     }
-
     #[inline]
     unsafe fn access_archetype(&self, _archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         f(type_id::<T>(), Access::Write)

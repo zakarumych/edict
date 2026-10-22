@@ -1,8 +1,13 @@
 use core::any::TypeId;
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
-    system::DefaultQueryArg, type_id,
+    archetype::Archetype,
+    component::ComponentInfo,
+    epoch::EpochId,
+    query::DefaultQuery,
+    system::{DefaultQueryArg, QueryArg},
+    type_id,
+    world::World,
 };
 
 use super::{
@@ -228,7 +233,22 @@ where
     }
 }
 
-impl<T> DefaultQueryArg for Not<T> where T: DefaultQueryArg {}
+impl<T> QueryArg for Not<T>
+where
+    T: QueryArg,
+{
+    fn new() -> Self {
+        Not(QueryArg::new())
+    }
+
+    fn before(&mut self, world: &World) {
+        self.0.before(world);
+    }
+
+    fn after(&mut self, world: &World) {
+        self.0.after(world);
+    }
+}
 
 unsafe impl<T> Query for Not<T>
 where

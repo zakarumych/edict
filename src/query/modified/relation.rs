@@ -84,6 +84,14 @@ macro_rules! modified_relation {
             const FILTERS_ENTITIES: bool = true;
 
             #[inline]
+            fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+                match <$query as Query>::cache_visit_archetype(archetype) {
+                    None | Some(true) => None,
+                    Some(false) => Some(false),
+                }
+            }
+
+            #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 let access = self.query.component_access(comp)?;
                 if comp.id() == $component {

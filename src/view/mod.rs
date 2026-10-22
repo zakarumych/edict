@@ -7,17 +7,17 @@
 //!
 
 use crate::{
-    archetype::{chunk_idx, Archetype},
+    Access,
+    archetype::{Archetype, chunk_idx},
     component::ComponentInfo,
     entity::{EntitySet, Location},
     epoch::EpochCounter,
     query::{AsQuery, Fetch, Query, QueryItem},
     world::World,
-    Access,
 };
 
 pub use self::{
-    borrow::{acquire, release, BorrowState, RuntimeBorrowState, StaticallyBorrowed},
+    borrow::{BorrowState, RuntimeBorrowState, StaticallyBorrowed, acquire, release},
     iter::{
         ViewBatchIter, ViewCellBatchIter, ViewCellIter, ViewIter, ViewValueBatchIter, ViewValueIter,
     },
@@ -486,29 +486,17 @@ where
         return None;
     }
 
-    if !query.visit_archetype(archetype) || !filter.visit_archetype(archetype) {
+    if !filter.visit_archetype(archetype) || !query.visit_archetype(archetype) {
         return None;
     }
 
-    if !unsafe { query.visit_archetype_late(archetype) }
-        || !unsafe { filter.visit_archetype_late(archetype) }
+    if !unsafe { filter.visit_archetype_late(archetype) }
+        || !unsafe { query.visit_archetype_late(archetype) }
     {
         return None;
     }
 
     let epoch = epochs.next_if(Q::Query::MUTABLE || F::Query::MUTABLE);
-
-    let mut query_fetch = unsafe { query.fetch(arch, archetype, epoch) };
-
-    if !unsafe { Fetch::visit_chunk(&mut query_fetch, chunk_idx(idx)) } {
-        return None;
-    }
-
-    unsafe { Fetch::touch_chunk(&mut query_fetch, chunk_idx(idx)) }
-
-    if !unsafe { Fetch::visit_item(&mut query_fetch, idx) } {
-        return None;
-    }
 
     let mut filter_fetch = unsafe { filter.fetch(arch, archetype, epoch) };
 
@@ -519,6 +507,18 @@ where
     unsafe { Fetch::touch_chunk(&mut filter_fetch, chunk_idx(idx)) }
 
     if !unsafe { Fetch::visit_item(&mut filter_fetch, idx) } {
+        return None;
+    }
+
+    let mut query_fetch = unsafe { query.fetch(arch, archetype, epoch) };
+
+    if !unsafe { Fetch::visit_chunk(&mut query_fetch, chunk_idx(idx)) } {
+        return None;
+    }
+
+    unsafe { Fetch::touch_chunk(&mut query_fetch, chunk_idx(idx)) }
+
+    if !unsafe { Fetch::visit_item(&mut query_fetch, idx) } {
         return None;
     }
 

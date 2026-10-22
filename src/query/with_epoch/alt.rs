@@ -108,6 +108,11 @@ where
     const FILTERS_ENTITIES: bool = false;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        <Alt<T> as Query>::cache_visit_archetype(archetype)
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.0.component_access(comp)
     }
@@ -116,7 +121,6 @@ where
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         self.0.visit_archetype(archetype)
     }
-
     #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
         unsafe {

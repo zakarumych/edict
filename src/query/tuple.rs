@@ -61,6 +61,11 @@ macro_rules! impl_fetch {
             const MUTABLE: bool = false;
 
             #[inline]
+            fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
+                Some(true)
+            }
+
+            #[inline]
             fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
                 Ok(None)
             }
@@ -193,6 +198,15 @@ macro_rules! impl_fetch {
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
+
+            #[inline]
+            fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+                $(let $a = <$a as Query>::cache_visit_archetype(archetype);)+
+
+                $( if $a == Some(false) { return Some(false); } )+
+                $( if $a.is_none() { return None; } )+
+                Some(true)
+            }
 
             #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

@@ -135,6 +135,11 @@ where
     const MUTABLE: bool = T::MUTABLE;
 
     #[inline]
+    fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
+        Some(true)
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         self.0.component_access(comp)
     }
@@ -146,10 +151,8 @@ where
 
     #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, f: impl FnMut(TypeId, Access)) {
-        if self.0.visit_archetype(archetype) {
-            unsafe {
-                self.0.access_archetype(archetype, f);
-            }
+        unsafe {
+            self.0.access_archetype(archetype, f);
         }
     }
 

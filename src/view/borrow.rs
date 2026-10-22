@@ -48,14 +48,18 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
                     {
                         self.query.access_archetype(archetype, |id, access| {
                             if self.query_len > 0 {
-                                archetype.component(id).unwrap_unchecked().release(access);
+                                if let Some(component) = archetype.component(id) {
+                                    component.release(access);
+                                }
                                 self.query_len -= 1;
                             }
                         });
 
                         self.filter.access_archetype(archetype, |id, access| {
                             if self.filter_len > 0 {
-                                archetype.component(id).unwrap_unchecked().release(access);
+                                if let Some(component) = archetype.component(id) {
+                                    component.release(access);
+                                }
                                 self.filter_len -= 1;
                             }
                         });
@@ -77,13 +81,17 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
         unsafe {
             if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
                 query.access_archetype(archetype, |id, access| {
-                    let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                    assert!(success, "Failed to lock '{id:?}' from archetype");
+                    if let Some(component) = archetype.component(id) {
+                        let success = component.borrow(access);
+                        assert!(success, "Failed to lock '{id:?}' from archetype");
+                    }
                     guard.query_len += 1;
                 });
                 filter.access_archetype(archetype, |id, access| {
-                    let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                    assert!(success, "Failed to lock '{id:?}' from archetype");
+                    if let Some(component) = archetype.component(id) {
+                        let success = component.borrow(access);
+                        assert!(success, "Failed to lock '{id:?}' from archetype");
+                    }
                     guard.filter_len += 1;
                 });
             }
@@ -100,10 +108,14 @@ pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
         unsafe {
             if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
                 query.access_archetype(archetype, &|id, access| {
-                    archetype.component(id).unwrap_unchecked().release(access);
+                    if let Some(component) = archetype.component(id) {
+                        component.release(access);
+                    }
                 });
                 filter.access_archetype(archetype, &|id, access| {
-                    archetype.component(id).unwrap_unchecked().release(access);
+                    if let Some(component) = archetype.component(id) {
+                        component.release(access);
+                    }
                 });
             }
         }
@@ -131,20 +143,18 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
                 unsafe {
                     self.query.access_archetype(self.archetype, |id, access| {
                         if self.query_len > 0 {
-                            self.archetype
-                                .component(id)
-                                .unwrap_unchecked()
-                                .release(access);
+                            if let Some(component) = self.archetype.component(id) {
+                                component.release(access);
+                            }
                             self.query_len -= 1;
                         }
                     });
 
                     self.filter.access_archetype(self.archetype, |id, access| {
                         if self.filter_len > 0 {
-                            self.archetype
-                                .component(id)
-                                .unwrap_unchecked()
-                                .release(access);
+                            if let Some(component) = self.archetype.component(id) {
+                                component.release(access);
+                            }
                             self.filter_len -= 1;
                         }
                     });
@@ -164,13 +174,17 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     unsafe {
         if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
             query.access_archetype(archetype, |id, access| {
-                let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                assert!(success, "Failed to lock '{id:?}' from archetype");
+                if let Some(component) = archetype.component(id) {
+                    let success = component.borrow(access);
+                    assert!(success, "Failed to lock '{id:?}' from archetype");
+                }
                 guard.query_len += 1;
             });
             filter.access_archetype(archetype, |id, access| {
-                let success = archetype.component(id).unwrap_unchecked().borrow(access);
-                assert!(success, "Failed to lock '{id:?}' from archetype");
+                if let Some(component) = archetype.component(id) {
+                    let success = component.borrow(access);
+                    assert!(success, "Failed to lock '{id:?}' from archetype");
+                }
                 guard.filter_len += 1;
             });
         }
@@ -184,10 +198,14 @@ fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     unsafe {
         if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
             query.access_archetype(archetype, &|id, access| {
-                archetype.component(id).unwrap_unchecked().release(access);
+                if let Some(component) = archetype.component(id) {
+                    component.release(access);
+                }
             });
             filter.access_archetype(archetype, &|id, access| {
-                archetype.component(id).unwrap_unchecked().release(access);
+                if let Some(component) = archetype.component(id) {
+                    component.release(access);
+                }
             });
         }
     }

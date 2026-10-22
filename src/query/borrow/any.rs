@@ -95,6 +95,11 @@ where
 
     const MUTABLE: bool = false;
 
+    #[inline(always)]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.contains_borrow(type_id::<T>()))
+    }
+
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow(type_id::<T>()) {
@@ -242,6 +247,11 @@ where
     const MUTABLE: bool = true;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.contains_borrow_mut(type_id::<T>()))
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if comp.has_borrow_mut(type_id::<T>()) {
             Ok(Some(Access::Write))
@@ -254,7 +264,6 @@ where
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.contains_borrow_mut(type_id::<T>())
     }
-
     #[inline]
     unsafe fn access_archetype(&self, archetype: &Archetype, mut f: impl FnMut(TypeId, Access)) {
         let components = unsafe {

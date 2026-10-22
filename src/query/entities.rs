@@ -79,6 +79,11 @@ unsafe impl Query for Entities {
     const MUTABLE: bool = false;
 
     #[inline]
+    fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
+        Some(true)
+    }
+
+    #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
     }

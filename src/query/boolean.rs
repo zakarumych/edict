@@ -6,7 +6,8 @@ use crate::{
 };
 
 use super::{
-    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
+    Access,, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
+    WriteAlias, 
     fetch::{BatchFetch, Fetch},
 };
 
@@ -324,6 +325,15 @@ macro_rules! impl_boolean {
                     op: PhantomData,
                 }
             }
+            #[inline]
+            fn before(&mut self, world: &crate::world::World) {
+                self.tuple.before(world);
+            }
+
+            #[inline]
+            fn after(&mut self, world: &crate::world::World) {
+                self.tuple.after(world);
+            }
         }
 
         #[allow(non_snake_case)]
@@ -338,6 +348,12 @@ macro_rules! impl_boolean {
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
+
+            #[inline]
+            fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+                $(let $a = <$a as Query>::cache_visit_archetype(archetype);)+
+                
+            }
 
             #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -537,3 +553,43 @@ pub type Xor7<A, B, C, D, E, F, G> = Xor<(A, B, C, D, E, F, G)>;
 
 /// Combines eight filters and yields only entities that pass exactly one.
 pub type Xor8<A, B, C, D, E, F, G, H> = Xor<(A, B, C, D, E, F, G, H)>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        component::Component,
+        query::{Entities, Modified, With},
+        world::World,
+    };
+
+    #[derive(Component)]
+    struct A;
+    #[derive(Component)]
+    struct B;
+
+    #[test]
+    fn boolean_query_forwards_modified_hooks() {
+        type Changed = Or2<Modified<With<A>>, Modified<With<B>>>;
+        let mut world = World::new();
+        let entity = world.spawn((A, B)).id();
+        let mut query = <Changed as QueryArg>::new();
+        let count =
+            |world: &World, query: Changed| world.view::<Entities>().filter(query).iter().count();
+
+        assert_eq!(count(&world, query), 1);
+        query.before(&world);
+        query.after(&world);
+        assert_eq!(count(&world, query), 0);
+
+        world.get::<&mut A>(entity).unwrap();
+        assert_eq!(count(&world, query), 1);
+        query.after(&world);
+        assert_eq!(count(&world, query), 0);
+
+        world.get::<&mut B>(entity).unwrap();
+        assert_eq!(count(&world, query), 1);
+        query.after(&world);
+        assert_eq!(count(&world, query), 0);
+    }
+}

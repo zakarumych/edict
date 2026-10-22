@@ -1,13 +1,17 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
-    query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery, Write, WriteAlias},
+    query::{
+        ArchetypesCaching, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, Read, SendQuery,
+        Write, WriteAlias,
+    },
     relation::{OriginComponent, Relation},
-    type_id, Access,
+    type_id,
 };
 
 /// Query for origins of relation with specified target.
@@ -112,6 +116,7 @@ where
 
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
+    const ARCHETYPES_CACHING: ArchetypesCaching = ArchetypesCaching::Skips;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

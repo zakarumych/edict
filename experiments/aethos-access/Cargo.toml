@@ -1,0 +1,12 @@
+[package]
+name = "aethos-access-diagnostics"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+edict = { path = "../.." }
+bevy_ecs = "=0.20.0"
+

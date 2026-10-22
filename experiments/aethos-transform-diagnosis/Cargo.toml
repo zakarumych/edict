@@ -1,0 +1,21 @@
+[package]
+name = "aethos-transform-diagnosis"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+aethos-util = { path = "C:/code/aethos/code/util" }
+edict = { path = "C:/code/edict" }
+bevy_ecs = "=0.20.0"
+hecs = "=0.11.2"
+shipyard = "=0.11.5"
+
+[dev-dependencies]
+criterion = { version = "=0.8.2", features = ["html_reports"] }
+
+
+[features]
+phases = []

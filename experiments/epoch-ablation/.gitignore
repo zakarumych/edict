@@ -1,0 +1,5 @@
+/edict-single-thread/
+/edict-single-thread-backup-*/
+**/target/
+*.exe
+*.pdb

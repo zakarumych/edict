@@ -1,6 +1,7 @@
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
+    Access,
     archetype::Archetype,
     component::ComponentInfo,
     entity::EntityLoc,
@@ -9,7 +10,7 @@ use crate::{
         AsQuery, Entities, EntitiesFetch, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery,
         WriteAlias,
     },
-    type_id, Access,
+    type_id,
 };
 
 /// Query result per component.
@@ -128,6 +129,11 @@ macro_rules! impl_dump_query {
 
             const MUTABLE: bool = false;
             const FILTERS_ENTITIES: bool = true;
+
+            #[inline]
+            fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+                Some(false $(|| archetype.has_component(type_id::<$a>()))*)
+            }
 
             #[inline]
             fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

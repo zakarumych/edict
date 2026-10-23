@@ -6,8 +6,7 @@ use crate::{
 };
 
 use super::{
-    Access,, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery,
-    WriteAlias, 
+    Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
     fetch::{BatchFetch, Fetch},
 };
 
@@ -138,10 +137,8 @@ pub struct BooleanFetch<T, Op> {
     op: PhantomData<Op>,
 }
 
-#[inline]
-fn may_match<Op: BooleanFetchOp>(mask: u16, count: usize, filters_entities: bool) -> bool {
-    // Per-entity filtering can reduce the set of matching arms.
-    Op::mask(mask, count) || (filters_entities && mask != 0)
+fn is_xor<B: BooleanFetchOp>() -> bool {
+    crate::type_id::<XorOp>() == crate::type_id::<B>()
 }
 
 macro_rules! impl_boolean {
@@ -216,7 +213,13 @@ macro_rules! impl_boolean {
                     mi <<= 1;
                     count += 1;
                 )+
-                may_match::<Op>(self.chunk, count, self.filters_entities)
+
+
+                if self.filters_entities && is_xor::<Op>() && self.chunk != 0 {
+                    true
+                } else {
+                    Op::mask(self.chunk, count)
+                }
             }
 
             #[inline]
@@ -351,8 +354,33 @@ macro_rules! impl_boolean {
 
             #[inline]
             fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
-                $(let $a = <$a as Query>::cache_visit_archetype(archetype);)+
-                
+                let mut unknown = false;
+                if Self::FILTERS_ENTITIES && is_xor::<Op>() {
+                    let mut count = 0;
+                    $(
+                        match <$a as Query>::cache_visit_archetype(archetype) {
+                            // Exactly-one matching remains possible when extra arms
+                            // can be removed by entity filtering.
+                            Some(true) => return Some(true),
+                            Some(false) => {}
+                            None => unknown = true,
+                        }
+                        count += 1;
+                    )+
+                    if unknown { None } else { Some(Op::mask(0, count)) }
+                } else {
+                    let mut result = Op::mask(0, 0);
+                    $(
+                        match <$a as Query>::cache_visit_archetype(archetype) {
+                            Some(value) => match Op::op(result, value) {
+                                ControlFlow::Break(result) => return Some(result),
+                                ControlFlow::Continue(value) => result = value,
+                            },
+                            None => unknown = true,
+                        }
+                    )+
+                    if unknown { None } else { Some(result) }
+                }
             }
 
             #[inline]
@@ -390,7 +418,12 @@ macro_rules! impl_boolean {
                     mi <<= 1;
                     count += 1;
                 )+
-                may_match::<Op>(mask, count, Self::FILTERS_ENTITIES)
+
+                if Self::FILTERS_ENTITIES && mask != 0 && is_xor::<Op>() {
+                    true
+                } else {
+                    Op::mask(mask, count)
+                }
             }
 
             #[inline]
@@ -408,7 +441,12 @@ macro_rules! impl_boolean {
                     mi <<= 1;
                     count += 1;
                 )+
-                may_match::<Op>(mask, count, Self::FILTERS_ENTITIES)
+
+                if Self::FILTERS_ENTITIES && is_xor::<Op>() && mask != 0 {
+                    true
+                } else {
+                    Op::mask(mask, count)
+                }
             }
 
             #[inline]
@@ -567,6 +605,55 @@ mod tests {
     struct A;
     #[derive(Component)]
     struct B;
+
+    #[test]
+    fn entity_filtering_relaxes_only_xor_query_stages() {
+        fn check<Q: Query>(
+            query: Q,
+            world: &World,
+            archetype_idx: usize,
+            expected_visit: bool,
+            expected_item: bool,
+        ) {
+            let archetype = &world.archetypes()[archetype_idx];
+            assert_eq!(query.visit_archetype(archetype), expected_visit);
+            assert_eq!(Q::cache_visit_archetype(archetype), Some(expected_visit));
+            if !expected_visit {
+                return;
+            }
+            // The test owns the world and all queries only read component epochs.
+            unsafe {
+                query.access_archetype(archetype, |_, _| {});
+                assert!(query.visit_archetype_late(archetype));
+                let mut fetch = query.fetch(archetype_idx as u32, archetype, world.epoch());
+                assert!(fetch.visit_chunk(0));
+                fetch.touch_chunk(0);
+                assert_eq!(fetch.visit_item(0), expected_item);
+            }
+        }
+
+        let mut world = World::new();
+        let before = world.epoch();
+        world.spawn_empty();
+        world.spawn((A,));
+        world.spawn((B,));
+        world.spawn((A, B));
+        for (idx, archetype) in world.archetypes().iter().enumerate() {
+            let a = archetype.has_component(crate::type_id::<A>());
+            let b = archetype.has_component(crate::type_id::<B>());
+            let plain = (With::<A>::default(), With::<B>::default());
+            let filtered = (
+                Modified::<With<A>>::new(before),
+                Modified::<With<B>>::new(before),
+            );
+            check(And::from_tuple(plain), &world, idx, a && b, a && b);
+            check(Or::from_tuple(plain), &world, idx, a || b, a || b);
+            check(Xor::from_tuple(plain), &world, idx, a != b, a != b);
+            check(And::from_tuple(filtered), &world, idx, a && b, a && b);
+            check(Or::from_tuple(filtered), &world, idx, a || b, a || b);
+            check(Xor::from_tuple(filtered), &world, idx, a || b, a != b);
+        }
+    }
 
     #[test]
     fn boolean_query_forwards_modified_hooks() {

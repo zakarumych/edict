@@ -32,6 +32,7 @@ use crate::{
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
     epoch::{EpochCounter, EpochId},
+    query::{Query, QueryCache, QueryCacheRef},
     resources::Resources,
     type_id,
 };
@@ -151,6 +152,8 @@ pub struct World {
     edges: Edges,
 
     registry: ComponentRegistry,
+
+    cache: QueryCache,
 
     resources: Resources,
 
@@ -354,6 +357,25 @@ impl World {
     /// Executes deferred actions.
     pub fn run_deferred(&mut self) {
         self.maintenance();
+    }
+
+    /// Maintains query cache for the query type Q.
+    pub fn maintain_query_cache<Q>(&mut self)
+    where
+        Q: Query,
+    {
+        self.cache.init::<Q>(&self.archetypes.archetypes);
+    }
+
+    pub(crate) fn get_query_cache<Q>(&self, query: Q) -> QueryCacheRef<'_, Q>
+    where
+        Q: Query,
+    {
+        self.cache.get(query)
+    }
+
+    pub(crate) fn query_cache(&self) -> &QueryCache {
+        &self.cache
     }
 }
 

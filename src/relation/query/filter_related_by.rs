@@ -6,9 +6,7 @@ use crate::{
     component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
-    query::{
-        ArchetypesCaching, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
-    },
+    query::{AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias},
     relation::{OriginComponent, Relation, TargetComponent},
     type_id,
 };
@@ -113,7 +111,6 @@ where
 
     const MUTABLE: bool = false;
     const FILTERS_ENTITIES: bool = true;
-    const ARCHETYPES_CACHING: ArchetypesCaching = ArchetypesCaching::Skips;
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -128,6 +125,15 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(if R::SYMMETRIC {
+            archetype.has_component(type_id::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(type_id::<TargetComponent<R>>())
+        })
     }
 
     #[inline]

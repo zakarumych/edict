@@ -243,11 +243,15 @@ where
         // Safety: Declares read access.
         let world = unsafe { world.as_ref() };
 
-        #[cfg(debug_assertions)]
-        acquire(self.query, self.filter, world.archetypes());
-
         self.query.before(world);
         self.filter.before(world);
+
+        #[cfg(debug_assertions)]
+        acquire(
+            world.get_query_cache(self.query),
+            world.get_query_cache(self.filter),
+            world.archetypes(),
+        );
 
         // Safety: Declares access for these queries.
         unsafe {
@@ -271,7 +275,11 @@ where
         let world = unsafe { world.as_ref() };
 
         #[cfg(debug_assertions)]
-        release(self.query, self.filter, world.archetypes());
+        release(
+            world.get_query_cache(self.query),
+            world.get_query_cache(self.filter),
+            world.archetypes(),
+        );
 
         self.query.after(world);
         self.filter.after(world);

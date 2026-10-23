@@ -100,6 +100,7 @@ impl World {
         Q: IntoQuery,
     {
         let query = query.into_query();
+        let query = self.get_query_cache(query);
 
         let loc = entity
             .lookup(&self.entities)
@@ -116,7 +117,7 @@ impl World {
 
         debug_assert!(archetype.len() >= loc.idx, "Entity index is valid");
 
-        if !query.visit_archetype(archetype) {
+        if !query.visit_archetype(archetype, loc.arch) {
             return Err(EntityError::Mismatch);
         }
 

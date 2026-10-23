@@ -124,6 +124,15 @@ where
     }
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(if R::SYMMETRIC {
+            archetype.has_component(type_id::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(type_id::<TargetComponent<R>>())
+        })
+    }
+
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         if R::SYMMETRIC {
             archetype.has_component(type_id::<OriginComponent<R>>())
@@ -281,6 +290,15 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(if R::SYMMETRIC {
+            archetype.has_component(type_id::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(type_id::<TargetComponent<R>>())
+        })
     }
 
     #[inline]
@@ -462,6 +480,15 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(if R::SYMMETRIC {
+            archetype.has_component(type_id::<OriginComponent<R>>())
+        } else {
+            archetype.has_component(type_id::<TargetComponent<R>>())
+        })
     }
 
     #[inline]

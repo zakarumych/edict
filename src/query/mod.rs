@@ -28,17 +28,13 @@
 //! [`Entity`]: crate::entity::Entity
 //!
 
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, ops::Deref};
 
+use alloc::vec::Vec;
 use hashbrown::HashMap;
-use smallvec::SmallVec;
 
 use crate::{
-    Access,
-    archetype::{self, Archetype},
-    component::ComponentInfo,
-    entity::EntityId,
-    epoch::EpochId,
+    Access, archetype::Archetype, component::ComponentInfo, entity::EntityId, epoch::EpochId,
     hash::NoOpHasherBuilder,
 };
 
@@ -82,6 +78,9 @@ mod tuple;
 mod with_epoch;
 mod write;
 
+#[cfg(test)]
+mod tests;
+
 /// Types associated with a query type.
 #[diagnostic::on_unimplemented(
     label = "`{Self}` is not a query type",
@@ -123,11 +122,13 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
     /// `Fetch::visit_chunk` and `Fetch::visit_item`.
     const FILTERS_ENTITIES: bool = false;
 
-    /// Caching archetype visit flag.
+    /// Returns the archetype visit result that can be cached for this query type.
     ///
-    /// Returns `None` if checking is required on each pass.
+    /// Returns `None` if checking the query instance is required on each pass.
     ///
-    /// If it returns `Some(v)` then `v` is assumed to always be the result of call to [`visit_archetype`]
+    /// `Some(v)` must equal [`Self::visit_archetype`] for every instance of this
+    /// query type while the archetype's component and borrow metadata is unchanged.
+    /// This caches only the early check; [`Self::visit_archetype_late`] must still run.
     #[must_use]
     fn cache_visit_archetype(archetype: &Archetype) -> Option<bool>;
 
@@ -418,6 +419,7 @@ where
 {
 }
 
+#[derive(Default)]
 struct OneQueryCache {
     /// 2-bit per archetype visiting cache.
     /// 0 - unknown
@@ -425,65 +427,124 @@ struct OneQueryCache {
     /// 2 - skip
     /// 3 - visit
     bits: Vec<u64>,
+    archetypes: usize,
 }
 
-pub struct QueryCache {
+/// Stores archetype visit decisions by query type.
+pub(crate) struct QueryCache {
     queries: HashMap<TypeId, OneQueryCache, NoOpHasherBuilder>,
 }
 
-pub struct QueryCacheRef<'a, Q> {
-    bits: &'a mut [u64],
-    marker: PhantomData<fn() -> Q>,
+impl QueryCache {
+    pub fn new() -> Self {
+        QueryCache {
+            queries: HashMap::with_hasher(NoOpHasherBuilder),
+        }
+    }
+
+    /// Return QueryCache for query type.
+    pub fn init<Q>(&mut self, archetypes: &[Archetype])
+    where
+        Q: Query,
+    {
+        let cache = self.queries.entry(TypeId::of::<Q>()).or_default();
+
+        if cache.bits.len() * 32 < archetypes.len() {
+            cache.bits.resize(archetypes.len().div_ceil(32), 0);
+        }
+
+        for (idx, archetype) in archetypes[cache.archetypes..].iter().enumerate() {
+            let idx = idx + cache.archetypes;
+
+            let ci = idx / 32;
+            let bi = idx % 32;
+
+            let bits = match Q::cache_visit_archetype(archetype) {
+                None => 0,
+                Some(false) => 1,
+                Some(true) => 2,
+            };
+
+            cache.bits[ci] |= bits << (bi * 2);
+        }
+
+        cache.archetypes = archetypes.len();
+    }
+
+    pub fn get<Q>(&self, query: Q) -> QueryCacheRef<'_, Q>
+    where
+        Q: Query,
+    {
+        let bits = match self.queries.get(&TypeId::of::<Q>()) {
+            Some(cache) => &cache.bits[..],
+            None => &[],
+        };
+
+        QueryCacheRef { bits, query }
+    }
 }
 
-impl<Q> QueryCacheRef<'_, Q>
+/// Owns a query value and borrows its early archetype visit decisions.
+///
+/// Dereferences to the owned query for fetching, late checks, and other query methods.
+/// The inherent [`Self::visit_archetype`] method uses the cache. To invoke the
+/// query's early check directly, use `(*handle).visit_archetype(archetype)`.
+/// Cached indices refer to the original world's complete archetype slice.
+/// Late archetype checks and entity filtering still run independently.
+#[derive(Clone, Copy)]
+pub struct QueryCacheRef<'a, Q> {
+    bits: &'a [u64],
+    query: Q,
+}
+
+impl<Q> Deref for QueryCacheRef<'_, Q> {
+    type Target = Q;
+
+    fn deref(&self) -> &Q {
+        &self.query
+    }
+}
+
+impl<'a, Q> QueryCacheRef<'a, Q>
 where
     Q: Query,
 {
-    fn visit_archetype(&mut self, query: &Q, archetype: &Archetype, archetype_idx: usize) -> bool {
-        let ci = archetype_idx / 32;
-        let bi = archetype_idx % 32;
+    #[inline]
+    /// Returns an uncached handle that checks the query on every visit.
+    pub fn empty(query: Q) -> Self {
+        Self { bits: &[], query }
+    }
 
-        match Q::ARCHETYPES_CACHING {
-            ArchetypesCaching::Nothing => query.visit_archetype(archetype),
-            ArchetypesCaching::Skips => {
-                let cbits = self.bits[ci];
-                let mut bits = 3 & (cbits >> (bi * 2));
+    #[inline]
+    pub(crate) fn into_tuple(self) -> QueryCacheRef<'a, (Q,)> {
+        QueryCacheRef {
+            bits: self.bits,
+            query: (self.query,),
+        }
+    }
 
-                if bits == 0 {
-                    if Q::cache_visit_archetype(archetype) {
-                        bits = 1;
-                    } else {
-                        bits = 2;
-                    }
-                    self.bits[ci] |= bits << (bi * 2);
-                }
+    #[inline]
+    /// Checks an archetype using its original index in the world's archetype slice.
+    pub fn visit_archetype(&self, archetype: &Archetype, idx: u32) -> bool {
+        let ci = idx / 32;
+        let bi = idx % 32;
 
-                match bits {
-                    1 => query.visit_archetype(archetype),
-                    2 => false,
-                    _ => false, // unreachable, but false is safe to return.
-                }
-            }
-            ArchetypesCaching::Full => {
-                let cbits = self.bits[ci];
-                let mut bits = 3 & (cbits >> (bi * 2));
+        let bits = (self.bits.get(ci as usize).copied().unwrap_or_default() >> (bi * 2)) & 3;
 
-                if bits == 0 {
-                    if Q::cache_visit_archetype(archetype) {
-                        bits = 3;
-                    } else {
-                        bits = 2;
-                    }
-                    self.bits[ci] |= bits << (bi * 2);
-                }
+        match bits {
+            0 => self.query.visit_archetype(archetype),
+            1 => false,
+            2 => true,
+            _ => false, // Actually unreachable.
+        }
+    }
+}
 
-                match bits {
-                    2 => false,
-                    3 => true,
-                    _ => false, // unreachable, but false is safe to return.
-                }
-            }
+impl<'a, Q: Query> QueryCacheRef<'a, (Q,)> {
+    pub(crate) fn unwrap_tuple(self) -> QueryCacheRef<'a, Q> {
+        QueryCacheRef {
+            bits: self.bits,
+            query: self.query.0,
         }
     }
 }

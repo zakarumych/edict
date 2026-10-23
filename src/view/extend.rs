@@ -69,9 +69,10 @@ where
     ///
     /// This also helps if maximum number of queries in the tuple is reached.
     pub fn into_tuple_query(self) -> ViewValue<'a, (Q,), F, B, Extensible> {
-        let query = (self.query,);
+        let query = self.query.into_tuple();
         let filter = self.filter;
         let archetypes = self.archetypes;
+        let cache = self.cache;
         let entity_set = self.entity_set;
         let epochs = self.epochs;
         let (state, Extensible) = self.extract();
@@ -80,6 +81,7 @@ where
             query,
             filter,
             archetypes,
+            cache,
             entity_set,
             epochs,
             state,
@@ -101,11 +103,12 @@ where
         E: SendQuery,
     {
         self.release_borrow();
-        Q::extend_query(self.query, ext);
+        Q::extend_query(*self.query, ext);
 
-        let query = Q::extend_query(self.query, ext);
+        let query = self.cache.get(Q::extend_query(*self.query, ext));
         let filter = self.filter;
         let archetypes = self.archetypes;
+        let cache = self.cache;
         let entity_set = self.entity_set;
         let epochs = self.epochs;
         let (state, Extensible) = self.extract();
@@ -114,6 +117,7 @@ where
             query,
             filter,
             archetypes,
+            cache,
             entity_set,
             epochs,
             state,
@@ -364,8 +368,9 @@ where
         E: SendQuery,
     {
         let query = self.query;
-        let filter = F::extend_query(self.filter, ext);
+        let filter = self.cache.get(F::extend_query(*self.filter, ext));
         let archetypes = self.archetypes;
+        let cache = self.cache;
         let entity_set = self.entity_set;
         let epochs = self.epochs;
         let (state, Extensible) = self.extract();
@@ -374,6 +379,7 @@ where
             query,
             filter,
             archetypes,
+            cache,
             entity_set,
             epochs,
             state,

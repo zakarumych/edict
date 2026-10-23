@@ -715,7 +715,7 @@ impl component::Component for ExampleComponent {}
 fn cold() {}
 
 /// Shorter version of [`core::any::TypeId::of`].
-fn type_id<T: 'static + ?Sized>() -> TypeId {
+const fn type_id<T: 'static + ?Sized>() -> TypeId {
     TypeId::of::<T>()
 }
 

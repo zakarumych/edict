@@ -85,10 +85,7 @@ macro_rules! modified_relation {
 
             #[inline]
             fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
-                match <$query as Query>::cache_visit_archetype(archetype) {
-                    None | Some(true) => None,
-                    Some(false) => Some(false),
-                }
+                <$query as Query>::cache_visit_archetype(archetype)
             }
 
             #[inline]

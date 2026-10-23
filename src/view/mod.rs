@@ -12,7 +12,7 @@ use crate::{
     component::ComponentInfo,
     entity::{EntitySet, Location},
     epoch::EpochCounter,
-    query::{AsQuery, Fetch, Query, QueryItem},
+    query::{AsQuery, Fetch, Query, QueryCache, QueryCacheRef, QueryItem},
     world::World,
 };
 
@@ -29,6 +29,9 @@ mod extend;
 mod index;
 mod iter;
 mod one;
+
+#[cfg(test)]
+mod tests;
 
 /// Flag indicating that view is extensible.
 #[derive(Copy, Clone)]
@@ -50,8 +53,11 @@ impl From<Extensible> for NonExtensible {
 #[must_use]
 pub struct ViewValue<'a, Q: Query, F: Query, B: BorrowState, E> {
     archetypes: &'a [Archetype],
-    query: Q,
-    filter: F,
+    cache: &'a QueryCache,
+    query: QueryCacheRef<'a, Q>,
+
+    filter: QueryCacheRef<'a, F>,
+
     state: B,
     entity_set: &'a EntitySet,
     epochs: &'a EpochCounter,
@@ -92,6 +98,7 @@ where
             self.query,
             self.filter,
             &self.archetypes[arch_idx as usize],
+            arch_idx,
             f,
         )
     }
@@ -128,6 +135,7 @@ where
         self.acquire_borrow();
         ViewValue {
             archetypes: self.archetypes,
+            cache: self.cache,
             query: self.query,
             filter: self.filter,
             state: StaticallyBorrowed,
@@ -218,8 +226,9 @@ where
     ) -> Self {
         ViewValue {
             archetypes: world.archetypes(),
-            query,
-            filter,
+            cache: world.query_cache(),
+            query: world.get_query_cache(query),
+            filter: world.get_query_cache(filter),
             state,
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
@@ -275,6 +284,7 @@ where
     fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, E>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -282,6 +292,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state: RuntimeBorrowState::new(),
@@ -302,6 +313,7 @@ where
     fn from(view: ViewValue<'a, Q, F, B, Extensible>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -309,6 +321,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state,
@@ -329,6 +342,7 @@ where
     fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, Extensible>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -336,6 +350,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state: RuntimeBorrowState::new(),
@@ -354,8 +369,9 @@ where
 {
     #[inline]
     fn from(view: ViewValue<'a, (Q,), F, B, E>) -> Self {
-        let (query,) = view.query;
+        let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -363,6 +379,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state,
@@ -381,8 +398,9 @@ where
 {
     #[inline]
     fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, E>) -> Self {
-        let (query,) = view.query;
+        let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -390,6 +408,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state: RuntimeBorrowState::new(),
@@ -409,8 +428,9 @@ where
 {
     #[inline]
     fn from(view: ViewValue<'a, (Q,), F, B, Extensible>) -> Self {
-        let (query,) = view.query;
+        let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -418,6 +438,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state,
@@ -436,8 +457,9 @@ where
 {
     #[inline]
     fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible>) -> Self {
-        let (query,) = view.query;
+        let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
+        let cache = view.cache;
         let filter = view.filter;
         let entity_set = view.entity_set;
         let epochs = view.epochs;
@@ -445,6 +467,7 @@ where
 
         ViewValue {
             archetypes,
+            cache,
             query,
             filter,
             state: RuntimeBorrowState::new(),
@@ -469,8 +492,8 @@ fn expect_alive<T>(value: Option<T>) -> T {
 
 #[inline]
 unsafe fn get_at<'a, Q, F>(
-    query: Q,
-    filter: F,
+    query: QueryCacheRef<'a, Q>,
+    filter: QueryCacheRef<'a, F>,
     epochs: &EpochCounter,
     archetype: &'a Archetype,
     loc: Location,
@@ -486,7 +509,7 @@ where
         return None;
     }
 
-    if !filter.visit_archetype(archetype) || !query.visit_archetype(archetype) {
+    if !filter.visit_archetype(archetype, arch) || !query.visit_archetype(archetype, arch) {
         return None;
     }
 

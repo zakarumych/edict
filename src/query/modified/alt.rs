@@ -122,11 +122,7 @@ where
 
     #[inline]
     fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
-        if archetype.has_component(type_id::<T>()) {
-            None
-        } else {
-            Some(false)
-        }
+        Some(archetype.has_component(type_id::<T>()))
     }
 
     #[inline]

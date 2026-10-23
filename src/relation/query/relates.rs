@@ -99,6 +99,11 @@ where
     }
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<OriginComponent<R>>()))
+    }
+
+    #[inline]
     fn visit_archetype(&self, archetype: &Archetype) -> bool {
         archetype.has_component(type_id::<OriginComponent<R>>())
     }
@@ -215,6 +220,11 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<OriginComponent<R>>()))
     }
 
     #[inline]
@@ -349,6 +359,11 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<OriginComponent<R>>()))
     }
 
     #[inline]

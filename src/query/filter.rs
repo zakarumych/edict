@@ -264,6 +264,15 @@ where
     const FILTERS_ENTITIES: bool = T::FILTERS_ENTITIES;
 
     #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        if T::FILTERS_ENTITIES {
+            Some(true)
+        } else {
+            T::cache_visit_archetype(archetype).map(|visit| !visit)
+        }
+    }
+
+    #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if T::FILTERS_ENTITIES {
             self.0.component_access(comp)
@@ -355,6 +364,11 @@ where
     #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)
+    }
+
+    #[inline]
+    fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
+        Some(archetype.has_component(type_id::<T>()))
     }
 
     #[inline]

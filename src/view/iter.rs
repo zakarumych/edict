@@ -3,7 +3,10 @@ use core::ops::Range;
 use crate::{
     archetype::{Archetype, CHUNK_LEN, chunk_idx, first_of_chunk, starts_of_chunks},
     epoch::EpochId,
-    query::{AsQuery, BatchFetch, BatchQuery, Fetch, ImmutableQuery, Query, QueryBatch, QueryItem},
+    query::{
+        AsQuery, BatchFetch, BatchQuery, Fetch, ImmutableQuery, Query, QueryBatch, QueryCacheRef,
+        QueryItem,
+    },
 };
 
 use super::{BorrowState, RuntimeBorrowState, StaticallyBorrowed, ViewValue};
@@ -125,8 +128,8 @@ where
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
 pub struct ViewValueIter<'a, Q: Query, F: Query, B: BorrowState> {
-    query: Q,
-    filter: F,
+    query: QueryCacheRef<'a, Q>,
+    filter: QueryCacheRef<'a, F>,
     query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
@@ -163,8 +166,8 @@ where
     /// and any other borrow state for conflicting queries.
     unsafe fn new(
         epoch: EpochId,
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'a, Q>,
+        filter: QueryCacheRef<'a, F>,
         archetypes: &'a [Archetype],
         state: B,
     ) -> Self {
@@ -195,10 +198,13 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.archetypes[self.next_archetype..].iter().fold(
-            self.indices.len() as u32,
-            |acc, archetype| {
-                if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
+        let len = self.archetypes[self.next_archetype..]
+            .iter()
+            .enumerate()
+            .fold(self.indices.len() as u32, |acc, (offset, archetype)| {
+                let arch_idx = self.next_archetype + offset;
+                if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                    || !self.query.visit_archetype(archetype, arch_idx as u32)
                 {
                     return acc;
                 }
@@ -209,8 +215,7 @@ where
                     return acc;
                 }
                 acc + archetype.len()
-            },
-        );
+            });
 
         let len = len as usize;
 
@@ -239,8 +244,8 @@ where
                             continue;
                         }
 
-                        if !self.filter.visit_archetype(archetype)
-                            || !self.query.visit_archetype(archetype)
+                        if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                            || !self.query.visit_archetype(archetype, arch_idx as u32)
                         {
                             continue;
                         }
@@ -336,7 +341,9 @@ where
                 continue;
             }
 
-            if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype) {
+            if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                || !self.query.visit_archetype(archetype, arch_idx as u32)
+            {
                 continue;
             }
 
@@ -513,8 +520,8 @@ unsafe fn prepare_batch_chunks<'a>(
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
 pub struct ViewValueBatchIter<'a, Q: BatchQuery, F: BatchQuery, B: BorrowState> {
-    query: Q,
-    filter: F,
+    query: QueryCacheRef<'a, Q>,
+    filter: QueryCacheRef<'a, F>,
     query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
@@ -549,10 +556,11 @@ where
     /// The caller must ensure that this function
     /// is never called for the same archetypes with static borrow state
     /// and any other borrow state for conflicting queries.
+    #[allow(clippy::too_many_arguments)]
     unsafe fn new(
         epoch: EpochId,
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'a, Q>,
+        filter: QueryCacheRef<'a, F>,
         archetypes: &'a [Archetype],
         state: B,
         batch_size: u32,
@@ -606,8 +614,8 @@ where
                             continue;
                         }
 
-                        if !self.filter.visit_archetype(archetype)
-                            || !self.query.visit_archetype(archetype)
+                        if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                            || !self.query.visit_archetype(archetype, arch_idx as u32)
                         {
                             continue;
                         }
@@ -677,7 +685,9 @@ where
                 continue;
             }
 
-            if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype) {
+            if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                || !self.query.visit_archetype(archetype, arch_idx as u32)
+            {
                 continue;
             }
 
@@ -718,22 +728,27 @@ where
     B: BorrowState,
 {
     fn len(&self) -> usize {
-        let len = self.archetypes[self.next_archetype..].iter().fold(
-            (self.indices.len() as u32).div_ceil(self.batch_size),
-            |acc, archetype| {
-                if !self.filter.visit_archetype(archetype) || !self.query.visit_archetype(archetype)
-                {
-                    return acc;
-                }
+        let len = self.archetypes[self.next_archetype..]
+            .iter()
+            .enumerate()
+            .fold(
+                (self.indices.len() as u32).div_ceil(self.batch_size),
+                |acc, (offset, archetype)| {
+                    let arch_idx = self.next_archetype + offset;
+                    if !self.filter.visit_archetype(archetype, arch_idx as u32)
+                        || !self.query.visit_archetype(archetype, arch_idx as u32)
+                    {
+                        return acc;
+                    }
 
-                if !unsafe { self.filter.visit_archetype_late(archetype) }
-                    || !unsafe { self.query.visit_archetype_late(archetype) }
-                {
-                    return acc;
-                }
-                acc + archetype.len().div_ceil(self.batch_size)
-            },
-        );
+                    if !unsafe { self.filter.visit_archetype_late(archetype) }
+                        || !unsafe { self.query.visit_archetype_late(archetype) }
+                    {
+                        return acc;
+                    }
+                    acc + archetype.len().div_ceil(self.batch_size)
+                },
+            );
 
         len as usize
     }

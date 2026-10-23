@@ -9,11 +9,12 @@ use crate::{
         ExternalSetHook,
     },
     entity::{EntitySet, IdRangeAllocator},
+    query::QueryCache,
     resources::Resources,
 };
 
 use super::{
-    assert_bundle_registered, ensure_bundle_registered, ArchetypeSet, Edges, EpochCounter, World,
+    ArchetypeSet, Edges, EpochCounter, World, assert_bundle_registered, ensure_bundle_registered,
 };
 
 /// Builder for [`World`] value.
@@ -55,6 +56,7 @@ impl WorldBuilder {
             entities,
             archetypes: ArchetypeSet::new(),
             edges: Edges::new(),
+            cache: QueryCache::new(),
             resources: Resources::new(),
             registry: self.registry,
             action_buffer: UnsafeCell::new(LocalActionBuffer::new()),

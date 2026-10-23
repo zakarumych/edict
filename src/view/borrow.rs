@@ -1,6 +1,9 @@
 use core::cell::Cell;
 
-use crate::{archetype::Archetype, query::Query};
+use crate::{
+    archetype::Archetype,
+    query::{Query, QueryCacheRef},
+};
 
 /// A view borrow state.
 ///
@@ -8,29 +11,46 @@ use crate::{archetype::Archetype, query::Query};
 /// dereferencing any pointers.
 pub trait BorrowState {
     /// Borrow components in the archetype if not already borrowed.
-    fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]);
+    fn acquire<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetypes: &[Archetype],
+    );
 
     /// Release previously acquired borrow.
-    fn release<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]);
+    fn release<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetypes: &[Archetype],
+    );
 
     /// Temporarily acquire borrow and call `f`.
+    #[allow(clippy::too_many_arguments)]
     fn with<Q: Query, F: Query, R>(
         &self,
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
         archetype: &Archetype,
+        idx: u32,
         f: impl FnOnce() -> R,
     ) -> R;
 }
 
 /// Acquire borrow on archetypes.
+/// The slice must contain the world's complete archetype list in its original order.
 #[inline]
 #[track_caller]
-pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
+pub fn acquire<Q: Query, F: Query>(
+    query: QueryCacheRef<'_, Q>,
+    filter: QueryCacheRef<'_, F>,
+    archetypes: &[Archetype],
+) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetypes: &'a [Archetype],
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'a, Q>,
+        filter: QueryCacheRef<'a, F>,
         query_len: usize,
         filter_len: usize,
     }
@@ -41,10 +61,10 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
         F: Query,
     {
         fn drop(&mut self) {
-            for archetype in self.archetypes {
+            for (idx, archetype) in self.archetypes.iter().enumerate() {
                 unsafe {
-                    if self.filter.visit_archetype(archetype)
-                        && self.query.visit_archetype(archetype)
+                    if self.filter.visit_archetype(archetype, idx as u32)
+                        && self.query.visit_archetype(archetype, idx as u32)
                     {
                         self.query.access_archetype(archetype, |id, access| {
                             if self.query_len > 0 {
@@ -77,9 +97,11 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
         filter_len: 0,
     };
 
-    for archetype in archetypes {
+    for (idx, archetype) in archetypes.iter().enumerate() {
         unsafe {
-            if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
+            if filter.visit_archetype(archetype, idx as u32)
+                && query.visit_archetype(archetype, idx as u32)
+            {
                 query.access_archetype(archetype, |id, access| {
                     if let Some(component) = archetype.component(id) {
                         let success = component.borrow(access);
@@ -102,11 +124,18 @@ pub fn acquire<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
 }
 
 /// Release borrow on archetypes.
+/// Pass the same complete archetype list and caches used to acquire the borrow.
 #[inline]
-pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]) {
-    for archetype in archetypes {
+pub fn release<Q: Query, F: Query>(
+    query: QueryCacheRef<'_, Q>,
+    filter: QueryCacheRef<'_, F>,
+    archetypes: &[Archetype],
+) {
+    for (idx, archetype) in archetypes.iter().enumerate() {
         unsafe {
-            if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
+            if filter.visit_archetype(archetype, idx as u32)
+                && query.visit_archetype(archetype, idx as u32)
+            {
                 query.access_archetype(archetype, &|id, access| {
                     if let Some(component) = archetype.component(id) {
                         component.release(access);
@@ -124,11 +153,16 @@ pub fn release<Q: Query, F: Query>(query: Q, filter: F, archetypes: &[Archetype]
 
 #[inline]
 #[track_caller]
-fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
+fn acquire_one<Q: Query, F: Query>(
+    query: QueryCacheRef<'_, Q>,
+    filter: QueryCacheRef<'_, F>,
+    archetype: &Archetype,
+    idx: u32,
+) {
     struct ReleaseOnFailure<'a, Q: Query, F: Query> {
         archetype: &'a Archetype,
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'a, Q>,
+        filter: QueryCacheRef<'a, F>,
         query_len: usize,
         filter_len: usize,
     }
@@ -172,7 +206,7 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
     };
 
     unsafe {
-        if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
+        if filter.visit_archetype(archetype, idx) && query.visit_archetype(archetype, idx) {
             query.access_archetype(archetype, |id, access| {
                 if let Some(component) = archetype.component(id) {
                     let success = component.borrow(access);
@@ -194,9 +228,14 @@ fn acquire_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
 }
 
 #[inline]
-fn release_one<Q: Query, F: Query>(query: Q, filter: F, archetype: &Archetype) {
+fn release_one<Q: Query, F: Query>(
+    query: QueryCacheRef<'_, Q>,
+    filter: QueryCacheRef<'_, F>,
+    archetype: &Archetype,
+    idx: u32,
+) {
     unsafe {
-        if filter.visit_archetype(archetype) && query.visit_archetype(archetype) {
+        if filter.visit_archetype(archetype, idx) && query.visit_archetype(archetype, idx) {
             query.access_archetype(archetype, &|id, access| {
                 if let Some(component) = archetype.component(id) {
                     component.release(access);
@@ -237,11 +276,41 @@ impl RuntimeBorrowState {
             borrowed: Cell::new(false),
         }
     }
+
+    pub(crate) fn acquire_one<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetype: &Archetype,
+        idx: u32,
+    ) {
+        if !self.borrowed.get() {
+            acquire_one(query, filter, archetype, idx);
+            self.borrowed.set(true);
+        }
+    }
+
+    pub(crate) fn release_one<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetype: &Archetype,
+        idx: u32,
+    ) {
+        if self.borrowed.take() {
+            release_one(query, filter, archetype, idx);
+        }
+    }
 }
 
 impl BorrowState for RuntimeBorrowState {
     #[inline]
-    fn acquire<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
+    fn acquire<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetypes: &[Archetype],
+    ) {
         if !self.borrowed.get() {
             acquire(query, filter, archetypes);
             self.borrowed.set(true);
@@ -249,7 +318,12 @@ impl BorrowState for RuntimeBorrowState {
     }
 
     #[inline]
-    fn release<Q: Query, F: Query>(&self, query: Q, filter: F, archetypes: &[Archetype]) {
+    fn release<Q: Query, F: Query>(
+        &self,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
+        archetypes: &[Archetype],
+    ) {
         if !self.borrowed.take() {
             return;
         }
@@ -260,17 +334,18 @@ impl BorrowState for RuntimeBorrowState {
     #[inline]
     fn with<Q: Query, F: Query, R>(
         &self,
-        query: Q,
-        filter: F,
+        query: QueryCacheRef<'_, Q>,
+        filter: QueryCacheRef<'_, F>,
         archetype: &Archetype,
+        idx: u32,
         f: impl FnOnce() -> R,
     ) -> R {
         if !self.borrowed.get() {
-            acquire_one(query, filter, archetype);
+            acquire_one(query, filter, archetype, idx);
         }
         let r = f();
         if !self.borrowed.get() {
-            release_one(query, filter, archetype);
+            release_one(query, filter, archetype, idx);
         }
         r
     }
@@ -292,17 +367,30 @@ pub struct StaticallyBorrowed;
 
 impl BorrowState for StaticallyBorrowed {
     #[inline]
-    fn acquire<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
+    fn acquire<Q: Query, F: Query>(
+        &self,
+        _query: QueryCacheRef<'_, Q>,
+        _filter: QueryCacheRef<'_, F>,
+        _archetypes: &[Archetype],
+    ) {
+    }
 
     #[inline]
-    fn release<Q: Query, F: Query>(&self, _query: Q, _filter: F, _archetypes: &[Archetype]) {}
+    fn release<Q: Query, F: Query>(
+        &self,
+        _query: QueryCacheRef<'_, Q>,
+        _filter: QueryCacheRef<'_, F>,
+        _archetypes: &[Archetype],
+    ) {
+    }
 
     #[inline]
     fn with<Q: Query, F: Query, R>(
         &self,
-        _query: Q,
-        _filter: F,
+        _query: QueryCacheRef<'_, Q>,
+        _filter: QueryCacheRef<'_, F>,
         _archetype: &Archetype,
+        _idx: u32,
         f: impl FnOnce() -> R,
     ) -> R {
         f()

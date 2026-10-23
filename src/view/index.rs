@@ -1,13 +1,13 @@
 use core::ops::Index;
 
 use crate::{
+    EntityError, NoSuchEntity,
     entity::{AliveEntity, Entity, EntityId, Location},
     query::{ImmutableQuery, Query, QueryItem, Read},
     view::get_at,
-    EntityError, NoSuchEntity,
 };
 
-use super::{expect_alive, expect_match, BorrowState, ViewValue};
+use super::{BorrowState, ViewValue, expect_alive, expect_match};
 
 impl<Q, F, B, E> ViewValue<'_, Q, F, B, E>
 where
@@ -125,7 +125,7 @@ where
     fn _get_reserved(&self, id: EntityId, loc: Location) -> Option<QueryItem<'_, Q>> {
         debug_assert_eq!(loc.arch, u32::MAX);
 
-        Query::reserved_entity_item(&self.query, id, loc.idx)
+        Query::reserved_entity_item(&*self.query, id, loc.idx)
     }
 
     #[inline]
@@ -159,7 +159,7 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx);
+            return Query::reserved_entity_item(&*self.query, entity.id(), loc.idx);
         }
 
         // Ensure to borrow view's data.
@@ -178,7 +178,7 @@ where
         let loc = entity.lookup(self.entity_set).ok_or(NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return Query::reserved_entity_item(&*self.query, entity.id(), loc.idx)
                 .ok_or(EntityError::Mismatch);
         }
 
@@ -199,7 +199,7 @@ where
 
         if loc.arch == u32::MAX {
             return expect_match(Query::reserved_entity_item(
-                &self.query,
+                &*self.query,
                 entity.id(),
                 loc.idx,
             ));
@@ -225,7 +225,7 @@ where
         let loc = entity.locate(self.entity_set);
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx).map(f);
+            return Query::reserved_entity_item(&*self.query, entity.id(), loc.idx).map(f);
         }
 
         // Ensure to borrow view's data.
@@ -248,7 +248,7 @@ where
             .ok_or(EntityError::NoSuchEntity)?;
 
         if loc.arch == u32::MAX {
-            return Query::reserved_entity_item(&self.query, entity.id(), loc.idx)
+            return Query::reserved_entity_item(&*self.query, entity.id(), loc.idx)
                 .map(f)
                 .ok_or(EntityError::Mismatch);
         }

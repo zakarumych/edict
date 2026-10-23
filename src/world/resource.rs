@@ -1,4 +1,4 @@
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 
 use crate::resources::{Res, ResMut};
 

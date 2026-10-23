@@ -56,6 +56,21 @@ where
 
     const MUTABLE: bool = false;
 
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = (cached, epoch);
+        UnitFetch::new()
+    }
+
     #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         Ok(None)

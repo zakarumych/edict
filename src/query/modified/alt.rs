@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -173,9 +174,14 @@ where
             after_epoch: self.after_epoch,
             epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast() },
-            archetype_epoch: NonNull::from(&mut data.epoch).cast(),
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>())
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>())
+                    .cast()
+            },
+            archetype_epoch: component.epoch_ptr().cast(),
             marker: PhantomData,
         }
     }
@@ -287,13 +293,18 @@ where
                     ptr: data.ptr.cast(),
                     entity_epochs: unsafe {
                         unsafe {
-                            NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+                            NonNull::new_unchecked(
+                                Box::as_ptr(&data.entity_epochs).cast::<EpochId>() as *mut EpochId,
+                            )
                         }
                     },
                     chunk_epochs: unsafe {
-                        NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()).cast()
+                        NonNull::new_unchecked(
+                            Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>(),
+                        )
+                        .cast()
                     },
-                    archetype_epoch: NonNull::from(&mut data.epoch).cast(),
+                    archetype_epoch: component.epoch_ptr().cast(),
                     marker: PhantomData,
                 })
             }

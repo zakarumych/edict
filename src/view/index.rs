@@ -3,13 +3,14 @@ use core::ops::Index;
 use crate::{
     EntityError, NoSuchEntity,
     entity::{AliveEntity, Entity, EntityId, Location},
+    epoch::EpochSource,
     query::{ImmutableQuery, Query, QueryItem, Read},
-    view::get_at,
+    view::cache::get_at_cached,
 };
 
 use super::{BorrowState, ViewValue, expect_alive, expect_match};
 
-impl<Q, F, B, E> ViewValue<'_, Q, F, B, E>
+impl<Q, F, B, E, C: EpochSource> ViewValue<'_, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
@@ -132,19 +133,11 @@ where
     unsafe fn _get(&self, loc: Location) -> Option<QueryItem<'_, Q>> {
         debug_assert_ne!(loc.arch, u32::MAX);
 
-        unsafe {
-            get_at(
-                self.query,
-                self.filter,
-                self.epochs,
-                &self.archetypes[loc.arch as usize],
-                loc,
-            )
-        }
+        unsafe { get_at_cached(self, loc) }
     }
 }
 
-impl<Q, F, B, E> ViewValue<'_, Q, F, B, E>
+impl<Q, F, B, E, C: EpochSource> ViewValue<'_, Q, F, B, E, C>
 where
     Q: ImmutableQuery,
     F: ImmutableQuery,
@@ -259,7 +252,7 @@ where
     }
 }
 
-impl<E, T, F, B, X> Index<E> for ViewValue<'_, Read<T>, F, B, X>
+impl<E, T, F, B, X, C: EpochSource> Index<E> for ViewValue<'_, Read<T>, F, B, X, C>
 where
     E: Entity,
     T: 'static + Sync,
@@ -278,7 +271,7 @@ where
     }
 }
 
-// impl<E, T, F, B> Index<E> for ViewValue<'_, Write<T>, F, B>
+// impl<E, T, F, B, C: EpochSource> Index<E> for ViewValue<'_, Write<T>, F, B, C>
 // where
 //     E: Entity,
 //     T: 'static + Send,
@@ -297,7 +290,7 @@ where
 //     }
 // }
 
-// impl<E, T, F, B> IndexMut<E> for ViewValue<'_, Write<T>, F, B>
+// impl<E, T, F, B, C: EpochSource> IndexMut<E> for ViewValue<'_, Write<T>, F, B, C>
 // where
 //     E: Entity,
 //     T: 'static + Send,

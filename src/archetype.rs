@@ -51,6 +51,13 @@ impl Deref for ArchetypeComponent {
 }
 
 impl ArchetypeComponent {
+    /// Returns an epoch-header pointer rooted directly in the interior storage.
+    /// No reference to the component-data header is materialized.
+    #[inline]
+    pub(crate) fn epoch_ptr(&self) -> NonNull<EpochId> {
+        unsafe { NonNull::new_unchecked(ptr::addr_of_mut!((*self.data.get()).epoch)) }
+    }
+
     #[inline]
     pub unsafe fn borrow(&self, access: Access) -> bool {
         match access {
@@ -93,8 +100,9 @@ impl ArchetypeComponent {
         }
     }
 
-    unsafe fn drop(&mut self, cap: usize, len: usize) {
-        let data = self.data.get_mut();
+    // Safety: the owning archetype is exclusively borrowed; cached metadata is shared.
+    unsafe fn drop(&self, cap: usize, len: usize) {
+        let data = unsafe { self.data_mut() };
 
         self.info.final_drop(data.ptr, len);
 
@@ -113,8 +121,9 @@ impl ArchetypeComponent {
         }
     }
 
-    unsafe fn grow(&mut self, len: u32, old_cap: u32, new_cap: u32) {
-        let data = self.data.get_mut();
+    // Safety: the owning archetype is exclusively borrowed; only UnsafeCell data changes.
+    unsafe fn grow(&self, len: u32, old_cap: u32, new_cap: u32) {
+        let data = unsafe { self.data_mut() };
 
         debug_assert!(len <= old_cap);
         debug_assert!(old_cap < new_cap);
@@ -183,6 +192,8 @@ impl ArchetypeComponent {
 /// This type is exposed for `Query` implementations.
 pub struct Archetype {
     entities: Vec<EntityId>,
+    // Schema and metadata addresses stay fixed after construction. Prepared query caches
+    // retain shared metadata pointers; only ComponentData inside UnsafeCell may mutate.
     components: HashMap<TypeId, ArchetypeComponent, NoOpHasherBuilder>,
     borrows: HashMap<TypeId, Vec<(TypeId, usize)>, NoOpHasherBuilder>,
     borrows_mut: HashMap<TypeId, Vec<(TypeId, usize)>, NoOpHasherBuilder>,
@@ -190,7 +201,7 @@ pub struct Archetype {
 
 impl Drop for Archetype {
     fn drop(&mut self) {
-        for (_, c) in &mut self.components {
+        for (_, c) in &self.components {
             unsafe {
                 c.drop(self.entities.capacity(), self.entities.len());
             }
@@ -392,8 +403,8 @@ impl Archetype {
 
         let last_entity_idx = (self.entities.len() - 1) as u32;
 
-        for component in self.components.values_mut() {
-            let data = component.data.get_mut();
+        for component in self.components.values() {
+            let data = unsafe { component.data_mut() };
             let size = component.info.layout().size();
 
             // Safety: ptr within the allocation block.
@@ -505,11 +516,10 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
+        let component = unsafe { self.components.get(&type_id::<T>()).unwrap_unchecked() };
         let ptr = unsafe {
             component
-                .data
-                .get_mut()
+                .data_mut()
                 .ptr
                 .as_ptr()
                 .cast::<T>()
@@ -534,8 +544,8 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
-        let data = component.data.get_mut();
+        let component = unsafe { self.components.get(&type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data_mut() };
         let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
 
         let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx as usize) };
@@ -563,8 +573,8 @@ impl Archetype {
         debug_assert!(self.components.contains_key(&type_id::<T>()));
         debug_assert!(entity_idx < self.entities.len() as u32);
 
-        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
-        let data = component.data.get_mut();
+        let component = unsafe { self.components.get(&type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data_mut() };
         let ptr = unsafe { data.ptr.as_ptr().cast::<T>().add(entity_idx as usize) };
 
         unsafe { &mut *ptr }
@@ -837,7 +847,7 @@ impl Archetype {
         self.entities.reserve((req_cap - len) as usize);
         let new_cap = clamp_usize_to_u32(self.entities.capacity());
 
-        for component in self.components.values_mut() {
+        for component in self.components.values() {
             unsafe {
                 component.grow(len, old_cap, new_cap);
             }
@@ -862,8 +872,8 @@ impl Archetype {
         let chunk_idx = chunk_idx(entity_idx);
 
         bundle.put(|src, tid, size| {
-            let component = unsafe { self.components.get_mut(&tid).unwrap_unchecked() };
-            let data = component.data.get_mut();
+            let component = unsafe { self.components.get(&tid).unwrap_unchecked() };
+            let data = unsafe { component.data_mut() };
             let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx as usize) };
             let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx as usize) };
 
@@ -901,8 +911,8 @@ impl Archetype {
     {
         let chunk_idx = chunk_idx(entity_idx);
 
-        let component = unsafe { self.components.get_mut(&type_id::<T>()).unwrap_unchecked() };
-        let data = component.data.get_mut();
+        let component = unsafe { self.components.get(&type_id::<T>()).unwrap_unchecked() };
+        let data = unsafe { component.data_mut() };
         let chunk_epoch = unsafe { data.chunk_epochs.get_unchecked_mut(chunk_idx as usize) };
         let entity_epoch = unsafe { data.entity_epochs.get_unchecked_mut(entity_idx as usize) };
 
@@ -942,13 +952,13 @@ impl Archetype {
 
         let last_entity_idx = (self.entities.len() - 1) as u32;
 
-        for (type_id, src_component) in &mut self.components {
-            let src_data = src_component.data.get_mut();
+        for (type_id, src_component) in &self.components {
+            let src_data = unsafe { src_component.data_mut() };
             let size = src_component.info.layout().size();
             let src_ptr = unsafe { src_data.ptr.as_ptr().add((src_entity_idx as usize) * size) };
 
-            if let Some(dst_component) = dst.components.get_mut(type_id) {
-                let dst_data = dst_component.data.get_mut();
+            if let Some(dst_component) = dst.components.get(type_id) {
+                let dst_data = unsafe { dst_component.data_mut() };
 
                 let epoch = unsafe {
                     *src_data

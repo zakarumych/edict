@@ -11,7 +11,7 @@ use crate::{
     archetype::{Archetype, chunk_idx},
     component::ComponentInfo,
     entity::{EntitySet, Location},
-    epoch::EpochCounter,
+    epoch::{EpochCounter, EpochSource, LocalEpochCounter},
     query::{AsQuery, Fetch, Query, QueryCache, QueryCacheRef, QueryItem},
     world::World,
 };
@@ -21,10 +21,11 @@ pub use self::{
     iter::{
         ViewBatchIter, ViewCellBatchIter, ViewCellIter, ViewIter, ViewValueBatchIter, ViewValueIter,
     },
-    one::{ViewOne, ViewOneValue},
+    one::{LocalViewOne, ViewOne, ViewOneValue},
 };
 
 mod borrow;
+mod cache;
 mod extend;
 mod index;
 mod iter;
@@ -49,9 +50,15 @@ impl From<Extensible> for NonExtensible {
 }
 
 /// A view over [`World`] that may be used to access specific components.
-#[derive(Clone)]
+/// Indexed access retains its last fetch in a `Cell`, so views are not `Sync`.
+///
+/// ```compile_fail
+/// use edict::view::View;
+/// fn sync<T: Sync>() {}
+/// sync::<View<'static, &'static u32>>();
+/// ```
 #[must_use]
-pub struct ViewValue<'a, Q: Query, F: Query, B: BorrowState, E> {
+pub struct ViewValue<'a, Q: Query, F: Query, B: BorrowState, E, C: EpochSource = EpochCounter> {
     archetypes: &'a [Archetype],
     cache: &'a QueryCache,
     query: QueryCacheRef<'a, Q>,
@@ -60,11 +67,12 @@ pub struct ViewValue<'a, Q: Query, F: Query, B: BorrowState, E> {
 
     state: B,
     entity_set: &'a EntitySet,
-    epochs: &'a EpochCounter,
+    epochs: &'a C,
+    last_fetches: cache::FetchCache<cache::IndexedFetches<'a, Q, F>>,
     extensibility: E,
 }
 
-impl<'a, Q, F, B, E> Drop for ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> Drop for ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
@@ -76,7 +84,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
@@ -89,24 +97,35 @@ where
 
     #[inline]
     fn release_borrow(&self) {
+        self.last_fetches.assert_idle();
+        self.clear_fetch_cache();
         self.state.release(self.query, self.filter, self.archetypes);
     }
 
     #[inline]
+    fn clear_fetch_cache(&self) {
+        self.last_fetches.clear();
+    }
+
+    #[inline]
     fn with_borrow<R>(&self, arch_idx: u32, f: impl FnOnce() -> R) -> R {
+        self.clear_fetch_cache();
         self.state.with(
             self.query,
             self.filter,
             &self.archetypes[arch_idx as usize],
             arch_idx,
-            f,
+            || {
+                let _clear = cache::ClearOnDrop(&self.last_fetches);
+                f()
+            },
         )
     }
 
     /// Releases borrow state and extracts it.
     #[inline]
     fn extract(self) -> (B, E) {
-        self.state.release(self.query, self.filter, self.archetypes);
+        self.release_borrow();
 
         let me = core::mem::ManuallyDrop::new(self);
         // Safety: `state` will not be used after this due to `ManuallyDrop`.
@@ -116,7 +135,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
@@ -131,7 +150,8 @@ where
     ///
     /// For symmetry this method is available for statically and exclusively borrowed views too.
     #[inline]
-    pub fn lock(&mut self) -> View<'_, Q, F> {
+    pub fn lock(&mut self) -> View<'_, Q, F, C> {
+        self.clear_fetch_cache();
         self.acquire_borrow();
         ViewValue {
             archetypes: self.archetypes,
@@ -141,6 +161,7 @@ where
             state: StaticallyBorrowed,
             entity_set: self.entity_set,
             epochs: self.epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility: NonExtensible,
         }
     }
@@ -167,8 +188,8 @@ where
 ///
 /// Performs runtime borrow checks of components.
 /// Extensible.
-pub type ViewRef<'a, Q, F = ()> =
-    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState, Extensible>;
+pub type ViewRef<'a, Q, F = (), C = EpochCounter> =
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState, Extensible, C>;
 
 /// View over entities with data fetched using query.
 /// Restricted to entities that match both query and filter.
@@ -177,8 +198,8 @@ pub type ViewRef<'a, Q, F = ()> =
 ///
 /// Statically borrow world mutably to avoid runtime borrow checks.
 /// Extensible.
-pub type ViewMut<'a, Q, F = ()> =
-    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed, Extensible>;
+pub type ViewMut<'a, Q, F = (), C = EpochCounter> =
+    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed, Extensible, C>;
 
 /// View over entities with data fetched using query.
 /// Restricted to entities that match both query and filter.
@@ -189,8 +210,14 @@ pub type ViewMut<'a, Q, F = ()> =
 /// Statically guaranteed to not conflict with views in other parallel systems by system caller.
 /// Performs runtime borrow checks of components.
 /// Non-extensible.
-pub type ViewCell<'a, Q, F = ()> =
-    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState, NonExtensible>;
+pub type ViewCell<'a, Q, F = (), C = EpochCounter> = ViewValue<
+    'a,
+    <Q as AsQuery>::Query,
+    <F as AsQuery>::Query,
+    RuntimeBorrowState,
+    NonExtensible,
+    C,
+>;
 
 /// View over entities with data fetched using query.
 /// Restricted to entities that match both query and filter.
@@ -200,8 +227,14 @@ pub type ViewCell<'a, Q, F = ()> =
 ///
 /// Statically guaranteed to not conflict with other views by system caller.
 /// Non-extensible.
-pub type View<'a, Q, F = ()> =
-    ViewValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed, NonExtensible>;
+pub type View<'a, Q, F = (), C = EpochCounter> = ViewValue<
+    'a,
+    <Q as AsQuery>::Query,
+    <F as AsQuery>::Query,
+    StaticallyBorrowed,
+    NonExtensible,
+    C,
+>;
 
 impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
 where
@@ -232,6 +265,7 @@ where
             state,
             entity_set: world.entities(),
             epochs: world.epoch_counter(),
+            last_fetches: cache::FetchCache::new(),
             extensibility,
         }
     }
@@ -274,14 +308,14 @@ where
     }
 }
 
-impl<'a, Q, F, E> From<ViewValue<'a, Q, F, StaticallyBorrowed, E>>
-    for ViewValue<'a, Q, F, RuntimeBorrowState, E>
+impl<'a, Q, F, E, C: EpochSource> From<ViewValue<'a, Q, F, StaticallyBorrowed, E, C>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState, E, C>
 where
     Q: Query,
     F: Query,
 {
     #[inline]
-    fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, E>) -> Self {
+    fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, E, C>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -298,19 +332,21 @@ where
             state: RuntimeBorrowState::new(),
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility,
         }
     }
 }
 
-impl<'a, Q, F, B> From<ViewValue<'a, Q, F, B, Extensible>> for ViewValue<'a, Q, F, B, NonExtensible>
+impl<'a, Q, F, B, C: EpochSource> From<ViewValue<'a, Q, F, B, Extensible, C>>
+    for ViewValue<'a, Q, F, B, NonExtensible, C>
 where
     Q: Query,
     F: Query,
     B: BorrowState,
 {
     #[inline]
-    fn from(view: ViewValue<'a, Q, F, B, Extensible>) -> Self {
+    fn from(view: ViewValue<'a, Q, F, B, Extensible, C>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -327,19 +363,20 @@ where
             state,
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility: NonExtensible,
         }
     }
 }
 
-impl<'a, Q, F> From<ViewValue<'a, Q, F, StaticallyBorrowed, Extensible>>
-    for ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible>
+impl<'a, Q, F, C: EpochSource> From<ViewValue<'a, Q, F, StaticallyBorrowed, Extensible, C>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible, C>
 where
     Q: Query,
     F: Query,
 {
     #[inline]
-    fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, Extensible>) -> Self {
+    fn from(view: ViewValue<'a, Q, F, StaticallyBorrowed, Extensible, C>) -> Self {
         let query = view.query;
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -356,19 +393,21 @@ where
             state: RuntimeBorrowState::new(),
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility: NonExtensible,
         }
     }
 }
 
-impl<'a, Q, F, B, E> From<ViewValue<'a, (Q,), F, B, E>> for ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> From<ViewValue<'a, (Q,), F, B, E, C>>
+    for ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
     B: BorrowState,
 {
     #[inline]
-    fn from(view: ViewValue<'a, (Q,), F, B, E>) -> Self {
+    fn from(view: ViewValue<'a, (Q,), F, B, E, C>) -> Self {
         let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -385,19 +424,20 @@ where
             state,
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility,
         }
     }
 }
 
-impl<'a, Q, F, E> From<ViewValue<'a, (Q,), F, StaticallyBorrowed, E>>
-    for ViewValue<'a, Q, F, RuntimeBorrowState, E>
+impl<'a, Q, F, E, C: EpochSource> From<ViewValue<'a, (Q,), F, StaticallyBorrowed, E, C>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState, E, C>
 where
     Q: Query,
     F: Query,
 {
     #[inline]
-    fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, E>) -> Self {
+    fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, E, C>) -> Self {
         let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -414,20 +454,21 @@ where
             state: RuntimeBorrowState::new(),
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility,
         }
     }
 }
 
-impl<'a, Q, F, B> From<ViewValue<'a, (Q,), F, B, Extensible>>
-    for ViewValue<'a, Q, F, B, NonExtensible>
+impl<'a, Q, F, B, C: EpochSource> From<ViewValue<'a, (Q,), F, B, Extensible, C>>
+    for ViewValue<'a, Q, F, B, NonExtensible, C>
 where
     Q: Query,
     F: Query,
     B: BorrowState,
 {
     #[inline]
-    fn from(view: ViewValue<'a, (Q,), F, B, Extensible>) -> Self {
+    fn from(view: ViewValue<'a, (Q,), F, B, Extensible, C>) -> Self {
         let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -444,19 +485,20 @@ where
             state,
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility: NonExtensible,
         }
     }
 }
 
-impl<'a, Q, F> From<ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible>>
-    for ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible>
+impl<'a, Q, F, C: EpochSource> From<ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible, C>>
+    for ViewValue<'a, Q, F, RuntimeBorrowState, NonExtensible, C>
 where
     Q: Query,
     F: Query,
 {
     #[inline]
-    fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible>) -> Self {
+    fn from(view: ViewValue<'a, (Q,), F, StaticallyBorrowed, Extensible, C>) -> Self {
         let query = view.query.unwrap_tuple();
         let archetypes = view.archetypes;
         let cache = view.cache;
@@ -473,6 +515,7 @@ where
             state: RuntimeBorrowState::new(),
             entity_set,
             epochs,
+            last_fetches: cache::FetchCache::new(),
             extensibility: NonExtensible,
         }
     }
@@ -491,10 +534,10 @@ fn expect_alive<T>(value: Option<T>) -> T {
 }
 
 #[inline]
-unsafe fn get_at<'a, Q, F>(
+unsafe fn get_at<'a, Q, F, C: EpochSource>(
     query: QueryCacheRef<'a, Q>,
     filter: QueryCacheRef<'a, F>,
-    epochs: &EpochCounter,
+    epochs: &C,
     archetype: &'a Archetype,
     loc: Location,
 ) -> Option<QueryItem<'a, Q>>
@@ -571,7 +614,7 @@ where
 
 #[track_caller]
 #[inline]
-fn validate_query_filter<Q, F>(query: Q, filter: F, archetype: &Archetype)
+pub(crate) fn validate_query_filter<Q, F>(query: Q, filter: F, archetype: &Archetype)
 where
     Q: Query,
     F: Query,
@@ -588,3 +631,59 @@ where
 fn mutable_alias_in_view(comp: &str) -> ! {
     panic!("Mutable alias of `{comp}` in a view");
 }
+
+impl<'a, Q: Query, F: Query, B: BorrowState + Clone, E: Clone, C: EpochSource> Clone
+    for ViewValue<'a, Q, F, B, E, C>
+{
+    fn clone(&self) -> Self {
+        Self {
+            archetypes: self.archetypes,
+            cache: self.cache,
+            query: self.query,
+            filter: self.filter,
+            state: self.state.clone(),
+            entity_set: self.entity_set,
+            epochs: self.epochs,
+            last_fetches: cache::FetchCache::new(),
+            extensibility: self.extensibility.clone(),
+        }
+    }
+}
+
+impl<'a, Q: Query, F: Query, B: BorrowState, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C> {
+    /// Creates a view with an explicit epoch source under the caller's capability.
+    ///
+    /// # Safety
+    /// The caller must guarantee component access and exclusive local epoch mode
+    /// for the entire lifetime of views and iterators derived from this source.
+    #[inline]
+    pub(crate) unsafe fn new_with_epochs(
+        world: &'a World,
+        query: Q,
+        filter: F,
+        state: B,
+        extensibility: E,
+        epochs: &'a C,
+    ) -> Self {
+        Self {
+            archetypes: world.archetypes(),
+            cache: world.query_cache(),
+            query: world.get_query_cache(query),
+            filter: world.get_query_cache(filter),
+            state,
+            entity_set: world.entities(),
+            epochs,
+            last_fetches: cache::FetchCache::new(),
+            extensibility,
+        }
+    }
+}
+
+/// Runtime-borrowed view using exclusive local-world epochs.
+pub type LocalViewRef<'a, Q, F = ()> = ViewRef<'a, Q, F, LocalEpochCounter>;
+/// Statically borrowed view using exclusive local-world epochs.
+pub type LocalView<'a, Q, F = ()> = View<'a, Q, F, LocalEpochCounter>;
+/// Mutable-world view using exclusive local-world epochs.
+pub type LocalViewMut<'a, Q, F = ()> = ViewMut<'a, Q, F, LocalEpochCounter>;
+/// Runtime-borrowed non-extensible view using local-world epochs.
+pub type LocalViewCell<'a, Q, F = ()> = ViewCell<'a, Q, F, LocalEpochCounter>;

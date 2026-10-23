@@ -347,7 +347,7 @@ impl Flows {
     fn collect_new_flows<'a>(&mut self, world: &'a mut World) -> Option<tls::WorldGuard<'a>> {
         let world = world.local();
 
-        core::mem::swap(&mut self.new_flows, world.new_flows.get_mut());
+        core::mem::swap(&mut self.new_flows, world.as_world().new_flows.get_mut());
 
         let guard = tls::WorldGuard::new(world);
 
@@ -392,6 +392,10 @@ impl Flows {
     /// Enter flow context and execute the closure with the [`FlowWorld`] instance.
     ///
     /// Closure may use any [`FlowWorld`] and [`FlowEntity`] values.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another safe flow-world access is active on this thread.
     pub fn enter<F, R>(world: &mut World, f: F) -> R
     where
         F: FnOnce(FlowWorld) -> R,
@@ -478,7 +482,7 @@ impl WorldLocal {
         F: IntoFlow,
     {
         // Safety: accessed only from "main" thread.
-        unsafe { &mut *self.new_flows.get() }.add(WorldIntoFlow { f: flow });
+        unsafe { &mut *self.local_new_flows().get() }.add(WorldIntoFlow { f: flow });
     }
 
     /// Spawns a flow for an entity in the world.
@@ -489,7 +493,7 @@ impl WorldLocal {
         F: IntoEntityFlow,
     {
         // Safety: accessed only from "main" thread.
-        unsafe { &mut *self.new_flows.get() }.add(EntityIntoFlow { entity, f: flow });
+        unsafe { &mut *self.local_new_flows().get() }.add(EntityIntoFlow { entity, f: flow });
     }
 }
 
@@ -501,7 +505,7 @@ impl FlowWorld {
         F: IntoFlow,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let world = self.borrow();
 
         world.spawn_flow(flow);
     }
@@ -514,7 +518,7 @@ impl FlowWorld {
         F: IntoEntityFlow,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let world = self.borrow();
 
         world.spawn_flow_for(entity, flow);
     }

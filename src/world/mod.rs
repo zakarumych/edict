@@ -31,7 +31,7 @@ use crate::{
     bundle::{BundleDesc, ComponentBundleDesc},
     component::{Component, ComponentInfo, ComponentRegistry},
     entity::{AliveEntity, Entity, EntityId, EntityLoc, EntityRef, EntitySet},
-    epoch::{EpochCounter, EpochId},
+    epoch::{EpochCounter, EpochId, EpochSource, LocalEpochCounter},
     query::{Query, QueryCache, QueryCacheRef},
     resources::Resources,
     type_id,
@@ -271,8 +271,8 @@ impl World {
     }
 
     /// Returns [`WorldLocal`] referencing this [`World`].
-    /// [`WorldLocal`] dereferences to [`World`]
-    /// And defines overlapping methods `get_resource` and `get_resource_mut` without `Sync` and `Send` bounds.
+    /// Local access supports non-thread-safe resources and views.
+    /// Use [`WorldLocal::as_world`] for exclusive shared-world operations.
     ///
     /// # Examples
     ///
@@ -438,22 +438,6 @@ impl From<World> for WorldLocal {
     }
 }
 
-impl Deref for WorldLocal {
-    type Target = World;
-
-    #[inline]
-    fn deref(&self) -> &World {
-        &self.inner
-    }
-}
-
-impl DerefMut for WorldLocal {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut World {
-        &mut self.inner
-    }
-}
-
 impl Debug for WorldLocal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         <World as Debug>::fmt(&self.inner, f)
@@ -467,6 +451,109 @@ impl WorldLocal {
         unsafe { &mut *(world as *mut World as *mut Self) }
     }
 
+    /// Borrows the shared-world API exclusively, ending any borrowed local views first.
+    ///
+    /// Local views prevent borrowing the shared-world epoch counter at the same time:
+    ///
+    /// ```compile_fail
+    /// # use edict::{world::World, ExampleComponent};
+    /// let mut world = World::new();
+    /// let local = world.local();
+    /// let view = local.view::<&ExampleComponent>();
+    /// local.as_world().epoch_counter().next();
+    /// view.iter().count();
+    /// ```
+    ///
+    /// A shared local-world reference does not expose the shared-world capability:
+    ///
+    /// ```compile_fail
+    /// # use edict::world::{World, WorldLocal};
+    /// fn shared(local: &WorldLocal) -> &World { local }
+    /// ```
+    #[inline]
+    pub fn as_world(&mut self) -> &mut World {
+        &mut self.inner
+    }
+
+    #[inline]
+    pub(crate) fn local_epochs(&self) -> &LocalEpochCounter {
+        // Safety: WorldLocal cannot yield shared World access. The exclusive bridge
+        // requires a mutable borrow, excluding this reference and all derived views.
+        unsafe { LocalEpochCounter::from_atomic(&self.inner.epoch) }
+    }
+
+    /// Returns the current local epoch.
+    #[inline]
+    pub fn epoch(&self) -> EpochId {
+        self.local_epochs().current()
+    }
+
+    /// Returns the identifier of the current archetype set.
+    #[inline]
+    pub fn archetype_set_id(&self) -> u64 {
+        self.inner.archetype_set_id()
+    }
+
+    /// Looks up an entity without changing its location.
+    #[inline]
+    pub fn lookup(&self, entity: impl Entity) -> Result<EntityLoc<'_>, NoSuchEntity> {
+        self.inner.lookup(entity)
+    }
+
+    /// Checks whether an entity has a component.
+    #[inline]
+    pub fn has_component<T: 'static>(&self, entity: impl AliveEntity) -> bool {
+        self.inner.has_component::<T>(entity)
+    }
+
+    /// Checks whether a possibly dead entity has a component.
+    #[inline]
+    pub fn try_has_component<T: 'static>(&self, entity: impl Entity) -> Result<bool, NoSuchEntity> {
+        self.inner.try_has_component::<T>(entity)
+    }
+
+    /// Checks whether an entity is alive.
+    #[inline]
+    pub fn is_alive(&self, entity: EntityId) -> bool {
+        self.inner.is_alive(entity)
+    }
+
+    /// Iterates registered component metadata.
+    pub fn iter_component_info(&self) -> impl Iterator<Item = &ComponentInfo> {
+        self.inner.iter_component_info()
+    }
+
+    /// Returns materialized archetype metadata.
+    pub fn archetypes(&self) -> &[Archetype] {
+        self.inner.archetypes()
+    }
+
+    /// Allocates an entity identifier without changing archetypes.
+    #[inline]
+    pub fn allocate(&self) -> EntityLoc<'_> {
+        self.inner.allocate()
+    }
+
+    /// Creates an action sender; queued actions execute through exclusive World access.
+    pub fn new_action_sender(&self) -> ActionSender {
+        self.inner.new_action_sender()
+    }
+
+    /// Iterates the types of stored resources.
+    pub fn resource_types(&self) -> impl Iterator<Item = core::any::TypeId> + '_ {
+        self.inner.resource_types()
+    }
+
+    #[inline]
+    pub(crate) fn entities(&self) -> &EntitySet {
+        self.inner.entities()
+    }
+
+    #[cfg(feature = "flow")]
+    #[inline]
+    pub(crate) fn local_new_flows(&self) -> &UnsafeCell<crate::flow::NewFlows> {
+        &self.inner.new_flows
+    }
     /// Defer execution of the function.
     pub fn defer(&self, f: impl FnOnce(&mut World) + 'static) {
         // Safety:

@@ -487,7 +487,7 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -495,7 +495,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -526,16 +526,16 @@ impl WorldLocal {
     /// # use edict::world::World;
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_external_registered::<u32>();
     /// world.insert_external_defer(entity, 42u32);
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
@@ -566,7 +566,7 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -574,7 +574,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -605,16 +605,16 @@ impl WorldLocal {
     /// # use edict::{world::World};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_external_registered::<u32>();
     /// world.with_external_defer(entity, || 42u32);
     ///
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
@@ -664,7 +664,7 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -672,7 +672,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -705,20 +705,20 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_component_registered::<ExampleComponent>();
+    /// world.as_world().ensure_external_registered::<u32>();
     ///
     /// world.insert_external_bundle_defer(entity, (ExampleComponent, 42u32));
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
@@ -754,7 +754,7 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -762,7 +762,7 @@ impl WorldLocal {
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -792,20 +792,20 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn(()).id();
+    /// let entity = world.as_world().spawn(()).id();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.ensure_component_registered::<ExampleComponent>();
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_component_registered::<ExampleComponent>();
+    /// world.as_world().ensure_external_registered::<u32>();
     ///
     /// world.with_external_bundle_defer(entity, (ExampleComponent, 42u32));
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// assert!(world.try_has_component::<u32>(entity).unwrap());

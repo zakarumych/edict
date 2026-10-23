@@ -15,7 +15,7 @@ use crate::{
     world::{World, WorldLocal},
 };
 
-use super::{Flow, FlowWorld, WakeOnDrop, get_flow_world};
+use super::{Flow, FlowWorld, WakeOnDrop};
 
 /// Entity reference usable in flows.
 ///
@@ -137,7 +137,7 @@ where
 
         {
             // Safety: world reference does not escape this scope.
-            let world = unsafe { get_flow_world() };
+            let world = super::tls::borrow_world();
 
             if !world.is_alive(id) {
                 // Terminate flow if entity is removed.
@@ -148,9 +148,9 @@ where
         let poll = fut.poll(cx);
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        let mut e = match world.entity(id) {
+        let mut e = match world.as_world().entity(id) {
             Err(NoSuchEntity) => {
                 // Terminate flow if entity is removed.
                 return Poll::Ready(());
@@ -270,9 +270,9 @@ impl FlowEntity {
         F: FnOnce(EntityRef) -> R,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        let e = world.entity(self.id)?;
+        let e = world.as_world().entity(self.id)?;
         Ok(f(e))
     }
 
@@ -394,7 +394,7 @@ impl FlowEntity {
     /// Checks if entity is alive.
     pub fn is_alive(self) -> bool {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let world = super::tls::borrow_world();
 
         world.is_alive(self.id)
     }
@@ -411,9 +411,9 @@ impl FlowEntity {
         T: Clone + 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        match world.try_get_cloned(self.id) {
+        match world.as_world().try_get_cloned(self.id) {
             Ok(c) => Some(c),
             Err(EntityError::Mismatch) => None,
             Err(EntityError::NoSuchEntity) => entity_not_alive(),
@@ -430,9 +430,9 @@ impl FlowEntity {
         T: Clone + 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.try_get_cloned(self.id)
+        world.as_world().try_get_cloned(self.id)
     }
 
     /// Sets new value for the entity component.
@@ -459,9 +459,9 @@ impl FlowEntity {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        match world.get::<&mut T>(self.id) {
+        match world.as_world().get::<&mut T>(self.id) {
             Ok(c) => {
                 let c: &mut T = c;
                 *c = value;
@@ -490,9 +490,9 @@ impl FlowEntity {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.insert(self.id, component)
+        world.as_world().insert(self.id, component)
     }
 
     /// Attempts to inserts component to the entity.
@@ -522,9 +522,9 @@ impl FlowEntity {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.insert_external(self.id, component)
+        world.as_world().insert_external(self.id, component)
     }
 
     /// Inserts a component to the entity if it does not have one.
@@ -546,9 +546,9 @@ impl FlowEntity {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.with(self.id, component)?;
+        world.as_world().with(self.id, component)?;
         Ok(())
     }
 
@@ -571,9 +571,9 @@ impl FlowEntity {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.with_external(self.id, component)?;
+        world.as_world().with_external(self.id, component)?;
         Ok(())
     }
 
@@ -614,9 +614,9 @@ impl FlowEntity {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.insert_bundle(self.id, bundle)
+        world.as_world().insert_bundle(self.id, bundle)
     }
 
     /// Inserts bundle of components to the entity.
@@ -656,9 +656,9 @@ impl FlowEntity {
         B: DynamicBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.insert_external_bundle(self.id, bundle)
+        world.as_world().insert_external_bundle(self.id, bundle)
     }
 
     /// Removes a component from the entity.
@@ -683,9 +683,9 @@ impl FlowEntity {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        let (c, _) = world.remove::<T>(self.id)?;
+        let (c, _) = world.as_world().remove::<T>(self.id)?;
         match c {
             None => Err(EntityError::Mismatch),
             Some(c) => Ok(c),
@@ -712,9 +712,9 @@ impl FlowEntity {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.drop::<T>(self.id)
+        world.as_world().drop::<T>(self.id)
     }
 
     /// Drops a component from the entity.
@@ -731,9 +731,9 @@ impl FlowEntity {
     #[inline]
     pub fn try_drop_erased(self, ty: TypeId) -> Result<(), EntityError> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.drop_erased(self.id, ty)
+        world.as_world().drop_erased(self.id, ty)
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -773,9 +773,9 @@ impl FlowEntity {
         B: Bundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.drop_bundle::<B>(self.id)
+        world.as_world().drop_bundle::<B>(self.id)
     }
 
     /// Despawns the referenced entity.
@@ -791,9 +791,9 @@ impl FlowEntity {
     #[inline]
     pub fn try_despawn(self) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let mut world = super::tls::borrow_world();
 
-        world.despawn(self.id)
+        world.as_world().despawn(self.id)
     }
 
     /// Checks if entity has component of specified type.
@@ -813,7 +813,7 @@ impl FlowEntity {
     #[inline]
     pub fn try_has_component<T: 'static>(self) -> Result<bool, NoSuchEntity> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let world = super::tls::borrow_world();
 
         world.try_has_component::<T>(self.id)
     }
@@ -824,7 +824,7 @@ impl FlowEntity {
         F: IntoEntityFlow,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { get_flow_world() };
+        let world = super::tls::borrow_world();
 
         world.spawn_flow_for(self.id, f);
     }
@@ -853,9 +853,9 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
-        let Ok(e) = world.entity(me.entity) else {
+        let Ok(e) = world.as_world().entity(me.entity) else {
             return Poll::Pending;
         };
         (me.f)(e, cx)
@@ -885,11 +885,11 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
-        let e = world.entity(me.entity)?;
+        let e = world.as_world().entity(me.entity)?;
         let poll = (me.f)(e, cx);
-        try_poll(poll, me.entity, world, cx)
+        try_poll(poll, me.entity, &mut world, cx)
     }
 }
 
@@ -920,9 +920,9 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
-        match world.get_with(me.entity, me.query) {
+        match world.as_world().get_with(me.entity, me.query) {
             Err(EntityError::NoSuchEntity) => Poll::Pending,
             Err(EntityError::Mismatch) => {
                 // TODO: Should archetype change be detected to wake up the task?
@@ -959,11 +959,11 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
-        let item = world.get_with(me.entity, me.query)?;
+        let item = world.as_world().get_with(me.entity, me.query)?;
         let poll = (me.f)(item, cx);
-        let poll = try_poll(poll, me.entity, world, cx)?;
+        let poll = try_poll(poll, me.entity, &mut world, cx)?;
         poll.map(Ok)
     }
 }
@@ -974,7 +974,7 @@ fn try_poll<R>(
     world: &mut WorldLocal,
     cx: &mut Context<'_>,
 ) -> Poll<Result<R, NoSuchEntity>> {
-    let mut e = world.entity(entity)?;
+    let mut e = world.as_world().entity(entity)?;
 
     match poll {
         Poll::Pending => {

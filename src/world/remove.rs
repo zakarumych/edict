@@ -284,7 +284,7 @@ impl WorldLocal {
     ///
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let mut entity = world.spawn((ExampleComponent,)).id();
+    /// let mut entity = world.as_world().spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -292,7 +292,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -345,7 +345,7 @@ impl WorldLocal {
     ///
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let mut entity = world.spawn((ExampleComponent,)).id();
+    /// let mut entity = world.as_world().spawn((ExampleComponent,)).id();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
@@ -353,7 +353,7 @@ impl WorldLocal {
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```

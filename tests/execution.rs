@@ -395,6 +395,6 @@ fn world_local_deferred_resources_execute_in_order() {
     local.drop_resource_defer::<i32>();
     local.insert_resource_defer(11_i32);
     assert!(local.get_resource::<i32>().is_none());
-    local.run_deferred();
+    local.as_world().run_deferred();
     assert_eq!(world.copy_resource::<i32>(), 11);
 }

@@ -1,3 +1,4 @@
+use crate::query::FetchCacheSlot;
 use core::any::TypeId;
 
 use crate::{
@@ -9,6 +10,31 @@ use super::{
     Access, AsQuery, DefaultQuery, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias,
     fetch::{BatchFetch, Fetch},
 };
+
+macro_rules! impl_reuse_fetch {
+    ($a:ident) => {
+        const SUPPORTS_FETCH_REUSE: bool = $a::SUPPORTS_FETCH_REUSE;
+        const FETCH_REUSE_MATCHES_STABLE: bool = $a::FETCH_REUSE_MATCHES_STABLE;
+        #[inline]
+        unsafe fn reuse_fetch<'cached, 'a>(&self, cached: &mut Self::Fetch<'cached>,
+            arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
+            unsafe { self.0.reuse_fetch(cached, arch_idx, archetype, epoch) }
+        }
+    };
+    ($($a:ident)+) => { impl_reuse_fetch!(@indices [] [$($a)+] [0 1 2 3 4 5 6 7 8 9 10 11]); };
+    (@indices [$($done:ident:$index:tt)*] [] [$($rest:tt)*]) => {
+        const SUPPORTS_FETCH_REUSE: bool = $($done::SUPPORTS_FETCH_REUSE &&)+ true;
+        const FETCH_REUSE_MATCHES_STABLE: bool = $($done::FETCH_REUSE_MATCHES_STABLE &&)+ true;
+        #[inline]
+        unsafe fn reuse_fetch<'cached, 'a>(&self, cached: &mut Self::Fetch<'cached>,
+            arch_idx: u32, archetype: &'a Archetype, epoch: EpochId) -> Self::Fetch<'a> {
+            ($(unsafe { self.$index.reuse_fetch(&mut cached.$index, arch_idx, archetype, epoch) }),+)
+        }
+    };
+    (@indices [$($done:ident:$index:tt)*] [$next:ident $($tail:ident)*] [$head:tt $($rest:tt)*]) => {
+        impl_reuse_fetch!(@indices [$($done:$index)* $next:$head] [$($tail)*] [$($rest)*]);
+    };
+}
 
 macro_rules! impl_fetch {
     () => {
@@ -59,6 +85,8 @@ macro_rules! impl_fetch {
             type Fetch<'a> = ();
 
             const MUTABLE: bool = false;
+            const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
 
             #[inline]
             fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
@@ -197,14 +225,42 @@ macro_rules! impl_fetch {
             type Fetch<'a> = ($($a::Fetch<'a>),+) where $($a: 'a,)+;
 
             const MUTABLE: bool = $($a::MUTABLE ||)+ false;
+            impl_reuse_fetch!($($a)+);
             const FILTERS_ENTITIES: bool = $($a::FILTERS_ENTITIES ||)+ false;
+            const FETCH_CACHE_SLOTS: usize = $($a::FETCH_CACHE_SLOTS +)+ 0;
+
+            #[inline]
+            fn prepare_fetch_cache(archetype: &Archetype, slots: &mut [FetchCacheSlot]) {
+                let mut remaining = slots;
+                $(
+                    let (part, rest) = remaining.split_at_mut($a::FETCH_CACHE_SLOTS);
+                    $a::prepare_fetch_cache(archetype, part);
+                    remaining = rest;
+                )+
+                let _ = remaining;
+            }
+
+            #[inline]
+            unsafe fn fetch_cached<'a>(&self, arch_idx: u32, archetype: &'a Archetype,
+                epoch: EpochId, slots: &[FetchCacheSlot]) -> Self::Fetch<'a> {
+                let ($($a,)+) = self;
+                let mut remaining = slots;
+                let fetches = ($({
+                    let (part, rest) = remaining.split_at($a::FETCH_CACHE_SLOTS);
+                    remaining = rest;
+                    unsafe { $a.fetch_cached(arch_idx, archetype, epoch, part) }
+                }),+);
+                let _ = remaining;
+                fetches
+            }
+
 
             #[inline]
             fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
                 $(let $a = <$a as Query>::cache_visit_archetype(archetype);)+
 
                 $( if $a == Some(false) { return Some(false); } )+
-                $( if $a.is_none() { return None; } )+
+                $( $a?; )+
                 Some(true)
             }
 

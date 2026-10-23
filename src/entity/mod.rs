@@ -18,7 +18,7 @@ use crate::{
     component::Component,
     // flow::FlowEntityFn,
     query::{AsDefaultQuery, ImmutableQuery, IntoQuery, QueryItem},
-    view::ViewOne,
+    view::LocalViewOne,
     world::{World, WorldLocal},
 };
 
@@ -627,7 +627,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// This method may panic if entity of another world is used.
     #[inline]
-    pub fn view_one<'b, Q>(&'b self) -> ViewOne<'b, Q>
+    pub fn view_one<'b, Q>(&'b self) -> LocalViewOne<'b, Q>
     where
         Q: AsDefaultQuery,
     {
@@ -649,7 +649,7 @@ impl<'a> EntityRef<'a> {
     ///
     /// This method may panic if entity of another world is used.
     #[inline]
-    pub fn view_one_with<'b, Q>(&'b self, query: Q) -> ViewOne<'b, (Q,)>
+    pub fn view_one_with<'b, Q>(&'b self, query: Q) -> LocalViewOne<'b, (Q,)>
     where
         Q: IntoQuery,
     {
@@ -692,7 +692,10 @@ impl<'a> EntityRef<'a> {
             world: PhantomData,
         };
         unsafe {
-            self.world.insert(loc, component).unwrap_unchecked();
+            self.world
+                .as_world()
+                .insert(loc, component)
+                .unwrap_unchecked();
         }
 
         let loc = self.world.entities().get_location(self.id)?;
@@ -740,6 +743,7 @@ impl<'a> EntityRef<'a> {
         };
         unsafe {
             self.world
+                .as_world()
                 .insert_external(loc, component)
                 .unwrap_unchecked();
         }
@@ -770,12 +774,13 @@ impl<'a> EntityRef<'a> {
         };
 
         unsafe {
-            self.world.with(loc, f).unwrap_unchecked();
+            self.world.as_world().with(loc, f).unwrap_unchecked();
             self.loc = self.id.lookup(self.world.entities()).unwrap_unchecked();
         }
 
         unsafe {
             self.world
+                .as_world()
                 .archetypes_mut()
                 .get_unchecked_mut(self.loc.arch as usize)
                 .get_mut_nobump(self.loc.idx)
@@ -811,10 +816,17 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        self.loc = unsafe { self.world.with_external(loc, component).unwrap_unchecked() }.loc;
+        self.loc = unsafe {
+            self.world
+                .as_world()
+                .with_external(loc, component)
+                .unwrap_unchecked()
+        }
+        .loc;
 
         unsafe {
             self.world
+                .as_world()
                 .archetypes_mut()
                 .get_unchecked_mut(self.loc.arch as usize)
                 .get_mut_nobump(self.loc.idx)
@@ -856,7 +868,10 @@ impl<'a> EntityRef<'a> {
             world: PhantomData,
         };
         unsafe {
-            self.world.insert_bundle(loc, bundle).unwrap_unchecked();
+            self.world
+                .as_world()
+                .insert_bundle(loc, bundle)
+                .unwrap_unchecked();
         }
 
         let loc = self.world.entities().get_location(self.id)?;
@@ -910,6 +925,7 @@ impl<'a> EntityRef<'a> {
         };
         unsafe {
             self.world
+                .as_world()
                 .insert_external_bundle(loc, bundle)
                 .unwrap_unchecked();
         }
@@ -957,7 +973,13 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        self.loc = unsafe { self.world.with_bundle(loc, bundle).unwrap_unchecked() }.loc;
+        self.loc = unsafe {
+            self.world
+                .as_world()
+                .with_bundle(loc, bundle)
+                .unwrap_unchecked()
+        }
+        .loc;
     }
 
     /// Inserts bundle of components to the entity.
@@ -1003,6 +1025,7 @@ impl<'a> EntityRef<'a> {
         };
         self.loc = unsafe {
             self.world
+                .as_world()
                 .with_external_bundle(loc, bundle)
                 .unwrap_unchecked()
         }
@@ -1021,7 +1044,7 @@ impl<'a> EntityRef<'a> {
             loc: self.loc,
             world: PhantomData,
         };
-        let (c, e) = unsafe { self.world.remove(loc).unwrap_unchecked() };
+        let (c, e) = unsafe { self.world.as_world().remove(loc).unwrap_unchecked() };
         self.loc = e.loc;
         c
     }
@@ -1039,7 +1062,7 @@ impl<'a> EntityRef<'a> {
         };
 
         unsafe {
-            self.world.drop::<T>(loc).unwrap_unchecked();
+            self.world.as_world().drop::<T>(loc).unwrap_unchecked();
         }
 
         let loc = self.world.entities().get_location(self.id)?;
@@ -1060,7 +1083,10 @@ impl<'a> EntityRef<'a> {
         };
 
         unsafe {
-            self.world.drop_erased(loc, ty).unwrap_unchecked();
+            self.world
+                .as_world()
+                .drop_erased(loc, ty)
+                .unwrap_unchecked();
         }
 
         let loc = self.world.entities().get_location(self.id)?;
@@ -1111,7 +1137,10 @@ impl<'a> EntityRef<'a> {
         };
 
         unsafe {
-            self.world.drop_bundle::<B>(loc).unwrap_unchecked();
+            self.world
+                .as_world()
+                .drop_bundle::<B>(loc)
+                .unwrap_unchecked();
         }
 
         let loc = self.world.entities().get_location(self.id)?;
@@ -1125,7 +1154,7 @@ impl<'a> EntityRef<'a> {
     /// Despawns the entity.
     #[inline]
     pub fn despawn(self) {
-        unsafe { self.world.despawn_ref(self.id, self.loc) }
+        unsafe { self.world.as_world().despawn_ref(self.id, self.loc) }
     }
 
     /// Checks if entity has component of specified type.
@@ -1144,6 +1173,6 @@ impl<'a> EntityRef<'a> {
     /// Returns a reference to world.
     #[inline]
     pub fn world(&mut self) -> &mut World {
-        self.world
+        self.world.as_world()
     }
 }

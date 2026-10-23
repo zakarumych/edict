@@ -4,6 +4,7 @@ use crate::{
     archetype::Archetype,
     component::ComponentInfo,
     entity::{EntityId, EntityLoc, Location},
+    epoch::EpochId,
     query::DefaultQuery,
     system::DefaultQueryArg,
 };
@@ -77,6 +78,24 @@ unsafe impl Query for Entities {
     type Item<'a> = EntityLoc<'a>;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = (cached, epoch);
+        EntitiesFetch {
+            archetype: _arch_idx,
+            entities: _archetype.entities(),
+        }
+    }
 
     #[inline]
     fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {

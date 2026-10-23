@@ -74,7 +74,7 @@ impl World {
             .entities
             .spawn(0, |id| self.archetypes[0].spawn_empty(id));
 
-        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+        unsafe { EntityRef::from_parts(id, loc, self) }
     }
 
     /// Spawns a new entity in this world with provided component.
@@ -118,7 +118,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
         });
 
-        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+        unsafe { EntityRef::from_parts(id, loc, self) }
     }
 
     /// Spawns a new entity in this world with provided component.
@@ -167,7 +167,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn_one(id, component, epoch)
         });
 
-        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+        unsafe { EntityRef::from_parts(id, loc, self) }
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -372,7 +372,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        unsafe { EntityRef::from_parts(id, loc, self.local()) }
+        unsafe { EntityRef::from_parts(id, loc, self) }
     }
 
     /// Umbrella method for spawning entity with existing ID.
@@ -410,9 +410,7 @@ impl World {
             self.archetypes[arch_idx as usize].spawn(id, bundle, epoch)
         });
 
-        (spawned, unsafe {
-            EntityRef::from_parts(id, loc, self.local())
-        })
+        (spawned, unsafe { EntityRef::from_parts(id, loc, self) })
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -836,7 +834,7 @@ impl WorldLocal {
     /// assert!(world.is_alive(entity));
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.is_alive(entity));
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
@@ -880,13 +878,13 @@ impl WorldLocal {
     /// # use edict::world::World;
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_external_registered::<u32>();
     /// let mut entity = world.spawn_one_external_defer(42u32);
     ///
     /// assert!(world.is_alive(entity));
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
@@ -933,7 +931,7 @@ impl WorldLocal {
     /// assert!(world.is_alive(entity));
     /// assert!(!world.try_has_component::<ExampleComponent>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<ExampleComponent>(entity).unwrap());
     /// ```
@@ -974,13 +972,13 @@ impl WorldLocal {
     /// # use edict::world::World;
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// world.ensure_external_registered::<u32>();
+    /// world.as_world().ensure_external_registered::<u32>();
     /// let mut entity = world.spawn_external_defer((42u32,));
     ///
     /// assert!(world.is_alive(entity));
     /// assert!(!world.try_has_component::<u32>(entity).unwrap());
     ///
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     ///
     /// assert!(world.try_has_component::<u32>(entity).unwrap());
     /// ```
@@ -1078,10 +1076,10 @@ impl WorldLocal {
     /// # use edict::{world::World, ExampleComponent};
     /// let mut world = World::new();
     /// let world = world.local();;
-    /// let entity = world.spawn((ExampleComponent,)).id();
+    /// let entity = world.as_world().spawn((ExampleComponent,)).id();
     /// world.despawn_defer(entity);
     /// assert!(world.is_alive(entity), "Despawn is deferred and entity is still alive");
-    /// world.run_deferred();
+    /// world.as_world().run_deferred();
     /// assert!(!world.is_alive(entity), "Finally despawned");
     /// ```
     #[inline]

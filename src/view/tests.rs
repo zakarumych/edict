@@ -140,3 +140,70 @@ fn view_cache_propagation_preserves_conversions_and_looks_up_extensions() {
     let mut filtered = source(&world, &caches).filter(With::<u32>::default());
     check_caches(&mut filtered, true, [0, 1]);
 }
+
+#[test]
+fn local_epoch_source_survives_extensions_locking_iteration_and_single_views() {
+    use crate::{
+        component::Component,
+        query::{DefaultQuery, Write},
+    };
+    #[derive(Component)]
+    struct LocalValue(u32);
+    let mut world = World::new();
+    let entity = world.spawn((LocalValue(0),)).id();
+    let start = world.epoch();
+    let alive = world
+        .view::<crate::query::Entities>()
+        .into_iter()
+        .next()
+        .unwrap();
+
+    let end;
+    {
+        // The mutable world owner performs no atomic epoch operation while any
+        // local source, view, item, or iterator is in use.
+        let epochs = unsafe { LocalEpochCounter::from_atomic(world.epoch_counter()) };
+        let source = unsafe {
+            ViewValue::new_with_epochs(&world, (), (), StaticallyBorrowed, Extensible, epochs)
+        };
+        let mut view = source
+            .extend_default::<&mut LocalValue>()
+            .with::<LocalValue>();
+        view.try_get_mut(entity).unwrap().0 += 1;
+        let first = epochs.current();
+        view.try_get_mut(entity).unwrap().0 += 1;
+        assert!(epochs.current().after(first));
+        {
+            let mut locked = view.lock();
+            for value in locked.iter_mut() {
+                value.0 += 1;
+            }
+            for batch in locked.iter_batched_mut(1) {
+                batch[0].0 += 1;
+            }
+        }
+        drop(view);
+        let mut one = unsafe {
+            ViewOneValue::new_with_epochs(
+                &world,
+                alive,
+                Write::<LocalValue>::default_query(),
+                (),
+                epochs,
+            )
+        };
+        one.get_mut().unwrap().0 += 1;
+        drop(one);
+        end = epochs.current();
+        assert!(end.after(start));
+    }
+    assert_eq!(world.epoch(), end);
+    assert_eq!(world.get::<&LocalValue>(entity).unwrap().0, 5);
+}
+
+#[test]
+fn atomic_iterators_keep_send_and_sync_capabilities() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<ViewIter<'static, (), ()>>();
+    send_sync::<ViewBatchIter<'static, (), ()>>();
+}

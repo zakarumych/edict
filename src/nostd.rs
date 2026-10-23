@@ -11,6 +11,16 @@ pub mod flow {
     use core::ptr::NonNull;
 
     unsafe extern "C" {
+        /// Replaces the thread-local flow-world borrow flag and returns its previous value.
+        ///
+        /// The flag is initially `false` on each thread and is independent of the world
+        /// pointer slot. The host must implement this hook when using `flow` without `std`.
+        ///
+        /// # Safety
+        /// This operation must affect only the calling thread's flag and must not reenter
+        /// flow access. It must return exactly the value held before replacement.
+        pub unsafe fn edict_replace_flow_world_borrowed_tls(borrowed: bool) -> bool;
+
         /// Sets the current world pointer in thread-local storage.
         /// Returns previous pointer if any.
         ///

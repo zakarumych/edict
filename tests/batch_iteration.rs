@@ -43,9 +43,9 @@ fn filtered_read_next_visits_chunks_for_small_and_spanning_batches() {
     let world = fixture();
     for size in [1, 17, 128, 255, 256, 257, 512, 700, u32::MAX] {
         let view = world.view::<&Value>().with::<Selected>();
-        let mut iter = view.iter_batched(size);
+        let iter = view.iter_batched(size);
         let mut actual = Vec::new();
-        while let Some(batch) = iter.next() {
+        for batch in iter {
             assert!(!batch.is_empty());
             assert!(batch.len() <= size as usize);
             actual.extend(batch.iter().map(|v| v.0));
@@ -95,8 +95,8 @@ fn filtered_mutable_batches_touch_matching_entities_only() {
         let epoch = world.epoch();
         {
             let mut view = world.view::<(&mut Value, &Weight)>().with::<Selected>();
-            let mut iter = view.iter_batched_mut(size);
-            while let Some((values, weights)) = iter.next() {
+            let iter = view.iter_batched_mut(size);
+            for (values, weights) in iter {
                 assert_eq!(values.len(), weights.len());
                 for (value, weight) in values.iter_mut().zip(weights) {
                     value.0 += weight.0;

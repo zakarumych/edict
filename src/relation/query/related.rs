@@ -1,8 +1,10 @@
+use crate::query::FetchCacheSlot;
+use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
     Access,
-    archetype::Archetype,
+    archetype::{Archetype, ArchetypeComponent},
     component::ComponentInfo,
     entity::EntityId,
     epoch::EpochId,
@@ -108,6 +110,59 @@ where
 
     const MUTABLE: bool = false;
 
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        FetchRelatedWith {
+            ptr: cached.ptr,
+            marker: PhantomData,
+        }
+    }
+
+    const FETCH_CACHE_SLOTS: usize = 1;
+    #[inline]
+    fn prepare_fetch_cache(archetype: &Archetype, slots: &mut [FetchCacheSlot]) {
+        slots[0] = FetchCacheSlot::component(
+            archetype,
+            if R::SYMMETRIC {
+                type_id::<OriginComponent<R>>()
+            } else {
+                type_id::<TargetComponent<R>>()
+            },
+        );
+    }
+    #[inline]
+    unsafe fn fetch_cached<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Self::Fetch<'a> {
+        let component = unsafe { slots[0].get(archetype).unwrap_unchecked() };
+        unsafe { FetchRelatedWith::from_component(component, epoch) }
+    }
+    #[inline]
+    unsafe fn fetch_optional_cached<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Option<Self::Fetch<'a>> {
+        let component = unsafe { slots[0].get(archetype) }?;
+        Some(unsafe { FetchRelatedWith::from_component(component, epoch) })
+    }
+
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
         if R::SYMMETRIC {
@@ -155,37 +210,33 @@ where
         &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
-        _epoch: EpochId,
+        epoch: EpochId,
     ) -> FetchRelatedWith<'a, R> {
-        if R::SYMMETRIC {
-            let component = unsafe {
-                archetype
-                    .component(type_id::<OriginComponent<R>>())
-                    .unwrap_unchecked()
-            };
-            debug_assert_eq!(component.id(), type_id::<OriginComponent<R>>());
+        let component = unsafe {
+            archetype
+                .component(if R::SYMMETRIC {
+                    type_id::<OriginComponent<R>>()
+                } else {
+                    type_id::<TargetComponent<R>>()
+                })
+                .unwrap_unchecked()
+        };
+        unsafe { FetchRelatedWith::from_component(component, epoch) }
+    }
 
-            let data = unsafe { component.data() };
-
-            FetchRelatedWith {
-                ptr: data.ptr.cast(),
-                marker: PhantomData,
-            }
+    #[inline]
+    unsafe fn fetch_optional<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Option<FetchRelatedWith<'a, R>> {
+        let component = archetype.component(if R::SYMMETRIC {
+            type_id::<OriginComponent<R>>()
         } else {
-            let component = unsafe {
-                archetype
-                    .component(type_id::<TargetComponent<R>>())
-                    .unwrap_unchecked()
-            };
-            debug_assert_eq!(component.id(), type_id::<TargetComponent<R>>());
-
-            let data = unsafe { component.data() };
-
-            FetchRelatedWith {
-                ptr: data.ptr.cast(),
-                marker: PhantomData,
-            }
-        }
+            type_id::<TargetComponent<R>>()
+        })?;
+        Some(unsafe { FetchRelatedWith::from_component(component, epoch) })
     }
 }
 
@@ -282,6 +333,24 @@ where
     type Fetch<'a> = FetchRelatedRead<'a, R>;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        FetchRelatedRead {
+            ptr: cached.ptr,
+            marker: PhantomData,
+        }
+    }
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -530,8 +599,16 @@ where
             FetchRelatedWrite {
                 ptr: data.ptr.cast(),
                 epoch,
-                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-                chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+                entity_epochs: unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>(),
+                    )
+                },
+                chunk_epochs: unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>(),
+                    )
+                },
                 marker: PhantomData,
             }
         } else {
@@ -548,8 +625,16 @@ where
             FetchRelatedWrite {
                 ptr: data.ptr.cast(),
                 epoch,
-                entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-                chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+                entity_epochs: unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>(),
+                    )
+                },
+                chunk_epochs: unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>(),
+                    )
+                },
                 marker: PhantomData,
             }
         }
@@ -557,3 +642,22 @@ where
 }
 
 unsafe impl<R> SendQuery for Related<Write<R>> where R: Relation + Send {}
+
+impl<'a, R: Relation> FetchRelatedWith<'a, R> {
+    #[inline]
+    unsafe fn from_component(component: &'a ArchetypeComponent, _epoch: EpochId) -> Self {
+        debug_assert_eq!(
+            component.id(),
+            if R::SYMMETRIC {
+                type_id::<OriginComponent<R>>()
+            } else {
+                type_id::<TargetComponent<R>>()
+            }
+        );
+        let data = unsafe { component.data() };
+        Self {
+            ptr: data.ptr.cast(),
+            marker: PhantomData,
+        }
+    }
+}

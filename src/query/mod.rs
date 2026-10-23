@@ -106,6 +106,105 @@ pub struct WriteAlias;
 /// Implementations must adhere to unsafe contract of unsafe methods.
 #[diagnostic::on_unimplemented(label = "`{Self}` is not a query type")]
 pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
+    /// Allows retaining this query's fetch between indexed accesses.
+    ///
+    /// Opt-in implementations must retain only stable raw access state with no
+    /// resource-owning drop effects. They must reconstruct each returned fetch
+    /// with the requested lifetime and reset all per-access traversal state.
+    const SUPPORTS_FETCH_REUSE: bool = false;
+
+    /// Archetype acceptance and optional-fetch presence remain invariant while
+    /// the query instance and archetype schema are unchanged, even when component
+    /// values or modification epochs change. Both early and late checks must
+    /// satisfy this guarantee. Optional wrappers may reuse their stored presence
+    /// without repeating those checks when this is true.
+    const FETCH_REUSE_MATCHES_STABLE: bool = false;
+
+    /// Rebuilds an indexed fetch from retained native access state.
+    ///
+    /// The default performs an ordinary fetch. Unsupported queries are never
+    /// retained by views. Supported queries must reproduce fresh-fetch effects
+    /// for a new epoch; handing off a newly prepared fetch at its existing epoch
+    /// must not repeat constructor effects.
+    ///
+    /// # Safety
+    /// `cached` must come from this same query instance, live world and archetype.
+    /// Its archetype layout and backing allocations must remain valid under
+    /// continuously held query/filter access; values and epochs may change. No item borrowed from an earlier access may remain
+    /// live when access can conflict. Early and late checks must have passed. Reusing retained state requires
+    /// `Self::SUPPORTS_FETCH_REUSE` to be true.
+    /// The epoch must be fresh, or match a newly prepared fetch handed off before
+    /// its first item access. Short-lived fetches must be dropped before reuse.
+    /// Returned items may be used only while the retained access remains valid.
+    /// Returned fetches must not borrow the cached object itself. They may only
+    /// borrow independently valid world storage.
+    /// Retained state must not borrow mutable component data through references;
+    /// opt-in implementations reconstruct native access state explicitly.
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = cached;
+        unsafe { self.fetch(arch_idx, archetype, epoch) }
+    }
+
+    /// Number of internal metadata slots prepared per archetype.
+    #[doc(hidden)]
+    const FETCH_CACHE_SLOTS: usize = 0;
+
+    /// Prepares internal metadata slots for one archetype; never stores payload pointers.
+    #[doc(hidden)]
+    fn prepare_fetch_cache(archetype: &Archetype, slots: &mut [FetchCacheSlot]) {
+        let _ = (archetype, slots);
+    }
+
+    /// Fetches using metadata prepared for this exact live archetype and query layout.
+    ///
+    /// # Safety
+    /// The usual fetch access requirements apply. Slots must come from a fully
+    /// initialized cache row belonging to this archetype and Self's slot layout.
+    #[doc(hidden)]
+    #[inline]
+    unsafe fn fetch_cached<'a>(
+        &self,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Self::Fetch<'a> {
+        let _ = slots;
+        unsafe { self.fetch(arch_idx, archetype, epoch) }
+    }
+
+    /// Optional fetching with prepared metadata. Zero-slot queries preserve their
+    /// existing optional-fetch overrides and effects.
+    ///
+    /// # Safety
+    /// Slots must match this live archetype and query layout. Required component
+    /// access must be granted even when the query rejects the archetype.
+    #[doc(hidden)]
+    #[inline]
+    unsafe fn fetch_optional_cached<'a>(
+        &self,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Option<Self::Fetch<'a>> {
+        if Self::FETCH_CACHE_SLOTS == 0 {
+            return unsafe { self.fetch_optional(arch_idx, archetype, epoch) };
+        }
+        if self.visit_archetype(archetype) && unsafe { self.visit_archetype_late(archetype) } {
+            Some(unsafe { self.fetch_cached(arch_idx, archetype, epoch, slots) })
+        } else {
+            None
+        }
+    }
+
     /// Item type this query type yields.
     type Item<'a>: 'a;
 
@@ -184,6 +283,33 @@ pub unsafe trait Query: IntoQuery<Query = Self> + Copy + Send + Sync + 'static {
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Self::Fetch<'a>;
+
+    /// Prepares a fetch if this archetype passes the early and late checks.
+    ///
+    /// Returns `None` when either check rejects the archetype. Overrides must
+    /// preserve the checks' results and the effects of [`Self::fetch`], including
+    /// modification tracking with the supplied epoch.
+    ///
+    /// # Safety
+    ///
+    /// The caller must hold the component access required by this query for
+    /// this archetype, even though the archetype may fail the early check.
+    /// Any returned fetch must obey the same access and lifetime requirements
+    /// as [`Self::fetch`].
+    #[must_use]
+    #[inline]
+    unsafe fn fetch_optional<'a>(
+        &self,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Option<Self::Fetch<'a>> {
+        if self.visit_archetype(archetype) && unsafe { self.visit_archetype_late(archetype) } {
+            Some(unsafe { self.fetch(arch_idx, archetype, epoch) })
+        } else {
+            None
+        }
+    }
 
     /// Returns item for reserved entity if reserved entity (no components) satisfies the query.
     /// Otherwise returns `None`.
@@ -419,6 +545,41 @@ where
 {
 }
 
+/// Opaque storage for prepared archetype metadata. This is an internal query hook.
+#[doc(hidden)]
+#[derive(Clone, Copy, Default)]
+pub struct FetchCacheSlot {
+    component: Option<core::ptr::NonNull<crate::archetype::ArchetypeComponent>>,
+}
+
+// Safety: pointers only address immutable, schema-stable metadata records. Their
+// ComponentData remains behind UnsafeCell; fetching payload still requires the
+// original Query access grant and reads the current data header each time.
+unsafe impl Send for FetchCacheSlot {}
+unsafe impl Sync for FetchCacheSlot {}
+
+impl FetchCacheSlot {
+    #[inline]
+    pub(crate) fn component(archetype: &Archetype, id: TypeId) -> Self {
+        Self {
+            component: archetype.component(id).map(core::ptr::NonNull::from),
+        }
+    }
+
+    /// # Safety
+    /// This slot must have been prepared for this exact, still-live archetype.
+    /// Its schema must remain fixed; component access must be granted separately.
+    #[inline]
+    pub(crate) unsafe fn get<'a>(
+        &self,
+        owner: &'a Archetype,
+    ) -> Option<&'a crate::archetype::ArchetypeComponent> {
+        let _ = owner;
+        self.component
+            .map(|component| unsafe { component.as_ref() })
+    }
+}
+
 #[derive(Default)]
 struct OneQueryCache {
     /// 2-bit per archetype visiting cache.
@@ -428,6 +589,7 @@ struct OneQueryCache {
     /// 3 - visit
     bits: Vec<u64>,
     archetypes: usize,
+    slots: Vec<FetchCacheSlot>,
 }
 
 /// Stores archetype visit decisions by query type.
@@ -442,45 +604,51 @@ impl QueryCache {
         }
     }
 
-    /// Return QueryCache for query type.
-    pub fn init<Q>(&mut self, archetypes: &[Archetype])
-    where
-        Q: Query,
-    {
+    pub fn init<Q: Query>(&mut self, archetypes: &[Archetype]) {
         let cache = self.queries.entry(TypeId::of::<Q>()).or_default();
-
+        let published_slots = cache
+            .archetypes
+            .checked_mul(Q::FETCH_CACHE_SLOTS)
+            .expect("query cache layout overflow");
+        // A panicking prepare hook leaves its row unpublished. Discard its partial
+        // slots before retrying; published rows and their visit bits remain valid.
+        cache.slots.truncate(published_slots);
         if cache.bits.len() * 32 < archetypes.len() {
             cache.bits.resize(archetypes.len().div_ceil(32), 0);
         }
-
-        for (idx, archetype) in archetypes[cache.archetypes..].iter().enumerate() {
-            let idx = idx + cache.archetypes;
-
-            let ci = idx / 32;
-            let bi = idx % 32;
-
-            let bits = match Q::cache_visit_archetype(archetype) {
+        for idx in cache.archetypes..archetypes.len() {
+            let start = cache.slots.len();
+            let end = start
+                .checked_add(Q::FETCH_CACHE_SLOTS)
+                .expect("query cache layout overflow");
+            cache.slots.resize(end, FetchCacheSlot::default());
+            Q::prepare_fetch_cache(&archetypes[idx], &mut cache.slots[start..end]);
+            let bits = match Q::cache_visit_archetype(&archetypes[idx]) {
                 None => 0,
                 Some(false) => 1,
                 Some(true) => 2,
             };
-
-            cache.bits[ci] |= bits << (bi * 2);
+            let shift = (idx % 32) * 2;
+            cache.bits[idx / 32] = (cache.bits[idx / 32] & !(3 << shift)) | (bits << shift);
+            cache.archetypes = idx + 1;
         }
-
-        cache.archetypes = archetypes.len();
     }
 
-    pub fn get<Q>(&self, query: Q) -> QueryCacheRef<'_, Q>
-    where
-        Q: Query,
-    {
-        let bits = match self.queries.get(&TypeId::of::<Q>()) {
-            Some(cache) => &cache.bits[..],
-            None => &[],
+    pub fn get<Q: Query>(&self, query: Q) -> QueryCacheRef<'_, Q> {
+        let (bits, slots, archetypes) = match self.queries.get(&TypeId::of::<Q>()) {
+            Some(cache) => (
+                &cache.bits[..],
+                &cache.slots[..cache.archetypes * Q::FETCH_CACHE_SLOTS],
+                cache.archetypes,
+            ),
+            None => (&[][..], &[][..], 0),
         };
-
-        QueryCacheRef { bits, query }
+        QueryCacheRef {
+            bits,
+            slots,
+            archetypes,
+            query,
+        }
     }
 }
 
@@ -494,6 +662,8 @@ impl QueryCache {
 #[derive(Clone, Copy)]
 pub struct QueryCacheRef<'a, Q> {
     bits: &'a [u64],
+    slots: &'a [FetchCacheSlot],
+    archetypes: usize,
     query: Q,
 }
 
@@ -512,13 +682,20 @@ where
     #[inline]
     /// Returns an uncached handle that checks the query on every visit.
     pub fn empty(query: Q) -> Self {
-        Self { bits: &[], query }
+        Self {
+            bits: &[],
+            slots: &[],
+            archetypes: 0,
+            query,
+        }
     }
 
     #[inline]
     pub(crate) fn into_tuple(self) -> QueryCacheRef<'a, (Q,)> {
         QueryCacheRef {
             bits: self.bits,
+            slots: self.slots,
+            archetypes: self.archetypes,
             query: (self.query,),
         }
     }
@@ -538,12 +715,49 @@ where
             _ => false, // Actually unreachable.
         }
     }
+
+    /// Rebuilds a fetch from native state retained under the same live access.
+    ///
+    /// # Safety
+    /// All requirements of [`Query::reuse_fetch`] apply.
+    #[inline]
+    pub unsafe fn reuse_fetch<'cached, 'w>(
+        &self,
+        cached: &mut Q::Fetch<'cached>,
+        arch_idx: u32,
+        archetype: &'w Archetype,
+        epoch: EpochId,
+    ) -> Q::Fetch<'w> {
+        unsafe { self.query.reuse_fetch(cached, arch_idx, archetype, epoch) }
+    }
+    /// Fetches with prepared metadata when the row is fully published.
+    ///
+    /// # Safety
+    /// The index and archetype must belong to this handle's original live world,
+    /// with the same query slot layout. Query fetch access requirements still apply.
+    #[inline]
+    pub unsafe fn fetch<'w>(
+        &self,
+        arch_idx: u32,
+        archetype: &'w Archetype,
+        epoch: EpochId,
+    ) -> Q::Fetch<'w> {
+        if Q::FETCH_CACHE_SLOTS != 0 && (arch_idx as usize) < self.archetypes {
+            let start = arch_idx as usize * Q::FETCH_CACHE_SLOTS;
+            let slots = &self.slots[start..start + Q::FETCH_CACHE_SLOTS];
+            unsafe { self.query.fetch_cached(arch_idx, archetype, epoch, slots) }
+        } else {
+            unsafe { self.query.fetch(arch_idx, archetype, epoch) }
+        }
+    }
 }
 
 impl<'a, Q: Query> QueryCacheRef<'a, (Q,)> {
     pub(crate) fn unwrap_tuple(self) -> QueryCacheRef<'a, Q> {
         QueryCacheRef {
             bits: self.bits,
+            slots: self.slots,
+            archetypes: self.archetypes,
             query: self.query.0,
         }
     }

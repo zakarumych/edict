@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -87,6 +88,24 @@ where
     type Fetch<'a> = FetchRelatesExclusiveWith<'a, R>;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        FetchRelatesExclusiveWith {
+            ptr: cached.ptr,
+            marker: PhantomData,
+        }
+    }
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -213,6 +232,24 @@ where
     type Fetch<'a> = FetchRelatesExclusiveRead<'a, R>;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        FetchRelatesExclusiveRead {
+            ptr: cached.ptr,
+            marker: PhantomData,
+        }
+    }
 
     #[inline]
     fn component_access(&self, comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {
@@ -399,8 +436,12 @@ where
         FetchRelatesExclusiveWrite {
             epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>())
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>())
+            },
             marker: PhantomData,
         }
     }

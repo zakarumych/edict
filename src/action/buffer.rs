@@ -2,7 +2,7 @@ use alloc::collections::VecDeque;
 
 use crate::world::World;
 
-use super::{encoder::LocalActionEncoder, ActionEncoder, ActionFn, LocalActionFn};
+use super::{ActionEncoder, ActionFn, LocalActionFn, encoder::LocalActionEncoder};
 
 /// Buffer with all actions recorded by [`ActionEncoder`].
 #[derive(Default)]
@@ -167,6 +167,6 @@ impl ActionBufferSliceExt for [LocalActionBuffer] {
     #[inline]
     fn execute_all(&mut self, world: &mut World) -> bool {
         self.iter_mut()
-            .fold(false, |acc, encoder| acc | encoder.execute(world.local()))
+            .fold(false, |acc, encoder| acc | encoder.execute(world))
     }
 }

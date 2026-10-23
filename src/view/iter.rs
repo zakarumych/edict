@@ -1,8 +1,8 @@
-use core::ops::Range;
+use core::{marker::PhantomData, ops::Range};
 
 use crate::{
     archetype::{Archetype, CHUNK_LEN, chunk_idx, first_of_chunk, starts_of_chunks},
-    epoch::EpochId,
+    epoch::{EpochCounter, EpochId, EpochSource},
     query::{
         AsQuery, BatchFetch, BatchQuery, Fetch, ImmutableQuery, Query, QueryBatch, QueryCacheRef,
         QueryItem,
@@ -15,31 +15,31 @@ use super::{BorrowState, RuntimeBorrowState, StaticallyBorrowed, ViewValue};
 /// Yields query items for every entity matching both the query and the filter.
 ///
 /// Component borrow is acquired before construction.
-pub type ViewIter<'a, Q, F> =
-    ViewValueIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed>;
+pub type ViewIter<'a, Q, F, C = EpochCounter> =
+    ViewValueIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed, C>;
 
 /// Iterator over entities with a query `Q` and filter `F`.
 /// Yields query items for every entity matching both the query and the filter.
 ///
 /// Component borrow is acquired on construction and released when iterator is dropped.
-pub type ViewCellIter<'a, Q, F> =
-    ViewValueIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState>;
+pub type ViewCellIter<'a, Q, F, C = EpochCounter> =
+    ViewValueIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState, C>;
 
 /// Iterator over batches with a query `Q` and filter `F`.
 /// Yields query items for every entity matching both the query and the filter.
 ///
 /// Component borrow is acquired before construction.
-pub type ViewBatchIter<'a, Q, F> =
-    ViewValueBatchIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed>;
+pub type ViewBatchIter<'a, Q, F, C = EpochCounter> =
+    ViewValueBatchIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, StaticallyBorrowed, C>;
 
 /// Iterator over batches with a query `Q` and filter `F`.
 /// Yields query items for every entity matching both the query and the filter.
 ///
 /// Component borrow is acquired on construction and released when iterator is dropped.
-pub type ViewCellBatchIter<'a, Q, F> =
-    ViewValueBatchIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState>;
+pub type ViewCellBatchIter<'a, Q, F, C = EpochCounter> =
+    ViewValueBatchIter<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, RuntimeBorrowState, C>;
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
@@ -50,7 +50,8 @@ where
     /// Unlike `iter`, this version works for views with mutable queries
     /// since mutable borrow won't allow to iterate the view multiple times simultaneously.
     #[inline]
-    pub fn iter_mut(&mut self) -> ViewIter<'_, Q, F> {
+    pub fn iter_mut(&mut self) -> ViewIter<'_, Q, F, C> {
+        self.clear_fetch_cache();
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
         self.acquire_borrow();
@@ -69,7 +70,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: ImmutableQuery,
     F: ImmutableQuery,
@@ -81,7 +82,8 @@ where
     /// Immutable query are guaranteed to not conflict with any other immutable query,
     /// allowing for iterating a view multiple times simultaneously.
     #[inline]
-    pub fn iter(&self) -> ViewIter<'_, Q, F> {
+    pub fn iter(&self) -> ViewIter<'_, Q, F, C> {
+        self.clear_fetch_cache();
         debug_assert!(!Q::MUTABLE && !F::MUTABLE);
         let epoch = self.epochs.current();
 
@@ -101,17 +103,17 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> IntoIterator for ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> IntoIterator for ViewValue<'a, Q, F, B, E, C>
 where
     Q: Query,
     F: Query,
     B: BorrowState,
 {
     type Item = QueryItem<'a, Q>;
-    type IntoIter = ViewValueIter<'a, Q, F, B>;
+    type IntoIter = ViewValueIter<'a, Q, F, B, C>;
 
     #[inline]
-    fn into_iter(self) -> ViewValueIter<'a, Q, F, B> {
+    fn into_iter(self) -> ViewValueIter<'a, Q, F, B, C> {
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
         let query = self.query;
@@ -127,12 +129,13 @@ where
 
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
-pub struct ViewValueIter<'a, Q: Query, F: Query, B: BorrowState> {
+pub struct ViewValueIter<'a, Q: Query, F: Query, B: BorrowState, C: EpochSource = EpochCounter> {
     query: QueryCacheRef<'a, Q>,
     filter: QueryCacheRef<'a, F>,
     query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
+    source: PhantomData<&'a C>,
     archetypes: &'a [Archetype],
     next_archetype: usize,
     indices: Range<u32>,
@@ -140,7 +143,7 @@ pub struct ViewValueIter<'a, Q: Query, F: Query, B: BorrowState> {
     state: B,
 }
 
-impl<Q, F, B> Drop for ViewValueIter<'_, Q, F, B>
+impl<Q, F, B, C: EpochSource> Drop for ViewValueIter<'_, Q, F, B, C>
 where
     Q: Query,
     F: Query,
@@ -151,7 +154,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> ViewValueIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> ViewValueIter<'a, Q, F, B, C>
 where
     Q: Query,
     F: Query,
@@ -179,6 +182,7 @@ where
             query_fetch: Fetch::dangling(),
             filter_fetch: Fetch::dangling(),
             epoch,
+            source: PhantomData,
             next_archetype: 0,
             indices: 0..0,
             touch_chunk: false,
@@ -188,7 +192,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> Iterator for ViewValueIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> Iterator for ViewValueIter<'a, Q, F, B, C>
 where
     Q: Query,
     F: Query,
@@ -392,7 +396,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: BatchQuery,
     F: BatchQuery,
@@ -407,7 +411,8 @@ where
     ///
     /// Panics if `batch_size` is zero.
     #[inline]
-    pub fn iter_batched_mut(&mut self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
+    pub fn iter_batched_mut(&mut self, batch_size: u32) -> ViewBatchIter<'_, Q, F, C> {
+        self.clear_fetch_cache();
         assert!(batch_size > 0, "batch_size must be greater than zero");
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -428,7 +433,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: ImmutableQuery + BatchQuery,
     F: ImmutableQuery + BatchQuery,
@@ -444,7 +449,8 @@ where
     ///
     /// Panics if `batch_size` is zero.
     #[inline]
-    pub fn iter_batched(&self, batch_size: u32) -> ViewBatchIter<'_, Q, F> {
+    pub fn iter_batched(&self, batch_size: u32) -> ViewBatchIter<'_, Q, F, C> {
+        self.clear_fetch_cache();
         assert!(batch_size > 0, "batch_size must be greater than zero");
         debug_assert!(!Q::MUTABLE && !F::MUTABLE);
         let epoch = self.epochs.current();
@@ -466,7 +472,7 @@ where
     }
 }
 
-impl<'a, Q, F, B, E> ViewValue<'a, Q, F, B, E>
+impl<'a, Q, F, B, E, C: EpochSource> ViewValue<'a, Q, F, B, E, C>
 where
     Q: BatchQuery,
     F: BatchQuery,
@@ -478,7 +484,7 @@ where
     ///
     /// Panics if `batch_size` is zero.
     #[inline]
-    pub fn into_iter_batched(self, batch_size: u32) -> ViewValueBatchIter<'a, Q, F, B> {
+    pub fn into_iter_batched(self, batch_size: u32) -> ViewValueBatchIter<'a, Q, F, B, C> {
         assert!(batch_size > 0, "batch_size must be greater than zero");
         let epoch = self.epochs.next_if(Q::MUTABLE || F::MUTABLE);
 
@@ -519,12 +525,19 @@ unsafe fn prepare_batch_chunks<'a>(
 
 /// Iterator over entities with a query `Q`.
 /// Yields query items for every matching entity.
-pub struct ViewValueBatchIter<'a, Q: BatchQuery, F: BatchQuery, B: BorrowState> {
+pub struct ViewValueBatchIter<
+    'a,
+    Q: BatchQuery,
+    F: BatchQuery,
+    B: BorrowState,
+    C: EpochSource = EpochCounter,
+> {
     query: QueryCacheRef<'a, Q>,
     filter: QueryCacheRef<'a, F>,
     query_fetch: Q::Fetch<'a>,
     filter_fetch: F::Fetch<'a>,
     epoch: EpochId,
+    source: PhantomData<&'a C>,
     archetypes: &'a [Archetype],
     next_archetype: usize,
     indices: Range<u32>,
@@ -532,7 +545,7 @@ pub struct ViewValueBatchIter<'a, Q: BatchQuery, F: BatchQuery, B: BorrowState> 
     batch_size: u32,
 }
 
-impl<'a, Q, F, B> Drop for ViewValueBatchIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> Drop for ViewValueBatchIter<'a, Q, F, B, C>
 where
     Q: BatchQuery,
     F: BatchQuery,
@@ -543,7 +556,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> ViewValueBatchIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> ViewValueBatchIter<'a, Q, F, B, C>
 where
     Q: BatchQuery,
     F: BatchQuery,
@@ -573,6 +586,7 @@ where
             query_fetch: Fetch::dangling(),
             filter_fetch: Fetch::dangling(),
             epoch,
+            source: PhantomData,
             archetypes,
             next_archetype: 0,
             indices: 0..0,
@@ -582,7 +596,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> Iterator for ViewValueBatchIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> Iterator for ViewValueBatchIter<'a, Q, F, B, C>
 where
     Q: BatchQuery,
     F: BatchQuery,
@@ -721,7 +735,7 @@ where
     }
 }
 
-impl<'a, Q, F, B> ExactSizeIterator for ViewValueBatchIter<'a, Q, F, B>
+impl<'a, Q, F, B, C: EpochSource> ExactSizeIterator for ViewValueBatchIter<'a, Q, F, B, C>
 where
     Q: BatchQuery,
     F: BatchQuery,

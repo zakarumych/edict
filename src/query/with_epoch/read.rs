@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -88,6 +89,25 @@ where
     type Fetch<'a> = WithEpochFetchRead<'a, T>;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        WithEpochFetchRead {
+            ptr: cached.ptr,
+            epochs: cached.epochs,
+            marker: PhantomData,
+        }
+    }
     const FILTERS_ENTITIES: bool = false;
 
     #[inline]
@@ -125,7 +145,11 @@ where
 
         WithEpochFetchRead {
             ptr: data.ptr.cast(),
-            epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) },
+            epochs: unsafe {
+                NonNull::new_unchecked(
+                    Box::as_ptr(&data.entity_epochs).cast::<EpochId>() as *mut EpochId
+                )
+            },
             marker: PhantomData,
         }
     }

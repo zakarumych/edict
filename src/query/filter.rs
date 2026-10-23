@@ -261,6 +261,22 @@ where
         T: 'a;
 
     const MUTABLE: bool = T::MUTABLE;
+
+    const SUPPORTS_FETCH_REUSE: bool = !T::FILTERS_ENTITIES;
+    const FETCH_REUSE_MATCHES_STABLE: bool = T::FETCH_REUSE_MATCHES_STABLE;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = (cached, epoch);
+        // With no per-entity filtering, a matched inverse has no inner fetch.
+        NotFetch::None
+    }
     const FILTERS_ENTITIES: bool = T::FILTERS_ENTITIES;
 
     #[inline]
@@ -360,6 +376,21 @@ where
     type Fetch<'a> = UnitFetch;
 
     const MUTABLE: bool = false;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = (cached, epoch);
+        UnitFetch::new()
+    }
 
     #[inline]
     fn component_access(&self, _comp: &ComponentInfo) -> Result<Option<Access>, WriteAlias> {

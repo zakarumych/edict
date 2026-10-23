@@ -1,8 +1,13 @@
+use crate::query::FetchCacheSlot;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    archetype::Archetype, component::ComponentInfo, epoch::EpochId, query::DefaultQuery,
-    system::DefaultQueryArg, type_id,
+    archetype::{Archetype, ArchetypeComponent},
+    component::ComponentInfo,
+    epoch::EpochId,
+    query::DefaultQuery,
+    system::DefaultQueryArg,
+    type_id,
 };
 
 use super::{Access, AsQuery, Fetch, ImmutableQuery, IntoQuery, Query, SendQuery, WriteAlias};
@@ -80,6 +85,55 @@ where
 
     const MUTABLE: bool = false;
 
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        let _ = epoch;
+        FetchCpy {
+            ptr: cached.ptr,
+            marker: PhantomData,
+        }
+    }
+
+    const FETCH_CACHE_SLOTS: usize = 1;
+
+    #[inline]
+    fn prepare_fetch_cache(archetype: &Archetype, slots: &mut [FetchCacheSlot]) {
+        slots[0] = FetchCacheSlot::component(archetype, type_id::<T>());
+    }
+
+    #[inline]
+    unsafe fn fetch_cached<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Self::Fetch<'a> {
+        let component = unsafe { slots[0].get(archetype).unwrap_unchecked() };
+        unsafe { FetchCpy::from_component(component, epoch) }
+    }
+
+    #[inline]
+    unsafe fn fetch_optional_cached<'a>(
+        &self,
+        _arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Option<Self::Fetch<'a>> {
+        let component = unsafe { slots[0].get(archetype) }?;
+        Some(unsafe { FetchCpy::from_component(component, epoch) })
+    }
+
     #[inline]
     fn cache_visit_archetype(archetype: &Archetype) -> Option<bool> {
         Some(archetype.has_component(type_id::<T>()))
@@ -109,9 +163,20 @@ where
         &self,
         _arch_idx: u32,
         archetype: &'a Archetype,
-        _epoch: EpochId,
+        epoch: EpochId,
     ) -> FetchCpy<'a, T> {
         let component = unsafe { archetype.component(type_id::<T>()).unwrap_unchecked() };
+        unsafe { FetchCpy::from_component(component, epoch) }
+    }
+}
+
+unsafe impl<T> ImmutableQuery for Cpy<T> where T: Copy + 'static {}
+
+unsafe impl<T> SendQuery for Cpy<T> where T: Sync + Copy + 'static {}
+
+impl<'a, T: Copy + 'static> FetchCpy<'a, T> {
+    #[inline]
+    unsafe fn from_component(component: &'a ArchetypeComponent, _epoch: EpochId) -> Self {
         debug_assert_eq!(component.id(), type_id::<T>());
 
         let data = unsafe { component.data() };
@@ -122,7 +187,3 @@ where
         }
     }
 }
-
-unsafe impl<T> ImmutableQuery for Cpy<T> where T: Copy + 'static {}
-
-unsafe impl<T> SendQuery for Cpy<T> where T: Sync + Copy + 'static {}

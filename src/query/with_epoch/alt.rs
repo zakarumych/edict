@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, cell::Cell, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -105,6 +106,28 @@ where
     type Fetch<'a> = WithEpochFetchAlt<'a, T>;
 
     const MUTABLE: bool = true;
+
+    const SUPPORTS_FETCH_REUSE: bool = true;
+    const FETCH_REUSE_MATCHES_STABLE: bool = true;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        cached.epoch = epoch;
+        WithEpochFetchAlt {
+            ptr: cached.ptr,
+            entity_epochs: cached.entity_epochs,
+            chunk_epochs: cached.chunk_epochs,
+            epoch,
+            archetype_epoch: cached.archetype_epoch,
+            marker: PhantomData,
+        }
+    }
     const FILTERS_ENTITIES: bool = false;
 
     #[inline]
@@ -143,9 +166,14 @@ where
         WithEpochFetchAlt {
             epoch,
             ptr: data.ptr.cast(),
-            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) }.cast(),
-            archetype_epoch: NonNull::from(&mut data.epoch).cast(),
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>())
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>())
+            }
+            .cast(),
+            archetype_epoch: component.epoch_ptr().cast(),
             marker: PhantomData,
         }
     }

@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use core::{any::TypeId, fmt::Debug, iter::FusedIterator, marker::PhantomData, ptr::NonNull};
 
@@ -267,9 +268,15 @@ where
                     borrow_fn: component.borrows()[idx].borrow(),
                     borrow_mut_fn: None,
                     entity_epochs: unsafe {
-                        NonNull::new_unchecked(data.entity_epochs.as_mut_ptr())
+                        NonNull::new_unchecked(
+                            Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>(),
+                        )
                     },
-                    chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+                    chunk_epochs: unsafe {
+                        NonNull::new_unchecked(
+                            Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>(),
+                        )
+                    },
                 }
             })
             .collect();
@@ -558,9 +565,15 @@ where
                     borrow_fn: component.borrows()[idx].borrow(),
                     borrow_mut_fn: component.borrows()[idx].borrow_mut(),
                     entity_epochs: unsafe {
-                        NonNull::new_unchecked(data.entity_epochs.as_mut_ptr())
+                        NonNull::new_unchecked(
+                            Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>(),
+                        )
                     },
-                    chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+                    chunk_epochs: unsafe {
+                        NonNull::new_unchecked(
+                            Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>(),
+                        )
+                    },
                 }
             })
             .collect();

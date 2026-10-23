@@ -13,7 +13,7 @@ use crate::{
     entity::{Entity, EntityId},
     query::{AsDefaultQuery, IntoQuery, Query},
     relation::Relation,
-    view::View,
+    view::LocalView as View,
     world::WorldLocal,
 };
 
@@ -46,6 +46,10 @@ pub trait IntoFlow: 'static {
 }
 
 /// World reference that is updated when flow is polled.
+///
+/// Each safe access borrows the flow world exclusively. Reentering another safe
+/// flow access from a world, entity, view, or resource callback panics. The borrow
+/// is released when the operation finishes, including when a callback unwinds.
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
 pub struct FlowWorld {
@@ -112,6 +116,10 @@ impl FlowWorld {
         unsafe { get_flow_world() }
     }
 
+    pub(super) fn borrow(self) -> super::tls::WorldBorrowGuard {
+        super::tls::borrow_world()
+    }
+
     /// Access world reference with closure.
     /// Returns closure result.
     ///
@@ -123,7 +131,10 @@ impl FlowWorld {
     where
         F: FnOnce(&mut WorldLocal) -> R,
     {
-        f(unsafe { self.get() })
+        {
+            let mut world = self.borrow();
+            f(&mut world)
+        }
     }
 
     /// Returns a future that will poll the closure with world reference.
@@ -217,7 +228,7 @@ impl FlowWorld {
     #[inline]
     pub fn entity(self, entity: EntityId) -> Result<FlowEntity, NoSuchEntity> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let world = self.borrow();
 
         if world.is_alive(entity) {
             Ok(FlowEntity::new(entity))
@@ -237,9 +248,9 @@ impl FlowWorld {
         T: Clone + 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.try_get_cloned(entity)
+        world.as_world().try_get_cloned(entity)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -267,9 +278,9 @@ impl FlowWorld {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert(entity, component)
+        world.as_world().insert(entity, component)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -298,9 +309,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert_external(entity, component)
+        world.as_world().insert_external(entity, component)
     }
 
     /// Attempts to inserts component to the specified entity.
@@ -328,9 +339,9 @@ impl FlowWorld {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with(entity, f)?;
+        world.as_world().with(entity, f)?;
 
         Ok(())
     }
@@ -365,9 +376,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with_external(entity, f)?;
+        world.as_world().with_external(entity, f)?;
 
         Ok(())
     }
@@ -399,9 +410,9 @@ impl FlowWorld {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert_bundle(entity, bundle)
+        world.as_world().insert_bundle(entity, bundle)
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -442,9 +453,9 @@ impl FlowWorld {
         B: DynamicBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert_external_bundle(entity, bundle)
+        world.as_world().insert_external_bundle(entity, bundle)
     }
 
     /// Inserts bundle of components to the specified entity.
@@ -473,9 +484,9 @@ impl FlowWorld {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with_bundle(entity, bundle)?;
+        world.as_world().with_bundle(entity, bundle)?;
 
         Ok(())
     }
@@ -511,9 +522,9 @@ impl FlowWorld {
         B: DynamicBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with_external_bundle(entity, bundle)?;
+        world.as_world().with_external_bundle(entity, bundle)?;
 
         Ok(())
     }
@@ -529,9 +540,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        let (c, _) = world.remove(entity)?;
+        let (c, _) = world.as_world().remove(entity)?;
         Ok(c)
     }
 
@@ -545,9 +556,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.drop::<T>(entity)
+        world.as_world().drop::<T>(entity)
     }
 
     /// Drops component from the specified entity.
@@ -557,9 +568,9 @@ impl FlowWorld {
     #[inline]
     pub fn drop_erased(self, entity: impl Entity, ty: TypeId) -> Result<(), EntityError> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.drop_erased(entity, ty)
+        world.as_world().drop_erased(entity, ty)
     }
 
     /// Drops entity's components that are found in the specified bundle.
@@ -593,9 +604,9 @@ impl FlowWorld {
         B: Bundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.drop_bundle::<B>(entity)
+        world.as_world().drop_bundle::<B>(entity)
     }
 
     /// Adds relation between two entities to the [`FlowWorld`].
@@ -622,9 +633,9 @@ impl FlowWorld {
         R: Relation,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert_relation(origin, relation, target)
+        world.as_world().insert_relation(origin, relation, target)
     }
 
     /// Removes relation between two entities in the [`FlowWorld`].
@@ -644,9 +655,9 @@ impl FlowWorld {
         R: Relation,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.remove_relation(origin, target)
+        world.as_world().remove_relation(origin, target)
     }
 
     /// Drops relation between two entities in the [`FlowWorld`].
@@ -665,9 +676,9 @@ impl FlowWorld {
         R: Relation,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.drop_relation::<R>(origin, target)
+        world.as_world().drop_relation::<R>(origin, target)
     }
 
     /// Inserts resource instance.
@@ -690,9 +701,9 @@ impl FlowWorld {
     /// ```
     pub fn insert_resource<T: 'static>(self, resource: T) {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.insert_resource(resource);
+        world.as_world().insert_resource(resource);
     }
 
     /// Returns reference to the resource instance.
@@ -710,9 +721,9 @@ impl FlowWorld {
     /// ```
     pub fn with_resource<T: 'static>(self, f: impl FnOnce() -> T) {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with_resource(f);
+        world.as_world().with_resource(f);
     }
 
     /// Returns reference to the resource instance.
@@ -730,9 +741,9 @@ impl FlowWorld {
     /// ```
     pub fn with_default_resource<T: Default + 'static>(self) {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.with_default_resource::<T>();
+        world.as_world().with_default_resource::<T>();
     }
 
     /// Remove resource instance.
@@ -750,9 +761,9 @@ impl FlowWorld {
     /// ```
     pub fn remove_resource<T: 'static>(self) -> Option<T> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.remove_resource()
+        world.as_world().remove_resource()
     }
 
     /// Returns a copy for the `Sync` resource.
@@ -778,7 +789,7 @@ impl FlowWorld {
     #[track_caller]
     pub fn copy_resource<T: Copy + 'static>(self) -> T {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let world = self.borrow();
 
         world.copy_resource()
     }
@@ -806,7 +817,7 @@ impl FlowWorld {
     #[track_caller]
     pub fn clone_resource<T: Clone + 'static>(self) -> T {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let world = self.borrow();
 
         world.clone_resource()
     }
@@ -833,9 +844,9 @@ impl FlowWorld {
     #[inline]
     pub fn spawn_empty(self) -> FlowEntity {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_empty().id())
+        FlowEntity::new(world.as_world().spawn_empty().id())
     }
 
     /// Spawns a new entity in this world with provided component.
@@ -865,9 +876,9 @@ impl FlowWorld {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_one(component).id())
+        FlowEntity::new(world.as_world().spawn_one(component).id())
     }
 
     /// Spawns a new entity in this world with provided component.
@@ -902,9 +913,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_one_external(component).id())
+        FlowEntity::new(world.as_world().spawn_one_external(component).id())
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -934,9 +945,9 @@ impl FlowWorld {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn(bundle).id())
+        FlowEntity::new(world.as_world().spawn(bundle).id())
     }
 
     /// Spawns a new entity in this world with specific ID and bundle of components.
@@ -965,9 +976,9 @@ impl FlowWorld {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_at(id, bundle).id())
+        FlowEntity::new(world.as_world().spawn_at(id, bundle).id())
     }
 
     /// Spawns a new entity in this world with specific ID and bundle of components.
@@ -996,9 +1007,9 @@ impl FlowWorld {
         B: DynamicComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_or_insert(id, bundle).id())
+        FlowEntity::new(world.as_world().spawn_or_insert(id, bundle).id())
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -1034,9 +1045,9 @@ impl FlowWorld {
         B: DynamicBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_external(bundle).id())
+        FlowEntity::new(world.as_world().spawn_external(bundle).id())
     }
 
     /// Spawns a new entity in this world with provided bundle of components.
@@ -1072,9 +1083,9 @@ impl FlowWorld {
         B: DynamicBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        FlowEntity::new(world.spawn_external_at(id, bundle).id())
+        FlowEntity::new(world.as_world().spawn_external_at(id, bundle).id())
     }
 
     /// Returns an iterator which spawns and yield entities
@@ -1099,13 +1110,15 @@ impl FlowWorld {
         I: IntoIterator<Item = B>,
         B: ComponentBundle,
     {
-        // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let bundles = bundles.into_iter();
 
-        world.ensure_bundle_registered::<B>();
+        // Safety: world reference does not escape this scope.
+        let mut world = self.borrow();
+
+        world.as_world().ensure_bundle_registered::<B>();
 
         SpawnBatch {
-            bundles: bundles.into_iter(),
+            bundles,
             world: self,
         }
     }
@@ -1138,13 +1151,15 @@ impl FlowWorld {
         I: IntoIterator<Item = B>,
         B: Bundle,
     {
-        // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let bundles = bundles.into_iter();
 
-        world.assert_bundle_registered::<B>();
+        // Safety: world reference does not escape this scope.
+        let mut world = self.borrow();
+
+        world.as_world().assert_bundle_registered::<B>();
 
         SpawnBatch {
-            bundles: bundles.into_iter(),
+            bundles,
             world: self,
         }
     }
@@ -1164,9 +1179,9 @@ impl FlowWorld {
     #[inline]
     pub fn despawn(self, entity: impl Entity) -> Result<(), NoSuchEntity> {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.despawn(entity)
+        world.as_world().despawn(entity)
     }
 
     /// Explicitly registers component type.
@@ -1182,9 +1197,9 @@ impl FlowWorld {
         T: Component,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.ensure_component_registered::<T>();
+        world.as_world().ensure_component_registered::<T>();
     }
 
     /// Explicitly registers external type.
@@ -1200,9 +1215,9 @@ impl FlowWorld {
         T: 'static,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.ensure_external_registered::<T>();
+        world.as_world().ensure_external_registered::<T>();
     }
 
     /// Explicitly registers bundle of component types.
@@ -1214,9 +1229,9 @@ impl FlowWorld {
         B: ComponentBundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.ensure_bundle_registered::<B>();
+        world.as_world().ensure_bundle_registered::<B>();
     }
 
     /// Asserts that all components from the bundle are registered.
@@ -1225,9 +1240,9 @@ impl FlowWorld {
         B: Bundle,
     {
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.get() };
+        let mut world = self.borrow();
 
-        world.assert_bundle_registered::<B>();
+        world.as_world().assert_bundle_registered::<B>();
     }
 }
 
@@ -1252,9 +1267,9 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
-        (me.f)(world, cx)
+        (me.f)(&mut world, cx)
     }
 }
 
@@ -1284,7 +1299,7 @@ where
         let me = unsafe { self.get_unchecked_mut() };
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { me.world.get() };
+        let mut world = me.world.borrow();
 
         let view = world.view_filter_with_mut(me.query, me.filter);
         (me.f)(view.into(), cx)
@@ -1326,9 +1341,11 @@ where
         let bundle = self.bundles.next()?;
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.world.get() };
+        let mut world = self.world.borrow();
 
-        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+        Some(FlowEntity::new(
+            world.as_world().spawn_external(bundle).id(),
+        ))
     }
 
     #[inline]
@@ -1336,9 +1353,11 @@ where
         let bundle = self.bundles.nth(n)?;
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.world.get() };
+        let mut world = self.world.borrow();
 
-        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+        Some(FlowEntity::new(
+            world.as_world().spawn_external(bundle).id(),
+        ))
     }
 
     #[inline]
@@ -1354,9 +1373,11 @@ where
         self.bundles.fold(init, |acc, bundle| {
             // Safety: world reference does not escape this scope.
             // It is not fetched outside because iterator may fetch world as well.
-            let world = unsafe { self.world.get() };
+            let mut world = self.world.borrow();
 
-            f(acc, FlowEntity::new(world.spawn_external(bundle).id()))
+            let entity = world.as_world().spawn_external(bundle).id();
+            drop(world);
+            f(acc, FlowEntity::new(entity))
         })
     }
 }
@@ -1381,18 +1402,22 @@ where
         let bundle = self.bundles.next_back()?;
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.world.get() };
+        let mut world = self.world.borrow();
 
-        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+        Some(FlowEntity::new(
+            world.as_world().spawn_external(bundle).id(),
+        ))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<FlowEntity> {
         let bundle = self.bundles.nth_back(n)?;
 
         // Safety: world reference does not escape this scope.
-        let world = unsafe { self.world.get() };
+        let mut world = self.world.borrow();
 
-        Some(FlowEntity::new(world.spawn_external(bundle).id()))
+        Some(FlowEntity::new(
+            world.as_world().spawn_external(bundle).id(),
+        ))
     }
 
     fn rfold<T, F>(self, init: T, mut f: F) -> T
@@ -1403,9 +1428,11 @@ where
         self.bundles.rfold(init, |acc, bundle| {
             // Safety: world reference does not escape this scope.
             // It is not fetched outside because iterator may fetch world as well.
-            let world = unsafe { self.world.get() };
+            let mut world = self.world.borrow();
 
-            f(acc, FlowEntity::new(world.spawn_external(bundle).id()))
+            let entity = world.as_world().spawn_external(bundle).id();
+            drop(world);
+            f(acc, FlowEntity::new(entity))
         })
     }
 }

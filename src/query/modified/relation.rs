@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, ptr::NonNull};
 
 use crate::{
@@ -139,10 +140,16 @@ macro_rules! modified_relation {
             ) -> Self::Fetch<'a> {
                 let component = unsafe { archetype.component($component).unwrap_unchecked() };
                 let data = unsafe { component.data() };
-                let entity_epochs =
-                    unsafe { NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId) };
-                let chunk_epochs =
-                    unsafe { NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId) };
+                let entity_epochs = unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_ptr(&data.entity_epochs).cast::<EpochId>() as *mut EpochId
+                    )
+                };
+                let chunk_epochs = unsafe {
+                    NonNull::new_unchecked(
+                        Box::as_ptr(&data.chunk_epochs).cast::<EpochId>() as *mut EpochId
+                    )
+                };
                 ModifiedRelationFetch {
                     fetch: unsafe { self.query.fetch(arch_idx, archetype, epoch) },
                     after_epoch: self.after_epoch,

@@ -69,11 +69,7 @@ impl EpochCounter {
     /// Otherwise returns current epoch id.
     #[inline]
     pub fn next_if(&self, cond: bool) -> EpochId {
-        if cond {
-            self.next()
-        } else {
-            self.current()
-        }
+        if cond { self.next() } else { self.current() }
     }
 }
 
@@ -153,5 +149,124 @@ impl EpochId {
             "`EpochId::bump_cell` must be used only for older or same epochs"
         );
         cell.set(to);
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// Epoch allocation used by views. Implementations are sealed.
+pub trait EpochSource: sealed::Sealed + 'static {
+    /// Returns the current epoch without changing it.
+    fn current(&self) -> EpochId;
+    /// Allocates a fresh epoch.
+    fn next(&self) -> EpochId;
+    /// Allocates a fresh epoch only for mutable access.
+    #[inline]
+    fn next_if(&self, mutable: bool) -> EpochId {
+        if mutable { self.next() } else { self.current() }
+    }
+}
+
+impl sealed::Sealed for EpochCounter {}
+impl EpochSource for EpochCounter {
+    #[inline]
+    fn current(&self) -> EpochId {
+        EpochCounter::current(self)
+    }
+    #[inline]
+    fn next(&self) -> EpochId {
+        EpochCounter::next(self)
+    }
+}
+
+/// Epoch storage accessible only through an exclusive local-world capability.
+/// Its `Cell` makes borrowed local views and iterators neither `Send` nor `Sync`.
+///
+/// ```compile_fail
+/// use edict::view::LocalViewRef;
+/// fn send<T: Send>() {}
+/// send::<LocalViewRef<'static, ()>>();
+/// ```
+///
+/// ```compile_fail
+/// use edict::view::LocalViewOne;
+/// fn sync<T: Sync>() {}
+/// sync::<LocalViewOne<'static, ()>>();
+/// ```
+///
+/// ```compile_fail
+/// use edict::{epoch::LocalEpochCounter, view::ViewIter};
+/// fn send<T: Send>() {}
+/// send::<ViewIter<'static, (), (), LocalEpochCounter>>();
+/// ```
+///
+/// ```compile_fail
+/// use edict::{epoch::LocalEpochCounter, view::ViewBatchIter};
+/// fn sync<T: Sync>() {}
+/// sync::<ViewBatchIter<'static, (), (), LocalEpochCounter>>();
+/// ```
+#[repr(transparent)]
+pub struct LocalEpochCounter {
+    value: Cell<u64>,
+}
+
+impl LocalEpochCounter {
+    /// Borrows the atomic's storage in exclusive local mode.
+    ///
+    /// # Safety
+    /// No atomic access to this storage may overlap the returned reference or
+    /// any view or iterator derived from it. The caller must retain an exclusive
+    /// world capability that prevents shared-world access for that lifetime.
+    #[inline]
+    pub(crate) unsafe fn from_atomic(counter: &EpochCounter) -> &Self {
+        // AtomicU64::as_ptr permits non-atomic access when synchronization rules
+        // exclude concurrent atomic access. Cell and this wrapper are transparent
+        // over u64, and AtomicU64 storage has sufficient alignment.
+        unsafe { &*counter.value.as_ptr().cast::<Self>() }
+    }
+}
+
+impl sealed::Sealed for LocalEpochCounter {}
+impl EpochSource for LocalEpochCounter {
+    #[inline]
+    fn current(&self) -> EpochId {
+        EpochId {
+            value: self.value.get(),
+        }
+    }
+    #[inline]
+    fn next(&self) -> EpochId {
+        let old = self.value.get();
+        debug_assert!(old < u64::MAX);
+        let value = old + 1;
+        self.value.set(value);
+        EpochId { value }
+    }
+}
+
+#[cfg(test)]
+mod local_epoch_tests {
+    use super::*;
+
+    #[test]
+    fn local_source_updates_atomic_storage_with_fresh_epochs() {
+        let counter = EpochCounter::new();
+        let first = counter.next();
+        let end;
+        {
+            // This test holds all access to the counter; no atomic operation is
+            // performed while the local reference is in use.
+            let source = unsafe { LocalEpochCounter::from_atomic(&counter) };
+            assert_eq!(source.current(), first);
+            assert_eq!(source.next_if(false), first);
+            let second = source.next();
+            assert!(second.after(first));
+            end = source.next_if(true);
+            assert!(end.after(second));
+        }
+        assert_eq!(counter.current(), end);
+        assert!(counter.next().after(end));
     }
 }

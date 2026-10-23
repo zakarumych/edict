@@ -1,3 +1,4 @@
+use crate::query::FetchCacheSlot;
 use core::any::TypeId;
 
 use crate::{
@@ -134,6 +135,54 @@ where
 
     const MUTABLE: bool = T::MUTABLE;
 
+    const SUPPORTS_FETCH_REUSE: bool = T::SUPPORTS_FETCH_REUSE;
+    const FETCH_REUSE_MATCHES_STABLE: bool = T::FETCH_REUSE_MATCHES_STABLE;
+
+    #[inline]
+    unsafe fn reuse_fetch<'cached, 'a>(
+        &self,
+        cached: &mut Self::Fetch<'cached>,
+        _arch_idx: u32,
+        _archetype: &'a Archetype,
+        epoch: EpochId,
+    ) -> Self::Fetch<'a> {
+        if T::FETCH_REUSE_MATCHES_STABLE {
+            return cached
+                .as_mut()
+                .map(|inner| unsafe { self.0.reuse_fetch(inner, _arch_idx, _archetype, epoch) });
+        }
+        if !self.0.visit_archetype(_archetype)
+            || !unsafe { self.0.visit_archetype_late(_archetype) }
+        {
+            return None;
+        }
+        Some(if let Some(inner) = cached {
+            unsafe { self.0.reuse_fetch(inner, _arch_idx, _archetype, epoch) }
+        } else {
+            unsafe { self.0.fetch(_arch_idx, _archetype, epoch) }
+        })
+    }
+    const FETCH_CACHE_SLOTS: usize = T::FETCH_CACHE_SLOTS;
+
+    #[inline]
+    fn prepare_fetch_cache(archetype: &Archetype, slots: &mut [FetchCacheSlot]) {
+        T::prepare_fetch_cache(archetype, slots);
+    }
+
+    #[inline]
+    unsafe fn fetch_cached<'a>(
+        &self,
+        arch_idx: u32,
+        archetype: &'a Archetype,
+        epoch: EpochId,
+        slots: &[FetchCacheSlot],
+    ) -> Self::Fetch<'a> {
+        unsafe {
+            self.0
+                .fetch_optional_cached(arch_idx, archetype, epoch, slots)
+        }
+    }
+
     #[inline]
     fn cache_visit_archetype(_archetype: &Archetype) -> Option<bool> {
         Some(true)
@@ -163,11 +212,7 @@ where
         archetype: &'a Archetype,
         epoch: EpochId,
     ) -> Option<T::Fetch<'a>> {
-        if self.0.visit_archetype(archetype) && unsafe { self.0.visit_archetype_late(archetype) } {
-            Some(unsafe { self.0.fetch(arch_idx, archetype, epoch) })
-        } else {
-            None
-        }
+        unsafe { self.0.fetch_optional(arch_idx, archetype, epoch) }
     }
 
     fn reserved_entity_item<'a>(&self, id: EntityId, idx: u32) -> Option<Option<T::Item<'a>>> {

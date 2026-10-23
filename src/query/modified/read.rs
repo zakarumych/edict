@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -153,10 +154,14 @@ where
             after_epoch: self.after_epoch,
             ptr: data.ptr.cast(),
             entity_epochs: unsafe {
-                NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+                NonNull::new_unchecked(
+                    Box::as_ptr(&data.entity_epochs).cast::<EpochId>() as *mut EpochId
+                )
             },
             chunk_epochs: unsafe {
-                NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId)
+                NonNull::new_unchecked(
+                    Box::as_ptr(&data.chunk_epochs).cast::<EpochId>() as *mut EpochId
+                )
             },
             marker: PhantomData,
         }
@@ -269,10 +274,14 @@ where
                     after_epoch: self.after_epoch,
                     ptr: data.ptr.cast(),
                     entity_epochs: unsafe {
-                        NonNull::new_unchecked(data.entity_epochs.as_ptr() as *mut EpochId)
+                        NonNull::new_unchecked(
+                            Box::as_ptr(&data.entity_epochs).cast::<EpochId>() as *mut EpochId
+                        )
                     },
                     chunk_epochs: unsafe {
-                        NonNull::new_unchecked(data.chunk_epochs.as_ptr() as *mut EpochId)
+                        NonNull::new_unchecked(
+                            Box::as_ptr(&data.chunk_epochs).cast::<EpochId>() as *mut EpochId
+                        )
                     },
                     marker: PhantomData,
                 })

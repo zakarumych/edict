@@ -82,10 +82,14 @@ impl VerifyFetch {
             }
             Some((visit_chunk_idx, visiting)) => {
                 if chunk_idx != visit_chunk_idx {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but last call to `visit_chunk` was with chunk_idx {visit_chunk_idx}");
+                    panic!(
+                        "FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but last call to `visit_chunk` was with chunk_idx {visit_chunk_idx}"
+                    );
                 }
                 if !visiting {
-                    panic!("FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but `visit_chunk` returned true for this chunk index");
+                    panic!(
+                        "FetchVerify: visit_chunk called with chunk_idx {chunk_idx}, but `visit_chunk` returned true for this chunk index"
+                    );
                 }
                 self.touch_chunk = Some(visit_chunk_idx);
             }
@@ -109,10 +113,17 @@ impl VerifyFetch {
             }
             Some((visit_chunk_idx, visiting_chunk)) => {
                 if chunk_idx(idx) != visit_chunk_idx {
-                    panic!("FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `touch_chunk` was with chunk_idx {}", idx, chunk_idx(idx), visit_chunk_idx);
+                    panic!(
+                        "FetchVerify: visit_item called with idx {} that correspond to chunk {}, but last call to `touch_chunk` was with chunk_idx {}",
+                        idx,
+                        chunk_idx(idx),
+                        visit_chunk_idx
+                    );
                 }
                 if !visiting_chunk {
-                    panic!("FetchVerify: visit_item called with idx {idx}, but `visit_chunk` returned false for this idx");
+                    panic!(
+                        "FetchVerify: visit_item called with idx {idx}, but `visit_chunk` returned false for this idx"
+                    );
                 }
                 self.visit_item = Some((idx, visiting));
             }
@@ -136,10 +147,14 @@ impl VerifyFetch {
             }
             Some((valid_idx, visiting)) => {
                 if idx != valid_idx {
-                    panic!("FetchVerify: get_item called with idx {idx}, but last call to `visit_item` was with idx {valid_idx}");
+                    panic!(
+                        "FetchVerify: get_item called with idx {idx}, but last call to `visit_item` was with idx {valid_idx}"
+                    );
                 }
                 if !visiting {
-                    panic!("FetchVerify: get_item called with idx {idx}, but `visit_item` returned true for this idx");
+                    panic!(
+                        "FetchVerify: get_item called with idx {idx}, but `visit_item` returned true for this idx"
+                    );
                 }
                 self.visit_item = None;
             }

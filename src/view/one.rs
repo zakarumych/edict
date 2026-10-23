@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use crate::{
     archetype::Archetype,
     entity::{AliveEntity, EntityId, Location},
-    epoch::EpochCounter,
+    epoch::{EpochCounter, EpochSource, LocalEpochCounter},
     query::{AsQuery, ImmutableQuery, Query, QueryCacheRef, QueryItem},
     world::World,
 };
@@ -13,7 +13,7 @@ use super::{BorrowState, RuntimeBorrowState, expect_match, get_at};
 /// A view over [`World`] that may be used to access specific components
 /// of one entity.
 #[must_use]
-pub struct ViewOneValue<'a, Q: Query, F: Query> {
+pub struct ViewOneValue<'a, Q: Query, F: Query, C: EpochSource = EpochCounter> {
     query: QueryCacheRef<'a, Q>,
     filter: QueryCacheRef<'a, F>,
 
@@ -22,17 +22,17 @@ pub struct ViewOneValue<'a, Q: Query, F: Query> {
     id: EntityId,
     loc: Location,
     borrow: RuntimeBorrowState,
-    epochs: &'a EpochCounter,
+    epochs: &'a C,
 }
 
-impl<'a, Q: Query, F: Query> Drop for ViewOneValue<'a, Q, F> {
+impl<'a, Q: Query, F: Query, C: EpochSource> Drop for ViewOneValue<'a, Q, F, C> {
     #[inline]
     fn drop(&mut self) {
         self.unlock()
     }
 }
 
-impl<'a, Q: Query, F: Query> ViewOneValue<'a, Q, F> {
+impl<'a, Q: Query, F: Query, C: EpochSource> ViewOneValue<'a, Q, F, C> {
     /// Unlocks runtime borrows.
     /// Allows usage of conflicting views.
     ///
@@ -54,7 +54,8 @@ impl<'a, Q: Query, F: Query> ViewOneValue<'a, Q, F> {
 }
 
 /// View for single entity.
-pub type ViewOne<'a, Q, F = ()> = ViewOneValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query>;
+pub type ViewOne<'a, Q, F = (), C = EpochCounter> =
+    ViewOneValue<'a, <Q as AsQuery>::Query, <F as AsQuery>::Query, C>;
 
 impl<'a, Q, F> ViewOneValue<'a, Q, F>
 where
@@ -83,7 +84,7 @@ where
     }
 }
 
-impl<'a, Q, F> ViewOneValue<'a, Q, F>
+impl<'a, Q, F, C: EpochSource> ViewOneValue<'a, Q, F, C>
 where
     Q: Query,
     F: Query,
@@ -148,7 +149,7 @@ where
     }
 }
 
-impl<'a, Q, F> ViewOneValue<'a, Q, F>
+impl<'a, Q, F, C: EpochSource> ViewOneValue<'a, Q, F, C>
 where
     Q: ImmutableQuery,
     F: ImmutableQuery,
@@ -210,3 +211,36 @@ where
             })
     }
 }
+
+impl<'a, Q: Query, F: Query, C: EpochSource> ViewOneValue<'a, Q, F, C> {
+    /// Constructs a single-entity view under an explicit epoch capability.
+    ///
+    /// # Safety
+    /// The epoch source's exclusive local mode must remain valid for the view.
+    pub(crate) unsafe fn new_with_epochs(
+        world: &'a World,
+        entity: impl AliveEntity,
+        query: Q,
+        filter: F,
+        epochs: &'a C,
+    ) -> Self {
+        let loc = entity.locate(world.entities());
+        let mut archetype = MaybeUninit::uninit();
+
+        if loc.arch != u32::MAX {
+            archetype.write(&world.archetypes()[loc.arch as usize]);
+        }
+
+        ViewOneValue {
+            query: world.get_query_cache(query),
+            filter: world.get_query_cache(filter),
+            archetype,
+            id: entity.id(),
+            loc,
+            borrow: RuntimeBorrowState::new(),
+            epochs,
+        }
+    }
+}
+/// Single-entity view using exclusive local-world epochs.
+pub type LocalViewOne<'a, Q, F = ()> = ViewOne<'a, Q, F, LocalEpochCounter>;

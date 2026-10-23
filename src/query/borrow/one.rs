@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
 
 use crate::{
@@ -306,8 +307,12 @@ where
             ptr: data.ptr,
             size: component.layout().size(),
             borrow_fn: unsafe { cb.borrow_mut().unwrap_unchecked() },
-            entity_epochs: unsafe { NonNull::new_unchecked(data.entity_epochs.as_mut_ptr()) },
-            chunk_epochs: unsafe { NonNull::new_unchecked(data.chunk_epochs.as_mut_ptr()) },
+            entity_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.entity_epochs).cast::<EpochId>())
+            },
+            chunk_epochs: unsafe {
+                NonNull::new_unchecked(Box::as_mut_ptr(&mut data.chunk_epochs).cast::<EpochId>())
+            },
             epoch,
             marker: PhantomData::<&mut T>,
         }
